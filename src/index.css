@@ -1,0 +1,103 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 210 40% 16%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 40% 16%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 40% 16%;
+
+    --primary: 210 40% 24%;
+    --primary-foreground: 0 0% 96%;
+
+    --secondary: 200 18% 46%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 0 0% 96%;
+    --muted-foreground: 210 40% 40%;
+
+    --accent: 43 68% 52%;
+    --accent-foreground: 210 40% 16%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 96%;
+
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 210 40% 24%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 210 40% 16%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 43 68% 52%;
+    --sidebar-primary-foreground: 210 40% 16%;
+    --sidebar-accent: 210 45% 22%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 210 45% 22%;
+    --sidebar-ring: 43 68% 52%;
+  }
+
+  .dark {
+    --background: 210 40% 16%;
+    --foreground: 0 0% 96%;
+
+    --card: 210 40% 16%;
+    --card-foreground: 0 0% 96%;
+
+    --popover: 210 40% 16%;
+    --popover-foreground: 0 0% 96%;
+
+    --primary: 0 0% 96%;
+    --primary-foreground: 210 40% 16%;
+
+    --secondary: 200 18% 46%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 210 40% 24%;
+    --muted-foreground: 0 0% 86%;
+
+    --accent: 43 68% 52%;
+    --accent-foreground: 210 40% 16%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 96%;
+
+    --border: 210 40% 24%;
+    --input: 210 40% 24%;
+    --ring: 0 0% 80%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .marble-card {
+    @apply bg-white rounded-lg shadow-md border border-gray-100 overflow-hidden;
+    background-image: linear-gradient(to bottom right, rgba(255,255,255,0.8), rgba(245,245,245,0.3));
+  }
+  
+  .marble-pattern {
+    background-color: #f5f5f5;
+    background-image: linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%, #f5f5f5), 
+                      linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%, #f5f5f5);
+    background-size: 60px 60px;
+    background-position: 0 0, 30px 30px;
+    opacity: 0.05;
+  }
+}
