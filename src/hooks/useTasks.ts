@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, addWeeks, addMonths, addYears } from "date-fns";
+import { calculateTaskStatus, TaskStatus } from "@/lib/taskStatusService";
 
 export interface Task {
   id: string;
@@ -47,6 +48,8 @@ export interface Task {
   // Computed fields
   subtasks_count?: number;
   subtasks_completed?: number;
+  // Calculated status (computed, not stored)
+  calculatedStatus?: TaskStatus;
 }
 
 export interface TaskInsert {
@@ -120,7 +123,14 @@ export function useTasks() {
         .order("due_date", { ascending: true });
 
       if (error) throw error;
-      setTasks(data || []);
+      
+      // Add calculated status to each task
+      const tasksWithCalculatedStatus = (data || []).map(task => ({
+        ...task,
+        calculatedStatus: calculateTaskStatus(task),
+      }));
+      
+      setTasks(tasksWithCalculatedStatus);
     } catch (error: any) {
       toast({
         title: "Error fetching tasks",

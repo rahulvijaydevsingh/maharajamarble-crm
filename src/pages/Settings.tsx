@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { 
   Card, 
@@ -32,34 +32,37 @@ import {
   Shield,
   User,
   Users,
+  Loader2,
+  CheckCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ControlPanel } from "@/components/settings/ControlPanel";
 import { RoleManagementPanel } from "@/components/settings/RoleManagementPanel";
 import { StaffManagementPanel } from "@/components/settings/StaffManagementPanel";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useProfileSettings } from "@/hooks/useProfileSettings";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
+import { format } from "date-fns";
 
 const Settings = () => {
   const { staffMembers } = useActiveStaff();
-  const [profileData, setProfileData] = useState({
-    firstName: "Admin",
-    lastName: "User",
-    email: "admin@maharajamarble.com",
-    phone: "+91 98765 43210",
-    role: "admin",
-  });
-
-  const [companyData, setCompanyData] = useState({
-    name: "Maharaja Marble & Granite",
-    address: "123, Marble Market, Kishangarh",
-    city: "Ajmer",
-    state: "Rajasthan",
-    pincode: "305801",
-    phone: "+91 1462 123456",
-    email: "info@maharajamarble.com",
-    website: "www.maharajamarble.com",
-    gstin: "08ABCDE1234F5G6",
-  });
+  const { 
+    profileData, 
+    setProfileData, 
+    loading: profileLoading, 
+    saving: profileSaving, 
+    lastSaved: profileLastSaved,
+    saveProfile 
+  } = useProfileSettings();
+  
+  const { 
+    companyData, 
+    setCompanyData, 
+    loading: companyLoading, 
+    saving: companySaving, 
+    lastSaved: companyLastSaved,
+    saveCompanySettings 
+  } = useCompanySettings();
 
   return (
     <DashboardLayout>
@@ -143,28 +146,33 @@ const Settings = () => {
                       onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <Select 
-                      value={profileData.role}
-                      onValueChange={(value) => setProfileData({...profileData, role: value})}
-                    >
-                      <SelectTrigger id="role">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Administrator</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="sales">Sales Representative</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               </CardContent>
-              <CardFooter>
-                <Button className="ml-auto">
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
+              <CardFooter className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  {profileLastSaved && (
+                    <span className="flex items-center gap-1">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      Last saved: {format(profileLastSaved, "PPp")}
+                    </span>
+                  )}
+                </div>
+                <Button 
+                  onClick={saveProfile} 
+                  disabled={profileSaving || profileLoading}
+                  className="ml-auto"
+                >
+                  {profileSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
                 </Button>
               </CardFooter>
             </Card>
@@ -262,10 +270,31 @@ const Settings = () => {
                   </div>
                 </div>
               </CardContent>
-              <CardFooter>
-                <Button className="ml-auto">
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Company Info
+              <CardFooter className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  {companyLastSaved && (
+                    <span className="flex items-center gap-1">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      Last saved: {format(companyLastSaved, "PPp")}
+                    </span>
+                  )}
+                </div>
+                <Button 
+                  onClick={saveCompanySettings} 
+                  disabled={companySaving || companyLoading}
+                  className="ml-auto"
+                >
+                  {companySaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Company Info
+                    </>
+                  )}
                 </Button>
               </CardFooter>
             </Card>
