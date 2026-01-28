@@ -30,8 +30,10 @@ import {
   Mail,
   Download,
   Edit,
+  Loader2,
 } from 'lucide-react';
 import { Customer, useCustomers } from '@/hooks/useCustomers';
+import { useLeads } from '@/hooks/useLeads';
 import { CustomerProfileTab } from './detail-tabs/CustomerProfileTab';
 import { CustomerQuotationsTab } from './detail-tabs/CustomerQuotationsTab';
 import { CustomerTasksTab } from './detail-tabs/CustomerTasksTab';
@@ -41,6 +43,7 @@ import { CustomerNotesTab } from './detail-tabs/CustomerNotesTab';
 import { CustomerActivityTab } from './detail-tabs/CustomerActivityTab';
 import { EditSmartCustomerForm } from './EditSmartCustomerForm';
 import { CUSTOMER_STATUSES } from '@/constants/customerConstants';
+import { useToast } from '@/hooks/use-toast';
 
 interface CustomerDetailViewProps {
   customer: Customer | null;
@@ -63,7 +66,46 @@ export function CustomerDetailView({
 }: CustomerDetailViewProps) {
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(initialEditMode);
+  const [convertingToLead, setConvertingToLead] = useState(false);
   const { updateCustomer, refetch } = useCustomers();
+  const { addLead } = useLeads();
+  const { toast } = useToast();
+
+  const handleConvertToLead = async () => {
+    if (!customer) return;
+    
+    setConvertingToLead(true);
+    try {
+      await addLead({
+        name: customer.name,
+        phone: customer.phone,
+        alternate_phone: customer.alternate_phone,
+        email: customer.email,
+        firm_name: customer.company_name,
+        address: customer.address,
+        source: 'customer_conversion',
+        assigned_to: customer.assigned_to,
+        priority: customer.priority,
+        notes: `Converted from customer: ${customer.name}${customer.notes ? '\n\nOriginal notes: ' + customer.notes : ''}`,
+        created_by: customer.created_by,
+      });
+      
+      toast({
+        title: "Lead Created",
+        description: `Successfully created lead from customer "${customer.name}"`,
+      });
+      
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to convert customer to lead",
+        variant: "destructive",
+      });
+    } finally {
+      setConvertingToLead(false);
+    }
+  };
 
   useEffect(() => {
     if (customer) {
@@ -144,16 +186,19 @@ export function CustomerDetailView({
               Print
             </Button>
             
-            {onCreateLead && (
-              <Button 
-                size="sm" 
-                onClick={() => onCreateLead(customer)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
+            <Button 
+              size="sm" 
+              onClick={handleConvertToLead}
+              disabled={convertingToLead}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {convertingToLead ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
                 <UserPlus className="h-4 w-4 mr-1" />
-                Create Lead
-              </Button>
-            )}
+              )}
+              Convert to Lead
+            </Button>
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

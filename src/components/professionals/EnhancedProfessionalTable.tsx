@@ -5,15 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2 } from "lucide-react";
+import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Professional, useProfessionals } from "@/hooks/useProfessionals";
 import { useSavedFilters, SavedFilter } from "@/hooks/useSavedFilters";
+import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
 import { PROFESSIONAL_STATUSES, PRIORITIES } from "@/constants/professionalConstants";
 import { ProfessionalSavedFilterDialog } from "./filters/ProfessionalSavedFilterDialog";
 import { ProfessionalManageFiltersDialog } from "./filters/ProfessionalManageFiltersDialog";
+import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 
 type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | null;
@@ -27,6 +29,13 @@ interface EnhancedProfessionalTableProps {
 export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessionalTableProps) {
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("professionals");
+  const { 
+    columns, 
+    visibleColumns, 
+    saving: savingPrefs, 
+    savePreferences, 
+    resetToDefaults 
+  } = useTablePreferences("professionals");
   const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -37,6 +46,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
+  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<SavedFilter | null>(null);
 
   const uniqueAssignedTo = useMemo(() => Array.from(new Set(professionals.map(p => p.assigned_to))), [professionals]);
@@ -102,6 +112,63 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
     </div>
   );
 
+  // Render cell based on column key
+  const renderCell = (professional: Professional, columnKey: string) => {
+    switch (columnKey) {
+      case "name":
+        return (
+          <div>
+            <div className="font-medium">{professional.name}</div>
+            {professional.firm_name && <div className="text-xs text-muted-foreground">{professional.firm_name}</div>}
+          </div>
+        );
+      case "firmName":
+        return professional.firm_name || "-";
+      case "phone":
+        return (
+          <div>
+            <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{professional.phone}</div>
+            {professional.email && <div className="text-xs text-muted-foreground">{professional.email}</div>}
+          </div>
+        );
+      case "professionalType":
+        return <span className="capitalize">{professional.professional_type.replace("_", " ")}</span>;
+      case "city":
+        return professional.city || "-";
+      case "status":
+        return (
+          <Badge variant="secondary" className={PROFESSIONAL_STATUSES[professional.status]?.className || ""}>
+            {PROFESSIONAL_STATUSES[professional.status]?.label || professional.status}
+          </Badge>
+        );
+      case "priority":
+        const priorityConfig = PRIORITIES[professional.priority];
+        return priorityConfig ? (
+          <span className={priorityConfig.color}>{priorityConfig.label}</span>
+        ) : "-";
+      case "assignedTo":
+        return professional.assigned_to;
+      case "serviceCategory":
+        return professional.service_category || "-";
+      case "rating":
+        return professional.rating ? `${professional.rating}/5` : "-";
+      case "createdAt":
+        return format(new Date(professional.created_at), "dd MMM yyyy");
+      case "actions":
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-popover">
+              <DropdownMenuItem onClick={() => onEdit(professional)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => deleteProfessional(professional.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      default:
+        return "-";
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
@@ -120,6 +187,14 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
           <Button variant="outline" size="sm" onClick={() => setManageFiltersDialogOpen(true)}>
             <SlidersHorizontal className="h-4 w-4 mr-1" /> Manage Filters
           </Button>
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={() => setColumnManagerOpen(true)}
+            title="Manage Columns"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           </Button>
@@ -133,48 +208,42 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
             <TableRow>
-              <TableHead className="w-10 bg-background"><Checkbox checked={selectedItems.length === filteredProfessionals.length && filteredProfessionals.length > 0} onCheckedChange={handleSelectAll} /></TableHead>
-              <TableHead className="bg-background"><SortableHeader field="name">Name</SortableHeader></TableHead>
-              <TableHead className="bg-background">Contact</TableHead>
-              <TableHead className="bg-background"><SortableHeader field="professional_type">Type</SortableHeader></TableHead>
-              <TableHead className="bg-background"><SortableHeader field="city">City</SortableHeader></TableHead>
-              <TableHead className="bg-background"><SortableHeader field="status">Status</SortableHeader></TableHead>
-              <TableHead className="bg-background"><SortableHeader field="rating">Rating</SortableHeader></TableHead>
-              <TableHead className="bg-background">Actions</TableHead>
+              <TableHead className="w-10 bg-background">
+                <Checkbox 
+                  checked={selectedItems.length === filteredProfessionals.length && filteredProfessionals.length > 0} 
+                  onCheckedChange={handleSelectAll} 
+                />
+              </TableHead>
+              {visibleColumns.map((column) => (
+                <TableHead key={column.key} className="bg-background">
+                  {column.key === "name" || column.key === "professionalType" || column.key === "city" || column.key === "status" || column.key === "rating" ? (
+                    <SortableHeader field={column.key === "professionalType" ? "professional_type" : column.key as SortField}>
+                      {column.label}
+                    </SortableHeader>
+                  ) : (
+                    column.label
+                  )}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredProfessionals.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No professionals found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No professionals found</TableCell></TableRow>
             ) : (
               filteredProfessionals.map((professional) => (
                 <TableRow key={professional.id}>
-                  <TableCell><Checkbox checked={selectedItems.includes(professional.id)} onCheckedChange={(checked) => handleSelectItem(professional.id, !!checked)} /></TableCell>
-                  <TableCell className="font-medium">
-                    <div>{professional.name}</div>
-                    {professional.firm_name && <div className="text-xs text-muted-foreground">{professional.firm_name}</div>}
-                  </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{professional.phone}</div>
-                    {professional.email && <div className="text-xs text-muted-foreground">{professional.email}</div>}
+                    <Checkbox 
+                      checked={selectedItems.includes(professional.id)} 
+                      onCheckedChange={(checked) => handleSelectItem(professional.id, !!checked)} 
+                    />
                   </TableCell>
-                  <TableCell className="capitalize">{professional.professional_type.replace("_", " ")}</TableCell>
-                  <TableCell>{professional.city || "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={PROFESSIONAL_STATUSES[professional.status]?.className || ""}>
-                      {PROFESSIONAL_STATUSES[professional.status]?.label || professional.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{professional.rating ? `${professional.rating}/5` : "-"}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-popover">
-                        <DropdownMenuItem onClick={() => onEdit(professional)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => deleteProfessional(professional.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+                  {visibleColumns.map((column) => (
+                    <TableCell key={column.key}>
+                      {renderCell(professional, column.key)}
+                    </TableCell>
+                  ))}
                 </TableRow>
               ))
             )}
@@ -182,8 +251,31 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
         </Table>
       </ScrollableTableContainer>
 
-      <ProfessionalSavedFilterDialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen} onSave={addFilter} onUpdate={updateFilter} editingFilter={editingFilter} uniqueAssignedTo={uniqueAssignedTo} uniqueCities={uniqueCities} />
-      <ProfessionalManageFiltersDialog open={manageFiltersDialogOpen} onOpenChange={setManageFiltersDialogOpen} filters={savedFilters} onEdit={(f) => { setEditingFilter(f); setFilterDialogOpen(true); }} onDelete={deleteFilter} getFilterCount={getFilterCount} />
+      <ProfessionalSavedFilterDialog 
+        open={filterDialogOpen} 
+        onOpenChange={setFilterDialogOpen} 
+        onSave={addFilter} 
+        onUpdate={updateFilter} 
+        editingFilter={editingFilter} 
+        uniqueAssignedTo={uniqueAssignedTo} 
+        uniqueCities={uniqueCities} 
+      />
+      <ProfessionalManageFiltersDialog 
+        open={manageFiltersDialogOpen} 
+        onOpenChange={setManageFiltersDialogOpen} 
+        filters={savedFilters} 
+        onEdit={(f) => { setEditingFilter(f); setFilterDialogOpen(true); }} 
+        onDelete={deleteFilter} 
+        getFilterCount={getFilterCount} 
+      />
+      <ColumnManagerDialog
+        open={columnManagerOpen}
+        onOpenChange={setColumnManagerOpen}
+        columns={columns}
+        onSave={savePreferences}
+        onReset={resetToDefaults}
+        saving={savingPrefs}
+      />
     </div>
   );
 }
