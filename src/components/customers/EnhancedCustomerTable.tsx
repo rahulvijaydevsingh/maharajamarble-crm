@@ -119,11 +119,12 @@ interface ColumnVisibility {
   notes: boolean;
 }
 
-// Pending Tasks Badge Component
-function PendingTasksBadge({ customerId, customerName, getCustomerTasks }: { 
+// Pending Tasks Badge Component - clickable to navigate to tasks page
+function PendingTasksBadge({ customerId, customerName, getCustomerTasks, onNavigate }: { 
   customerId: string; 
   customerName: string;
   getCustomerTasks: (id: string) => CustomerPendingTasks;
+  onNavigate: () => void;
 }) {
   const taskInfo = getCustomerTasks(customerId);
 
@@ -135,7 +136,13 @@ function PendingTasksBadge({ customerId, customerName, getCustomerTasks }: {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center gap-1">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigate();
+            }}
+            className="flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
+          >
             {taskInfo.overdue > 0 && (
               <Badge variant="destructive" className="text-xs px-1.5 py-0">
                 {taskInfo.overdue} overdue
@@ -151,11 +158,11 @@ function PendingTasksBadge({ customerId, customerName, getCustomerTasks }: {
                 {taskInfo.upcoming} upcoming
               </Badge>
             )}
-          </div>
+          </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[300px]">
           <div className="text-sm">
-            <p className="font-medium mb-1">{customerName}'s Tasks</p>
+            <p className="font-medium mb-1">{customerName}'s Tasks (Click to view all)</p>
             <ul className="text-xs space-y-0.5">
               {taskInfo.tasks.slice(0, 5).map(task => (
                 <li key={task.id} className="truncate">• {task.title}</li>
@@ -765,6 +772,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
                         customerId={customer.id} 
                         customerName={customer.name}
                         getCustomerTasks={getCustomerTasks}
+                        onNavigate={() => navigate(`/tasks?related_to_type=customer&related_to_id=${customer.id}&related_to_name=${encodeURIComponent(customer.name)}`)}
                       />
                     </TableCell>
                   )}
