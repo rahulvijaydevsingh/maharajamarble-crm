@@ -7,7 +7,7 @@ type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewe
 type Permission = 
   | "leads.create" | "leads.edit" | "leads.delete" | "leads.bulk_actions" | "leads.export" | "leads.convert"
   | "customers.create" | "customers.edit" | "customers.delete" | "customers.bulk_actions"
-  | "tasks.create" | "tasks.edit" | "tasks.delete" | "tasks.bulk_actions" | "tasks.assign"
+  | "tasks.create" | "tasks.edit" | "tasks.delete" | "tasks.bulk_actions" | "tasks.assign" | "tasks.status_override"
   | "professionals.create" | "professionals.edit" | "professionals.delete"
   | "quotations.create" | "quotations.edit" | "quotations.delete"
   | "settings.view" | "settings.edit" | "control_panel.view" | "control_panel.edit" | "roles.manage"
@@ -18,7 +18,7 @@ const systemRolePermissions: Record<string, Permission[]> = {
   super_admin: [
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
     "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
-    "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign",
+    "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
     "professionals.create", "professionals.edit", "professionals.delete",
     "quotations.create", "quotations.edit", "quotations.delete",
     "settings.view", "settings.edit",
@@ -29,7 +29,7 @@ const systemRolePermissions: Record<string, Permission[]> = {
   admin: [
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
     "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
-    "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign",
+    "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
     "professionals.create", "professionals.edit", "professionals.delete",
     "quotations.create", "quotations.edit", "quotations.delete",
     "settings.view", "settings.edit",

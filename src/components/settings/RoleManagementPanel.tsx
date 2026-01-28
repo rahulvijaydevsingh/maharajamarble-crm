@@ -60,7 +60,7 @@ type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewe
 type Permission = 
   | "leads.create" | "leads.edit" | "leads.delete" | "leads.bulk_actions" | "leads.export" | "leads.convert"
   | "customers.create" | "customers.edit" | "customers.delete" | "customers.bulk_actions"
-  | "tasks.create" | "tasks.edit" | "tasks.delete" | "tasks.bulk_actions" | "tasks.assign"
+  | "tasks.create" | "tasks.edit" | "tasks.delete" | "tasks.bulk_actions" | "tasks.assign" | "tasks.status_override"
   | "professionals.create" | "professionals.edit" | "professionals.delete"
   | "quotations.create" | "quotations.edit" | "quotations.delete"
   | "settings.view" | "settings.edit" | "control_panel.view" | "control_panel.edit" | "roles.manage"
@@ -93,6 +93,7 @@ const availablePermissions: PermissionInfo[] = [
   { id: "tasks.delete", name: "Delete Tasks", description: "Remove tasks", module: "Tasks" },
   { id: "tasks.bulk_actions", name: "Bulk Actions", description: "Bulk task operations", module: "Tasks" },
   { id: "tasks.assign", name: "Assign Tasks", description: "Assign tasks to team members", module: "Tasks" },
+  { id: "tasks.status_override", name: "Override Task Status", description: "Manually override automated task status", module: "Tasks" },
   // Professionals
   { id: "professionals.create", name: "Create Professionals", description: "Add new professionals", module: "Professionals" },
   { id: "professionals.edit", name: "Edit Professionals", description: "Modify professional details", module: "Professionals" },
