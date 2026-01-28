@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -33,12 +34,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, CheckSquare, Loader2, Calendar, Clock, Edit, Trash2 } from 'lucide-react';
+import { Plus, CheckSquare, Loader2, Calendar, Clock, Edit, Trash2, ExternalLink } from 'lucide-react';
 import { Customer } from '@/hooks/useCustomers';
 import { useTasks } from '@/hooks/useTasks';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
-import { format, isPast, isToday } from 'date-fns';
+import { format, isPast, isToday, parseISO } from 'date-fns';
+import { calculateTaskStatus } from '@/lib/taskStatusService';
 
 interface CustomerTasksTabProps {
   customer: Customer;
@@ -51,12 +53,14 @@ const priorityStyles: Record<string, { label: string; className: string }> = {
 };
 
 const statusStyles: Record<string, { label: string; className: string }> = {
-  'Pending': { label: 'Pending', className: 'bg-gray-100 text-gray-700' },
+  'Pending': { label: 'Pending', className: 'bg-yellow-100 text-yellow-700' },
   'In Progress': { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
   'Completed': { label: 'Completed', className: 'bg-green-100 text-green-700' },
+  'Overdue': { label: 'Overdue', className: 'bg-red-100 text-red-700' },
 };
 
 export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
+  const navigate = useNavigate();
   const { tasks, loading, updateTask, deleteTask, refetch } = useTasks();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -64,28 +68,33 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'completed' | 'overdue'>('all');
 
-  // Filter tasks for this customer
+  // Filter tasks for this customer and calculate status
   const customerTasks = useMemo(() => {
-    let filtered = tasks.filter(
-      t => t.related_entity_type === 'customer' && t.related_entity_id === customer.id
-    );
+    let filtered = tasks
+      .filter(t => t.related_entity_type === 'customer' && t.related_entity_id === customer.id)
+      .map(task => ({
+        ...task,
+        calculatedStatus: calculateTaskStatus(task),
+      }));
 
     switch (filter) {
       case 'open':
-        filtered = filtered.filter(t => t.status !== 'Completed');
+        filtered = filtered.filter(t => t.calculatedStatus !== 'Completed');
         break;
       case 'completed':
-        filtered = filtered.filter(t => t.status === 'Completed');
+        filtered = filtered.filter(t => t.calculatedStatus === 'Completed');
         break;
       case 'overdue':
-        filtered = filtered.filter(t => 
-          t.status !== 'Completed' && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date))
-        );
+        filtered = filtered.filter(t => t.calculatedStatus === 'Overdue');
         break;
     }
 
     return filtered.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, customer.id, filter]);
+
+  const handleViewAllTasks = () => {
+    navigate(`/tasks?related_to_type=customer&related_to_id=${customer.id}&related_to_name=${encodeURIComponent(customer.name)}`);
+  };
 
   const handleComplete = async (taskId: string, isCompleted: boolean) => {
     await updateTask(taskId, {
@@ -152,6 +161,10 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
               <SelectItem value="overdue">Overdue</SelectItem>
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={handleViewAllTasks}>
+            <ExternalLink className="h-4 w-4 mr-2" />
+            View All
+          </Button>
           <Button onClick={() => setAddDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Task
@@ -194,17 +207,17 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
             <TableBody>
               {customerTasks.map((task) => {
                 const priorityConfig = priorityStyles[task.priority] || { label: task.priority, className: 'bg-gray-100 text-gray-700' };
-                const statusConfig = statusStyles[task.status] || { label: task.status, className: 'bg-gray-100 text-gray-700' };
+                const statusConfig = statusStyles[task.calculatedStatus] || { label: task.calculatedStatus, className: 'bg-gray-100 text-gray-700' };
                 
                 return (
                   <TableRow key={task.id}>
                     <TableCell>
                       <Checkbox
-                        checked={task.status === 'Completed'}
+                        checked={task.calculatedStatus === 'Completed'}
                         onCheckedChange={(checked) => handleComplete(task.id, !!checked)}
                       />
                     </TableCell>
-                    <TableCell className={task.status === 'Completed' ? 'line-through text-muted-foreground' : 'font-medium'}>
+                    <TableCell className={task.calculatedStatus === 'Completed' ? 'line-through text-muted-foreground' : 'font-medium'}>
                       {task.title}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
@@ -221,7 +234,7 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
                         </Tooltip>
                       </TooltipProvider>
                     </TableCell>
-                    <TableCell className={getDueDateStyle(task.due_date, task.status)}>
+                    <TableCell className={getDueDateStyle(task.due_date, task.calculatedStatus)}>
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
                         {format(new Date(task.due_date), 'dd MMM yyyy')}

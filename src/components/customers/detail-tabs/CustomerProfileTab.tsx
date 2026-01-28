@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Edit, DollarSign } from 'lucide-react';
-import { Customer } from '@/hooks/useCustomers';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Edit, DollarSign, Loader2 } from 'lucide-react';
+import { Customer, useCustomers } from '@/hooks/useCustomers';
 import { format, formatDistanceToNow } from 'date-fns';
 import { PRIORITY_LEVELS, CUSTOMER_STATUSES } from '@/constants/customerConstants';
+import { useToast } from '@/hooks/use-toast';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -24,9 +32,31 @@ const sourceLabels: Record<string, string> = {
 };
 
 export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: CustomerProfileTabProps) {
+  const { updateCustomer } = useCustomers();
+  const { toast } = useToast();
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  
   const statusConfig = CUSTOMER_STATUSES[customer.status] || { label: customer.status, className: 'bg-gray-100 text-gray-700' };
   const priorityConfig = PRIORITY_LEVELS[customer.priority] || { label: 'Normal', color: 'text-gray-600' };
   
+  const handleStatusChange = async (newStatus: string) => {
+    setUpdatingStatus(true);
+    try {
+      await updateCustomer(customer.id, { status: newStatus });
+      toast({
+        title: "Status Updated",
+        description: `Customer status changed to ${CUSTOMER_STATUSES[newStatus]?.label || newStatus}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update status",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
   const formatValue = (value: string | null | undefined, fallback = '-') => {
     return value || fallback;
   };
@@ -142,10 +172,32 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
           
           <div className="space-y-3">
             <div>
-              <div className="text-xs text-muted-foreground">Status</div>
-              <Badge variant="secondary" className={statusConfig.className}>
-                {statusConfig.label}
-              </Badge>
+              <div className="text-xs text-muted-foreground mb-1">Status</div>
+              <Select 
+                value={customer.status} 
+                onValueChange={handleStatusChange}
+                disabled={updatingStatus}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue>
+                    <Badge variant="secondary" className={statusConfig.className}>
+                      {updatingStatus ? (
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      ) : null}
+                      {statusConfig.label}
+                    </Badge>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CUSTOMER_STATUSES).map(([value, config]) => (
+                    <SelectItem key={value} value={value}>
+                      <Badge variant="secondary" className={config.className}>
+                        {config.label}
+                      </Badge>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div>
