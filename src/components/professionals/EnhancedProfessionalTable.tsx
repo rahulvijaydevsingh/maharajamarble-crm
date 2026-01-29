@@ -4,7 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator 
+} from "@/components/ui/dropdown-menu";
 import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -48,9 +56,18 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
   const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<SavedFilter | null>(null);
+  
+  // Inline filter states
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [cityFilter, setCityFilter] = useState<string[]>([]);
+  const [assignedToFilter, setAssignedToFilter] = useState<string[]>([]);
+  const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
 
   const uniqueAssignedTo = useMemo(() => Array.from(new Set(professionals.map(p => p.assigned_to))), [professionals]);
   const uniqueCities = useMemo(() => Array.from(new Set(professionals.map(p => p.city).filter(Boolean) as string[])), [professionals]);
+  const uniqueStatuses = useMemo(() => Object.keys(PROFESSIONAL_STATUSES), []);
+  const uniqueTypes = useMemo(() => Array.from(new Set(professionals.map(p => p.professional_type))), [professionals]);
 
   const filteredProfessionals = useMemo(() => {
     let result = professionals.filter(p => {
@@ -59,7 +76,14 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
         p.phone.includes(searchTerm) ||
         (p.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.firm_name || "").toLowerCase().includes(searchTerm.toLowerCase());
-      return searchMatch;
+      
+      const statusMatch = statusFilter.length === 0 || statusFilter.includes(p.status);
+      const typeMatch = typeFilter.length === 0 || typeFilter.includes(p.professional_type);
+      const cityMatch = cityFilter.length === 0 || cityFilter.includes(p.city || "");
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(p.assigned_to);
+      const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(p.priority.toString());
+      
+      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch;
     });
 
     if (sortField && sortDirection) {
@@ -76,7 +100,56 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
       });
     }
     return result;
-  }, [professionals, searchTerm, sortField, sortDirection]);
+  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter]);
+  
+  // MultiSelectFilter component for inline column filters
+  const MultiSelectFilter = ({
+    options,
+    selected,
+    onSelectionChange,
+    placeholder,
+    renderLabel,
+  }: {
+    options: string[];
+    selected: string[];
+    onSelectionChange: (values: string[]) => void;
+    placeholder: string;
+    renderLabel?: (option: string) => string;
+  }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-6 px-2">
+          <Filter className="h-3 w-3" />
+          {selected.length > 0 && (
+            <span className="ml-1 text-xs bg-primary/10 text-primary px-1 rounded">
+              {selected.length}
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56">
+        <DropdownMenuLabel>{placeholder}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {options.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option}
+            checked={selected.includes(option)}
+            onCheckedChange={(checked) => {
+              onSelectionChange(checked ? [...selected, option] : selected.filter(s => s !== option));
+            }}
+          >
+            {renderLabel ? renderLabel(option) : option}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {selected.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onSelectionChange([])}>Clear All</DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -216,13 +289,58 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
               </TableHead>
               {visibleColumns.map((column) => (
                 <TableHead key={column.key} className="bg-background">
-                  {column.key === "name" || column.key === "professionalType" || column.key === "city" || column.key === "status" || column.key === "rating" ? (
-                    <SortableHeader field={column.key === "professionalType" ? "professional_type" : column.key as SortField}>
-                      {column.label}
-                    </SortableHeader>
-                  ) : (
-                    column.label
-                  )}
+                  <div className="flex items-center gap-1">
+                    {column.key === "name" || column.key === "professionalType" || column.key === "city" || column.key === "status" || column.key === "rating" ? (
+                      <SortableHeader field={column.key === "professionalType" ? "professional_type" : column.key as SortField}>
+                        {column.label}
+                      </SortableHeader>
+                    ) : (
+                      column.label
+                    )}
+                    {column.key === "status" && (
+                      <MultiSelectFilter
+                        options={uniqueStatuses}
+                        selected={statusFilter}
+                        onSelectionChange={setStatusFilter}
+                        placeholder="Filter by Status"
+                        renderLabel={(s) => PROFESSIONAL_STATUSES[s]?.label || s}
+                      />
+                    )}
+                    {column.key === "professionalType" && (
+                      <MultiSelectFilter
+                        options={uniqueTypes}
+                        selected={typeFilter}
+                        onSelectionChange={setTypeFilter}
+                        placeholder="Filter by Type"
+                        renderLabel={(t) => t.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
+                      />
+                    )}
+                    {column.key === "city" && (
+                      <MultiSelectFilter
+                        options={uniqueCities}
+                        selected={cityFilter}
+                        onSelectionChange={setCityFilter}
+                        placeholder="Filter by City"
+                      />
+                    )}
+                    {column.key === "assignedTo" && (
+                      <MultiSelectFilter
+                        options={uniqueAssignedTo}
+                        selected={assignedToFilter}
+                        onSelectionChange={setAssignedToFilter}
+                        placeholder="Filter by Assignee"
+                      />
+                    )}
+                    {column.key === "priority" && (
+                      <MultiSelectFilter
+                        options={Object.keys(PRIORITIES)}
+                        selected={priorityFilter}
+                        onSelectionChange={setPriorityFilter}
+                        placeholder="Filter by Priority"
+                        renderLabel={(p) => PRIORITIES[parseInt(p) as keyof typeof PRIORITIES]?.label || p}
+                      />
+                    )}
+                  </div>
                 </TableHead>
               ))}
             </TableRow>

@@ -85,10 +85,12 @@ import { useTasks, Task } from "@/hooks/useTasks";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
+import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
+import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -313,6 +315,13 @@ export function EnhancedTaskTable({
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("tasks");
+  const { 
+    columns, 
+    visibleColumns, 
+    saving: savingPrefs, 
+    savePreferences, 
+    resetToDefaults 
+  } = useTablePreferences("tasks");
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const navigate = useNavigate();
@@ -355,7 +364,7 @@ export function EnhancedTaskTable({
   const [bulkActionValue, setBulkActionValue] = useState("");
   const [bulkRescheduleDate, setBulkRescheduleDate] = useState<Date | undefined>(undefined);
   
-  // Column visibility
+  // Column visibility (for backward compatibility with existing table render)
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({
     starred: true,
     title: true,
@@ -369,7 +378,7 @@ export function EnhancedTaskTable({
     createdAt: false,
     createdBy: false,
   });
-  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   
   // Saved filters
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
@@ -898,26 +907,14 @@ export function EnhancedTaskTable({
             <SlidersHorizontal className="mr-1 h-4 w-4" /> Clear Filters
           </Button>
           
-          <DropdownMenu open={showColumnSettings} onOpenChange={setShowColumnSettings}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings className="mr-1 h-4 w-4" /> Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {Object.entries(columnVisibility).map(([key, value]) => (
-                <DropdownMenuCheckboxItem
-                  key={key}
-                  checked={value}
-                  onCheckedChange={() => toggleColumnVisibility(key as keyof ColumnVisibility)}
-                >
-                  {key.replace(/([A-Z])/g, ' $1').trim()}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setColumnManagerOpen(true)}
+            title="Manage Columns"
+          >
+            <Settings className="mr-1 h-4 w-4" /> Columns
+          </Button>
           
           <Button onClick={exportToExcel} variant="outline" size="sm">
             <Download className="mr-1 h-4 w-4" />
@@ -1482,6 +1479,16 @@ export function EnhancedTaskTable({
         customer={selectedCustomer}
         open={customerDetailOpen}
         onOpenChange={setCustomerDetailOpen}
+      />
+
+      {/* Column Manager Dialog */}
+      <ColumnManagerDialog
+        open={columnManagerOpen}
+        onOpenChange={setColumnManagerOpen}
+        columns={columns}
+        onSave={savePreferences}
+        onReset={resetToDefaults}
+        saving={savingPrefs}
       />
     </div>
   );
