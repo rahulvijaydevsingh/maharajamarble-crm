@@ -89,10 +89,13 @@ import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { Lead, useLeads } from "@/hooks/useLeads";
 import { usePendingTasksByLead, LeadPendingTasks } from "@/hooks/usePendingTasksByLead";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
+import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomers } from "@/hooks/useCustomers";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
+import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 
 const COLUMN_VISIBILITY_KEY = "leads_column_visibility";
 
@@ -175,6 +178,13 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const { leads, loading, updateLead, deleteLead, refetch } = useLeads();
   const { getLeadTasks, refetch: refetchTasks } = usePendingTasksByLead();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("leads");
+  const { 
+    columns, 
+    visibleColumns, 
+    saving: savingPrefs, 
+    savePreferences, 
+    resetToDefaults 
+  } = useTablePreferences("leads");
   const { addCustomer } = useCustomers();
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
@@ -195,7 +205,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [lastFollowUpRange, setLastFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [nextFollowUpRange, setNextFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
   // Sorting state
@@ -905,32 +915,14 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu open={showColumnSettings} onOpenChange={setShowColumnSettings}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56">
-              <DropdownMenuLabel>Show/Hide Columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {Object.entries(columnVisibility).map(([key, visible]) => (
-                <DropdownMenuCheckboxItem
-                  key={key}
-                  checked={visible}
-                  onCheckedChange={() => toggleColumnVisibility(key as keyof ColumnVisibility)}
-                  disabled={key === 'name'}
-                >
-                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={resetColumnVisibility} className="text-muted-foreground">
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Reset to Default
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setColumnManagerOpen(true)}
+            title="Manage Columns"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -1170,6 +1162,15 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           />
         </>
       )}
+      
+      <ColumnManagerDialog
+        open={columnManagerOpen}
+        onOpenChange={setColumnManagerOpen}
+        columns={columns}
+        onSave={savePreferences}
+        onReset={resetToDefaults}
+        saving={savingPrefs}
+      />
     </div>
   );
 }

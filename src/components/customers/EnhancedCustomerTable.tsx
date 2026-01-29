@@ -64,6 +64,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Customer, useCustomers } from "@/hooks/useCustomers";
 import { useSavedFilters, SavedFilter } from "@/hooks/useSavedFilters";
+import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
 import { CUSTOMER_STATUSES, PRIORITY_LEVELS, CUSTOMER_TYPES } from "@/constants/customerConstants";
 import { CustomerSavedFilterDialog } from "./filters/CustomerSavedFilterDialog";
@@ -72,6 +73,7 @@ import { CustomerDetailView } from "./CustomerDetailView";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { usePendingTasksByCustomer, CustomerPendingTasks } from "@/hooks/usePendingTasksByCustomer";
+import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import {
   Tooltip,
   TooltipContent,
@@ -196,6 +198,13 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [searchParams, setSearchParams] = useSearchParams();
   const { customers, loading, deleteCustomer, refetch } = useCustomers();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("customers");
+  const { 
+    columns, 
+    visibleColumns, 
+    saving: savingPrefs, 
+    savePreferences, 
+    resetToDefaults 
+  } = useTablePreferences("customers");
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { getCustomerTasks } = usePendingTasksByCustomer();
@@ -208,7 +217,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<SavedFilter | null>(null);
-  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
 
   // Detail view state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -230,7 +239,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
 
-  // Load column visibility from localStorage
+  // Load column visibility from localStorage (fallback for backward compat)
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
     try {
       const saved = localStorage.getItem(COLUMN_VISIBILITY_KEY);
@@ -510,32 +519,15 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           )}
 
           {/* Column Settings */}
-          <DropdownMenu open={showColumnSettings} onOpenChange={setShowColumnSettings}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Eye className="h-4 w-4 mr-1" />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56">
-              <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {Object.entries(columnVisibility).map(([key, visible]) => (
-                <DropdownMenuCheckboxItem
-                  key={key}
-                  checked={visible}
-                  onCheckedChange={() => toggleColumnVisibility(key as keyof ColumnVisibility)}
-                >
-                  {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={resetColumnVisibility}>
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Reset to Defaults
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setColumnManagerOpen(true)}
+            title="Manage Columns"
+          >
+            <Settings className="h-4 w-4 mr-1" />
+            Columns
+          </Button>
 
           <Button variant="outline" size="sm" onClick={() => { setEditingFilter(null); setFilterDialogOpen(true); }}>
             <Filter className="h-4 w-4 mr-1" /> Create Filter
@@ -861,6 +853,14 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
 
       <CustomerSavedFilterDialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen} onSave={addFilter} onUpdate={updateFilter} editingFilter={editingFilter} uniqueAssignedTo={uniqueAssignedTo} uniqueCities={uniqueCities} />
       <CustomerManageFiltersDialog open={manageFiltersDialogOpen} onOpenChange={setManageFiltersDialogOpen} filters={savedFilters} onEdit={(f) => { setEditingFilter(f); setFilterDialogOpen(true); }} onDelete={deleteFilter} getFilterCount={getFilterCount} />
+      <ColumnManagerDialog
+        open={columnManagerOpen}
+        onOpenChange={setColumnManagerOpen}
+        columns={columns}
+        onSave={savePreferences}
+        onReset={resetToDefaults}
+        saving={savingPrefs}
+      />
     </div>
   );
 }
