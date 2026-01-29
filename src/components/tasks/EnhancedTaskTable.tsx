@@ -722,6 +722,342 @@ export function EnhancedTaskTable({
     setColumnVisibility(prev => ({ ...prev, [column]: !prev[column] }));
   };
 
+  // Render table header for a column
+  const renderTableHeader = (columnKey: string, columnLabel: string) => {
+    switch (columnKey) {
+      case "starred":
+        return <Star className="h-4 w-4" />;
+      case "title":
+        return (
+          <SortableHeader field="title" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+            {columnLabel}
+          </SortableHeader>
+        );
+      case "type":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+              {columnLabel}
+            </SortableHeader>
+            <MultiSelectFilter
+              options={uniqueTypes}
+              selectedValues={selectedTypes}
+              onSelectionChange={setSelectedTypes}
+              placeholder="All"
+            />
+          </div>
+        );
+      case "priority":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="priority" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+              {columnLabel}
+            </SortableHeader>
+            <MultiSelectFilter
+              options={uniquePriorities}
+              selectedValues={selectedPriorities}
+              onSelectionChange={setSelectedPriorities}
+              placeholder="All"
+            />
+          </div>
+        );
+      case "assignedTo":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="assigned_to" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+              {columnLabel}
+            </SortableHeader>
+            <MultiSelectFilter
+              options={uniqueAssignees}
+              selectedValues={selectedAssignees}
+              onSelectionChange={setSelectedAssignees}
+              placeholder="All"
+            />
+          </div>
+        );
+      case "relatedTo":
+        return columnLabel;
+      case "dueDate":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="due_date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+              {columnLabel}
+            </SortableHeader>
+            <DateRangeFilter
+              startDate={dueDateRange.from}
+              endDate={dueDateRange.to}
+              onDateChange={(start, end) => setDueDateRange({ from: start, to: end })}
+            />
+          </div>
+        );
+      case "recurrence":
+        return columnLabel;
+      case "status":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+              {columnLabel}
+            </SortableHeader>
+            <MultiSelectFilter
+              options={uniqueStatuses}
+              selectedValues={selectedStatuses}
+              onSelectionChange={setSelectedStatuses}
+              placeholder="All"
+            />
+          </div>
+        );
+      case "createdAt":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="created_at" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
+              {columnLabel}
+            </SortableHeader>
+            <DateRangeFilter
+              startDate={createdDateRange.from}
+              endDate={createdDateRange.to}
+              onDateChange={(start, end) => setCreatedDateRange({ from: start, to: end })}
+            />
+          </div>
+        );
+      case "createdBy":
+        return columnLabel;
+      case "actions":
+        return columnLabel;
+      default:
+        return columnLabel;
+    }
+  };
+
+  // Render cell based on column key
+  const renderCell = (task: Task & { computedStatus: string }, columnKey: string) => {
+    switch (columnKey) {
+      case "starred":
+        return (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => handleToggleStar(task.id)}
+          >
+            <Star 
+              className={cn(
+                "h-4 w-4",
+                task.is_starred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
+              )} 
+            />
+          </Button>
+        );
+      case "title":
+        return (
+          <div>
+            <div className="font-medium">{task.title}</div>
+            {task.description && (
+              <div className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                {task.description}
+              </div>
+            )}
+          </div>
+        );
+      case "type":
+        return <Badge variant="outline">{task.type}</Badge>;
+      case "priority":
+        return (
+          <Badge 
+            variant="secondary" 
+            className={priorityStyles[task.priority]?.className || ""}
+          >
+            {task.priority}
+          </Badge>
+        );
+      case "assignedTo":
+        return (
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            <span className="text-sm">{task.assigned_to}</span>
+          </div>
+        );
+      case "relatedTo":
+        return task.lead ? (
+          <button 
+            onClick={() => {
+              const leadData = leads.find(l => l.id === task.lead?.id) || task.lead;
+              if (leadData) {
+                setSelectedLead(leadData as Lead);
+                setLeadDetailOpen(true);
+              }
+            }}
+            className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
+            title="View Lead Details"
+          >
+            <div className="flex items-center gap-1">
+              <User className="h-3 w-3 text-primary shrink-0" />
+              <span className="text-sm font-medium text-primary group-hover:underline truncate">{task.lead.name}</span>
+            </div>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+              <Phone className="h-3 w-3 shrink-0" />
+              <span className="truncate">{task.lead.phone}</span>
+            </div>
+            <Badge variant="outline" className="text-xs mt-0.5">Lead</Badge>
+          </button>
+        ) : task.related_entity_type && task.related_entity_id ? (
+          <button 
+            onClick={() => {
+              if (task.related_entity_type === 'lead') {
+                const leadData = leads.find(l => l.id === task.related_entity_id);
+                if (leadData) {
+                  setSelectedLead(leadData);
+                  setLeadDetailOpen(true);
+                }
+              } else if (task.related_entity_type === 'customer') {
+                const customerData = customers.find(c => c.id === task.related_entity_id);
+                if (customerData) {
+                  setSelectedCustomer(customerData);
+                  setCustomerDetailOpen(true);
+                }
+              } else if (task.related_entity_type === 'professional') {
+                navigate(`/professionals?view=${task.related_entity_id}`);
+              }
+            }}
+            className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
+            title={`View ${task.related_entity_type} Details`}
+          >
+            <div className="flex items-center gap-1">
+              {task.related_entity_type === 'customer' ? (
+                <Building2 className="h-3 w-3 text-emerald-600 shrink-0" />
+              ) : task.related_entity_type === 'professional' ? (
+                <UserCheck className="h-3 w-3 text-purple-600 shrink-0" />
+              ) : (
+                <User className="h-3 w-3 text-primary shrink-0" />
+              )}
+              <span className="text-sm font-medium text-primary group-hover:underline truncate">
+                {task.related_entity_type === 'lead' && task.lead?.name 
+                  ? task.lead.name 
+                  : task.related_entity_type === 'customer'
+                  ? customers.find(c => c.id === task.related_entity_id)?.name || 'View Details'
+                  : 'View Details'}
+              </span>
+            </div>
+            <Badge variant="outline" className="text-xs capitalize mt-0.5">{task.related_entity_type}</Badge>
+          </button>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        );
+      case "dueDate":
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 text-sm">
+              <CalendarIcon className="h-3 w-3" />
+              {format(new Date(task.due_date), 'MMM dd, yyyy')}
+            </div>
+            {task.due_time && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {task.due_time}
+              </div>
+            )}
+          </div>
+        );
+      case "recurrence":
+        return task.is_recurring ? (
+          <div className="flex items-center gap-1">
+            <Repeat className="h-3 w-3 text-blue-500" />
+            <span className="text-xs text-muted-foreground capitalize">
+              {task.recurrence_frequency || 'Recurring'}
+            </span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground text-xs">-</span>
+        );
+      case "status":
+        return (
+          <Badge 
+            variant="secondary" 
+            className={statusStyles[task.computedStatus]?.className || ""}
+          >
+            {task.computedStatus}
+          </Badge>
+        );
+      case "createdAt":
+        return <span className="text-sm">{format(new Date(task.created_at), 'MMM dd, yyyy')}</span>;
+      case "createdBy":
+        return <span className="text-sm">{task.created_by}</span>;
+      case "actions":
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {task.status !== 'Completed' && (
+                <>
+                  <DropdownMenuItem 
+                    onClick={() => handleCompleteTask(task.id)}
+                    className="text-green-600"
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Mark Complete
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Snooze</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 1)}>
+                    <AlarmClock className="mr-2 h-4 w-4" />
+                    1 Hour
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 4)}>
+                    <AlarmClock className="mr-2 h-4 w-4" />
+                    4 Hours
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 24)}>
+                    <AlarmClock className="mr-2 h-4 w-4" />
+                    Tomorrow
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={() => handleToggleStar(task.id)}>
+                <Star className={cn("mr-2 h-4 w-4", task.is_starred && "fill-yellow-400 text-yellow-400")} />
+                {task.is_starred ? "Unstar" : "Star"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onEditTask?.({
+                id: task.id,
+                title: task.title,
+                type: task.type,
+                priority: task.priority,
+                assignedTo: task.assigned_to,
+                relatedTo: task.lead ? {
+                  id: task.lead.id,
+                  name: task.lead.name,
+                  phone: task.lead.phone,
+                  type: 'Lead' as const
+                } : null,
+                dueDate: task.due_date,
+                dueTime: task.due_time,
+                status: task.status,
+                description: task.description,
+                reminder: task.reminder,
+                is_recurring: task.is_recurring,
+                recurrence_frequency: task.recurrence_frequency,
+              })}>
+                <Edit className="mr-2 h-4 w-4" />
+                Edit Task
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleDeleteTask(task.id)}
+                className="text-red-600"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      default:
+        return "-";
+    }
+  };
+
   const hasActiveFilters = selectedTypes.length > 0 || selectedPriorities.length > 0 || 
     selectedAssignees.length > 0 || selectedStatuses.length > 0 || 
     dueDateRange.from || createdDateRange.from || relatedToFilter;
@@ -934,116 +1270,11 @@ export function EnhancedTaskTable({
                   onCheckedChange={(checked) => handleSelectAll(!!checked)}
                 />
               </TableHead>
-              {columnVisibility.starred && (
-                <TableHead className="w-[40px] bg-background">
-                  <Star className="h-4 w-4" />
+              {visibleColumns.map((column) => (
+                <TableHead key={column.key} className="bg-background">
+                  {renderTableHeader(column.key, column.label)}
                 </TableHead>
-              )}
-              {columnVisibility.title && (
-                <TableHead className="bg-background">
-                  <SortableHeader field="title" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                    Task
-                  </SortableHeader>
-                </TableHead>
-              )}
-              {columnVisibility.type && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                      Type
-                    </SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueTypes}
-                      selectedValues={selectedTypes}
-                      onSelectionChange={setSelectedTypes}
-                      placeholder="All"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.priority && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="priority" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                      Priority
-                    </SortableHeader>
-                    <MultiSelectFilter
-                      options={uniquePriorities}
-                      selectedValues={selectedPriorities}
-                      onSelectionChange={setSelectedPriorities}
-                      placeholder="All"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.assignedTo && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="assigned_to" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                      Assigned To
-                    </SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueAssignees}
-                      selectedValues={selectedAssignees}
-                      onSelectionChange={setSelectedAssignees}
-                      placeholder="All"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.relatedTo && (
-                <TableHead className="bg-background">Related To</TableHead>
-              )}
-              {columnVisibility.dueDate && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="due_date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                      Due
-                    </SortableHeader>
-                    <DateRangeFilter
-                      startDate={dueDateRange.from}
-                      endDate={dueDateRange.to}
-                      onDateChange={(start, end) => setDueDateRange({ from: start, to: end })}
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.recurrence && (
-                <TableHead className="bg-background">Recurrence</TableHead>
-              )}
-              {columnVisibility.status && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                      Status
-                    </SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueStatuses}
-                      selectedValues={selectedStatuses}
-                      onSelectionChange={setSelectedStatuses}
-                      placeholder="All"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.createdAt && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="created_at" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
-                      Created
-                    </SortableHeader>
-                    <DateRangeFilter
-                      startDate={createdDateRange.from}
-                      endDate={createdDateRange.to}
-                      onDateChange={(start, end) => setCreatedDateRange({ from: start, to: end })}
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.createdBy && (
-                <TableHead className="bg-background">Created By</TableHead>
-              )}
-              <TableHead className="w-[70px] bg-background">Actions</TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1055,248 +1286,11 @@ export function EnhancedTaskTable({
                     onCheckedChange={(checked) => handleSelectTask(task.id, !!checked)}
                   />
                 </TableCell>
-                {columnVisibility.starred && (
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => handleToggleStar(task.id)}
-                    >
-                      <Star 
-                        className={cn(
-                          "h-4 w-4",
-                          task.is_starred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
-                        )} 
-                      />
-                    </Button>
+                {visibleColumns.map((column) => (
+                  <TableCell key={column.key}>
+                    {renderCell(task, column.key)}
                   </TableCell>
-                )}
-                {columnVisibility.title && (
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{task.title}</div>
-                      {task.description && (
-                        <div className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                          {task.description}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                )}
-                {columnVisibility.type && (
-                  <TableCell>
-                    <Badge variant="outline">{task.type}</Badge>
-                  </TableCell>
-                )}
-                {columnVisibility.priority && (
-                  <TableCell>
-                    <Badge 
-                      variant="secondary" 
-                      className={priorityStyles[task.priority]?.className || ""}
-                    >
-                      {task.priority}
-                    </Badge>
-                  </TableCell>
-                )}
-                {columnVisibility.assignedTo && (
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      <span className="text-sm">{task.assigned_to}</span>
-                    </div>
-                  </TableCell>
-                )}
-                {columnVisibility.relatedTo && (
-                  <TableCell className="min-w-[140px]">
-                    {task.lead ? (
-                      <button 
-                        onClick={() => {
-                          const leadData = leads.find(l => l.id === task.lead?.id) || task.lead;
-                          if (leadData) {
-                            setSelectedLead(leadData as Lead);
-                            setLeadDetailOpen(true);
-                          }
-                        }}
-                        className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
-                        title="View Lead Details"
-                      >
-                        <div className="flex items-center gap-1">
-                          <User className="h-3 w-3 text-primary shrink-0" />
-                          <span className="text-sm font-medium text-primary group-hover:underline truncate">{task.lead.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                          <Phone className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{task.lead.phone}</span>
-                        </div>
-                        <Badge variant="outline" className="text-xs mt-0.5">Lead</Badge>
-                      </button>
-                    ) : task.related_entity_type && task.related_entity_id ? (
-                      <button 
-                        onClick={() => {
-                          if (task.related_entity_type === 'lead') {
-                            const leadData = leads.find(l => l.id === task.related_entity_id);
-                            if (leadData) {
-                              setSelectedLead(leadData);
-                              setLeadDetailOpen(true);
-                            }
-                          } else if (task.related_entity_type === 'customer') {
-                            const customerData = customers.find(c => c.id === task.related_entity_id);
-                            if (customerData) {
-                              setSelectedCustomer(customerData);
-                              setCustomerDetailOpen(true);
-                            }
-                          } else if (task.related_entity_type === 'professional') {
-                            navigate(`/professionals?view=${task.related_entity_id}`);
-                          }
-                        }}
-                        className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
-                        title={`View ${task.related_entity_type} Details`}
-                      >
-                        <div className="flex items-center gap-1">
-                          {task.related_entity_type === 'customer' ? (
-                            <Building2 className="h-3 w-3 text-emerald-600 shrink-0" />
-                          ) : task.related_entity_type === 'professional' ? (
-                            <UserCheck className="h-3 w-3 text-purple-600 shrink-0" />
-                          ) : (
-                            <User className="h-3 w-3 text-primary shrink-0" />
-                          )}
-                          <span className="text-sm font-medium text-primary group-hover:underline truncate">
-                            {task.related_entity_type === 'lead' && task.lead?.name 
-                              ? task.lead.name 
-                              : task.related_entity_type === 'customer'
-                              ? customers.find(c => c.id === task.related_entity_id)?.name || 'View Details'
-                              : 'View Details'}
-                          </span>
-                        </div>
-                        <Badge variant="outline" className="text-xs capitalize mt-0.5">{task.related_entity_type}</Badge>
-                      </button>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                )}
-                {columnVisibility.dueDate && (
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1 text-sm">
-                        <CalendarIcon className="h-3 w-3" />
-                        {format(new Date(task.due_date), 'MMM dd, yyyy')}
-                      </div>
-                      {task.due_time && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {task.due_time}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                )}
-                {columnVisibility.recurrence && (
-                  <TableCell>
-                    {task.is_recurring ? (
-                      <div className="flex items-center gap-1">
-                        <Repeat className="h-3 w-3 text-blue-500" />
-                        <span className="text-xs text-muted-foreground capitalize">
-                          {task.recurrence_frequency || 'Recurring'}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">-</span>
-                    )}
-                  </TableCell>
-                )}
-                {columnVisibility.status && (
-                  <TableCell>
-                    <Badge 
-                      variant="secondary" 
-                      className={statusStyles[task.computedStatus]?.className || ""}
-                    >
-                      {task.computedStatus}
-                    </Badge>
-                  </TableCell>
-                )}
-                {columnVisibility.createdAt && (
-                  <TableCell>
-                    <span className="text-sm">{format(new Date(task.created_at), 'MMM dd, yyyy')}</span>
-                  </TableCell>
-                )}
-                {columnVisibility.createdBy && (
-                  <TableCell>
-                    <span className="text-sm">{task.created_by}</span>
-                  </TableCell>
-                )}
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {task.status !== 'Completed' && (
-                        <>
-                          <DropdownMenuItem 
-                            onClick={() => handleCompleteTask(task.id)}
-                            className="text-green-600"
-                          >
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Mark Complete
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuLabel className="text-xs text-muted-foreground">Snooze</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 1)}>
-                            <AlarmClock className="mr-2 h-4 w-4" />
-                            1 Hour
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 4)}>
-                            <AlarmClock className="mr-2 h-4 w-4" />
-                            4 Hours
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 24)}>
-                            <AlarmClock className="mr-2 h-4 w-4" />
-                            Tomorrow
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                        </>
-                      )}
-                      <DropdownMenuItem onClick={() => handleToggleStar(task.id)}>
-                        <Star className={cn("mr-2 h-4 w-4", task.is_starred && "fill-yellow-400 text-yellow-400")} />
-                        {task.is_starred ? "Unstar" : "Star"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onEditTask?.({
-                        id: task.id,
-                        title: task.title,
-                        type: task.type,
-                        priority: task.priority,
-                        assignedTo: task.assigned_to,
-                        relatedTo: task.lead ? {
-                          id: task.lead.id,
-                          name: task.lead.name,
-                          phone: task.lead.phone,
-                          type: 'Lead' as const
-                        } : null,
-                        dueDate: task.due_date,
-                        dueTime: task.due_time,
-                        status: task.status,
-                        description: task.description,
-                        reminder: task.reminder,
-                        is_recurring: task.is_recurring,
-                        recurrence_frequency: task.recurrence_frequency,
-                      })}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit Task
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => handleDeleteTask(task.id)}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+                ))}
               </TableRow>
             ))}
           </TableBody>
