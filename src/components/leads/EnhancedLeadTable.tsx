@@ -944,12 +944,9 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         <LeadsTableContainer
           filteredLeads={filteredLeads}
           selectedLeads={selectedLeads}
-          columnVisibility={columnVisibility}
-          sortField={sortField}
-          sortDirection={sortDirection}
+          visibleColumns={visibleColumns}
           handleSelectAll={handleSelectAll}
           handleSelectLead={handleSelectLead}
-          handleSort={handleSort}
           handleViewLead={handleViewLead}
           handleEditLeadClick={handleEditLeadClick}
           sourceFilter={sourceFilter}

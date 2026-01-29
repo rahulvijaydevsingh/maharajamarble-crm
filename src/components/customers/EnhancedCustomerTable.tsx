@@ -476,6 +476,219 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     </DropdownMenu>
   );
 
+  // Render table header for a column
+  const renderTableHeader = (columnKey: string, columnLabel: string) => {
+    switch (columnKey) {
+      case "name":
+        return <SortableHeader field="name">{columnLabel}</SortableHeader>;
+      case "phone":
+        return columnLabel;
+      case "email":
+        return columnLabel;
+      case "company_name":
+        return columnLabel;
+      case "customerType":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="customer_type">{columnLabel}</SortableHeader>
+            <MultiSelectFilter
+              options={uniqueTypes}
+              selected={typeFilter}
+              onSelectionChange={setTypeFilter}
+              placeholder="Filter by Type"
+              renderLabel={(t) => CUSTOMER_TYPES.find(ct => ct.value === t)?.label || t}
+            />
+          </div>
+        );
+      case "city":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="city">{columnLabel}</SortableHeader>
+            <MultiSelectFilter
+              options={uniqueCities}
+              selected={cityFilter}
+              onSelectionChange={setCityFilter}
+              placeholder="Filter by City"
+            />
+          </div>
+        );
+      case "status":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="status">{columnLabel}</SortableHeader>
+            <MultiSelectFilter
+              options={uniqueStatuses}
+              selected={statusFilter}
+              onSelectionChange={setStatusFilter}
+              placeholder="Filter by Status"
+              renderLabel={(s) => CUSTOMER_STATUSES[s]?.label || s}
+            />
+          </div>
+        );
+      case "priority":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="priority">{columnLabel}</SortableHeader>
+            <MultiSelectFilter
+              options={Object.keys(PRIORITY_LEVELS)}
+              selected={priorityFilter}
+              onSelectionChange={setPriorityFilter}
+              placeholder="Filter by Priority"
+              renderLabel={(p) => PRIORITY_LEVELS[parseInt(p) as keyof typeof PRIORITY_LEVELS]?.label || p}
+            />
+          </div>
+        );
+      case "assignedTo":
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="assigned_to">{columnLabel}</SortableHeader>
+            <MultiSelectFilter
+              options={uniqueAssignedTo}
+              selected={assignedToFilter}
+              onSelectionChange={setAssignedToFilter}
+              placeholder="Filter by Assignee"
+            />
+          </div>
+        );
+      case "tasks":
+        return (
+          <div className="flex items-center gap-1">
+            {columnLabel}
+            <MultiSelectFilter
+              options={pendingTasksOptions}
+              selected={pendingTasksFilter}
+              onSelectionChange={setPendingTasksFilter}
+              placeholder="Filter by Tasks"
+              renderLabel={(t) => pendingTasksLabels[t] || t}
+            />
+          </div>
+        );
+      case "totalOrders":
+        return columnLabel;
+      case "totalSpent":
+        return <SortableHeader field="total_spent">{columnLabel}</SortableHeader>;
+      case "source":
+        return columnLabel;
+      case "createdAt":
+        return <SortableHeader field="created_at">{columnLabel}</SortableHeader>;
+      case "actions":
+        return columnLabel;
+      default:
+        return columnLabel;
+    }
+  };
+
+  // Render cell based on column key
+  const renderCell = (customer: Customer, columnKey: string) => {
+    switch (columnKey) {
+      case "name":
+        return (
+          <div className="font-medium group/name relative" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col">
+              <span 
+                className="cursor-pointer hover:text-primary hover:underline"
+                onClick={() => handleViewCustomer(customer)}
+              >
+                {customer.name}
+              </span>
+              <div className="hidden group-hover/name:flex items-center gap-1 mt-1">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => handleViewCustomer(customer)}
+                >
+                  View
+                </Button>
+                {canEdit("customers") && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => handleEditCustomer(customer)}
+                  >
+                    Edit
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      case "phone":
+        return (
+          <div>
+            <div className="flex items-center">
+              <Phone className="h-3 w-3 mr-1" />
+              {customer.phone}
+            </div>
+            {customer.alternate_phone && (
+              <div className="text-xs text-muted-foreground ml-4">+{customer.alternate_phone}</div>
+            )}
+          </div>
+        );
+      case "email":
+        return <span className="text-muted-foreground text-sm">{customer.email || "-"}</span>;
+      case "company_name":
+        return customer.company_name || "-";
+      case "customerType":
+        return <span className="capitalize">{customer.customer_type}</span>;
+      case "city":
+        return customer.city || "-";
+      case "status":
+        return (
+          <Badge variant="secondary" className={CUSTOMER_STATUSES[customer.status]?.className || ""}>
+            {CUSTOMER_STATUSES[customer.status]?.label || customer.status}
+          </Badge>
+        );
+      case "priority":
+        return (
+          <span className={PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.color || ""}>
+            {PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.label || customer.priority}
+          </span>
+        );
+      case "assignedTo":
+        return customer.assigned_to;
+      case "tasks":
+        return (
+          <PendingTasksBadge 
+            customerId={customer.id} 
+            customerName={customer.name}
+            getCustomerTasks={getCustomerTasks}
+            onNavigate={() => navigate(`/tasks?related_to_type=customer&related_to_id=${customer.id}&related_to_name=${encodeURIComponent(customer.name)}`)}
+          />
+        );
+      case "totalOrders":
+        return customer.total_orders || 0;
+      case "totalSpent":
+        return formatCurrency(customer.total_spent);
+      case "source":
+        return <span className="capitalize">{customer.source || "-"}</span>;
+      case "createdAt":
+        return <span className="text-muted-foreground text-sm">{format(new Date(customer.created_at), "PP")}</span>;
+      case "actions":
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-popover">
+                <DropdownMenuItem onClick={() => handleViewCustomer(customer)}>
+                  <Eye className="h-4 w-4 mr-2" />View Details
+                </DropdownMenuItem>
+                {canEdit("customers") && (
+                  <DropdownMenuItem onClick={() => handleEditCustomer(customer)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
+                )}
+                {canDelete("customers") && (
+                  <DropdownMenuItem onClick={() => handleDeleteCustomer(customer.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      default:
+        return "-";
+    }
+  };
+
   const hasActiveFilters = statusFilter.length > 0 || typeFilter.length > 0 || priorityFilter.length > 0 ||
     assignedToFilter.length > 0 || cityFilter.length > 0 || pendingTasksFilter.length > 0 || createdDateRange.from;
 
@@ -556,246 +769,27 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               <TableHead className="w-10 bg-background">
                 <Checkbox checked={selectedItems.length === filteredCustomers.length && filteredCustomers.length > 0} onCheckedChange={handleSelectAll} />
               </TableHead>
-              {columnVisibility.name && (
-                <TableHead className="bg-background"><SortableHeader field="name">Name</SortableHeader></TableHead>
-              )}
-              {columnVisibility.phone && (
-                <TableHead className="bg-background">Contact</TableHead>
-              )}
-              {columnVisibility.email && (
-                <TableHead className="bg-background">Email</TableHead>
-              )}
-              {columnVisibility.company_name && (
-                <TableHead className="bg-background">Company</TableHead>
-              )}
-              {columnVisibility.customer_type && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="customer_type">Type</SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueTypes}
-                      selected={typeFilter}
-                      onSelectionChange={setTypeFilter}
-                      placeholder="Filter by Type"
-                      renderLabel={(t) => CUSTOMER_TYPES.find(ct => ct.value === t)?.label || t}
-                    />
-                  </div>
+              {visibleColumns.map((column) => (
+                <TableHead key={column.key} className="bg-background">
+                  {renderTableHeader(column.key, column.label)}
                 </TableHead>
-              )}
-              {columnVisibility.city && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="city">City</SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueCities}
-                      selected={cityFilter}
-                      onSelectionChange={setCityFilter}
-                      placeholder="Filter by City"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.status && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="status">Status</SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueStatuses}
-                      selected={statusFilter}
-                      onSelectionChange={setStatusFilter}
-                      placeholder="Filter by Status"
-                      renderLabel={(s) => CUSTOMER_STATUSES[s]?.label || s}
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.priority && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="priority">Priority</SortableHeader>
-                    <MultiSelectFilter
-                      options={Object.keys(PRIORITY_LEVELS)}
-                      selected={priorityFilter}
-                      onSelectionChange={setPriorityFilter}
-                      placeholder="Filter by Priority"
-                      renderLabel={(p) => PRIORITY_LEVELS[parseInt(p) as keyof typeof PRIORITY_LEVELS]?.label || p}
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.total_spent && (
-                <TableHead className="bg-background"><SortableHeader field="total_spent">Total Spent</SortableHeader></TableHead>
-              )}
-              {columnVisibility.assigned_to && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    <SortableHeader field="assigned_to">Assigned To</SortableHeader>
-                    <MultiSelectFilter
-                      options={uniqueAssignedTo}
-                      selected={assignedToFilter}
-                      onSelectionChange={setAssignedToFilter}
-                      placeholder="Filter by Assignee"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.source && (
-                <TableHead className="bg-background">Source</TableHead>
-              )}
-              {columnVisibility.pendingTasks && (
-                <TableHead className="bg-background">
-                  <div className="flex items-center gap-1">
-                    Pending Tasks
-                    <MultiSelectFilter
-                      options={pendingTasksOptions}
-                      selected={pendingTasksFilter}
-                      onSelectionChange={setPendingTasksFilter}
-                      placeholder="Filter by Tasks"
-                      renderLabel={(t) => pendingTasksLabels[t] || t}
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {columnVisibility.created_at && (
-                <TableHead className="bg-background"><SortableHeader field="created_at">Created</SortableHeader></TableHead>
-              )}
-              {columnVisibility.address && (
-                <TableHead className="bg-background">Address</TableHead>
-              )}
-              {columnVisibility.industry && (
-                <TableHead className="bg-background">Industry</TableHead>
-              )}
-              {columnVisibility.notes && (
-                <TableHead className="bg-background">Notes</TableHead>
-              )}
-              <TableHead className="bg-background">Actions</TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredCustomers.length === 0 ? (
-              <TableRow><TableCell colSpan={20} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
             ) : (
               filteredCustomers.map((customer) => (
                 <TableRow key={customer.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewCustomer(customer)}>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox checked={selectedItems.includes(customer.id)} onCheckedChange={(checked) => handleSelectItem(customer.id, !!checked)} />
                   </TableCell>
-                  {columnVisibility.name && (
-                    <TableCell className="font-medium group/name relative" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-col">
-                        <span 
-                          className="cursor-pointer hover:text-primary hover:underline"
-                          onClick={() => handleViewCustomer(customer)}
-                        >
-                          {customer.name}
-                        </span>
-                        <div className="hidden group-hover/name:flex items-center gap-1 mt-1">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                            onClick={() => handleViewCustomer(customer)}
-                          >
-                            View
-                          </Button>
-                          {canEdit("customers") && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                              onClick={() => handleEditCustomer(customer)}
-                            >
-                              Edit
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+                  {visibleColumns.map((column) => (
+                    <TableCell key={column.key}>
+                      {renderCell(customer, column.key)}
                     </TableCell>
-                  )}
-                  {columnVisibility.phone && (
-                    <TableCell>
-                      <div className="flex items-center">
-                        <Phone className="h-3 w-3 mr-1" />
-                        {customer.phone}
-                      </div>
-                      {customer.alternate_phone && (
-                        <div className="text-xs text-muted-foreground ml-4">+{customer.alternate_phone}</div>
-                      )}
-                    </TableCell>
-                  )}
-                  {columnVisibility.email && (
-                    <TableCell className="text-muted-foreground text-sm">{customer.email || "-"}</TableCell>
-                  )}
-                  {columnVisibility.company_name && (
-                    <TableCell>{customer.company_name || "-"}</TableCell>
-                  )}
-                  {columnVisibility.customer_type && (
-                    <TableCell className="capitalize">{customer.customer_type}</TableCell>
-                  )}
-                  {columnVisibility.city && (
-                    <TableCell>{customer.city || "-"}</TableCell>
-                  )}
-                  {columnVisibility.status && (
-                    <TableCell>
-                      <Badge variant="secondary" className={CUSTOMER_STATUSES[customer.status]?.className || ""}>
-                        {CUSTOMER_STATUSES[customer.status]?.label || customer.status}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {columnVisibility.priority && (
-                    <TableCell>
-                      <span className={PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.color || ""}>
-                        {PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.label || customer.priority}
-                      </span>
-                    </TableCell>
-                  )}
-                  {columnVisibility.total_spent && (
-                    <TableCell>{formatCurrency(customer.total_spent)}</TableCell>
-                  )}
-                  {columnVisibility.assigned_to && (
-                    <TableCell>{customer.assigned_to}</TableCell>
-                  )}
-                  {columnVisibility.source && (
-                    <TableCell className="capitalize">{customer.source || "-"}</TableCell>
-                  )}
-                  {columnVisibility.pendingTasks && (
-                    <TableCell>
-                      <PendingTasksBadge 
-                        customerId={customer.id} 
-                        customerName={customer.name}
-                        getCustomerTasks={getCustomerTasks}
-                        onNavigate={() => navigate(`/tasks?related_to_type=customer&related_to_id=${customer.id}&related_to_name=${encodeURIComponent(customer.name)}`)}
-                      />
-                    </TableCell>
-                  )}
-                  {columnVisibility.created_at && (
-                    <TableCell className="text-muted-foreground text-sm">{format(new Date(customer.created_at), "PP")}</TableCell>
-                  )}
-                  {columnVisibility.address && (
-                    <TableCell className="max-w-[200px] truncate">{customer.address || "-"}</TableCell>
-                  )}
-                  {columnVisibility.industry && (
-                    <TableCell className="capitalize">{customer.industry || "-"}</TableCell>
-                  )}
-                  {columnVisibility.notes && (
-                    <TableCell className="max-w-[200px] truncate">{customer.notes || "-"}</TableCell>
-                  )}
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-popover">
-                        <DropdownMenuItem onClick={() => handleViewCustomer(customer)}>
-                          <Eye className="h-4 w-4 mr-2" />View Details
-                        </DropdownMenuItem>
-                        {canEdit("customers") && (
-                          <DropdownMenuItem onClick={() => handleEditCustomer(customer)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
-                        )}
-                        {canDelete("customers") && (
-                          <DropdownMenuItem onClick={() => handleDeleteCustomer(customer.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+                  ))}
                 </TableRow>
               ))
             )}
