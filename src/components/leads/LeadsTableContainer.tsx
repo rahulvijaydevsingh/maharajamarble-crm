@@ -299,7 +299,7 @@ export function LeadsTableContainer({
   };
 
   return (
-    <ScrollableTableContainer maxHeight="calc(100vh - 320px)">
+    <ScrollableTableContainer maxHeight="calc(100vh - 220px)">
       {/*
         NOTE: We intentionally use a plain <table> here (instead of the shadcn Table wrapper)
         so there is only ONE horizontal scroll container (ScrollableTableContainer).
