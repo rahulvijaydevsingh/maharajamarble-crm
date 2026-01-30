@@ -595,6 +595,7 @@ export type Database = {
           original_lead_id: string | null
           phone: string
           priority: number
+          site_plus_code: string | null
           source: string | null
           status: string
           total_orders: number | null
@@ -624,6 +625,7 @@ export type Database = {
           original_lead_id?: string | null
           phone: string
           priority?: number
+          site_plus_code?: string | null
           source?: string | null
           status?: string
           total_orders?: number | null
@@ -653,6 +655,7 @@ export type Database = {
           original_lead_id?: string | null
           phone?: string
           priority?: number
+          site_plus_code?: string | null
           source?: string | null
           status?: string
           total_orders?: number | null
@@ -676,6 +679,42 @@ export type Database = {
           },
         ]
       }
+      entity_attachments: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          mime_type: string | null
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          mime_type?: string | null
+          uploaded_by?: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          mime_type?: string | null
+          uploaded_by?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           additional_contacts: Json | null
@@ -687,6 +726,7 @@ export type Database = {
           converted_to_customer_id: string | null
           created_at: string
           created_by: string
+          created_from_customer_id: string | null
           designation: string
           email: string | null
           estimated_quantity: number | null
@@ -718,6 +758,7 @@ export type Database = {
           converted_to_customer_id?: string | null
           created_at?: string
           created_by?: string
+          created_from_customer_id?: string | null
           designation?: string
           email?: string | null
           estimated_quantity?: number | null
@@ -749,6 +790,7 @@ export type Database = {
           converted_to_customer_id?: string | null
           created_at?: string
           created_by?: string
+          created_from_customer_id?: string | null
           designation?: string
           email?: string | null
           estimated_quantity?: number | null
@@ -774,6 +816,13 @@ export type Database = {
           {
             foreignKeyName: "leads_converted_to_customer_id_fkey"
             columns: ["converted_to_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_from_customer_id_fkey"
+            columns: ["created_from_customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
             referencedColumns: ["id"]
