@@ -1136,6 +1136,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
               assigned_to: selectedLead.assigned_to,
               source: selectedLead.source,
               notes: selectedLead.notes || undefined,
+              site_plus_code: selectedLead.site_plus_code || undefined,
             }}
             onConvert={(data) => console.log("Converting to customer:", data)}
           />

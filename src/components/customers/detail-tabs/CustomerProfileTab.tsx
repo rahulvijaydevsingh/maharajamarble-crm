@@ -240,6 +240,18 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
               </div>
             )}
 
+            {customer.site_plus_code && (
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Plus Code</div>
+                  <div className="font-medium">{customer.site_plus_code}</div>
+                </div>
+              </div>
+            )}
+
             {customer.industry && (
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-full bg-indigo-50 flex items-center justify-center">

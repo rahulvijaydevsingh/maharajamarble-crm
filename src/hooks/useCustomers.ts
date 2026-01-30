@@ -30,6 +30,7 @@ export interface Customer {
   created_from_lead_id: string | null;
   is_repeat_customer: boolean | null;
   original_lead_id: string | null;
+  site_plus_code?: string | null;
 }
 
 export interface CustomerInsert {
@@ -54,6 +55,7 @@ export interface CustomerInsert {
   last_purchase?: string | null;
   last_follow_up?: string | null;
   next_follow_up?: string | null;
+  site_plus_code?: string | null;
 }
 
 export function useCustomers() {

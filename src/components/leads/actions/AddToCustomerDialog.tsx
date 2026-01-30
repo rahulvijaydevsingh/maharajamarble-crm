@@ -47,6 +47,7 @@ interface AddToCustomerDialogProps {
     assigned_to?: string;
     source?: string;
     notes?: string;
+    site_plus_code?: string;
   };
   onConvert: (conversionData: any) => void;
 }
@@ -91,6 +92,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         assigned_to: leadData.assigned_to || 'System',
         source: leadData.source || 'lead_conversion',
         notes: leadData.notes || null,
+        site_plus_code: leadData.site_plus_code || null,
         created_from_lead_id: leadData.id,
         status: 'active',
         customer_type: 'individual',
@@ -184,6 +186,33 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
       } catch (e) {
         console.error('Failed to relink lead tasks to customer:', e);
         // Non-blocking: conversion should still succeed
+      }
+
+      // Copy lead attachments to customer so photos/import files remain visible
+      try {
+        const { data: leadAtt, error: leadAttErr } = await supabase
+          .from('entity_attachments')
+          .select('file_name,file_path,mime_type,file_size')
+          .eq('entity_type', 'lead')
+          .eq('entity_id', leadData.id);
+
+        if (leadAttErr) throw leadAttErr;
+
+        if (leadAtt && leadAtt.length > 0) {
+          const { error: insErr } = await supabase.from('entity_attachments').insert(
+            leadAtt.map((a) => ({
+              entity_type: 'customer',
+              entity_id: newCustomer.id,
+              file_name: a.file_name,
+              file_path: a.file_path,
+              mime_type: a.mime_type,
+              file_size: a.file_size,
+            }))
+          );
+          if (insErr) throw insErr;
+        }
+      } catch (e) {
+        console.error('Failed to copy lead attachments to customer:', e);
       }
 
       // Log activity in customer record

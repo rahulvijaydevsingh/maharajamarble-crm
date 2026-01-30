@@ -18,6 +18,7 @@ export interface Lead {
   site_location: string | null;
   site_photo_url: string | null;
   site_plus_code: string | null;
+  created_from_customer_id?: string | null;
   construction_stage: string | null;
   estimated_quantity: number | null;
   material_interests: string[] | null;
@@ -43,6 +44,7 @@ export interface LeadInsert {
   site_location?: string | null;
   site_photo_url?: string | null;
   site_plus_code?: string | null;
+  created_from_customer_id?: string | null;
   construction_stage?: string | null;
   estimated_quantity?: number | null;
   material_interests?: string[];
