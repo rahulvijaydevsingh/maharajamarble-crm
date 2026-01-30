@@ -927,29 +927,37 @@ export function EnhancedTaskTable({
         );
       case "relatedTo":
         return task.lead ? (
-          <button 
-            onClick={() => {
-              if (task.lead?.id) {
-                void openLeadDetailById(task.lead.id);
-              }
-            }}
-            className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
-            title="View Lead Details"
-          >
-            <div className="flex items-center gap-1">
-              <User className="h-3 w-3 text-primary shrink-0" />
-              <span className="text-sm font-medium text-primary group-hover:underline truncate">{task.lead.name}</span>
-            </div>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (task.lead?.id) {
+                  void openLeadDetailById(task.lead.id);
+                }
+              }}
+              className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
+              title="View Lead Details"
+            >
+              <div className="flex items-center gap-2">
+                <User className="h-3 w-3 text-primary shrink-0" />
+                <span className="text-sm font-medium text-primary group-hover:underline truncate">
+                  {task.lead.name}
+                </span>
+              </div>
+            </button>
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Phone className="h-3 w-3 shrink-0" />
-              <PhoneLink
-                phone={task.lead.phone}
-                className="text-xs text-muted-foreground hover:text-primary"
-                onClick={(e) => e.stopPropagation()}
-              />
+              <span className="-ml-1">
+                <PhoneLink
+                  phone={task.lead.phone}
+                  className="inline-flex items-center rounded px-1 py-0.5 hover:bg-muted/50"
+                />
+              </span>
             </div>
-            <Badge variant="outline" className="text-xs mt-0.5">Lead</Badge>
-          </button>
+
+            <Badge variant="outline" className="text-xs">Lead</Badge>
+          </div>
         ) : task.related_entity_type && task.related_entity_id ? (
           <button 
             onClick={() => {
