@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useTasks } from "@/hooks/useTasks";
 import { 
   CONSTRUCTION_STAGES, 
   MATERIAL_INTERESTS, 
@@ -146,6 +147,7 @@ export function BulkUploadDialog({
 }: BulkUploadDialogProps) {
   const { toast } = useToast();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
+  const { addTask } = useTasks();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -646,6 +648,21 @@ export function BulkUploadDialog({
     }
   };
 
+  const scrollPhotoFormToTop = () => {
+    const viewport = document.querySelector(
+      "#photo-lead-form [data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null;
+    viewport?.scrollTo({ top: 0, behavior: "smooth" });
+
+    // Focus first input after the scroll animation starts
+    window.setTimeout(() => {
+      const firstInput = document.querySelector(
+        "#photo-lead-form input:not([disabled])"
+      ) as HTMLInputElement | null;
+      firstInput?.focus();
+    }, 250);
+  };
+
   const skipCurrentPhoto = () => {
     setPhotoLeads(prev => {
       const updated = [...prev];
@@ -696,7 +713,9 @@ export function BulkUploadDialog({
 
     try {
       const assignedMember = staffMembers.find(m => m.id === lead.assignedTo);
-      const { error } = await supabase.from("leads").insert({
+      const { data: insertedLead, error } = await supabase
+        .from("leads")
+        .insert({
         name: lead.name,
         phone: lead.phone,
         alternate_phone: lead.alternatePhone || null,
@@ -718,9 +737,41 @@ export function BulkUploadDialog({
         notes: lead.initialNote ? `${lead.initialNote}${lead.referredBy ? ` | Referred by: ${lead.referredBy}` : ''}` : (lead.referredBy ? `Referred by: ${lead.referredBy}` : null),
         next_follow_up: `${format(lead.nextActionDate, "yyyy-MM-dd")}T${lead.nextActionTime || '10:00'}:00`,
         created_by: "Photo Upload",
-      });
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
+
+      // Auto-create follow-up task (non-blocking; must not fail lead save)
+      if (insertedLead?.id) {
+        try {
+          await addTask({
+            title: `First Follow-up: ${lead.name}`,
+            description: lead.initialNote || "Initial follow-up for new lead",
+            type: "Follow-up Call",
+            priority:
+              lead.followUpPriority === "urgent"
+                ? "High"
+                : lead.followUpPriority === "normal"
+                ? "Medium"
+                : "Low",
+            status: "Pending",
+            assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
+            due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
+            due_time: lead.nextActionTime || "10:00",
+            lead_id: insertedLead.id,
+            created_by: "Photo Upload",
+          });
+        } catch (taskError) {
+          console.error("Task creation failed for photo lead:", taskError);
+          toast({
+            title: "Lead saved, but task creation failed",
+            description: "You can create the follow-up task manually from Tasks.",
+            variant: "destructive",
+          });
+        }
+      }
 
       setPhotoLeads(prev => {
         const updated = [...prev];
@@ -728,6 +779,8 @@ export function BulkUploadDialog({
         return updated;
       });
       setImportedCount(prev => prev + 1);
+
+      scrollPhotoFormToTop();
 
       // Apply values to remaining if enabled
       if (applyToRemaining.enabled && currentPhotoIndex < photoLeads.length - 1) {
