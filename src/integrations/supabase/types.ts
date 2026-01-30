@@ -978,6 +978,7 @@ export type Database = {
           rating: number | null
           referred_by: Json | null
           service_category: string | null
+          site_plus_code: string | null
           status: string
           total_projects: number | null
           updated_at: string
@@ -1002,6 +1003,7 @@ export type Database = {
           rating?: number | null
           referred_by?: Json | null
           service_category?: string | null
+          site_plus_code?: string | null
           status?: string
           total_projects?: number | null
           updated_at?: string
@@ -1026,6 +1028,7 @@ export type Database = {
           rating?: number | null
           referred_by?: Json | null
           service_category?: string | null
+          site_plus_code?: string | null
           status?: string
           total_projects?: number | null
           updated_at?: string

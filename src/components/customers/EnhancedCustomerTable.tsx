@@ -81,6 +81,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PhoneLink } from "@/components/shared/PhoneLink";
+import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 
 const COLUMN_VISIBILITY_KEY = "customers_column_visibility";
 
@@ -486,6 +487,8 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         return columnLabel;
       case "email":
         return columnLabel;
+      case "sitePlusCode":
+        return columnLabel;
       case "company_name":
         return columnLabel;
       case "customerType":
@@ -631,6 +634,13 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         );
       case "email":
         return <span className="text-muted-foreground text-sm">{customer.email || "-"}</span>;
+      case "sitePlusCode":
+        return (
+          <PlusCodeLink
+            plusCode={customer.site_plus_code || null}
+            log={{ customerId: customer.id, relatedEntityType: "customer", relatedEntityId: customer.id }}
+          />
+        );
       case "company_name":
         return customer.company_name || "-";
       case "customerType":
