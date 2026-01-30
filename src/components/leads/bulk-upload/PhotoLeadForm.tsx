@@ -136,8 +136,9 @@ export function PhotoLeadForm({
   };
 
   return (
-    <ScrollArea id="photo-lead-form" className="h-[520px] pr-4">
-      <div className="space-y-4 pb-24">
+    <ScrollArea id="photo-lead-form" className="h-full pr-4">
+      {/* Extra bottom padding ensures the last controls never sit behind the footer buttons */}
+      <div className="space-y-4 pb-36">
         {/* Group 1: Contact Details */}
         <ContactDetailsSection
           contacts={contacts}
