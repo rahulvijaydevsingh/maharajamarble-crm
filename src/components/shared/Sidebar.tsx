@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { 
   Home, 
@@ -27,6 +27,7 @@ import {
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
 
 interface NavigationItem {
   name: string;
@@ -37,9 +38,9 @@ interface NavigationItem {
 
 const mainNavigation: NavigationItem[] = [
   { name: "Dashboard", icon: Home, path: "/" },
-  { name: "Leads", icon: Phone, path: "/leads", count: 12 },
+  { name: "Leads", icon: Phone, path: "/leads" },
   { name: "Customers", icon: Users, path: "/customers" },
-  { name: "Tasks", icon: ListTodo, path: "/tasks", count: 5 },
+  { name: "Tasks", icon: ListTodo, path: "/tasks" },
   { name: "To-Do Lists", icon: ListTodo, path: "/todo-lists" },
   { name: "Calendar", icon: Calendar, path: "/calendar" },
   { name: "Quotations", icon: FileText, path: "/quotations" },
@@ -66,6 +67,10 @@ export function SidebarNav() {
   const navigate = useNavigate();
   const { profile, role, signOut, isAdmin } = useAuth();
   const currentPath = location.pathname;
+
+  const [leadCount, setLeadCount] = useState<number | null>(null);
+  const [taskCount, setTaskCount] = useState<number | null>(null);
+  const [countsLoading, setCountsLoading] = useState(false);
   
   const getActiveItem = () => {
     if (currentPath === "/") return "Dashboard";
@@ -86,6 +91,63 @@ export function SidebarNav() {
     await signOut();
     navigate("/auth");
   };
+
+  const fetchSidebarCounts = async () => {
+    // Avoid hammering on initial auth bootstrap.
+    if (!profile?.email && !isAdmin) return;
+
+    try {
+      setCountsLoading(true);
+
+      const [{ count: leadsCount, error: leadsError }, { count: tasksCount, error: tasksError }] =
+        await Promise.all([
+          supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .or("is_converted.is.null,is_converted.eq.false"),
+          supabase
+            .from("tasks")
+            .select("id", { count: "exact", head: true })
+            .neq("status", "Completed"),
+        ]);
+
+      if (leadsError) throw leadsError;
+      if (tasksError) throw tasksError;
+
+      setLeadCount(leadsCount ?? 0);
+      setTaskCount(tasksCount ?? 0);
+    } catch (error) {
+      console.error("Error fetching sidebar counts:", error);
+      // Fail silently: badges will hide instead of showing incorrect numbers.
+      setLeadCount(null);
+      setTaskCount(null);
+    } finally {
+      setCountsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSidebarCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.email, isAdmin]);
+
+  // Optional refresh on route changes so the UI feels up-to-date after edits.
+  useEffect(() => {
+    fetchSidebarCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath]);
+
+  const navigationWithCounts = useMemo(() => {
+    return mainNavigation.map((item) => {
+      if (item.name === "Leads") {
+        return { ...item, count: leadCount ?? undefined };
+      }
+      if (item.name === "Tasks") {
+        return { ...item, count: taskCount ?? undefined };
+      }
+      return item;
+    });
+  }, [leadCount, taskCount]);
   
   return (
     <Sidebar className="border-r border-gray-200">
@@ -99,7 +161,7 @@ export function SidebarNav() {
           <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNavigation.map((item) => (
+              {navigationWithCounts.map((item) => (
                 <SidebarMenuItem key={item.name}>
                   <SidebarMenuButton 
                     asChild
@@ -114,7 +176,7 @@ export function SidebarNav() {
                         <item.icon className="mr-3 h-5 w-5" />
                         <span>{item.name}</span>
                       </div>
-                      {item.count && (
+                      {typeof item.count === "number" && !countsLoading && (
                         <span className="bg-marble-accent text-marble-primary text-xs font-medium px-2 py-0.5 rounded-full">
                           {item.count}
                         </span>
