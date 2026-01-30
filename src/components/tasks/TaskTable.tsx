@@ -35,6 +35,7 @@ import {
   Edit,
   Trash2
 } from "lucide-react";
+import { PhoneLink } from "@/components/shared/PhoneLink";
 
 // Task interface
 interface Task {
@@ -264,7 +265,7 @@ export function TaskTable({ onEditTask }: TaskTableProps) {
                       <div className="text-sm font-medium">{task.relatedTo.name}</div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
-                        {task.relatedTo.phone}
+                        <PhoneLink phone={task.relatedTo.phone} className="text-xs" />
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {task.relatedTo.type}

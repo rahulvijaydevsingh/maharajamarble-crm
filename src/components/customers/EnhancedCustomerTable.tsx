@@ -80,6 +80,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PhoneLink } from "@/components/shared/PhoneLink";
 
 const COLUMN_VISIBILITY_KEY = "customers_column_visibility";
 
@@ -619,10 +620,12 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           <div>
             <div className="flex items-center">
               <Phone className="h-3 w-3 mr-1" />
-              {customer.phone}
+              <PhoneLink phone={customer.phone} />
             </div>
             {customer.alternate_phone && (
-              <div className="text-xs text-muted-foreground ml-4">+{customer.alternate_phone}</div>
+              <div className="text-xs text-muted-foreground ml-4">
+                <PhoneLink phone={customer.alternate_phone} className="text-xs" />
+              </div>
             )}
           </div>
         );

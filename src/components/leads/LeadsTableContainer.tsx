@@ -31,6 +31,8 @@ import { format } from "date-fns";
 import { Lead } from "@/hooks/useLeads";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { ColumnConfig } from "@/hooks/useTablePreferences";
+import { PhoneLink } from "@/components/shared/PhoneLink";
+import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 
 interface DateRange {
   from: Date | undefined;
@@ -226,10 +228,12 @@ export function LeadsTableContainer({
           <div>
             <div className="flex items-center">
               <Phone className="h-3 w-3 mr-1" />
-              {lead.phone}
+              <PhoneLink phone={lead.phone} />
             </div>
             {lead.alternate_phone && (
-              <div className="text-xs text-muted-foreground ml-4">+{lead.alternate_phone}</div>
+              <div className="text-xs text-muted-foreground ml-4">
+                <PhoneLink phone={lead.alternate_phone} className="text-xs" />
+              </div>
             )}
           </div>
         );
@@ -238,7 +242,7 @@ export function LeadsTableContainer({
       case "designation":
         return <span className="capitalize">{lead.designation}</span>;
       case "sitePlusCode":
-        return lead.site_plus_code || "-";
+        return <PlusCodeLink plusCode={lead.site_plus_code} />;
       case "source":
         return <span className="capitalize">{lead.source.replace(/_/g, " ")}</span>;
       case "status":

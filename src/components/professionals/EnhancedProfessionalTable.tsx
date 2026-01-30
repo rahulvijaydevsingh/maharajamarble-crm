@@ -25,6 +25,7 @@ import { ProfessionalSavedFilterDialog } from "./filters/ProfessionalSavedFilter
 import { ProfessionalManageFiltersDialog } from "./filters/ProfessionalManageFiltersDialog";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
+import { PhoneLink } from "@/components/shared/PhoneLink";
 
 type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | null;
 type SortDirection = "asc" | "desc" | null;
@@ -200,7 +201,10 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
       case "phone":
         return (
           <div>
-            <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{professional.phone}</div>
+            <div className="flex items-center gap-1">
+              <Phone className="h-3 w-3" />
+              <PhoneLink phone={professional.phone} />
+            </div>
             {professional.email && <div className="text-xs text-muted-foreground">{professional.email}</div>}
           </div>
         );
