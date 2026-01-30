@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -21,6 +24,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCustomers, Customer, CustomerInsert } from "@/hooks/useCustomers";
 import { CUSTOMER_TYPES, INDUSTRIES, CUSTOMER_SOURCES, CITIES, PRIORITY_LEVELS } from "@/constants/customerConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useAuth } from "@/contexts/AuthContext";
+import { buildStaffGroups } from "@/lib/staffSelect";
 
 interface AddCustomerDialogProps {
   open: boolean;
@@ -31,11 +36,15 @@ interface AddCustomerDialogProps {
 export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCustomerDialogProps) {
   const { addCustomer, updateCustomer } = useCustomers();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const staffGroups = useMemo(() => buildStaffGroups(staffMembers), [staffMembers]);
+
   const getDefaultAssignedTo = () => {
-    if (staffMembers.length > 0) return staffMembers[0].name;
-    return "";
+    const currentUserName = staffMembers.find(m => m.id === user?.id)?.name;
+    if (currentUserName) return currentUserName;
+    return staffMembers[0]?.name || "";
   };
 
   const [formData, setFormData] = useState({
@@ -250,8 +259,16 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
               <Select value={formData.assigned_to} onValueChange={(v) => setFormData({ ...formData, assigned_to: v })}>
                 <SelectTrigger><SelectValue placeholder={staffLoading ? "Loading..." : "Select assignee"} /></SelectTrigger>
                 <SelectContent>
-                  {staffMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
+                  {staffGroups.map((group, idx) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel className="text-xs text-muted-foreground">{group.label}</SelectLabel>
+                      {group.members.map((member) => (
+                        <SelectItem key={member.id} value={member.name}>
+                          <span className="truncate">{member._display}</span>
+                        </SelectItem>
+                      ))}
+                      {idx < staffGroups.length - 1 && <SelectSeparator />}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>

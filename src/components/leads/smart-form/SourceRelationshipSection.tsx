@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -28,15 +31,7 @@ import { cn } from "@/lib/utils";
 import { LeadSource, ProfessionalRef } from "@/types/lead";
 import { LEAD_SOURCES, MOCK_PROFESSIONALS } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
-
-const roleLabels: Record<string, string> = {
-  super_admin: "Super Admin",
-  admin: "Admin",
-  manager: "Manager",
-  sales_user: "Sales",
-  sales_viewer: "Viewer",
-  field_agent: "Field Agent",
-};
+import { buildStaffGroups } from "@/lib/staffSelect";
 
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
@@ -60,6 +55,8 @@ export function SourceRelationshipSection({
   const [professionalSearchOpen, setProfessionalSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { staffMembers, loading: staffLoading } = useActiveStaff();
+
+  const staffGroups = useMemo(() => buildStaffGroups(staffMembers), [staffMembers]);
 
   // Show "Referred By" field only for Professional Referral or Walk-in sources
   const showReferredBy = leadSource === "professional_referral" || leadSource === "walk_in";
@@ -140,22 +137,23 @@ export function SourceRelationshipSection({
                 <SelectValue placeholder={staffLoading ? "Loading..." : "Select team member"} />
               </SelectTrigger>
               <SelectContent>
-                {staffMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    <div className="flex items-center gap-2 w-full">
-                      {member.role && (
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {roleLabels[member.role] || member.role}
-                        </span>
-                      )}
-                      <span className="truncate">{member.name}</span>
-                    </div>
-                  </SelectItem>
+                {staffGroups.map((group, idx) => (
+                  <SelectGroup key={group.label}>
+                    <SelectLabel className="text-xs text-muted-foreground">
+                      {group.label}
+                    </SelectLabel>
+                    {group.members.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <span className="truncate">{member._display}</span>
+                      </SelectItem>
+                    ))}
+                    {idx < staffGroups.length - 1 && <SelectSeparator />}
+                  </SelectGroup>
                 ))}
                 {/* Show current assigned_to if not in staff list */}
                 {assignedTo && !staffMembers.find(m => m.id === assignedTo) && (
                   <SelectItem key={assignedTo} value={assignedTo}>
-                    {assignedTo}
+                    Unassigned - {assignedTo}
                   </SelectItem>
                 )}
               </SelectContent>

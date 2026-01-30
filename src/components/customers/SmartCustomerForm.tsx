@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,7 +26,8 @@ import {
   ProfessionalRef,
   DuplicateCheckResult,
 } from "@/types/lead";
-import { TEAM_MEMBERS, isProfessionalDesignation } from "@/constants/leadConstants";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCustomers, CustomerInsert } from "@/hooks/useCustomers";
 
 interface SmartCustomerFormProps {
@@ -37,6 +38,8 @@ interface SmartCustomerFormProps {
 export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps) {
   const { toast } = useToast();
   const { addCustomer } = useCustomers();
+  const { user } = useAuth();
+  const { staffMembers } = useActiveStaff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateResults, setDuplicateResults] = useState<{ [key: string]: DuplicateCheckResult }>({});
 
@@ -67,8 +70,24 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
 
   // Form state - Group 3: Source & Relationship
   const [leadSource, setLeadSource] = useState<LeadSource>("walk_in");
-  const [assignedTo, setAssignedTo] = useState(TEAM_MEMBERS[0].id);
+  const [assignedTo, setAssignedTo] = useState("");
   const [referredBy, setReferredBy] = useState<ProfessionalRef | null>(null);
+
+  // Default assignment: current logged-in user (fallback to first active staff)
+  useEffect(() => {
+    if (!open) return;
+    if (assignedTo) return;
+
+    const currentUserId = user?.id;
+    if (currentUserId && staffMembers.some((m) => m.id === currentUserId)) {
+      setAssignedTo(currentUserId);
+      return;
+    }
+
+    if (staffMembers.length > 0) {
+      setAssignedTo(staffMembers[0].id);
+    }
+  }, [open, assignedTo, staffMembers, user?.id]);
 
   // Form state - Group 4: Action Trigger
   const [followUpPriority, setFollowUpPriority] = useState<FollowUpPriority>("normal");
@@ -143,7 +162,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
 
     try {
       const primaryContact = contacts[0];
-      const assignedMember = TEAM_MEMBERS.find(m => m.id === assignedTo);
+      const assignedMember = staffMembers.find(m => m.id === assignedTo);
 
       const customerData: CustomerInsert = {
         name: primaryContact.name,
@@ -204,7 +223,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
     setMaterialInterests([]);
     setOtherMaterial("");
     setLeadSource("walk_in");
-    setAssignedTo(TEAM_MEMBERS[0].id);
+    setAssignedTo("");
     setReferredBy(null);
     setFollowUpPriority("normal");
     setNextActionDate(addDays(new Date(), 2));
