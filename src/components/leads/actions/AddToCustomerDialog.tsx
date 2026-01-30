@@ -151,6 +151,41 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         });
       }
 
+      // Ensure existing lead-linked tasks also show up when viewing the new customer
+      // (Tasks page filters by related_entity_id for customers.)
+      try {
+        const { data: relinkedTasks, error: relinkError } = await supabase
+          .from('tasks')
+          .update({
+            related_entity_type: 'customer',
+            related_entity_id: newCustomer.id,
+          })
+          .eq('lead_id', leadData.id)
+          .is('related_entity_id', null)
+          .select('id');
+
+        if (relinkError) throw relinkError;
+
+        if ((relinkedTasks?.length || 0) > 0) {
+          await logActivity({
+            lead_id: leadData.id,
+            customer_id: newCustomer.id,
+            activity_type: 'task_updated',
+            activity_category: 'task',
+            title: 'Tasks Linked to Customer',
+            description: `Linked ${relinkedTasks!.length} existing lead task(s) to the new customer so they appear in customer task views.`,
+            metadata: {
+              lead_id: leadData.id,
+              customer_id: newCustomer.id,
+              task_ids: relinkedTasks!.map(t => t.id),
+            },
+          });
+        }
+      } catch (e) {
+        console.error('Failed to relink lead tasks to customer:', e);
+        // Non-blocking: conversion should still succeed
+      }
+
       // Log activity in customer record
       await logActivity({
         customer_id: newCustomer.id,
