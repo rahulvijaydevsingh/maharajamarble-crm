@@ -26,6 +26,7 @@ import {
   Star
 } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
+import { useLogActivity } from '@/hooks/useActivityLog';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { PhoneLink } from '@/components/shared/PhoneLink';
@@ -65,6 +66,7 @@ const sourceLabels: Record<string, string> = {
 export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileTabProps) {
   const { updateLead } = useLeads();
   const { toast } = useToast();
+  const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
   
   const statusConfig = LEAD_STATUSES[lead.status] || { label: lead.status, className: 'bg-gray-100 text-gray-700' };
@@ -73,7 +75,22 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
   const handleStatusChange = async (newStatus: string) => {
     setUpdatingStatus(true);
     try {
+      const oldStatus = lead.status;
       await updateLead(lead.id, { status: newStatus });
+      if (oldStatus !== newStatus) {
+        await logActivity({
+          lead_id: lead.id,
+          activity_type: 'status_change',
+          activity_category: 'status_change',
+          title: 'Status Updated',
+          description: `Lead status changed from ${LEAD_STATUSES[oldStatus]?.label || oldStatus} to ${LEAD_STATUSES[newStatus]?.label || newStatus}`,
+          metadata: {
+            old_value: oldStatus,
+            new_value: newStatus,
+            field_name: 'status',
+          },
+        });
+      }
       toast({
         title: "Status Updated",
         description: `Lead status changed to ${LEAD_STATUSES[newStatus]?.label || newStatus}`,
@@ -208,10 +225,18 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Phone</div>
-                <PhoneLink phone={lead.phone} className="font-medium" />
+                <PhoneLink
+                  phone={lead.phone}
+                  className="font-medium"
+                  log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                />
                 {lead.alternate_phone && (
                   <span className="text-muted-foreground text-sm ml-2">
-                    / <PhoneLink phone={lead.alternate_phone} className="text-sm" />
+                    / <PhoneLink
+                      phone={lead.alternate_phone}
+                      className="text-sm"
+                      log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                    />
                   </span>
                 )}
               </div>
@@ -263,7 +288,11 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
                 <div>
                   <div className="text-xs text-muted-foreground">Plus Code</div>
                   <div className="font-medium">
-                    <PlusCodeLink plusCode={lead.site_plus_code} className="font-medium" />
+                    <PlusCodeLink
+                      plusCode={lead.site_plus_code}
+                      className="font-medium"
+                      log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                    />
                   </div>
                 </div>
               </div>

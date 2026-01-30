@@ -54,6 +54,7 @@ export type ActivityType =
   | 'quotation_rejected'
   | 'quotation_deleted'
   | 'phone_call'
+  | 'map_open'
   | 'email_sent'
   | 'meeting'
   | 'site_visit'
@@ -136,6 +137,7 @@ export const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   
   // Communication activities
   phone_call: Phone,
+  map_open: MapPin,
   email_sent: Mail,
   meeting: Users,
   site_visit: MapPin,
@@ -177,73 +179,77 @@ export const ACTIVITY_ICONS: Record<string, LucideIcon> = {
 };
 
 // Activity Color Configuration
+// Activity Color Configuration
+// NOTE: Use semantic tokens only (no hardcoded Tailwind color palettes).
+// These are used for icon chips in the Activity Log timeline UI.
 export const ACTIVITY_COLORS: Record<string, { bg: string; text: string; border?: string }> = {
-  // System activities (Blue)
-  lead_created: { bg: 'bg-green-100', text: 'text-green-600' },
-  lead_updated: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
-  lead_viewed: { bg: 'bg-gray-100', text: 'text-gray-600' },
-  lead_exported: { bg: 'bg-gray-100', text: 'text-gray-600' },
-  lead_converted: { bg: 'bg-emerald-100', text: 'text-emerald-600' },
-  lead_reassigned: { bg: 'bg-cyan-100', text: 'text-cyan-600' },
-  status_change: { bg: 'bg-blue-100', text: 'text-blue-600' },
-  priority_change: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
-  field_update: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
-  
-  // Task activities (Green)
-  task_created: { bg: 'bg-green-100', text: 'text-green-600' },
-  task_updated: { bg: 'bg-amber-100', text: 'text-amber-600' },
-  task_completed: { bg: 'bg-green-100', text: 'text-green-600' },
-  task_deleted: { bg: 'bg-red-100', text: 'text-red-600' },
-  task_reassigned: { bg: 'bg-cyan-100', text: 'text-cyan-600' },
-  
-  // Quotation activities (Teal)
-  quotation_created: { bg: 'bg-teal-100', text: 'text-teal-600' },
-  quotation_updated: { bg: 'bg-teal-100', text: 'text-teal-600' },
-  quotation_sent: { bg: 'bg-teal-100', text: 'text-teal-600' },
-  quotation_accepted: { bg: 'bg-green-100', text: 'text-green-600' },
-  quotation_rejected: { bg: 'bg-red-100', text: 'text-red-600' },
-  quotation_deleted: { bg: 'bg-red-100', text: 'text-red-600' },
-  
-  // Communication activities (Orange)
-  phone_call: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  email_sent: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  meeting: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  site_visit: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  showroom_visit: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  custom_note: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  
-  // Note activities (Yellow)
-  note_added: { bg: 'bg-yellow-100', text: 'text-yellow-600' },
-  note_edited: { bg: 'bg-yellow-100', text: 'text-yellow-600' },
-  note_deleted: { bg: 'bg-red-100', text: 'text-red-600' },
-  
-  // Attachment activities (Purple)
-  attachment_added: { bg: 'bg-purple-100', text: 'text-purple-600' },
-  attachment_removed: { bg: 'bg-red-100', text: 'text-red-600' },
-  
-  // Reminder activities (Pink)
-  reminder_created: { bg: 'bg-pink-100', text: 'text-pink-600' },
-  reminder_updated: { bg: 'bg-pink-100', text: 'text-pink-600' },
-  reminder_triggered: { bg: 'bg-pink-100', text: 'text-pink-600' },
-  reminder_dismissed: { bg: 'bg-gray-100', text: 'text-gray-600' },
-  reminder_snoozed: { bg: 'bg-pink-100', text: 'text-pink-600' },
-  reminder_deleted: { bg: 'bg-red-100', text: 'text-red-600' },
-  
-  // Follow-up activities (Lime)
-  followup_scheduled: { bg: 'bg-lime-100', text: 'text-lime-600' },
-  followup_completed: { bg: 'bg-green-100', text: 'text-green-600' },
-  followup_missed: { bg: 'bg-red-100', text: 'text-red-600' },
-  followup_rescheduled: { bg: 'bg-lime-100', text: 'text-lime-600' },
-  
-  // Automation activities (Purple)
-  automation_triggered: { bg: 'bg-violet-100', text: 'text-violet-600' },
-  
-  // Import activities (Emerald)
-  bulk_import: { bg: 'bg-emerald-100', text: 'text-emerald-600' },
-  
-  // Conversion activities
-  customer_created: { bg: 'bg-emerald-100', text: 'text-emerald-600' },
-  repeat_lead_created: { bg: 'bg-blue-100', text: 'text-blue-600' },
+  // Primary-ish
+  lead_created: { bg: 'bg-primary/10', text: 'text-primary' },
+  lead_updated: { bg: 'bg-primary/10', text: 'text-primary' },
+  lead_viewed: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  lead_exported: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  lead_converted: { bg: 'bg-primary/10', text: 'text-primary' },
+  lead_reassigned: { bg: 'bg-primary/10', text: 'text-primary' },
+  status_change: { bg: 'bg-primary/10', text: 'text-primary' },
+  priority_change: { bg: 'bg-primary/10', text: 'text-primary' },
+  field_update: { bg: 'bg-primary/10', text: 'text-primary' },
+
+  // Tasks
+  task_created: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+  task_updated: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+  task_completed: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+  task_deleted: { bg: 'bg-destructive/10', text: 'text-destructive' },
+  task_reassigned: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+
+  // Quotations
+  quotation_created: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  quotation_updated: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  quotation_sent: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  quotation_accepted: { bg: 'bg-primary/10', text: 'text-primary' },
+  quotation_rejected: { bg: 'bg-destructive/10', text: 'text-destructive' },
+  quotation_deleted: { bg: 'bg-destructive/10', text: 'text-destructive' },
+
+  // Communication
+  phone_call: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  map_open: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  email_sent: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  meeting: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  site_visit: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  showroom_visit: { bg: 'bg-accent', text: 'text-accent-foreground' },
+  custom_note: { bg: 'bg-accent', text: 'text-accent-foreground' },
+
+  // Notes
+  note_added: { bg: 'bg-muted', text: 'text-foreground' },
+  note_edited: { bg: 'bg-muted', text: 'text-foreground' },
+  note_deleted: { bg: 'bg-destructive/10', text: 'text-destructive' },
+
+  // Attachments
+  attachment_added: { bg: 'bg-muted', text: 'text-foreground' },
+  attachment_removed: { bg: 'bg-destructive/10', text: 'text-destructive' },
+
+  // Reminders
+  reminder_created: { bg: 'bg-muted', text: 'text-foreground' },
+  reminder_updated: { bg: 'bg-muted', text: 'text-foreground' },
+  reminder_triggered: { bg: 'bg-muted', text: 'text-foreground' },
+  reminder_dismissed: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  reminder_snoozed: { bg: 'bg-muted', text: 'text-foreground' },
+  reminder_deleted: { bg: 'bg-destructive/10', text: 'text-destructive' },
+
+  // Follow-ups
+  followup_scheduled: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+  followup_completed: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+  followup_missed: { bg: 'bg-destructive/10', text: 'text-destructive' },
+  followup_rescheduled: { bg: 'bg-secondary', text: 'text-secondary-foreground' },
+
+  // Automation
+  automation_triggered: { bg: 'bg-accent', text: 'text-accent-foreground' },
+
+  // Import
+  bulk_import: { bg: 'bg-muted', text: 'text-foreground' },
+
+  // Conversion
+  customer_created: { bg: 'bg-primary/10', text: 'text-primary' },
+  repeat_lead_created: { bg: 'bg-primary/10', text: 'text-primary' },
 };
 
 // Get activity icon
@@ -253,7 +259,7 @@ export function getActivityIcon(type: string): LucideIcon {
 
 // Get activity colors
 export function getActivityColors(type: string): { bg: string; text: string } {
-  return ACTIVITY_COLORS[type] || { bg: 'bg-gray-100', text: 'text-gray-600' };
+  return ACTIVITY_COLORS[type] || { bg: 'bg-muted', text: 'text-muted-foreground' };
 }
 
 // Activity Type Labels
@@ -280,6 +286,7 @@ export const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   quotation_rejected: 'Quotation Rejected',
   quotation_deleted: 'Quotation Deleted',
   phone_call: 'Phone Call',
+  map_open: 'Map Opened',
   email_sent: 'Email Sent',
   meeting: 'Meeting',
   site_visit: 'Site Visit',

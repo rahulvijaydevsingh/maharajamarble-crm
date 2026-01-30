@@ -228,11 +228,20 @@ export function LeadsTableContainer({
           <div>
             <div className="flex items-center">
               <Phone className="h-3 w-3 mr-1" />
-              <PhoneLink phone={lead.phone} />
+              <PhoneLink
+                phone={lead.phone}
+                log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                onClick={(e) => e.stopPropagation()}
+              />
             </div>
             {lead.alternate_phone && (
               <div className="text-xs text-muted-foreground ml-4">
-                <PhoneLink phone={lead.alternate_phone} className="text-xs" />
+                <PhoneLink
+                  phone={lead.alternate_phone}
+                  className="text-xs"
+                  log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                  onClick={(e) => e.stopPropagation()}
+                />
               </div>
             )}
           </div>
@@ -242,7 +251,13 @@ export function LeadsTableContainer({
       case "designation":
         return <span className="capitalize">{lead.designation}</span>;
       case "sitePlusCode":
-        return <PlusCodeLink plusCode={lead.site_plus_code} />;
+        return (
+          <PlusCodeLink
+            plusCode={lead.site_plus_code}
+            log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        );
       case "source":
         return <span className="capitalize">{lead.source.replace(/_/g, " ")}</span>;
       case "status":

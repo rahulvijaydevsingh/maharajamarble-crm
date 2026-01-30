@@ -30,6 +30,8 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { PRIORITY_LEVELS, CUSTOMER_STATUSES } from '@/constants/customerConstants';
 import { useToast } from '@/hooks/use-toast';
 import { PhoneLink } from '@/components/shared/PhoneLink';
+import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
+import { useLogActivity } from '@/hooks/useActivityLog';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -50,6 +52,7 @@ const sourceLabels: Record<string, string> = {
 export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: CustomerProfileTabProps) {
   const { updateCustomer } = useCustomers();
   const { toast } = useToast();
+  const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
   
   const statusConfig = CUSTOMER_STATUSES[customer.status] || { label: customer.status, className: 'bg-gray-100 text-gray-700' };
@@ -58,7 +61,22 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
   const handleStatusChange = async (newStatus: string) => {
     setUpdatingStatus(true);
     try {
+      const oldStatus = customer.status;
       await updateCustomer(customer.id, { status: newStatus });
+      if (oldStatus !== newStatus) {
+        await logActivity({
+          customer_id: customer.id,
+          activity_type: 'status_change',
+          activity_category: 'status_change',
+          title: 'Status Updated',
+          description: `Customer status changed from ${CUSTOMER_STATUSES[oldStatus]?.label || oldStatus} to ${CUSTOMER_STATUSES[newStatus]?.label || newStatus}`,
+          metadata: {
+            old_value: oldStatus,
+            new_value: newStatus,
+            field_name: 'status',
+          },
+        });
+      }
       toast({
         title: "Status Updated",
         description: `Customer status changed to ${CUSTOMER_STATUSES[newStatus]?.label || newStatus}`,
@@ -193,10 +211,18 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Phone</div>
-                <PhoneLink phone={customer.phone} className="font-medium" />
+                <PhoneLink
+                  phone={customer.phone}
+                  className="font-medium"
+                  log={{ customerId: customer.id, relatedEntityType: 'customer', relatedEntityId: customer.id }}
+                />
                 {customer.alternate_phone && (
                   <span className="text-muted-foreground text-sm ml-2">
-                    / <PhoneLink phone={customer.alternate_phone} className="text-sm" />
+                    / <PhoneLink
+                      phone={customer.alternate_phone}
+                      className="text-sm"
+                      log={{ customerId: customer.id, relatedEntityType: 'customer', relatedEntityId: customer.id }}
+                    />
                   </span>
                 )}
               </div>
@@ -248,7 +274,12 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Plus Code</div>
-                  <div className="font-medium">{customer.site_plus_code}</div>
+                  <div className="font-medium">
+                    <PlusCodeLink
+                      plusCode={customer.site_plus_code}
+                      log={{ customerId: customer.id, relatedEntityType: 'customer', relatedEntityId: customer.id }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

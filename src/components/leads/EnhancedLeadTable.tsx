@@ -77,7 +77,6 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 // EditLeadDialog removed - now using LeadDetailView with EditSmartLeadForm
-import { ViewHistoryDialog } from "./actions/ViewHistoryDialog";
 import { AddToCustomerDialog } from "./actions/AddToCustomerDialog";
 import { LeadKanbanView } from "./LeadKanbanView";
 import { LeadDetailView } from "./LeadDetailView";
@@ -244,7 +243,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   // Dialog states
   // editDialogOpen removed - now using LeadDetailView with edit mode
   const [followUpDialogOpen, setFollowUpDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [detailInitialTab, setDetailInitialTab] = useState<string | undefined>(undefined);
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [detailViewOpen, setDetailViewOpen] = useState(false);
@@ -551,6 +550,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
   const handleEditLeadClick = (lead: Lead) => {
     setSelectedLead(lead);
+    setDetailInitialTab(undefined);
     setDetailViewOpen(true);
     // The edit mode will be triggered from within LeadDetailView
     setTimeout(() => {
@@ -567,7 +567,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
   const handleViewHistory = (lead: Lead) => {
     setSelectedLead(lead);
-    setHistoryDialogOpen(true);
+    setDetailInitialTab('activity');
+    setDetailViewOpen(true);
   };
 
   const handleCreateQuotation = (lead: Lead) => {
@@ -582,6 +583,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
   const handleViewLead = (lead: Lead) => {
     setSelectedLead(lead);
+    setDetailInitialTab(undefined);
     setDetailViewOpen(true);
   };
 
@@ -1103,11 +1105,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             }}
           />
 
-          <ViewHistoryDialog
-            open={historyDialogOpen}
-            onOpenChange={setHistoryDialogOpen}
-            leadData={{ id: selectedLead.id, name: selectedLead.name }}
-          />
+          {/* View History now opens Lead details on Activity Log tab */}
 
           {/* New Quotation Dialog - replaces old CreateQuotationDialog */}
           <AddQuotationDialog
@@ -1145,6 +1143,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             lead={selectedLead}
             open={detailViewOpen}
             onOpenChange={setDetailViewOpen}
+            initialTab={detailInitialTab}
             onEdit={(lead) => {
               setDetailViewOpen(false);
               handleEditLeadClick(lead);
