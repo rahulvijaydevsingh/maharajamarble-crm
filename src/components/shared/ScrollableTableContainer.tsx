@@ -11,9 +11,10 @@ export function ScrollableTableContainer({
 }: ScrollableTableContainerProps) {
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
-  const [headerHeight, setHeaderHeight] = useState(48);
   const [scrollWidth, setScrollWidth] = useState(0);
   const [showScrollbar, setShowScrollbar] = useState(false);
+  const syncingFromTop = useRef(false);
+  const syncingFromTable = useRef(false);
 
   // Update scroll width when content changes
   useEffect(() => {
@@ -23,13 +24,6 @@ export function ScrollableTableContainer({
         const clientW = tableContainerRef.current.clientWidth;
         setScrollWidth(scrollW);
         setShowScrollbar(scrollW > clientW);
-
-        const thead = tableContainerRef.current.querySelector('thead');
-        if (thead) {
-          const rect = thead.getBoundingClientRect();
-          // Clamp to a sensible range to avoid weird sticky offsets.
-          setHeaderHeight(Math.max(40, Math.min(80, Math.round(rect.height))));
-        }
       }
     };
 
@@ -43,65 +37,63 @@ export function ScrollableTableContainer({
 
     // Also observe the table + header for size changes
     const table = tableContainerRef.current?.querySelector('table');
-    const thead = tableContainerRef.current?.querySelector('thead');
     if (table) resizeObserver.observe(table);
-    if (thead) resizeObserver.observe(thead);
 
     return () => resizeObserver.disconnect();
   }, [children]);
 
   // Sync scroll between top scrollbar and table container
   const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (syncingFromTable.current) return;
     if (tableContainerRef.current) {
+      syncingFromTop.current = true;
       tableContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+      // release on next frame so wheel/drag stays smooth
+      requestAnimationFrame(() => {
+        syncingFromTop.current = false;
+      });
     }
   };
 
   const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (syncingFromTop.current) return;
     if (topScrollRef.current) {
+      syncingFromTable.current = true;
       topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+      requestAnimationFrame(() => {
+        syncingFromTable.current = false;
+      });
     }
   };
 
   return (
     <div className="rounded-md border bg-card flex flex-col group" style={{ maxHeight, minHeight: '650px' }}>
-      {/* Table container with both scrolls */}
+      {/* Always-available top horizontal scrollbar (only renders when overflow exists) */}
+      {showScrollbar && (
+        <div className="shrink-0 bg-background/85 backdrop-blur-sm border-b border-border py-3">
+          <div
+            ref={topScrollRef}
+            className={
+              "top-scrollbar mx-3 overflow-x-auto overflow-y-hidden " +
+              "rounded-full bg-muted/50 shadow-inner " +
+              "opacity-60 group-hover:opacity-100 transition-opacity"
+            }
+            style={{ height: 12 }}
+            onScroll={handleTopScroll}
+            aria-label="Horizontal table scroll"
+          >
+            {/* The 1px filler creates the scrollable area; actual visuals come from scrollbar styling. */}
+            <div style={{ width: scrollWidth, height: 1 }} />
+          </div>
+        </div>
+      )}
+
+      {/* Table viewport (vertical + horizontal scroll) */}
       <div
         ref={tableContainerRef}
         className="overflow-auto flex-1"
         onScroll={handleTableScroll}
       >
-        {/*
-          Sticky top horizontal scrollbar (shown only if content overflows).
-          Positioned below sticky table headers (typical header height is 3rem = h-12).
-        */}
-        {showScrollbar && (
-          <div
-            className={
-              "hidden lg:block sticky z-30 " +
-              "bg-background/85 backdrop-blur-sm " +
-              "border-b border-border "
-            }
-            // Place it *below* the sticky table header with a clean gap.
-            style={{ top: headerHeight, paddingTop: 16, paddingBottom: 10 }}
-          >
-            <div
-              ref={topScrollRef}
-              className={
-                "top-scrollbar mx-3 overflow-x-auto overflow-y-hidden " +
-                "rounded-full bg-muted/50 shadow-inner " +
-                "opacity-60 group-hover:opacity-100 transition-opacity"
-              }
-              style={{ height: 12 }}
-              onScroll={handleTopScroll}
-              aria-label="Horizontal table scroll"
-            >
-              {/* The 1px filler creates the scrollable area; actual visuals come from scrollbar styling. */}
-              <div style={{ width: scrollWidth, height: 1 }} />
-            </div>
-          </div>
-        )}
-
         {children}
       </div>
     </div>
