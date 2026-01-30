@@ -131,6 +131,30 @@ export function SidebarNav() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.email, isAdmin]);
 
+  // Keep counts live while the user stays on the same page (e.g., after creating a lead/task).
+  useEffect(() => {
+    if (!profile?.email && !isAdmin) return;
+
+    const channel = supabase
+      .channel("sidebar-counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leads" },
+        () => fetchSidebarCounts()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks" },
+        () => fetchSidebarCounts()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.email, isAdmin]);
+
   // Optional refresh on route changes so the UI feels up-to-date after edits.
   useEffect(() => {
     fetchSidebarCounts();

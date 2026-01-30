@@ -100,4 +100,29 @@
     background-position: 0 0, 30px 30px;
     opacity: 0.05;
   }
+
+  /* Aesthetic horizontal scrollbar used by ScrollableTableContainer */
+  .top-scrollbar {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.45) hsl(var(--muted) / 0.55);
+    scrollbar-width: thin;
+  }
+
+  .top-scrollbar::-webkit-scrollbar {
+    height: 10px;
+  }
+
+  .top-scrollbar::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.55);
+    border-radius: 999px;
+  }
+
+  .top-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.45);
+    border-radius: 999px;
+    border: 2px solid hsl(var(--muted) / 0.55);
+  }
+
+  .top-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.65);
+  }
 }

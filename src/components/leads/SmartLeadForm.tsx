@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +28,9 @@ import {
   ProfessionalRef,
   DuplicateCheckResult,
 } from "@/types/lead";
-import { TEAM_MEMBERS, isProfessionalDesignation } from "@/constants/leadConstants";
+import { isProfessionalDesignation } from "@/constants/leadConstants";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SmartLeadFormProps {
   open: boolean;
@@ -38,6 +40,8 @@ interface SmartLeadFormProps {
 
 export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { staffMembers } = useActiveStaff();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateResults, setDuplicateResults] = useState<{ [key: string]: DuplicateCheckResult }>({});
 
@@ -68,8 +72,26 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
 
   // Form state - Group 3: Source & Relationship
   const [leadSource, setLeadSource] = useState<LeadSource>("walk_in");
-  const [assignedTo, setAssignedTo] = useState(TEAM_MEMBERS[0].id);
+  const [assignedTo, setAssignedTo] = useState("");
   const [referredBy, setReferredBy] = useState<ProfessionalRef | null>(null);
+
+  // Default assignment: current logged-in user (fallback to first active staff)
+  useEffect(() => {
+    if (!open) return;
+
+    // Don't overwrite if user already picked something
+    if (assignedTo) return;
+
+    const currentUserId = user?.id;
+    if (currentUserId && staffMembers.some(m => m.id === currentUserId)) {
+      setAssignedTo(currentUserId);
+      return;
+    }
+
+    if (staffMembers.length > 0) {
+      setAssignedTo(staffMembers[0].id);
+    }
+  }, [open, assignedTo, staffMembers, user?.id]);
 
   // Form state - Group 4: Action Trigger
   const [followUpPriority, setFollowUpPriority] = useState<FollowUpPriority>("normal");
@@ -153,7 +175,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
 
   // Generate task from lead data
   const generateTask = () => {
-    const assignedMember = TEAM_MEMBERS.find(m => m.id === assignedTo);
+    const assignedMember = staffMembers.find(m => m.id === assignedTo);
     const primaryContact = contacts[0];
 
     return {
@@ -232,8 +254,8 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
       }
 
       // Notify assigned user if different from current user
-      const currentUser = TEAM_MEMBERS[0].id;
-      if (assignedTo !== currentUser) {
+      const currentUserId = user?.id;
+      if (currentUserId && assignedTo && assignedTo !== currentUserId) {
         console.log(`Sending notification to ${assignedTo}: New ${followUpPriority === "urgent" ? "Hot" : ""} Lead Assigned: Visit ${siteLocation}`);
       }
 
@@ -284,7 +306,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
     setMaterialInterests([]);
     setOtherMaterial("");
     setLeadSource("walk_in");
-    setAssignedTo(TEAM_MEMBERS[0].id);
+    setAssignedTo("");
     setReferredBy(null);
     setFollowUpPriority("normal");
     setNextActionDate(addDays(new Date(), 2));
