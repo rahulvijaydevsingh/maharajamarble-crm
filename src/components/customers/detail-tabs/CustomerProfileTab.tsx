@@ -29,6 +29,7 @@ import { Customer, useCustomers } from '@/hooks/useCustomers';
 import { format, formatDistanceToNow } from 'date-fns';
 import { PRIORITY_LEVELS, CUSTOMER_STATUSES } from '@/constants/customerConstants';
 import { useToast } from '@/hooks/use-toast';
+import { PhoneLink } from '@/components/shared/PhoneLink';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -192,11 +193,11 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Phone</div>
-                <a href={`tel:${customer.phone}`} className="text-primary hover:underline font-medium">
-                  {customer.phone}
-                </a>
+                <PhoneLink phone={customer.phone} className="font-medium" />
                 {customer.alternate_phone && (
-                  <span className="text-muted-foreground text-sm ml-2">/ {customer.alternate_phone}</span>
+                  <span className="text-muted-foreground text-sm ml-2">
+                    / <PhoneLink phone={customer.alternate_phone} className="text-sm" />
+                  </span>
                 )}
               </div>
             </div>

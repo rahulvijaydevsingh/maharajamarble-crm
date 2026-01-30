@@ -92,6 +92,7 @@ import * as XLSX from "xlsx";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
+import { PhoneLink } from "@/components/shared/PhoneLink";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -934,7 +935,11 @@ export function EnhancedTaskTable({
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
               <Phone className="h-3 w-3 shrink-0" />
-              <span className="truncate">{task.lead.phone}</span>
+              <PhoneLink
+                phone={task.lead.phone}
+                className="text-xs text-muted-foreground hover:text-primary"
+                onClick={(e) => e.stopPropagation()}
+              />
             </div>
             <Badge variant="outline" className="text-xs mt-0.5">Lead</Badge>
           </button>

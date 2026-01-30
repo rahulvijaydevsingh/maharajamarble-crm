@@ -11,6 +11,7 @@ import {
 import { Calendar, User, GripVertical, Clock, Phone, LinkIcon } from "lucide-react";
 import { format, isPast, isToday, parseISO } from "date-fns";
 import { Task } from "@/hooks/useTasks";
+import { PhoneLink } from "@/components/shared/PhoneLink";
 
 interface TaskKanbanViewProps {
   tasks: Task[];
@@ -227,7 +228,7 @@ export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask }: TaskKanbanVi
                           {task.lead?.phone && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Phone className="h-3 w-3" />
-                              <span>{task.lead.phone}</span>
+                              <PhoneLink phone={task.lead.phone} className="text-xs" onClick={(e) => e.stopPropagation()} />
                             </div>
                           )}
                           

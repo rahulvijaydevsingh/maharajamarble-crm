@@ -28,6 +28,8 @@ import {
 import { Lead, useLeads } from '@/hooks/useLeads';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { PhoneLink } from '@/components/shared/PhoneLink';
+import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 
 interface LeadProfileTabProps {
   lead: Lead;
@@ -206,11 +208,11 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Phone</div>
-                <a href={`tel:${lead.phone}`} className="text-primary hover:underline font-medium">
-                  {lead.phone}
-                </a>
+                <PhoneLink phone={lead.phone} className="font-medium" />
                 {lead.alternate_phone && (
-                  <span className="text-muted-foreground text-sm ml-2">/ {lead.alternate_phone}</span>
+                  <span className="text-muted-foreground text-sm ml-2">
+                    / <PhoneLink phone={lead.alternate_phone} className="text-sm" />
+                  </span>
                 )}
               </div>
             </div>
@@ -260,7 +262,9 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Plus Code</div>
-                  <div className="font-medium">{lead.site_plus_code}</div>
+                  <div className="font-medium">
+                    <PlusCodeLink plusCode={lead.site_plus_code} className="font-medium" />
+                  </div>
                 </div>
               </div>
             )}
