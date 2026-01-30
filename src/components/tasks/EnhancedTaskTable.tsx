@@ -84,6 +84,7 @@ import { useNavigate } from "react-router-dom";
 import { useTasks, Task } from "@/hooks/useTasks";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
+import { supabase } from "@/integrations/supabase/client";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
 import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
@@ -331,6 +332,46 @@ export function EnhancedTaskTable({
   const [customerDetailOpen, setCustomerDetailOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  const openLeadDetailById = async (leadId: string) => {
+    // Prefer already-loaded leads list first
+    const leadFromStore = leads.find((l) => l.id === leadId);
+    if (leadFromStore) {
+      setSelectedLead(leadFromStore);
+      setLeadDetailOpen(true);
+      return;
+    }
+
+    // Fallback: fetch full lead record (tasks only join id/name/phone)
+    try {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        toast({
+          title: "Lead not found",
+          description: "This lead may have been converted or deleted.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setSelectedLead(data as unknown as Lead);
+      setLeadDetailOpen(true);
+    } catch (e: any) {
+      console.error("Failed to fetch lead for task related-to:", e);
+      toast({
+        title: "Could not open lead",
+        description: e?.message || "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const [searchTerm, setSearchTerm] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -880,10 +921,8 @@ export function EnhancedTaskTable({
         return task.lead ? (
           <button 
             onClick={() => {
-              const leadData = leads.find(l => l.id === task.lead?.id) || task.lead;
-              if (leadData) {
-                setSelectedLead(leadData as Lead);
-                setLeadDetailOpen(true);
+              if (task.lead?.id) {
+                void openLeadDetailById(task.lead.id);
               }
             }}
             className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
@@ -903,11 +942,7 @@ export function EnhancedTaskTable({
           <button 
             onClick={() => {
               if (task.related_entity_type === 'lead') {
-                const leadData = leads.find(l => l.id === task.related_entity_id);
-                if (leadData) {
-                  setSelectedLead(leadData);
-                  setLeadDetailOpen(true);
-                }
+                void openLeadDetailById(task.related_entity_id);
               } else if (task.related_entity_type === 'customer') {
                 const customerData = customers.find(c => c.id === task.related_entity_id);
                 if (customerData) {
