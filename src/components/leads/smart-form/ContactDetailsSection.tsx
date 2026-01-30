@@ -12,10 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { User, Phone, Plus, Trash2, Loader2, CheckCircle, AlertTriangle, Building2 } from "lucide-react";
-import { DuplicateCheckResult } from "@/hooks/usePhoneDuplicateCheck";
+import { DuplicateCheckResult } from "@/types/lead";
 import { DuplicateLeadModal } from "@/components/leads/DuplicateLeadModal";
-import { DESIGNATIONS, isProfessionalDesignation } from "@/constants/leadConstants";
-import { usePhoneDuplicateCheck } from "@/hooks/usePhoneDuplicateCheck";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useEntityPhoneDuplicateCheck } from "@/hooks/useEntityPhoneDuplicateCheck";
 
 export interface ContactPerson {
   id: string;
@@ -42,13 +42,24 @@ export function ContactDetailsSection({
   validationErrors = {},
   duplicateResults: externalDuplicateResults = {},
 }: ContactDetailsSectionProps) {
-  const { checking: checkingPhones, results: duplicateResults, checkDuplicate, clearAll } = usePhoneDuplicateCheck();
+  const { getFieldOptions } = useControlPanelSettings();
+  const { checking: checkingPhones, results: duplicateResults, checkDuplicate } = useEntityPhoneDuplicateCheck();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDuplicateKey, setSelectedDuplicateKey] = useState<string | null>(null);
 
+  const professionalTypes = getFieldOptions("professionals", "professional_type");
+  const professionalTypeValues = new Set(professionalTypes.map(o => o.value));
+
+  const leadDesignations = getFieldOptions("leads", "designation");
+  // Lead control panel should control only "Individual" section.
+  // We consider anything that is a professional_type as "Professional" and exclude it here.
+  const individualDesignations = leadDesignations.filter(o => !professionalTypeValues.has(o.value));
+
+  const isProfessionalDesignation = (designation: string) => professionalTypeValues.has(designation);
+
   // Sync internal duplicate results to parent
   useEffect(() => {
-    Object.entries(duplicateResults).forEach(([key, result]) => {
+    (Object.entries(duplicateResults) as Array<[string, DuplicateCheckResult]>).forEach(([key, result]) => {
       onDuplicateFound(result, key);
     });
   }, [duplicateResults, onDuplicateFound]);
@@ -81,7 +92,12 @@ export function ContactDetailsSection({
   const handlePhoneBlur = (index: number, field: 'phone' | 'alternatePhone', phone: string) => {
     if (phone.length === 10) {
       const checkKey = `${contacts[index].id}_${field}`;
-      checkDuplicate(phone, checkKey);
+      // Always check against leads; if this contact is professional, also check professionals.
+      const entities = isProfessionalDesignation(contacts[index].designation)
+        ? (["leads", "professionals"] as const)
+        : (["leads"] as const);
+
+      checkDuplicate({ phone, fieldKey: checkKey, entities });
     }
   };
 
@@ -239,15 +255,15 @@ export function ContactDetailsSection({
                   </SelectTrigger>
                   <SelectContent>
                     <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Individual</div>
-                    {DESIGNATIONS.filter(d => d.category === "individual").map((des) => (
-                      <SelectItem key={des.value} value={des.value}>
-                        {des.label}
+                    {individualDesignations.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
                       </SelectItem>
                     ))}
                     <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">Professional</div>
-                    {DESIGNATIONS.filter(d => d.category === "professional").map((des) => (
-                      <SelectItem key={des.value} value={des.value}>
-                        {des.label}
+                    {professionalTypes.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

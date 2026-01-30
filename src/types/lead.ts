@@ -42,6 +42,17 @@ export interface ProfessionalRef {
   email?: string;
 }
 
+export interface SmartLeadContact {
+  id: string;
+  designation: string;
+  isProfessional: boolean;
+  name: string;
+  email: string;
+  phone: string;
+  alternatePhone: string;
+  firmName: string;
+}
+
 // Smart Lead Form Data
 export interface SmartLeadFormData {
   // Section A: Duplicate Gate
@@ -57,9 +68,14 @@ export interface SmartLeadFormData {
   fullName: string;
   email: string;
   siteLocation: string;
+  sitePlusCode?: string | null;
+  sitePhotoUrl?: string | null;
   constructionStage: ConstructionStage;
   materialInterests: string[];
   estimatedQuantity: number | null;
+
+  // Full contact list (used to auto-create professionals)
+  contacts: SmartLeadContact[];
   
   // Section D: Action Trigger
   followUpPriority: FollowUpPriority;

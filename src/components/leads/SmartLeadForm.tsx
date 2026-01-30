@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,9 +28,9 @@ import {
   ProfessionalRef,
   DuplicateCheckResult,
 } from "@/types/lead";
-import { isProfessionalDesignation } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface SmartLeadFormProps {
   open: boolean;
@@ -42,11 +42,25 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
   const { toast } = useToast();
   const { user } = useAuth();
   const { staffMembers } = useActiveStaff();
+  const { getFieldOptions } = useControlPanelSettings();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateResults, setDuplicateResults] = useState<{ [key: string]: DuplicateCheckResult }>({});
 
-  // Check if any duplicate is blocking
-  const hasDuplicateBlocking = Object.values(duplicateResults).some(r => r.found);
+  const professionalTypeValues = useMemo(() => {
+    const values = getFieldOptions("professionals", "professional_type").map(o => o.value);
+    return new Set(values);
+  }, [getFieldOptions]);
+
+  const isProfessionalDesignation = useCallback(
+    (designation: string) => professionalTypeValues.has(designation),
+    [professionalTypeValues]
+  );
+
+  // Only lead/customer duplicates should block lead creation.
+  // Professional duplicates should NOT block; we will skip creating the professional record.
+  const hasDuplicateBlocking = Object.values(duplicateResults).some(
+    (r) => r.found && r.type !== "professional"
+  );
 
   // Form state - Group 1: Contacts
   const [contacts, setContacts] = useState<ContactPerson[]>([
@@ -204,11 +218,17 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
       fullName: primaryContact.name,
       email: primaryContact.email,
       siteLocation,
+      sitePlusCode,
+      sitePhotoUrl,
       constructionStage,
       materialInterests: materialInterests.includes("other") && otherMaterial
         ? [...materialInterests.filter(m => m !== "other"), otherMaterial]
         : materialInterests,
       estimatedQuantity,
+      contacts: contacts.map((c) => ({
+        ...c,
+        isProfessional: isProfessionalDesignation(c.designation),
+      })),
       firmName: primaryContact.firmName,
       gstNumber: "",
       followUpPriority,
