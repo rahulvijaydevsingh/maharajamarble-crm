@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, addWeeks, addMonths, addYears } from "date-fns";
 import { calculateTaskStatus, TaskStatus } from "@/lib/taskStatusService";
+import { useLogActivity } from "@/hooks/useActivityLog";
 
 export interface Task {
   id: string;
@@ -110,6 +111,13 @@ export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { logActivity } = useLogActivity();
+
+  const getActivityContext = (task: Partial<TaskInsert> & { lead_id?: string | null; related_entity_type?: string | null; related_entity_id?: string | null }) => {
+    const leadId = task.lead_id || null;
+    const customerId = task.related_entity_type === "customer" ? (task.related_entity_id || null) : null;
+    return { leadId, customerId };
+  };
 
   const fetchTasks = async () => {
     try {
@@ -161,6 +169,36 @@ export function useTasks() {
 
       if (error) throw error;
       setTasks((prev) => [...prev, data]);
+
+      // Always log creation (this fixes missing logs after remix and ensures consistency)
+      try {
+        const { leadId, customerId } = getActivityContext(taskData);
+        await logActivity({
+          lead_id: leadId || undefined,
+          customer_id: customerId || undefined,
+          activity_type: "task_created",
+          activity_category: "task",
+          title: `Task Created: ${data.title}`,
+          description: data.description || undefined,
+          metadata: {
+            task_id: data.id,
+            assigned_to: data.assigned_to,
+            due_date: data.due_date,
+            due_time: data.due_time,
+            priority: data.priority,
+            status: data.status,
+            related_entity_type: data.related_entity_type,
+            related_entity_id: data.related_entity_id,
+            lead_id: data.lead_id,
+          },
+          related_entity_type: data.related_entity_type || undefined,
+          related_entity_id: data.related_entity_id || undefined,
+        });
+      } catch (e) {
+        // Never block task creation if activity log fails
+        console.warn("Failed to log task_created activity", e);
+      }
+
       return data;
     } catch (error: any) {
       toast({
@@ -174,6 +212,8 @@ export function useTasks() {
 
   const updateTask = async (id: string, updates: Partial<TaskInsert> & { completed_at?: string | null; snoozed_until?: string | null }) => {
     try {
+      const prevTask = tasks.find((t) => t.id === id) || null;
+
       // If marking as completed, set completed_at
       if (updates.status === "Completed") {
         updates = { ...updates, completed_at: new Date().toISOString() };
@@ -191,6 +231,44 @@ export function useTasks() {
 
       if (error) throw error;
       setTasks((prev) => prev.map((task) => (task.id === id ? data : task)));
+
+      try {
+        const activityType =
+          updates.status === "Completed" ? "task_completed" :
+          updates.snoozed_until ? "task_snoozed" :
+          "task_updated";
+
+        const leadId = data.lead_id || undefined;
+        const customerId = data.related_entity_type === "customer" ? (data.related_entity_id || undefined) : undefined;
+
+        await logActivity({
+          lead_id: leadId,
+          customer_id: customerId,
+          activity_type: activityType,
+          activity_category: "task",
+          title: `${activityType === "task_completed" ? "Task Completed" : activityType === "task_snoozed" ? "Task Snoozed" : "Task Updated"}: ${data.title}`,
+          description: data.description || undefined,
+          metadata: {
+            task_id: data.id,
+            previous: prevTask
+              ? {
+                  status: prevTask.status,
+                  due_date: prevTask.due_date,
+                  due_time: prevTask.due_time,
+                  assigned_to: prevTask.assigned_to,
+                  priority: prevTask.priority,
+                  snoozed_until: prevTask.snoozed_until,
+                }
+              : null,
+            updates,
+          },
+          related_entity_type: data.related_entity_type || undefined,
+          related_entity_id: data.related_entity_id || undefined,
+        });
+      } catch (e) {
+        console.warn("Failed to log task update activity", e);
+      }
+
       return data;
     } catch (error: any) {
       toast({
@@ -338,9 +416,31 @@ export function useTasks() {
 
   const deleteTask = async (id: string) => {
     try {
+      const taskToDelete = tasks.find((t) => t.id === id) || null;
       const { error } = await supabase.from("tasks").delete().eq("id", id);
       if (error) throw error;
       setTasks((prev) => prev.filter((task) => task.id !== id));
+
+      try {
+        const leadId = taskToDelete?.lead_id || undefined;
+        const customerId = taskToDelete?.related_entity_type === "customer" ? (taskToDelete?.related_entity_id || undefined) : undefined;
+
+        await logActivity({
+          lead_id: leadId,
+          customer_id: customerId,
+          activity_type: "task_deleted",
+          activity_category: "task",
+          title: `Task Deleted: ${taskToDelete?.title || "(unknown)"}`,
+          metadata: {
+            task_id: id,
+            task: taskToDelete,
+          },
+          related_entity_type: taskToDelete?.related_entity_type || undefined,
+          related_entity_id: taskToDelete?.related_entity_id || undefined,
+        });
+      } catch (e) {
+        console.warn("Failed to log task_deleted activity", e);
+      }
     } catch (error: any) {
       toast({
         title: "Error deleting task",
