@@ -136,8 +136,8 @@ export function PhotoLeadForm({
   };
 
   return (
-    <ScrollArea className="h-[400px] pr-4">
-      <div className="space-y-4">
+    <ScrollArea id="photo-lead-form" className="h-[520px] pr-4">
+      <div className="space-y-4 pb-24">
         {/* Group 1: Contact Details */}
         <ContactDetailsSection
           contacts={contacts}
