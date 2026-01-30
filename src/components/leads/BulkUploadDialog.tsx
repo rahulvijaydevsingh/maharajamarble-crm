@@ -1089,7 +1089,7 @@ export function BulkUploadDialog({
 
         {/* Photo Lead Entry Step - Smart Form Integration */}
         {step === "validate" && activeTab === "photo" && photoLeads.length > 0 && currentLead && (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
             {/* Batch Navigation Header */}
             <div className="flex items-center justify-between py-2 px-3 bg-muted rounded-lg mb-4">
               <div className="flex items-center gap-3">
@@ -1129,9 +1129,9 @@ export function BulkUploadDialog({
             </div>
 
             {/* Main Content - Photo + Form */}
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden min-h-0">
               {/* Photo Preview */}
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 min-h-0">
                 <div className="relative aspect-[4/3] bg-muted rounded-lg overflow-hidden border">
                   <img
                     src={currentLead.previewUrl}
@@ -1150,12 +1150,14 @@ export function BulkUploadDialog({
               </div>
 
               {/* Lead Entry Form */}
-              <PhotoLeadForm
-                currentLead={currentLead}
-                onUpdateLead={updateCurrentPhotoLead}
-                applyToRemaining={applyToRemaining}
-                onApplyToRemainingChange={setApplyToRemaining}
-              />
+              <div className="min-h-0">
+                <PhotoLeadForm
+                  currentLead={currentLead}
+                  onUpdateLead={updateCurrentPhotoLead}
+                  applyToRemaining={applyToRemaining}
+                  onApplyToRemainingChange={setApplyToRemaining}
+                />
+              </div>
             </div>
 
             {/* Navigation Footer */}
