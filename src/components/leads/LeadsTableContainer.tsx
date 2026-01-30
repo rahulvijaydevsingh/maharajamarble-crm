@@ -1,6 +1,5 @@
 import React from "react";
 import { 
-  Table, 
   TableBody, 
   TableCell, 
   TableHead, 
@@ -301,7 +300,12 @@ export function LeadsTableContainer({
 
   return (
     <ScrollableTableContainer maxHeight="calc(100vh - 320px)">
-      <Table>
+      {/*
+        NOTE: We intentionally use a plain <table> here (instead of the shadcn Table wrapper)
+        so there is only ONE horizontal scroll container (ScrollableTableContainer).
+        This enables the sticky top scrollbar + synced horizontal scrolling.
+      */}
+      <table className="w-full caption-bottom text-sm">
         <TableHeader className="sticky top-0 z-20 bg-background">
           <TableRow className="border-b-2 border-border shadow-sm">
             <TableHead className="w-12 bg-background sticky top-0">
@@ -334,7 +338,7 @@ export function LeadsTableContainer({
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+      </table>
     </ScrollableTableContainer>
   );
 }
