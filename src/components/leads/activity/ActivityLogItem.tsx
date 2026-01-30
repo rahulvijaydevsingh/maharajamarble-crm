@@ -4,13 +4,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { 
   Calendar, 
+  Clock,
   Edit, 
   Trash2,
   ExternalLink,
   CheckSquare,
   Bell
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { 
   getActivityIcon, 
   getActivityColors,
@@ -57,6 +58,36 @@ export function ActivityLogItem({
 
   const isSystemActivity = activity.user_name === 'System' || !activity.user_id;
 
+  const ts = new Date(activity.activity_timestamp);
+  const formattedDate = format(ts, "dd MMM yyyy");
+  const formattedTime = format(ts, "hh:mm a");
+
+  const cardTone = (() => {
+    // Tone by category, using semantic tokens only
+    switch (activity.activity_category) {
+      case 'status_change':
+        return 'border-primary/20 bg-primary/5';
+      case 'task':
+        return 'border-secondary/40 bg-secondary/20';
+      case 'quotation':
+        return 'border-accent/40 bg-accent/20';
+      case 'communication':
+        return 'border-accent/40 bg-accent/20';
+      case 'attachment':
+        return 'border-border bg-muted/20';
+      case 'note':
+        return 'border-border bg-muted/20';
+      case 'reminder':
+        return 'border-border bg-muted/20';
+      case 'automation':
+        return 'border-accent/40 bg-accent/20';
+      case 'field_update':
+        return 'border-primary/20 bg-primary/5';
+      default:
+        return 'border-border bg-background';
+    }
+  })();
+
   // Handle view related entity click
   const handleViewRelatedEntity = () => {
     if (!activity.related_entity_type || !activity.related_entity_id) return;
@@ -81,174 +112,163 @@ export function ActivityLogItem({
   const reminderId = activity.metadata?.reminder_id;
 
   return (
-    <div className="relative flex gap-4 group">
-      {/* Icon */}
-      <div className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full ${colors.bg} ${colors.text} shrink-0`}>
-        <Icon className="h-5 w-5" />
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 pt-0.5 min-w-0">
-        {/* Header */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {!isSystemActivity ? (
-            <>
-              <Avatar className="h-5 w-5">
-                <AvatarFallback className="text-[10px]">
-                  {getUserInitials(activity.user_name)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="font-medium text-sm">{activity.user_name}</span>
-            </>
-          ) : (
-            <span className="font-medium text-sm text-muted-foreground">System</span>
-          )}
-          <span className="text-muted-foreground text-sm">|</span>
-          <span className="text-sm font-medium">{typeLabel}</span>
-          {activity.is_manual && (
-            <Badge variant="outline" className="text-[10px] py-0 px-1.5">
-              Manual Entry
-            </Badge>
-          )}
+    <div className="relative group">
+      <div className={"relative flex gap-4"}>
+        {/* Icon */}
+        <div
+          className={
+            `relative z-10 flex h-10 w-10 items-center justify-center rounded-full ${colors.bg} ${colors.text} shrink-0 ring-1 ring-border`
+          }
+        >
+          <Icon className="h-5 w-5" />
         </div>
 
-        {/* Timestamp */}
-        <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-          <Calendar className="h-3 w-3" />
-          <span>
-            {format(new Date(activity.activity_timestamp), 'dd MMM yyyy, HH:mm')}
-          </span>
-          <span className="ml-1">
-            ({formatDistanceToNow(new Date(activity.activity_timestamp), { addSuffix: true })})
-          </span>
-        </div>
+        {/* Card */}
+        <div className={`flex-1 min-w-0 rounded-lg border p-4 ${cardTone}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {/* Date/time */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>{formattedDate}</span>
+                <span className="text-muted-foreground/60">•</span>
+                <Clock className="h-3.5 w-3.5" />
+                <span>{formattedTime}</span>
+              </div>
 
-        {/* Description */}
-        {activity.description && (
-          <p className="text-sm mt-2 text-foreground whitespace-pre-wrap">
-            {activity.description}
-          </p>
-        )}
-
-        {/* Metadata Display */}
-        {activity.metadata && Object.keys(activity.metadata).length > 0 && (
-          <div className="mt-2 space-y-1">
-            {activity.metadata.old_value !== undefined && activity.metadata.new_value !== undefined && (
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium">{activity.metadata.field_name || 'Value'}</span> changed from{' '}
-                <span className="line-through text-red-500">{activity.metadata.old_value}</span>{' '}
-                → <span className="text-green-600">{activity.metadata.new_value}</span>
-              </p>
-            )}
-            {activity.metadata.task_title && (
-              <p className="text-sm text-muted-foreground">
-                Task: "{activity.metadata.task_title}"
-              </p>
-            )}
-            {activity.metadata.quotation_number && (
-              <p className="text-sm text-muted-foreground">
-                Quotation: {activity.metadata.quotation_number}
-                {activity.metadata.amount && ` - ₹${activity.metadata.amount.toLocaleString()}`}
-              </p>
-            )}
-            {activity.metadata.automation_name && (
-              <div className="text-sm text-muted-foreground">
-                <p>Rule: "{activity.metadata.automation_name}"</p>
-                {activity.metadata.actions_executed && (
-                  <p className="text-xs mt-1">
-                    Actions: {activity.metadata.actions_executed.join(', ')}
-                  </p>
+              {/* Title */}
+              <div className="mt-1 flex items-center gap-2 flex-wrap">
+                <h4 className="font-medium text-sm truncate">{typeLabel}</h4>
+                {activity.is_manual && (
+                  <Badge variant="outline" className="text-[10px] py-0 px-1.5">
+                    Manual
+                  </Badge>
                 )}
+              </div>
+
+              {/* User row */}
+              <div className="mt-2 flex items-center gap-2 flex-wrap text-sm">
+                {!isSystemActivity ? (
+                  <>
+                    <Avatar className="h-5 w-5">
+                      <AvatarFallback className="text-[10px]">
+                        {getUserInitials(activity.user_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm text-muted-foreground">{activity.user_name}</span>
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">System</span>
+                )}
+              </div>
+
+              {/* Description */}
+              {activity.description && (
+                <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">
+                  {activity.description}
+                </p>
+              )}
+
+              {/* Status/field change chips */}
+              {activity.metadata?.old_value !== undefined && activity.metadata?.new_value !== undefined && (
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <Badge variant="outline" className="max-w-[12rem] truncate">
+                    {String(activity.metadata.old_value)}
+                  </Badge>
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="secondary" className="max-w-[12rem] truncate">
+                    {String(activity.metadata.new_value)}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Attachments */}
+              {activity.attachments && activity.attachments.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {activity.attachments.map((attachment: any, index: number) => (
+                    <Badge key={index} variant="secondary" className="text-xs gap-1">
+                      📎 {attachment.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Quick Action Links */}
+              <div className="mt-3 flex flex-wrap gap-3">
+                {taskId && onViewTask && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs text-primary"
+                    onClick={() => onViewTask(taskId)}
+                  >
+                    <CheckSquare className="h-3 w-3 mr-1" />
+                    View Task
+                  </Button>
+                )}
+
+                {reminderId && onViewReminder && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs text-primary"
+                    onClick={() => onViewReminder(reminderId)}
+                  >
+                    <Bell className="h-3 w-3 mr-1" />
+                    View Reminder
+                  </Button>
+                )}
+
+                {activity.related_entity_type &&
+                  activity.related_entity_id &&
+                  activity.related_entity_type !== 'task' &&
+                  activity.related_entity_type !== 'reminder' && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-primary"
+                      onClick={handleViewRelatedEntity}
+                    >
+                      View {activity.related_entity_type}
+                      <ExternalLink className="h-3 w-3 ml-1" />
+                    </Button>
+                  )}
+              </div>
+            </div>
+
+            {/* Admin actions */}
+            {isAdmin && (
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => onEdit?.(activity)}
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit Activity</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      onClick={() => onDelete?.(activity)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete Activity</TooltipContent>
+                </Tooltip>
               </div>
             )}
           </div>
-        )}
-
-        {/* Attachments */}
-        {activity.attachments && activity.attachments.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {activity.attachments.map((attachment: any, index: number) => (
-              <Badge key={index} variant="secondary" className="text-xs gap-1">
-                📎 {attachment.name} ({(attachment.size / 1024).toFixed(1)} KB)
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Quick Action Links */}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {/* Task Link */}
-          {taskId && onViewTask && (
-            <Button 
-              variant="link" 
-              size="sm" 
-              className="h-auto p-0 text-xs text-blue-600 hover:text-blue-700"
-              onClick={() => onViewTask(taskId)}
-            >
-              <CheckSquare className="h-3 w-3 mr-1" />
-              View Task →
-            </Button>
-          )}
-
-          {/* Reminder Link */}
-          {reminderId && onViewReminder && (
-            <Button 
-              variant="link" 
-              size="sm" 
-              className="h-auto p-0 text-xs text-blue-600 hover:text-blue-700"
-              onClick={() => onViewReminder(reminderId)}
-            >
-              <Bell className="h-3 w-3 mr-1" />
-              View Reminder →
-            </Button>
-          )}
-
-          {/* Related Entity Link (for other entities) */}
-          {activity.related_entity_type && activity.related_entity_id && 
-           activity.related_entity_type !== 'task' && activity.related_entity_type !== 'reminder' && (
-            <Button 
-              variant="link" 
-              size="sm" 
-              className="h-auto p-0 text-xs text-blue-600 hover:text-blue-700"
-              onClick={handleViewRelatedEntity}
-            >
-              View {activity.related_entity_type} →
-              <ExternalLink className="h-3 w-3 ml-1" />
-            </Button>
-          )}
         </div>
-
-        {/* Admin Actions */}
-        {isAdmin && (
-          <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => onEdit?.(activity)}
-                >
-                  <Edit className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Edit Activity</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-destructive hover:text-destructive"
-                  onClick={() => onDelete?.(activity)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Delete Activity</TooltipContent>
-            </Tooltip>
-          </div>
-        )}
       </div>
     </div>
   );
