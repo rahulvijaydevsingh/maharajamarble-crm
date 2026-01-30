@@ -138,6 +138,8 @@ export function LeadsTableContainer({
         return <SortableHeader field="email">{columnLabel}</SortableHeader>;
       case "designation":
         return columnLabel;
+      case "sitePlusCode":
+        return columnLabel;
       case "source":
         return (
           <div className="flex items-center justify-between">
@@ -235,6 +237,8 @@ export function LeadsTableContainer({
         return lead.email || "-";
       case "designation":
         return <span className="capitalize">{lead.designation}</span>;
+      case "sitePlusCode":
+        return lead.site_plus_code || "-";
       case "source":
         return <span className="capitalize">{lead.source.replace(/_/g, " ")}</span>;
       case "status":

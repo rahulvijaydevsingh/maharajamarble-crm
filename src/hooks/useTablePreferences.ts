@@ -34,6 +34,7 @@ const defaultConfigs: Record<string, ColumnConfig[]> = {
     { key: "phone", label: "Phone", visible: true, order: 1, locked: false },
     { key: "email", label: "Email", visible: true, order: 2, locked: false },
     { key: "designation", label: "Designation", visible: true, order: 3, locked: false },
+    { key: "sitePlusCode", label: "Plus Code", visible: false, order: 4, locked: false },
     { key: "source", label: "Source", visible: true, order: 4, locked: false },
     { key: "status", label: "Status", visible: true, order: 5, locked: false },
     { key: "priority", label: "Priority", visible: true, order: 6, locked: false },

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { Customer, useCustomers } from '@/hooks/useCustomers';
 import { useLeads } from '@/hooks/useLeads';
+import { supabase } from '@/integrations/supabase/client';
 import { CustomerProfileTab } from './detail-tabs/CustomerProfileTab';
 import { CustomerQuotationsTab } from './detail-tabs/CustomerQuotationsTab';
 import { CustomerTasksTab } from './detail-tabs/CustomerTasksTab';
@@ -76,19 +77,122 @@ export function CustomerDetailView({
     
     setConvertingToLead(true);
     try {
-      await addLead({
+      const newLead = await addLead({
         name: customer.name,
         phone: customer.phone,
         alternate_phone: customer.alternate_phone,
         email: customer.email,
         firm_name: customer.company_name,
         address: customer.address,
+        site_plus_code: customer.site_plus_code || null,
         source: 'customer_conversion',
         assigned_to: customer.assigned_to,
         priority: customer.priority,
         notes: `Converted from customer: ${customer.name}${customer.notes ? '\n\nOriginal notes: ' + customer.notes : ''}`,
         created_by: customer.created_by,
+        created_from_customer_id: customer.id,
       });
+
+      // Copy history: activities, tasks, reminders, attachments
+      if (newLead?.id) {
+        // 1) Copy activity log
+        try {
+          const { data: activities } = await supabase
+            .from('activity_log')
+            .select('*')
+            .eq('customer_id', customer.id)
+            .order('activity_timestamp', { ascending: true });
+
+          if (activities && activities.length > 0) {
+            const copied = activities.map((a: any) => {
+              const { id, created_at, updated_at, ...rest } = a;
+              return {
+                ...rest,
+                lead_id: newLead.id,
+                customer_id: customer.id,
+                metadata: {
+                  ...(a.metadata || {}),
+                  copied_from_customer_id: customer.id,
+                },
+              };
+            });
+            await supabase.from('activity_log').insert(copied);
+          }
+        } catch (e) {
+          console.error('Failed copying activity log to new lead:', e);
+        }
+
+        // 2) Copy tasks
+        try {
+          const { data: tasks } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('related_entity_type', 'customer')
+            .eq('related_entity_id', customer.id);
+
+          if (tasks && tasks.length > 0) {
+            const copiedTasks = tasks.map((t: any) => {
+              const { id, created_at, updated_at, ...rest } = t;
+              return {
+                ...rest,
+                lead_id: newLead.id,
+                related_entity_type: 'lead',
+                related_entity_id: newLead.id,
+              };
+            });
+            await supabase.from('tasks').insert(copiedTasks);
+          }
+        } catch (e) {
+          console.error('Failed copying tasks to new lead:', e);
+        }
+
+        // 3) Copy reminders
+        try {
+          const { data: reminders } = await supabase
+            .from('reminders')
+            .select('*')
+            .eq('entity_type', 'customer')
+            .eq('entity_id', customer.id);
+
+          if (reminders && reminders.length > 0) {
+            const copiedReminders = reminders.map((r: any) => {
+              const { id, created_at, updated_at, ...rest } = r;
+              return {
+                ...rest,
+                entity_type: 'lead',
+                entity_id: newLead.id,
+              };
+            });
+            await supabase.from('reminders').insert(copiedReminders);
+          }
+        } catch (e) {
+          console.error('Failed copying reminders to new lead:', e);
+        }
+
+        // 4) Copy attachments
+        try {
+          const { data: attachments } = await supabase
+            .from('entity_attachments')
+            .select('file_name,file_path,mime_type,file_size')
+            .eq('entity_type', 'customer')
+            .eq('entity_id', customer.id);
+
+          if (attachments && attachments.length > 0) {
+            await supabase.from('entity_attachments').insert(
+              attachments.map((a: any) => ({
+                entity_type: 'lead',
+                entity_id: newLead.id,
+                file_name: a.file_name,
+                file_path: a.file_path,
+                mime_type: a.mime_type,
+                file_size: a.file_size,
+              }))
+            );
+          }
+        } catch (e) {
+          console.error('Failed copying attachments to new lead:', e);
+        }
+      }
       
       toast({
         title: "Lead Created",

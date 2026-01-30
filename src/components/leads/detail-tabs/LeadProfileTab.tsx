@@ -252,6 +252,18 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
                 </div>
               </div>
             )}
+
+            {lead.site_plus_code && (
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Plus Code</div>
+                  <div className="font-medium">{lead.site_plus_code}</div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

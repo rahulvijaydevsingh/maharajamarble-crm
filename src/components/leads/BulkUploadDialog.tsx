@@ -156,6 +156,26 @@ export function BulkUploadDialog({
 
   // Excel upload state
   const [excelFile, setExcelFile] = useState<File | null>(null);
+  const uploadToAttachmentsBucket = async (file: File, path: string) => {
+    const { error } = await supabase.storage.from('crm-attachments').upload(path, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if (error) throw error;
+  };
+
+  const createAttachmentRecord = async (entityType: 'lead' | 'customer', entityId: string, file: { name: string; path: string; type?: string | null; size?: number | null; }) => {
+    const { error } = await supabase.from('entity_attachments').insert({
+      entity_type: entityType,
+      entity_id: entityId,
+      file_name: file.name,
+      file_path: file.path,
+      mime_type: file.type || null,
+      file_size: file.size || null,
+    });
+    if (error) throw error;
+  };
+
   const [parsedLeads, setParsedLeads] = useState<ParsedLead[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
@@ -508,6 +528,20 @@ export function BulkUploadDialog({
       (lead) => lead.errors.length === 0 && (!skipDuplicates || !lead.isDuplicate)
     );
 
+    // Upload the Excel file once and attach it to every created lead
+    let excelAttachmentPath: string | null = null;
+    if (excelFile) {
+      try {
+        const safeName = excelFile.name.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9._-]/g, "");
+        excelAttachmentPath = `imports/${crypto.randomUUID()}-${safeName}`;
+        await uploadToAttachmentsBucket(excelFile, excelAttachmentPath);
+      } catch (e) {
+        console.error('Excel upload failed:', e);
+        // Non-blocking: importing leads should still work
+        excelAttachmentPath = null;
+      }
+    }
+
     let imported = 0;
     let errors = 0;
 
@@ -515,7 +549,9 @@ export function BulkUploadDialog({
       const lead = validLeads[i];
 
       try {
-        const { error } = await supabase.from("leads").insert({
+        const { data: insertedLead, error } = await supabase
+          .from("leads")
+          .insert({
           name: lead.name,
           phone: lead.phone,
           email: lead.email || null,
@@ -529,13 +565,28 @@ export function BulkUploadDialog({
           construction_stage: lead.construction_stage || null,
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
           created_by: "Bulk Import",
-        });
+        })
+        .select('id')
+        .single();
 
         if (error) {
           errors++;
           console.error("Insert error:", error);
         } else {
           imported++;
+
+          if (excelAttachmentPath && insertedLead?.id) {
+            try {
+              await createAttachmentRecord('lead', insertedLead.id, {
+                name: excelFile?.name || 'lead_import.xlsx',
+                path: excelAttachmentPath,
+                type: excelFile?.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                size: excelFile?.size || null,
+              });
+            } catch (e) {
+              console.error('Failed attaching import file to lead:', e);
+            }
+          }
         }
       } catch (err) {
         errors++;
@@ -713,6 +764,18 @@ export function BulkUploadDialog({
 
     try {
       const assignedMember = staffMembers.find(m => m.id === lead.assignedTo);
+
+      // Upload photo first (so attachment tab can show it immediately)
+      let photoPath: string | null = null;
+      try {
+        const safeName = lead.file.name.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9._-]/g, "");
+        photoPath = `lead-photos/${crypto.randomUUID()}-${safeName}`;
+        await uploadToAttachmentsBucket(lead.file, photoPath);
+      } catch (e) {
+        console.error('Photo upload failed:', e);
+        photoPath = null;
+      }
+
       const { data: insertedLead, error } = await supabase
         .from("leads")
         .insert({
@@ -726,6 +789,7 @@ export function BulkUploadDialog({
         address: lead.siteLocation || null,
         site_location: lead.siteLocation || null,
         site_plus_code: lead.sitePlusCode,
+        site_photo_url: photoPath,
         construction_stage: lead.constructionStage,
         estimated_quantity: lead.estimatedQuantity,
         material_interests: lead.materialInterests.length > 0 
@@ -742,6 +806,19 @@ export function BulkUploadDialog({
         .single();
 
       if (error) throw error;
+
+      if (insertedLead?.id && photoPath) {
+        try {
+          await createAttachmentRecord('lead', insertedLead.id, {
+            name: lead.file.name,
+            path: photoPath,
+            type: lead.file.type || 'image/*',
+            size: lead.file.size,
+          });
+        } catch (e) {
+          console.error('Failed creating attachment record for photo:', e);
+        }
+      }
 
       // Auto-create follow-up task (non-blocking; must not fail lead save)
       if (insertedLead?.id) {
