@@ -108,8 +108,9 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
 
       // Set source & relationship - use actual value
       setLeadSource(lead.source as LeadSource || null);
-      // Set assigned_to to the actual name from lead (not ID)
-      setAssignedTo(lead.assigned_to || "");
+      // Map stored name -> staff id (fallback to stored string so the select can still show it)
+      const match = staffMembers.find(m => m.name === lead.assigned_to);
+      setAssignedTo(match?.id || lead.assigned_to || "");
       
       // Handle referred_by which could be JSON
       if (lead.referred_by && typeof lead.referred_by === 'object' && !Array.isArray(lead.referred_by)) {
@@ -201,6 +202,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
     try {
       const primaryContact = contacts[0];
       const assignedMember = staffMembers.find(m => m.id === assignedTo);
+      const assignedToName = assignedMember?.name || assignedTo;
 
       // Calculate priority - use manual if enabled, otherwise use follow-up priority
       const finalPriority = useManualPriority 
@@ -224,7 +226,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
           : materialInterests,
         source: leadSource || lead.source,
         referred_by: referredBy as any,
-        assigned_to: assignedTo, // Use directly since we're now storing name
+        assigned_to: assignedToName,
         priority: finalPriority,
         notes: initialNote || null,
         next_follow_up: format(nextActionDate, "yyyy-MM-dd"),

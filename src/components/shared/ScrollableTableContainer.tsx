@@ -12,7 +12,6 @@ export function ScrollableTableContainer({
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [scrollWidth, setScrollWidth] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
   const [showScrollbar, setShowScrollbar] = useState(false);
 
   // Update scroll width when content changes
@@ -22,7 +21,6 @@ export function ScrollableTableContainer({
         const scrollW = tableContainerRef.current.scrollWidth;
         const clientW = tableContainerRef.current.clientWidth;
         setScrollWidth(scrollW);
-        setContainerWidth(clientW);
         setShowScrollbar(scrollW > clientW);
       }
     };
@@ -58,7 +56,7 @@ export function ScrollableTableContainer({
   };
 
   return (
-    <div className="rounded-md border bg-card flex flex-col" style={{ maxHeight, minHeight: '500px' }}>
+    <div className="rounded-md border bg-card flex flex-col group" style={{ maxHeight, minHeight: '500px' }}>
       {/* Table container with both scrolls */}
       <div
         ref={tableContainerRef}
@@ -72,10 +70,16 @@ export function ScrollableTableContainer({
         {showScrollbar && (
           <div
             ref={topScrollRef}
-            className="sticky top-12 z-30 overflow-x-auto overflow-y-hidden border-b bg-muted/30"
-            style={{ height: "12px", minHeight: "12px" }}
+            className={
+              "top-scrollbar sticky top-12 z-30 overflow-x-auto overflow-y-hidden " +
+              "bg-muted/30 backdrop-blur-sm " +
+              "opacity-70 group-hover:opacity-100 transition-opacity"
+            }
+            style={{ height: "10px", minHeight: "10px" }}
             onScroll={handleTopScroll}
+            aria-label="Horizontal table scroll"
           >
+            {/* The 1px filler creates the scrollable area; actual visuals come from scrollbar styling. */}
             <div style={{ width: scrollWidth, height: "1px" }} />
           </div>
         )}

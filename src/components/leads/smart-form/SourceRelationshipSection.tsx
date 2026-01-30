@@ -29,6 +29,15 @@ import { LeadSource, ProfessionalRef } from "@/types/lead";
 import { LEAD_SOURCES, MOCK_PROFESSIONALS } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  manager: "Manager",
+  sales_user: "Sales",
+  sales_viewer: "Viewer",
+  field_agent: "Field Agent",
+};
+
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
   referredBy: ProfessionalRef | null;
@@ -132,12 +141,19 @@ export function SourceRelationshipSection({
               </SelectTrigger>
               <SelectContent>
                 {staffMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.name}>
-                    {member.name}
+                  <SelectItem key={member.id} value={member.id}>
+                    <div className="flex items-center gap-2 w-full">
+                      {member.role && (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {roleLabels[member.role] || member.role}
+                        </span>
+                      )}
+                      <span className="truncate">{member.name}</span>
+                    </div>
                   </SelectItem>
                 ))}
                 {/* Show current assigned_to if not in staff list */}
-                {assignedTo && !staffMembers.find(m => m.name === assignedTo) && (
+                {assignedTo && !staffMembers.find(m => m.id === assignedTo) && (
                   <SelectItem key={assignedTo} value={assignedTo}>
                     {assignedTo}
                   </SelectItem>

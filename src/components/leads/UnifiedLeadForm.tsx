@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,8 +69,18 @@ const PRIORITIES = [
   { value: 5, label: "Very Low" }
 ];
 
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  manager: "Manager",
+  sales_user: "Sales",
+  sales_viewer: "Viewer",
+  field_agent: "Field Agent",
+};
+
 export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: UnifiedLeadFormProps) {
   const { staffMembers } = useActiveStaff();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -114,6 +125,11 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
       });
     } else if (mode === "add") {
       // Reset form for add mode
+      const currentUserId = user?.id;
+      const defaultAssignee = currentUserId && staffMembers.some(m => m.id === currentUserId)
+        ? currentUserId
+        : (staffMembers[0]?.id || "");
+
       setFormData({
         name: "",
         phone: "",
@@ -126,14 +142,26 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
         customSource: "",
         interests: [],
         status: "new",
-        assignedTo: "",
+        assignedTo: defaultAssignee,
         priority: 3,
         notes: "",
         nextFollowUp: new Date(),
         lastContact: undefined
       });
     }
-  }, [mode, leadData, open]);
+  }, [mode, leadData, open, staffMembers, user?.id]);
+
+  // If edit-mode lead stores a name, map it to staff id so the select doesn't "lose" the value.
+  useEffect(() => {
+    if (!open) return;
+    if (!formData.assignedTo) return;
+    if (staffMembers.some(m => m.id === formData.assignedTo)) return;
+
+    const match = staffMembers.find(m => m.name === formData.assignedTo);
+    if (match) {
+      setFormData(prev => ({ ...prev, assignedTo: match.id }));
+    }
+  }, [open, formData.assignedTo, staffMembers]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -315,8 +343,22 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                     </SelectTrigger>
                     <SelectContent>
                       {staffMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
+                        <SelectItem key={member.id} value={member.id}>
+                          <div className="flex items-center justify-between gap-3 w-full">
+                            <span className="truncate">{member.name}</span>
+                            {member.role && (
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                {roleLabels[member.role] || member.role}
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
                       ))}
+                      {formData.assignedTo && !staffMembers.find(m => m.id === formData.assignedTo) && (
+                        <SelectItem key={formData.assignedTo} value={formData.assignedTo}>
+                          {formData.assignedTo}
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
