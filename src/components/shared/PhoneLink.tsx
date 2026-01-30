@@ -70,6 +70,7 @@ export function PhoneLink({
         className
       )}
       onClick={handleClick}
+      title="Click to call"
     >
       {phone}
     </a>

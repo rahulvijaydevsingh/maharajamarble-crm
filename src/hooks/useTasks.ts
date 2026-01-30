@@ -45,6 +45,7 @@ export interface Task {
     id: string;
     name: string;
     phone: string;
+    site_plus_code?: string | null;
   } | null;
   // Computed fields
   subtasks_count?: number;
@@ -126,7 +127,7 @@ export function useTasks() {
         .from("tasks")
         .select(`
           *,
-          lead:leads(id, name, phone)
+          lead:leads(id, name, phone, site_plus_code)
         `)
         .order("due_date", { ascending: true });
 
@@ -163,7 +164,7 @@ export function useTasks() {
         .insert([taskData])
         .select(`
           *,
-          lead:leads(id, name, phone)
+          lead:leads(id, name, phone, site_plus_code)
         `)
         .single();
 
@@ -225,7 +226,7 @@ export function useTasks() {
         .eq("id", id)
         .select(`
           *,
-          lead:leads(id, name, phone)
+          lead:leads(id, name, phone, site_plus_code)
         `)
         .single();
 

@@ -84,6 +84,7 @@ import { useNavigate } from "react-router-dom";
 import { useTasks, Task } from "@/hooks/useTasks";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
+import { useProfessionals, Professional } from "@/hooks/useProfessionals";
 import { supabase } from "@/integrations/supabase/client";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
 import { useTablePreferences } from "@/hooks/useTablePreferences";
@@ -93,6 +94,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { PhoneLink } from "@/components/shared/PhoneLink";
+import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -124,6 +126,7 @@ interface ColumnVisibility {
   priority: boolean;
   assignedTo: boolean;
   relatedTo: boolean;
+  sitePlusCode: boolean;
   dueDate: boolean;
   recurrence: boolean;
   status: boolean;
@@ -316,6 +319,7 @@ export function EnhancedTaskTable({
   const { tasks, loading, updateTask, deleteTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
   const { customers } = useCustomers();
+  const { professionals } = useProfessionals();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("tasks");
   const { 
     columns, 
@@ -414,6 +418,7 @@ export function EnhancedTaskTable({
     priority: true,
     assignedTo: true,
     relatedTo: true,
+    sitePlusCode: false,
     dueDate: true,
     recurrence: true,
     status: true,
@@ -819,6 +824,8 @@ export function EnhancedTaskTable({
         );
       case "relatedTo":
         return columnLabel;
+      case "sitePlusCode":
+        return columnLabel;
       case "dueDate":
         return (
           <div className="flex items-center gap-1">
@@ -982,6 +989,30 @@ export function EnhancedTaskTable({
         ) : (
           <span className="text-muted-foreground">-</span>
         );
+      case "sitePlusCode": {
+        const plusCodeFromLead = task.lead?.site_plus_code || null;
+        const plusCodeFromCustomer =
+          task.related_entity_type === "customer"
+            ? customers.find((c) => c.id === task.related_entity_id)?.site_plus_code || null
+            : null;
+        const plusCodeFromProfessional =
+          task.related_entity_type === "professional"
+            ? professionals.find((p) => p.id === task.related_entity_id)?.site_plus_code || null
+            : null;
+
+        const plusCode = plusCodeFromLead || plusCodeFromCustomer || plusCodeFromProfessional;
+        return (
+          <PlusCodeLink
+            plusCode={plusCode}
+            log={{
+              leadId: task.lead_id || undefined,
+              customerId: task.related_entity_type === "customer" ? task.related_entity_id || undefined : undefined,
+              relatedEntityType: task.related_entity_type || undefined,
+              relatedEntityId: task.related_entity_id || undefined,
+            }}
+          />
+        );
+      }
       case "dueDate":
         return (
           <div className="space-y-1">

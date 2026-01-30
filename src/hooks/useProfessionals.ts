@@ -25,6 +25,7 @@ export interface Professional {
   next_follow_up: string | null;
   created_at: string;
   updated_at: string;
+  site_plus_code?: string | null;
 }
 
 export interface ProfessionalInsert {
@@ -47,6 +48,7 @@ export interface ProfessionalInsert {
   created_by?: string;
   last_follow_up?: string | null;
   next_follow_up?: string | null;
+  site_plus_code?: string | null;
 }
 
 export function useProfessionals() {

@@ -26,6 +26,7 @@ import { ProfessionalManageFiltersDialog } from "./filters/ProfessionalManageFil
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { PhoneLink } from "@/components/shared/PhoneLink";
+import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 
 type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | null;
 type SortDirection = "asc" | "desc" | null;
@@ -207,6 +208,13 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
             </div>
             {professional.email && <div className="text-xs text-muted-foreground">{professional.email}</div>}
           </div>
+        );
+      case "sitePlusCode":
+        return (
+          <PlusCodeLink
+            plusCode={professional.site_plus_code || null}
+            log={{ relatedEntityType: "professional", relatedEntityId: professional.id }}
+          />
         );
       case "professionalType":
         return <span className="capitalize">{professional.professional_type.replace("_", " ")}</span>;

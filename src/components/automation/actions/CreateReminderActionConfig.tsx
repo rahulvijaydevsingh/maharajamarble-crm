@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 
 interface CreateReminderActionConfigProps {
   config: Record<string, any>;
@@ -23,6 +24,7 @@ const REMINDER_OFFSET_UNITS = [
 
 export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateReminderActionConfigProps) => {
   const { staffMembers } = useActiveStaff();
+  const groupedStaff = buildStaffGroups(staffMembers);
   
   const updateConfig = (key: string, value: any) => {
     onConfigChange({ ...config, [key]: value });
@@ -132,9 +134,13 @@ export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateRem
               <SelectValue placeholder="Select user..." />
             </SelectTrigger>
             <SelectContent>
-              {staffMembers.map(member => (
-                <SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
-              ))}
+              {groupedStaff.flatMap((group) =>
+                group.members.map((member) => (
+                  <SelectItem key={member.id} value={member._display}>
+                    {member._display}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         )}
