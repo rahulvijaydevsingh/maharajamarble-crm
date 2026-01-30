@@ -59,24 +59,27 @@ export function ScrollableTableContainer({
 
   return (
     <div className="rounded-md border bg-card flex flex-col" style={{ maxHeight, minHeight: '500px' }}>
-      {/* Top horizontal scrollbar - only show if content overflows */}
-      {showScrollbar && (
-        <div 
-          ref={topScrollRef}
-          className="overflow-x-auto overflow-y-hidden flex-shrink-0 border-b bg-muted/30"
-          style={{ height: '12px', minHeight: '12px' }}
-          onScroll={handleTopScroll}
-        >
-          <div style={{ width: scrollWidth, height: '1px' }} />
-        </div>
-      )}
-      
       {/* Table container with both scrolls */}
-      <div 
+      <div
         ref={tableContainerRef}
         className="overflow-auto flex-1"
         onScroll={handleTableScroll}
       >
+        {/*
+          Sticky top horizontal scrollbar (shown only if content overflows).
+          Positioned below sticky table headers (typical header height is 3rem = h-12).
+        */}
+        {showScrollbar && (
+          <div
+            ref={topScrollRef}
+            className="sticky top-12 z-30 overflow-x-auto overflow-y-hidden border-b bg-muted/30"
+            style={{ height: "12px", minHeight: "12px" }}
+            onScroll={handleTopScroll}
+          >
+            <div style={{ width: scrollWidth, height: "1px" }} />
+          </div>
+        )}
+
         {children}
       </div>
     </div>
