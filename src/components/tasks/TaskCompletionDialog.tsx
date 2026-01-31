@@ -148,8 +148,30 @@ export function TaskCompletionDialog({
 
   const minTimeForToday = useMemo(() => {
     if (!isNextTimeToday) return undefined;
-    return format(new Date(), "HH:mm");
+    // Force at least the next minute so HH:mm (minute precision) can't be <= now
+    const d = new Date();
+    d.setSeconds(0, 0);
+    d.setMinutes(d.getMinutes() + 1);
+    return format(d, "HH:mm");
   }, [isNextTimeToday]);
+
+  const timeToMinutes = (t: string) => {
+    const [hStr, mStr] = (t || "").split(":");
+    const h = Number(hStr);
+    const m = Number(mStr);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  // If user picks "today", ensure the time isn't already in the past.
+  useEffect(() => {
+    if (!minTimeForToday) return;
+    const cur = timeToMinutes(nextTime);
+    const min = timeToMinutes(minTimeForToday);
+    if (cur === null || min === null) return;
+    if (cur < min) setNextTime(minTimeForToday);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minTimeForToday]);
 
   const validate = () => {
     const nextErrors: typeof errors = {};
@@ -162,10 +184,9 @@ export function TaskCompletionDialog({
     if (nextAction === "follow_up" || nextAction === "reschedule") {
       if (!nextDate) nextErrors.nextDate = "Please pick the next date";
       if (!nextTime) nextErrors.nextTime = "Please pick the next time";
-      if (nextDate && nextDateTime) {
-        if (nextDateTime.getTime() <= Date.now()) {
-          nextErrors.nextTime = "Next schedule must be in the future";
-        }
+      if (nextDate && !nextDateTime) nextErrors.nextTime = "Invalid time";
+      if (nextDate && nextDateTime && nextDateTime.getTime() <= Date.now()) {
+        nextErrors.nextTime = "Next schedule must be in the future";
       }
     }
 
@@ -391,7 +412,7 @@ export function TaskCompletionDialog({
               </div>
 
               <div className="space-y-2">
-                <Label>Next Time</Label>
+                <Label>Next Time *</Label>
                 <Input
                   type="time"
                   value={nextTime}
