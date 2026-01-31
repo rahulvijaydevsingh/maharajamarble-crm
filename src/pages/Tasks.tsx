@@ -5,6 +5,7 @@ import { EnhancedTaskTable } from "@/components/tasks/EnhancedTaskTable";
 import { TaskKanbanView } from "@/components/tasks/TaskKanbanView";
 import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
 import { EditTaskDialog } from "@/components/tasks/EditTaskDialog";
+import { TaskCompletionDialog } from "@/components/tasks/TaskCompletionDialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,8 +25,11 @@ const Tasks = () => {
   const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
-  const { tasks, updateTask } = useTasks();
+  const { tasks, updateTask, addTask } = useTasks();
   const { canCreate } = usePermissions();
+
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<any>(null);
   
   // Get URL params for filtering
   const relatedToType = searchParams.get("related_to_type");
@@ -49,10 +53,23 @@ const Tasks = () => {
 
   const handleKanbanUpdate = async (id: string, updates: any) => {
     try {
+      if (updates?.status === "Completed") {
+        const t = tasks.find((x) => x.id === id) || null;
+        if (t) {
+          setTaskToComplete(t);
+          setCompleteDialogOpen(true);
+          return;
+        }
+      }
       await updateTask(id, updates);
     } catch (error) {
       console.error("Failed to update task:", error);
     }
+  };
+
+  const handleRequestComplete = (task: any) => {
+    setTaskToComplete(task);
+    setCompleteDialogOpen(true);
   };
 
   return (
@@ -101,6 +118,7 @@ const Tasks = () => {
             {viewMode === "list" ? (
               <EnhancedTaskTable 
                 onEditTask={handleEditTask}
+                onRequestCompleteTask={handleRequestComplete}
                 initialRelatedToType={relatedToType}
                 initialRelatedToId={relatedToId}
                 initialRelatedToName={relatedToName}
@@ -110,6 +128,7 @@ const Tasks = () => {
                 tasks={tasks} 
                 onTaskUpdate={handleKanbanUpdate} 
                 onEditTask={handleEditTask} 
+                onRequestCompleteTask={handleRequestComplete}
               />
             )}
           </CardContent>
@@ -129,6 +148,17 @@ const Tasks = () => {
             onSave={handleTaskUpdate}
           />
         )}
+
+        <TaskCompletionDialog
+          open={completeDialogOpen}
+          onOpenChange={(o) => {
+            setCompleteDialogOpen(o);
+            if (!o) setTaskToComplete(null);
+          }}
+          task={taskToComplete}
+          updateTask={updateTask}
+          addTask={addTask}
+        />
       </div>
     </DashboardLayout>
   );

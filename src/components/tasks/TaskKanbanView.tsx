@@ -17,6 +17,7 @@ interface TaskKanbanViewProps {
   tasks: Task[];
   onTaskUpdate: (id: string, updates: Partial<Task>) => void;
   onEditTask: (task: Task) => void;
+  onRequestCompleteTask?: (task: Task) => void;
 }
 
 const KANBAN_FIELDS = [
@@ -56,7 +57,7 @@ const priorityColors: Record<string, string> = {
   Low: "bg-green-100 border-green-300",
 };
 
-export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask }: TaskKanbanViewProps) {
+export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompleteTask }: TaskKanbanViewProps) {
   const [groupBy, setGroupBy] = useState("status");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 
@@ -149,6 +150,13 @@ export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask }: TaskKanbanVi
       : String(draggedTask[groupBy as keyof Task]);
     
     if (currentValue !== targetColumn) {
+      // Enforce completion dialog when moving to Completed
+      if (groupBy === "status" && targetColumn === "Completed" && onRequestCompleteTask) {
+        onRequestCompleteTask(draggedTask);
+        setDraggedTask(null);
+        return;
+      }
+
       const updates: Partial<Task> = {};
       
       if (groupBy === "status") {
