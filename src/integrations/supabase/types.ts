@@ -1368,6 +1368,92 @@ export type Database = {
         }
         Relationships: []
       }
+      task_activity_log: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          notes: string | null
+          task_id: string
+          user_id: string | null
+          user_name: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          task_id: string
+          user_id?: string | null
+          user_name?: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          task_id?: string
+          user_id?: string | null
+          user_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_activity_log_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_completion_templates: {
+        Row: {
+          created_at: string
+          default_completion_status: string | null
+          default_next_action_payload: Json | null
+          default_next_action_type: string | null
+          default_outcome: string | null
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          task_type: string
+          template_notes: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_completion_status?: string | null
+          default_next_action_payload?: Json | null
+          default_next_action_type?: string | null
+          default_outcome?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          task_type: string
+          template_notes: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_completion_status?: string | null
+          default_next_action_payload?: Json | null
+          default_next_action_type?: string | null
+          default_outcome?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          task_type?: string
+          template_notes?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       task_snooze_history: {
         Row: {
           created_at: string
@@ -1455,17 +1541,29 @@ export type Database = {
       }
       tasks: {
         Row: {
+          actual_time_spent_minutes: number | null
           assigned_to: string
+          attempt_count: number
           completed_at: string | null
+          completion_key_points: Json | null
+          completion_notes: string | null
+          completion_outcome: string | null
+          completion_status: string | null
           created_at: string
           created_by: string
+          deal_ready: boolean
+          deal_ready_at: string | null
           description: string | null
           due_date: string
           due_time: string | null
           id: string
           is_recurring: boolean | null
           is_starred: boolean | null
+          last_attempt_at: string | null
           lead_id: string | null
+          max_attempts: number | null
+          next_action_payload: Json | null
+          next_action_type: string | null
           original_due_date: string | null
           parent_task_id: string | null
           priority: string
@@ -1490,17 +1588,29 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          actual_time_spent_minutes?: number | null
           assigned_to: string
+          attempt_count?: number
           completed_at?: string | null
+          completion_key_points?: Json | null
+          completion_notes?: string | null
+          completion_outcome?: string | null
+          completion_status?: string | null
           created_at?: string
           created_by?: string
+          deal_ready?: boolean
+          deal_ready_at?: string | null
           description?: string | null
           due_date: string
           due_time?: string | null
           id?: string
           is_recurring?: boolean | null
           is_starred?: boolean | null
+          last_attempt_at?: string | null
           lead_id?: string | null
+          max_attempts?: number | null
+          next_action_payload?: Json | null
+          next_action_type?: string | null
           original_due_date?: string | null
           parent_task_id?: string | null
           priority?: string
@@ -1525,17 +1635,29 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          actual_time_spent_minutes?: number | null
           assigned_to?: string
+          attempt_count?: number
           completed_at?: string | null
+          completion_key_points?: Json | null
+          completion_notes?: string | null
+          completion_outcome?: string | null
+          completion_status?: string | null
           created_at?: string
           created_by?: string
+          deal_ready?: boolean
+          deal_ready_at?: string | null
           description?: string | null
           due_date?: string
           due_time?: string | null
           id?: string
           is_recurring?: boolean | null
           is_starred?: boolean | null
+          last_attempt_at?: string | null
           lead_id?: string | null
+          max_attempts?: number | null
+          next_action_payload?: Json | null
+          next_action_type?: string | null
           original_due_date?: string | null
           parent_task_id?: string | null
           priority?: string
