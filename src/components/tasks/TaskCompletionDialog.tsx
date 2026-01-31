@@ -78,7 +78,13 @@ export function TaskCompletionDialog({
   const [nextDate, setNextDate] = useState<Date | undefined>(undefined);
   const [nextTime, setNextTime] = useState<string>("10:00");
 
-  const [errors, setErrors] = useState<{ outcome?: string; nextAction?: string; notes?: string; nextDate?: string }>({});
+  const [errors, setErrors] = useState<{
+    outcome?: string;
+    nextAction?: string;
+    notes?: string;
+    nextDate?: string;
+    nextTime?: string;
+  }>({});
 
   useEffect(() => {
     if (!open) return;
@@ -119,6 +125,32 @@ export function TaskCompletionDialog({
     return base;
   }, [isUnsuccessful]);
 
+  const nextDateTime = useMemo(() => {
+    if (!nextDate) return null;
+    const [hStr, mStr] = (nextTime || "00:00").split(":");
+    const h = Number(hStr);
+    const m = Number(mStr);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    const d = new Date(nextDate);
+    d.setHours(h, m, 0, 0);
+    return d;
+  }, [nextDate, nextTime]);
+
+  const isNextTimeToday = useMemo(() => {
+    if (!nextDate) return false;
+    const now = new Date();
+    return (
+      nextDate.getFullYear() === now.getFullYear() &&
+      nextDate.getMonth() === now.getMonth() &&
+      nextDate.getDate() === now.getDate()
+    );
+  }, [nextDate]);
+
+  const minTimeForToday = useMemo(() => {
+    if (!isNextTimeToday) return undefined;
+    return format(new Date(), "HH:mm");
+  }, [isNextTimeToday]);
+
   const validate = () => {
     const nextErrors: typeof errors = {};
     if (!task) return { valid: false, nextErrors: { notes: "No task selected" } };
@@ -129,6 +161,12 @@ export function TaskCompletionDialog({
 
     if (nextAction === "follow_up" || nextAction === "reschedule") {
       if (!nextDate) nextErrors.nextDate = "Please pick the next date";
+      if (!nextTime) nextErrors.nextTime = "Please pick the next time";
+      if (nextDate && nextDateTime) {
+        if (nextDateTime.getTime() <= Date.now()) {
+          nextErrors.nextTime = "Next schedule must be in the future";
+        }
+      }
     }
 
     if (isUnsuccessful && nextAction === "convert_to_deal") {
@@ -354,7 +392,17 @@ export function TaskCompletionDialog({
 
               <div className="space-y-2">
                 <Label>Next Time</Label>
-                <Input type="time" value={nextTime} onChange={(e) => setNextTime(e.target.value)} />
+                <Input
+                  type="time"
+                  value={nextTime}
+                  min={minTimeForToday}
+                  onChange={(e) => {
+                    setNextTime(e.target.value);
+                    setErrors((p) => ({ ...p, nextTime: undefined }));
+                  }}
+                  className={cn(errors.nextTime && "border-destructive")}
+                />
+                {errors.nextTime && <p className="text-sm text-destructive">{errors.nextTime}</p>}
               </div>
             </div>
           )}
