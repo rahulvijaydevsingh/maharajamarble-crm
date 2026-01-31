@@ -33,6 +33,8 @@ import { CalendarLegend } from "@/components/calendar/CalendarLegend";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useTasks } from "@/hooks/useTasks";
 import { toast } from "sonner";
+import { TaskCompletionDialog } from "@/components/tasks/TaskCompletionDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 type ViewMode = "month" | "week" | "day" | "agenda";
 
@@ -44,7 +46,10 @@ const CalendarPage = () => {
   const [selectedHour, setSelectedHour] = useState<number | undefined>();
 
   const { staffMembers } = useActiveStaff();
-  const { updateTask } = useTasks();
+  const { updateTask, addTask } = useTasks();
+
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<any>(null);
 
   const {
     events,
@@ -122,9 +127,16 @@ const CalendarPage = () => {
   const handleEventComplete = async (event: CalendarEvent) => {
     if (event.source === "task") {
       try {
-        await updateTask(event.sourceId, { status: "Completed" });
-        toast.success("Task marked as complete");
-        refetch();
+        // Fetch task so we can enforce completion workflow here too.
+        const { data, error } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("id", event.sourceId)
+          .single();
+
+        if (error) throw error;
+        setTaskToComplete(data);
+        setCompleteDialogOpen(true);
       } catch (error) {
         toast.error("Failed to complete task");
       }
@@ -284,6 +296,17 @@ const CalendarPage = () => {
           onEventCreated={refetch}
         />
       </div>
+
+      <TaskCompletionDialog
+        open={completeDialogOpen}
+        onOpenChange={(o) => {
+          setCompleteDialogOpen(o);
+          if (!o) setTaskToComplete(null);
+        }}
+        task={taskToComplete}
+        updateTask={updateTask}
+        addTask={addTask}
+      />
     </DashboardLayout>
   );
 };

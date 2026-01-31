@@ -22,6 +22,19 @@ export interface Task {
   reminder: boolean;
   reminder_time: string | null;
   completed_at: string | null;
+  // Completion workflow fields
+  completion_status?: string | null;
+  completion_outcome?: string | null;
+  completion_notes?: string | null;
+  completion_key_points?: any | null;
+  next_action_type?: string | null;
+  next_action_payload?: any | null;
+  // Attempt tracking / deal conversion
+  attempt_count?: number | null;
+  last_attempt_at?: string | null;
+  max_attempts?: number | null;
+  deal_ready?: boolean | null;
+  deal_ready_at?: string | null;
   // New enhanced fields
   is_starred: boolean;
   related_entity_type: string | null;
@@ -67,6 +80,18 @@ export interface TaskInsert {
   reminder?: boolean;
   reminder_time?: string | null;
   created_by?: string;
+  // Completion workflow fields (optional)
+  completion_status?: string | null;
+  completion_outcome?: string | null;
+  completion_notes?: string | null;
+  completion_key_points?: any | null;
+  next_action_type?: string | null;
+  next_action_payload?: any | null;
+  attempt_count?: number | null;
+  last_attempt_at?: string | null;
+  max_attempts?: number | null;
+  deal_ready?: boolean | null;
+  deal_ready_at?: string | null;
   // New enhanced fields
   is_starred?: boolean;
   related_entity_type?: string | null;

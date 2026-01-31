@@ -139,6 +139,7 @@ interface TaskTableProps {
   initialRelatedToType?: string | null;
   initialRelatedToId?: string | null;
   initialRelatedToName?: string | null;
+  onRequestCompleteTask?: (task: Task) => void;
 }
 
 // Multi-select filter component matching leads page style
@@ -314,7 +315,8 @@ export function EnhancedTaskTable({
   onEditTask, 
   initialRelatedToType, 
   initialRelatedToId,
-  initialRelatedToName 
+  initialRelatedToName,
+  onRequestCompleteTask,
 }: TaskTableProps) {
   const { tasks, loading, updateTask, deleteTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
@@ -552,8 +554,14 @@ export function EnhancedTaskTable({
   };
 
   const handleCompleteTask = async (taskId: string) => {
+    const t = tasks.find((x) => x.id === taskId) || null;
+    if (t && onRequestCompleteTask) {
+      onRequestCompleteTask(t);
+      return;
+    }
+    // Fallback (should be avoided): keep old behavior if dialog isn't wired.
     try {
-      await updateTask(taskId, { status: 'Completed' });
+      await updateTask(taskId, { status: "Completed" });
       toast({ title: "Task marked as completed" });
     } catch (error) {
       console.error("Failed to complete task:", error);
@@ -613,6 +621,15 @@ export function EnhancedTaskTable({
   const handleBulkAction = async () => {
     if (selectedTasks.length === 0) return;
 
+    if (bulkActionType === "complete") {
+      toast({
+        title: "Bulk complete not allowed",
+        description: "Tasks must be completed one-by-one to capture outcome, next action, and notes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       for (const taskId of selectedTasks) {
         if (bulkActionType === "status") {
@@ -667,6 +684,15 @@ export function EnhancedTaskTable({
 
   const handleBulkActionImmediate = async (type: string) => {
     if (selectedTasks.length === 0) return;
+
+    if (type === "complete") {
+      toast({
+        title: "Bulk complete not allowed",
+        description: "Tasks must be completed one-by-one to capture outcome, next action, and notes.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       for (const taskId of selectedTasks) {
         if (type === "complete") {
