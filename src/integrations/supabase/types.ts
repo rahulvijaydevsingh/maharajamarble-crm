@@ -1250,7 +1250,7 @@ export type Database = {
         Insert: {
           assigned_to: string
           created_at?: string
-          created_by: string
+          created_by?: string
           description?: string | null
           entity_id: string
           entity_type: string
