@@ -1583,6 +1583,10 @@ export type Database = {
           reminder_time: string | null
           snoozed_until: string | null
           status: string
+          status_override: string | null
+          status_override_at: string | null
+          status_override_by: string | null
+          status_override_reason: string | null
           title: string
           type: string
           updated_at: string
@@ -1630,6 +1634,10 @@ export type Database = {
           reminder_time?: string | null
           snoozed_until?: string | null
           status?: string
+          status_override?: string | null
+          status_override_at?: string | null
+          status_override_by?: string | null
+          status_override_reason?: string | null
           title: string
           type?: string
           updated_at?: string
@@ -1677,6 +1685,10 @@ export type Database = {
           reminder_time?: string | null
           snoozed_until?: string | null
           status?: string
+          status_override?: string | null
+          status_override_at?: string | null
+          status_override_by?: string | null
+          status_override_reason?: string | null
           title?: string
           type?: string
           updated_at?: string
