@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Leads from "./pages/Leads";
 import Customers from "./pages/Customers";
 import Tasks from "./pages/Tasks";
+import TaskDetailPage from "./pages/TaskDetailPage";
 import TodoLists from "./pages/TodoLists";
 import CalendarPage from "./pages/CalendarPage";
 import Quotations from "./pages/Quotations";
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
+             <Route path="/tasks/:id" element={<ProtectedRoute><TaskDetailPage /></ProtectedRoute>} />
             <Route path="/todo-lists" element={<ProtectedRoute><TodoLists /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
             <Route path="/quotations" element={<ProtectedRoute><Quotations /></ProtectedRoute>} />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-export type AttachmentEntityType = "lead" | "customer";
+export type AttachmentEntityType = "lead" | "customer" | "task";
 
 export interface EntityAttachmentRow {
   id: string;
