@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { TaskDetailView } from "@/components/tasks/TaskDetailView";
 
 type TaskDetailModalContextValue = {
@@ -46,6 +46,23 @@ export function TaskDetailModalProvider({ children }: { children: React.ReactNod
 
 export function useTaskDetailModal() {
   const ctx = useContext(TaskDetailModalContext);
-  if (!ctx) throw new Error("useTaskDetailModal must be used within TaskDetailModalProvider");
+  const warned = useRef(false);
+
+  if (!ctx) {
+    // Fail-safe: don't crash the entire app if a screen renders outside the provider
+    // (can happen transiently during refactors / route-level rendering).
+    if (!warned.current) {
+      warned.current = true;
+      // eslint-disable-next-line no-console
+      console.warn("useTaskDetailModal used outside TaskDetailModalProvider");
+    }
+    return {
+      openTask: () => {},
+      closeTask: () => {},
+      taskId: null,
+      open: false,
+    } satisfies TaskDetailModalContextValue;
+  }
+
   return ctx;
 }
