@@ -10,6 +10,7 @@ import {
 import { Lead } from '@/hooks/useLeads';
 import { useActivityLog, ActivityLogEntry } from '@/hooks/useActivityLog';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { ActivityLogFilters } from '@/components/leads/activity/ActivityLogFilters';
 import { ActivityLogItem } from '@/components/leads/activity/ActivityLogItem';
 import { AddManualActivityDialog } from '@/components/leads/activity/AddManualActivityDialog';
@@ -34,6 +35,7 @@ interface LeadActivityTabProps {
 export function LeadActivityTab({ lead, onSwitchToTasksTab, onSwitchToRemindersTab }: LeadActivityTabProps) {
   const { activities, loading, hasMore, loadMore, deleteActivity, refetch } = useActivityLog(lead.id);
   const { role } = usePermissions();
+  const { openTask } = useTaskDetailModal();
   const isAdmin = role === 'admin' || role === 'super_admin';
   
   // State
@@ -217,8 +219,7 @@ export function LeadActivityTab({ lead, onSwitchToTasksTab, onSwitchToRemindersT
                       onEdit={() => {/* TODO: Implement edit dialog */}}
                       onDelete={setActivityToDelete}
                       onViewTask={(taskId) => {
-                        // Switch to tasks tab and pass the task ID to highlight
-                        onSwitchToTasksTab?.(taskId);
+                        openTask(taskId);
                       }}
                       onViewReminder={(reminderId) => {
                         // Switch to reminders tab and pass the reminder ID to highlight
