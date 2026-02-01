@@ -38,6 +38,7 @@ import { Lead } from '@/hooks/useLeads';
 import { useTasks } from '@/hooks/useTasks';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
+import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { format, isPast, isToday } from 'date-fns';
 
 interface LeadTasksTabProps {
@@ -58,12 +59,15 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
-  const { tasks, loading, updateTask, deleteTask, refetch } = useTasks();
+  const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'completed' | 'overdue'>('all');
+
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<any>(null);
 
   // Auto-open edit dialog when highlightTaskId is provided
   React.useEffect(() => {
@@ -98,9 +102,18 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
   }, [tasks, lead.id, filter]);
 
   const handleComplete = async (taskId: string, isCompleted: boolean) => {
+    if (isCompleted) {
+      const t = tasks.find((x) => x.id === taskId) || null;
+      if (t) {
+        setTaskToComplete(t);
+        setCompleteDialogOpen(true);
+      }
+      return;
+    }
+
     await updateTask(taskId, {
-      status: isCompleted ? 'Completed' : 'Pending',
-      completed_at: isCompleted ? new Date().toISOString() : null,
+      status: 'Pending',
+      completed_at: null,
     });
   };
 
@@ -348,6 +361,17 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <TaskCompletionDialog
+        open={completeDialogOpen}
+        onOpenChange={(o) => {
+          setCompleteDialogOpen(o);
+          if (!o) setTaskToComplete(null);
+        }}
+        task={taskToComplete}
+        updateTask={updateTask}
+        addTask={addTask}
+      />
     </div>
   );
 }
