@@ -95,6 +95,7 @@ import { ScrollableTableContainer } from "@/components/shared/ScrollableTableCon
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -333,6 +334,7 @@ export function EnhancedTaskTable({
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
 
   // Detail view states for Related To links
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
@@ -930,7 +932,7 @@ export function EnhancedTaskTable({
               className="h-auto p-0 font-medium justify-start"
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/tasks/${task.id}`);
+                openTask(task.id);
               }}
             >
               {task.title}

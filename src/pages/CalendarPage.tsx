@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,11 +35,12 @@ import { useTasks } from "@/hooks/useTasks";
 import { toast } from "sonner";
 import { TaskCompletionDialog } from "@/components/tasks/TaskCompletionDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 
 type ViewMode = "month" | "week" | "day" | "agenda";
 
 const CalendarPage = () => {
-  const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");
   const [addEventOpen, setAddEventOpen] = useState(false);
@@ -123,7 +123,7 @@ const CalendarPage = () => {
 
   const handleEventClick = (event: CalendarEvent) => {
     if (event.source === "task") {
-      navigate(`/tasks/${event.sourceId}`);
+      openTask(event.sourceId);
       return;
     }
     // Other event types can be handled later (e.g., open edit dialog)
