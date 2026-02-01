@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { format, isPast, isToday, parseISO } from "date-fns";
 import { Task } from "@/hooks/useTasks";
 import { PhoneLink } from "@/components/shared/PhoneLink";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 
 interface TaskKanbanViewProps {
   tasks: Task[];
@@ -60,7 +60,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompleteTask }: TaskKanbanViewProps) {
-  const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   const [groupBy, setGroupBy] = useState("status");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 
@@ -221,7 +221,7 @@ export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompl
                     className="cursor-pointer hover:shadow-md transition-shadow bg-background"
                     draggable
                     onDragStart={(e) => handleDragStart(e, task)}
-                    onClick={() => navigate(`/tasks/${task.id}`)}
+                    onClick={() => openTask(task.id)}
                   >
                     <CardContent className="p-3">
                       <div className="flex items-start gap-2">

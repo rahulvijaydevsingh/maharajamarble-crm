@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -41,6 +40,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { format, isPast, isToday } from 'date-fns';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 
 interface LeadTasksTabProps {
   lead: Lead;
@@ -60,7 +60,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
-  const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -233,7 +233,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                       <Button
                         variant="link"
                         className="h-auto p-0 justify-start"
-                        onClick={() => navigate(`/tasks/${task.id}`)}
+                        onClick={() => openTask(task.id)}
                       >
                         {task.title}
                       </Button>

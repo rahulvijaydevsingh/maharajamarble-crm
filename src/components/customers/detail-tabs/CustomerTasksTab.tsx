@@ -42,6 +42,7 @@ import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { format, isPast, isToday, parseISO } from 'date-fns';
 import { calculateTaskStatus } from '@/lib/taskStatusService';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 
 interface CustomerTasksTabProps {
   customer: Customer;
@@ -62,6 +63,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 
 export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
   const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -234,7 +236,7 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
                       <Button
                         variant="link"
                         className="h-auto p-0 justify-start"
-                        onClick={() => navigate(`/tasks/${task.id}`)}
+                        onClick={() => openTask(task.id)}
                       >
                         {task.title}
                       </Button>
