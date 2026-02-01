@@ -925,7 +925,16 @@ export function EnhancedTaskTable({
       case "title":
         return (
           <div>
-            <div className="font-medium">{task.title}</div>
+            <Button
+              variant="link"
+              className="h-auto p-0 font-medium justify-start"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/tasks/${task.id}`);
+              }}
+            >
+              {task.title}
+            </Button>
             {task.description && (
               <div className="text-sm text-muted-foreground mt-1 line-clamp-1">
                 {task.description}

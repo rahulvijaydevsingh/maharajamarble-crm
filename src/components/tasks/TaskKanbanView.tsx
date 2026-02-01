@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -8,7 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar, User, GripVertical, Clock, Phone, LinkIcon } from "lucide-react";
+import { Calendar, User, GripVertical, Clock, Phone, LinkIcon, Pencil } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { format, isPast, isToday, parseISO } from "date-fns";
 import { Task } from "@/hooks/useTasks";
 import { PhoneLink } from "@/components/shared/PhoneLink";
@@ -58,6 +60,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompleteTask }: TaskKanbanViewProps) {
+  const navigate = useNavigate();
   const [groupBy, setGroupBy] = useState("status");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 
@@ -218,13 +221,27 @@ export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompl
                     className="cursor-pointer hover:shadow-md transition-shadow bg-background"
                     draggable
                     onDragStart={(e) => handleDragStart(e, task)}
-                    onClick={() => onEditTask(task)}
+                    onClick={() => navigate(`/tasks/${task.id}`)}
                   >
                     <CardContent className="p-3">
                       <div className="flex items-start gap-2">
                         <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 cursor-grab" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{task.title}</div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-medium truncate">{task.title}</div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditTask(task);
+                              }}
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
                           
                           {task.lead && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">

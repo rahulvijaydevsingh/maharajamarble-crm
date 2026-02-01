@@ -231,7 +231,13 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
                       />
                     </TableCell>
                     <TableCell className={task.calculatedStatus === 'Completed' ? 'line-through text-muted-foreground' : 'font-medium'}>
-                      {task.title}
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 justify-start"
+                        onClick={() => navigate(`/tasks/${task.id}`)}
+                      >
+                        {task.title}
+                      </Button>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       <TooltipProvider>

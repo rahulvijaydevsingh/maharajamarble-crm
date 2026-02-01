@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 type ViewMode = "month" | "week" | "day" | "agenda";
 
 const CalendarPage = () => {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");
   const [addEventOpen, setAddEventOpen] = useState(false);
@@ -120,8 +122,11 @@ const CalendarPage = () => {
   };
 
   const handleEventClick = (event: CalendarEvent) => {
-    // Navigate to related entity or show event details
-    console.log("Event clicked:", event);
+    if (event.source === "task") {
+      navigate(`/tasks/${event.sourceId}`);
+      return;
+    }
+    // Other event types can be handled later (e.g., open edit dialog)
   };
 
   const handleEventComplete = async (event: CalendarEvent) => {

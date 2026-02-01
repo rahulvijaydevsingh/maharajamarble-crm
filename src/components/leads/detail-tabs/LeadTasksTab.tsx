@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -59,6 +60,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
+  const navigate = useNavigate();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -228,7 +230,13 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                       />
                     </TableCell>
                     <TableCell className={task.status === 'Completed' ? 'line-through text-muted-foreground' : 'font-medium'}>
-                      {task.title}
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 justify-start"
+                        onClick={() => navigate(`/tasks/${task.id}`)}
+                      >
+                        {task.title}
+                      </Button>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       <TooltipProvider>
