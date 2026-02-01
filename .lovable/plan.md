@@ -1,245 +1,145 @@
 
-Objective
-- Implement the full “Task Completion System & Lead Leakage Prevention” spec from the uploaded DOCX in a way that:
-  - Enforces mandatory completion data (notes, outcomes, next action) consistently across all places tasks can be completed
-  - Logs activity reliably (including standalone tasks)
-  - Prevents lead leakage via rules + your existing Automation Rules system (preferred) and your existing in-app notification system
-  - Stays admin-configurable via the existing Control Panel tables (control_panel_options + control_panel_option_values), without hardcoding lists in the frontend
+Goal
+- Convert the current task detail experience from a full page into a floating “profile-style” window (modal) similar to Lead/Customer profile windows.
+- Ensure the task window always shows the related record’s name + phone (customer/lead/professional):
+  - Name opens the related profile window
+  - Phone dials (via existing PhoneLink)
+- Update all task entry points (Tasks table, Kanban cards, Lead/Customer task tabs, Calendar) to open this floating window instead of navigating away.
+- Add a “Share” action inside the task window that copies a shareable link to the task (e.g. /tasks/:id), for pasting into internal messages.
 
-How the uploaded DOCX will be used
-- The DOCX is treated as the product specification (source of truth for UX + rules, using the file as a reference and not absolute.using its spirit).
-- We won’t “import” the DOCX into the app; instead we translate it into:
-  1) Database schema changes (new tables/columns)
-  2) UI flows (dialogs/pages)
-  3) Backend scheduled checks + rule execution via your Automation system
+What’s happening now (confirmed from code)
+- Task detail currently exists as a routed page at /tasks/:id (TaskDetailPage).
+- That page only joins lead data (tasks.select(`*, lead:leads(...)`)), so if a task is related to a customer/professional via related_entity_type/related_entity_id, those details are not fetched and therefore not shown.
+- Lead/Customer “profile” experiences are implemented as Radix Dialog windows (LeadDetailView, CustomerDetailView) with custom headers and tabs.
+- Many entry points currently do navigate(`/tasks/${task.id}`).
 
-Current state (what we already have)
-- tasks table exists and already supports: due date/time, status, completed_at, related_entity_type/id, lead_id, snooze, recurrence.
-- activity_log exists and is already used by useTasks() to log task_created/task_updated/task_completed/task_deleted.
-  - But the UI fetching for logs is lead/customer-centric; there is not yet a dedicated “Task Activity Log” view.
-- notifications table exists and is used for in-app notifications.
-- Automation Rules UI + schema exists (automation_rules, automation_templates, automation_executions), but there is currently no “automation engine” in code to actually evaluate triggers and execute actions on a schedule.
+Design approach
+A) Introduce a Task Detail Modal component (profile-style window)
+- Create a new component (e.g. TaskDetailView.tsx) that mirrors the “modal shell” used by LeadDetailView/CustomerDetailView:
+  - <Dialog open=… onOpenChange=…>
+  - <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden">
+  - Custom header with:
+    - Task title, status badges, priority, type
+    - Related entity row: name (clickable) + phone (PhoneLink)
+    - Actions: Complete, Snooze, Edit, Delete (existing permissions respected) + Share button + Close X
+  - Body:
+    - Reuse the existing Task detail sections you already have (Task Details, Completion Details, Attachments, Activity Timeline)
 
-Key design decisions (based on your answers + constraints)
-1) Notifications
-- We will use your existing in-app alerts/notifications system (notifications table + UI) for now.
-- Email/WhatsApp/SMS are out of scope until you explicitly choose a provider.
+B) Make Task Detail openable from anywhere via a small global controller
+- Add a lightweight “TaskDetailModalProvider” (React context) mounted once at app level (near App root or inside DashboardLayout):
+  - API:
+    - openTask(taskId: string, opts?: { initialTab?: string })
+    - closeTask()
+    - state: open, taskId
+  - Provider renders TaskDetailView when open.
+- This prevents duplicating modal state in every list/tab and ensures all entry points open the same window.
 
-2) Escalations & leakage prevention rules
-- We will implement leakage prevention as “system-generated events” that are fed into your Automation Rules system via templates, so you can expand/change behavior without code (your preference).
-- If the existing Automation engine is not currently executing rules, we must build it (minimal but solid) as part of this project; otherwise leakage rules cannot run automatically.
+C) Keep /tasks/:id route for share links
+- Since you want shareable links, we will keep /tasks/:id working.
+- When someone opens a shared link directly, we’ll show the same modal-based UI.
+  Two implementation options (we will implement the simplest, most reliable):
+  1) “Route opens modal page”: Keep TaskDetailPage but convert its layout to a modal-like shell (DialogContent style) and include a Share button. This satisfies “floating window look”, but it’s still a route page.
+  2) “True modal on top of background”: Use react-router “background location” pattern so opening a task sets location state and displays modal above the current page.
+  
+  Recommended for your requirement (“floating window from everywhere”):
+  - Use the global provider for normal navigation clicks (no route change).
+  - Keep /tasks/:id route to open the same TaskDetailView as a “standalone modal page” (it will look identical). Additionally, include a “Back”/Close behavior that goes to /tasks (or history back if available).
+  
+  This gives:
+  - Everyday use: modal overlay without losing context
+  - Share links: openable anywhere
 
-3) Convert to Deal/Order
-- First version will be a simple flag + follow-up task (no new Deals module).
+D) Fix missing “Related customer details” in task detail
+- Update task loading logic to fetch related entity details:
+  - If task.lead exists → show lead name/phone
+  - Else if related_entity_type === "customer" → fetch customers(id, name, phone, site_plus_code) by related_entity_id
+  - Else if related_entity_type === "professional" → fetch professionals(id, name, phone, site_plus_code) by related_entity_id
+- Display:
+  - “Related to” section in header (preferred) and also in “Task Details” card (optional redundancy)
+  - Name uses a clickable button:
+    - lead → open LeadDetailView modal
+    - customer → open CustomerDetailView modal
+    - professional → navigate to Professionals page (or add a modal later; currently professionals use a route param in the table)
+  - Phone uses PhoneLink (already dials and optionally logs activity)
 
-Implementation architecture (high level)
-A) Enhanced Task Completion (user-driven, immediate)
-- When a user clicks “Mark Complete”:
-  - Show a structured completion dialog (status, outcome, templates, time spent, notes, optional bullets, attachments)
-  - Enforce minimum note length (default 50; admin-configurable)
-  - Enforce “Next Action” selection when not fully completed (create follow-up / reschedule / no further action / convert flag + task)
-  - Write completion data into the database
-  - Log the completion into Task Activity Log and (if related to lead/customer) into Lead/Customer Activity Log.
+E) Add Share button
+- Add a “Share” button in the TaskDetailView header:
+  - Copies `${window.location.origin}/tasks/${task.id}` to clipboard
+  - Shows toast “Link copied”
+- Optional: If clipboard API fails, show a small dialog with the link selectable.
 
-B) Leakage Prevention (system-driven, scheduled)
-- A scheduled “backend job” runs periodically (e.g., hourly) to detect:
-  - Overdue tasks at thresholds (1/3/7 days defaults; admin-configurable)
-  - Leads idle for N days (default 14; admin-configurable)
-  - Too many failed attempts / no-answer outcomes within window (admin-configurable)
-- The job emits standardized “leakage events” into a table.
-- Automation Templates consume those events to:
-  - send notifications
-  - create tasks/reminders
-  - escalate (using your automation actions like send_notification, create_task, trigger_automation, execute_webhook later)
+Files likely to change (high-level)
+1) New UI + provider
+- src/components/tasks/TaskDetailView.tsx (new): Dialog-based task detail window shell using existing content sections
+- src/contexts/TaskDetailModalContext.tsx (new) or src/contexts/TaskDetailContext.tsx (new): provider + hook (useTaskDetailModal)
 
-Phase plan (you selected “Full system”, but we still implement in safe increments)
-Phase 0 — Hard verification + inventory (fast)
-- Verify current task “completion” entry points:
-  - EnhancedTaskTable row actions
-  - LeadTasksTab checkbox completion
-  - Calendar interactions
-  - EditTaskDialog “Mark Complete” usage
-- Identify which of these should be forced through the new completion flow (so completion never happens without mandatory fields).
+2) Reuse/refactor existing task page
+- src/pages/TaskDetailPage.tsx:
+  - Convert it to render TaskDetailView in “standalone” mode OR reuse shared “TaskDetailContent” component.
+  - Ensure it loads related entity details (customer/professional) as described.
+  - Add Share button (if not already provided by shared component).
 
-Phase 1 — Database foundations (schema + RLS) (required)
-1) Extend tasks table to store completion details & attempt tracking
-Add columns (names final after code review, but conceptually):
-- completion_status: text (Completed Successfully / Partially Completed / Could Not Complete)
-- completion_outcome: text (chosen from admin-configured list per task type)
-- completion_notes: text (mandatory, length enforced in UI + backend validation)
-- completion_key_points: jsonb (optional bullet list)
-- actual_time_spent_minutes: integer (optional)
-- next_action_type: text (create_follow_up / reschedule / none / convert_flag)
-- attempt_count: integer default 0
-- last_attempt_at: timestamptz
-- max_attempts: integer nullable (optional override per task; fallback from settings per type)
-- deal_ready: boolean default false (for “Convert to Deal/Order” simple version)
-- deal_ready_at: timestamptz nullable
+3) Update all entry points to open modal instead of navigate
+- src/components/tasks/EnhancedTaskTable.tsx
+  - Replace navigate(`/tasks/${task.id}`) on title click with openTask(task.id)
+- src/components/tasks/TaskKanbanView.tsx
+  - Replace navigate(`/tasks/${task.id}`) on card click with openTask(task.id)
+- src/components/leads/detail-tabs/LeadTasksTab.tsx
+  - Replace navigation with openTask(task.id)
+- src/components/customers/detail-tabs/CustomerTasksTab.tsx
+  - Replace navigation with openTask(task.id)
+- src/pages/CalendarPage.tsx (or wherever tasks are clicked from calendar task events)
+  - Replace navigation with openTask(taskId)
 
-2) Task-level activity log (for standalone tasks + detailed task history)
-Option A (recommended): new table task_activity_log
-- id, task_id, event_type, created_at, user_id/user_name, metadata jsonb, notes text, attachments jsonb
-- This avoids overloading activity_log (which is lead/customer-centric).
-- We will still “dual log” summary events into activity_log when tasks are related to lead/customer.
+4) Mount provider
+- src/App.tsx or src/components/layout/DashboardLayout.tsx
+  - Wrap authenticated app layout with TaskDetailModalProvider so it’s available everywhere.
 
-3) Task completion templates + outcomes (admin-configurable)
-We will use your existing Control Panel tables to store:
-- Task outcome options by task type
-- Quick completion templates by task type (with placeholders)
-- Next-action suggestions and defaults (rule-based)
-Because Control Panel options are generic, we’ll add new Control Panel fields (control_panel_options rows) for:
-- tasks.outcomes.<task_type> (or a normalized structure using JSON if preferred)
-- tasks.completion_templates
-- tasks.attempt_limits
-- tasks.completion_settings (min note length, default follow-up days, etc.)
+UI details inside Task window (what will be visible after changes)
+- Header (top bar)
+  - Title: “Collect feedback from rahul”
+  - Badges: type, priority, status
+  - Related record strip:
+    - “Customer: Rahul Sharma” (click opens Customer profile window)
+    - Phone link (click to dial)
+  - Buttons: Complete, Snooze, Edit, Delete, Share, Close
 
-Note: If Control Panel is currently designed only for “flat option lists”, we’ll store complex template configs in a dedicated table instead:
-- task_completion_templates (recommended if templates need placeholders + next-action presets + ordering + enable/disable)
-This will be decided after we inspect Control Panel UI constraints.
+- Main body (same content you already built)
+  - Task Details card (assigned to, due, created, description, etc.)
+  - Completion Details card (status/outcome/notes/next action)
+  - Attachments (EntityAttachmentsTab entityType="task")
+  - Activity timeline (TaskActivityTimeline)
 
-4) Attachments for completion
-- Reuse the existing private storage bucket and entity_attachments table if possible by extending entity_attachments to support entity_type='task'.
-- This requires:
-  - Updating RLS policies on entity_attachments to allow inserts/select/deletes for tasks a user can access
-  - Updating UI to show task attachments in task detail view
+Edge cases and handling
+- Task has both lead_id and related_entity_type:
+  - Prefer showing lead (because it’s already joined) but also show “Related entity” if different; or show one “Related to” chosen by precedence:
+    1) related_entity_type+id if present
+    2) else lead
+  - We’ll implement explicit precedence so it’s consistent.
+- Related entity not found (deleted):
+  - Show “Related record not found” (muted) but still render task details.
+- Clicking phone/name inside modal should not close modal:
+  - Ensure stopPropagation where needed.
+- Permissions:
+  - Reuse existing usePermissions checks for edit/delete.
+- Current route /tasks/:id (you’re on it now)
+  - After implementing modal-first, this route will still be supported and will display the same UI.
+  - Share links will work regardless of where opened.
 
-Phase 2 — New Task Completion UI (core workflow) (required)
-1) Add “Task Completion Dialog”
-- Accessible from:
-  - Tasks table action menu (“Mark Complete”)
-  - LeadTasksTab completion checkbox (replace direct status toggle with this dialog)
-  - Calendar actions (where applicable)
-- Form sections matching spec:
-  - Completion Status (3 options)
-  - Outcome (task type-based, admin-configurable)
-  - Quick Template selector (fills notes + outcome + suggested next action)
-  - Actual time spent
-  - Notes (min length enforced; show live counter)
-  - Key points (optional)
-  - Attachments upload (optional)
-  - Next Action (mandatory; option A/B/C/D)
-    - A Create Follow-up Task (prefill type/due/assignee/priority)
-    - B Reschedule This Task (increments attempt; reason required; enforce max attempts)
-    - C No Further Action (confirm)
-    - D Convert to Deal/Order (set deal_ready=true and create a follow-up task)
+Implementation sequence (safe, incremental)
+1) Create TaskDetailView modal component that can render task data (initially reuse current TaskDetailPage UI blocks).
+2) Add related entity fetching to the task loader (customer/professional minimal fetch).
+3) Add Share button + toast.
+4) Add TaskDetailModalProvider + useTaskDetailModal hook.
+5) Update all entry points to call openTask(task.id) instead of navigate.
+6) Adjust /tasks/:id route behavior:
+   - Keep route working and show the same UI (either by rendering TaskDetailView in standalone mode or by leaving TaskDetailPage but visually matching modal).
+7) Quick regression check list:
+   - Open task from Tasks list, Kanban, Lead tasks tab, Customer tasks tab, Calendar
+   - Verify related customer/lead/professional name + phone appear and work
+   - Verify share copies link and link opens task detail correctly
+   - Verify complete/snooze/edit/delete still function and timeline updates
 
-2) Validation & security
-- Client-side validation via zod (min length, required fields, attempt logic).
-- Server-side enforcement:
-  - We will not rely only on UI. We’ll add backend validation via database constraints/triggers or via a single “complete_task” backend function.
-  - Preferred: a backend function endpoint “complete-task” so all completion writes go through one validated path.
-
-3) Update useTasks API
-- Add a dedicated method: completeTaskWithDetails(taskId, payload)
-- Ensure it:
-  - Writes completion details
-  - Creates follow-up task / reschedules / sets deal flag as selected
-  - Logs to task_activity_log (always)
-  - Logs to activity_log (only if related lead/customer exists)
-  - Triggers automation events if needed (Phase 4+)
-
-Phase 3 — Task Detail View + Full Activity (required for “no leakage” accountability)
-1) Task detail view page or dialog
-- Open by clicking task title anywhere.
-- Sections:
-  - Task summary + action buttons
-  - Task details panel
-  - Attachments
-  - Comments (if/when implemented)
-  - Task Activity Log (timeline)
-- “View Full History” shows filter/search UI for task_activity_log.
-
-2) Dual logging behavior
-- For related tasks:
-  - Show in lead/customer activity log as summarized entries (already partially done in useTasks).
-  - Show full detail in task_activity_log.
-
-3) Standalone tasks separation
-- Add filter in Tasks module: All / Related to Leads / Standalone
-- Standalone = tasks with no lead_id and no related_entity_id.
-
-Phase 4 — Automation Engine (required to use your Automation Rules for escalations)
-Problem: Automation rules exist but there is no executor yet.
-We will implement a minimal, safe automation engine that can:
-- Evaluate triggers (time-based + saved-filter based first; then field-change)
-- Execute actions (send_notification in-app, create_task, create_reminder, update_field, trigger_automation)
-- Write execution logs to automation_executions
-
-Architecture
-1) Backend function: automation-runner
-- Runs on a schedule (hourly/daily, configurable).
-- Reads enabled automation_rules.
-- For each rule, finds matching records (tasks/leads/customers/etc) based on trigger type.
-- Applies execution limits (once per record / once daily / max limit).
-- Executes actions and logs results.
-
-2) Execution tracking table (if needed)
-- automation_rule_executions_tracking already exists; we’ll use it to avoid re-firing.
-
-3) Trigger types we prioritize for leakage prevention
-- time_based triggers on tasks (relative to due_date / last_attempt_at / created_at)
-- saved_filter triggers (e.g., “Overdue tasks > X”)
-These map directly to your leakage needs.
-
-Phase 5 — Leakage Prevention rules (built as Automation Templates + optional system event table)
-We will ship a set of system templates (disabled by default, admin can enable) such as:
-1) Task overdue 1 day → notify assignee (normal)
-2) Task overdue 3 days → notify assignee + escalation recipients (important)
-3) Task overdue 7 days → urgent notification + create manager review task
-4) Lead idle 14 days → create “Check-in call” task due tomorrow
-5) Multiple failed attempts → notify + suggest alternate channel task
-
-Because you want to “use automation system for overdue task”:
-- We implement these as Automation Templates for entity_type='tasks' and/or 'leads'
-- Admin can edit outcomes, thresholds, and actions without code
-
-If some leakage checks cannot be expressed with current Automation UI/fields:
-- We add one “system leakage events” table and treat those events as an entity type for automations, OR
-- We enhance Automation’s entity fields for tasks/leads to include computed fields (e.g., days_overdue, attempts_used)
-This is a key integration detail we will finalize once we inspect AutomationRule builder constraints end-to-end.
-
-Phase 6 — Control Panel configuration (admin UX)
-Add Control Panel sections for:
-- Completion settings:
-  - minimum note length (default 50)
-  - default follow-up due in days (default 3–5)
-- Attempt limits per task type (defaults from your spec)
-- Outcome options per task type
-- Quick templates per task type (with placeholder support)
-- Optional: whether “No further action” requires a second confirmation (default yes)
-
-We will also implement your dependency safety requirement:
-- If an admin tries to delete/deactivate an outcome/template currently used in existing task records, show a warning or block the action.
-
-Testing plan (must pass before sign-off)
-1) Task completion enforcement
-- From Tasks list, Lead detail tab, Calendar: attempting to complete triggers the same completion dialog.
-- Cannot save completion with notes < min length.
-- “Could Not Complete” cannot save without Next Action.
-2) Next action behaviors
-- Follow-up task created correctly, linked to same entity, assigned appropriately.
-- Reschedule increments attempt_count; blocks after max attempts (forces create-follow-up or escalation path).
-- Convert-to-deal sets deal_ready=true and creates task.
-3) Logging
-- task_activity_log records every event.
-- activity_log receives summary events only for lead/customer-related tasks.
-4) Automation runner
-- When enabled, overdue templates generate notifications/tasks exactly once per configured limit.
-- Execution logs show success/failure.
-5) Security
-- RLS ensures users only see tasks, task activity logs, and attachments they are allowed to see.
-- No sensitive data in console logs.
-- All user inputs validated client + server side.
-
-Deliverables summary (what you’ll get)
-- A consistent “Mark Complete” workflow with enforced notes/outcomes/next steps.
-- Dedicated Task detail + Task history, including for standalone tasks.
-- Leakage prevention implemented through your Automation system, powered by a backend automation runner.
-- Admin control over outcomes/templates/attempt limits/thresholds via Control Panel.
-
-Known risks / dependencies
-- The automation executor is the biggest missing piece today; without it, “scheduled leakage prevention” cannot be automated.
-- Template management complexity may exceed the current “option list” style of Control Panel; if so we will introduce a dedicated table for templates while still managing basic options via Control Panel.
-
-Next step after approval (implementation sequencing)
-- Start with Phase 1 (schema) + Phase 2 (completion UI) + Phase 3 (task activity log UI), then Phase 4–5 (automation runner + leakage templates).
+What I need from you (only if you want a specific behavior)
+- For “Share to staff in messages internally”: should “Share” only copy the link, or should it also open an in-app “Send in Messages” dialog?
+  - In this phase I will implement “Copy link” first (fast and reliable). We can add “Send in Messages” as a follow-up enhancement once you confirm what exact message workflow you want.
