@@ -32,6 +32,7 @@ import { useTaskActivityLog } from "@/hooks/useTaskActivityLog";
 import { TaskActivityTimeline } from "@/components/tasks/TaskActivityTimeline";
 import { LeadDetailView } from "@/components/leads/LeadDetailView";
 import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
+import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 
 import { format } from "date-fns";
 import { CheckCircle2, Copy, Pencil, Trash2, X } from "lucide-react";
@@ -284,7 +285,7 @@ export function TaskDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[60]">
           <div className="flex items-start justify-between gap-4 px-6 py-4 border-b">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold truncate">
@@ -407,6 +408,20 @@ export function TaskDetailView({
                           </span>
                         }
                       />
+
+                      <ValueRow
+                        label="Reminder"
+                        value={
+                          task.reminder ? (
+                            <span>
+                              On{task.reminder_time ? ` • ${task.reminder_time}` : ""}
+                            </span>
+                          ) : (
+                            "Off"
+                          )
+                        }
+                      />
+
                       <ValueRow label="Created by" value={task.created_by} />
                       <ValueRow label="Created" value={format(new Date(task.created_at), "dd MMM yyyy, HH:mm")} />
                       <ValueRow label="Updated" value={format(new Date(task.updated_at), "dd MMM yyyy, HH:mm")} />
@@ -453,6 +468,8 @@ export function TaskDetailView({
                       )}
                     </CardContent>
                   </Card>
+
+                  <TaskSubtasksCard taskId={task.id} />
 
                   <EntityAttachmentsTab entityType="task" entityId={task.id} title="Attachments" />
                 </div>

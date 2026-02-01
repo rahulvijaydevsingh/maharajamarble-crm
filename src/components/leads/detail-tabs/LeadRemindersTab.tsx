@@ -10,6 +10,8 @@ import {
 import { Bell, Plus, Calendar, Clock, MoreHorizontal, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { Lead } from '@/hooks/useLeads';
 import { useReminders } from '@/hooks/useReminders';
+import { useTasks } from '@/hooks/useTasks';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { AddReminderDialog } from './AddReminderDialog';
 import { format, isPast, isToday, isTomorrow, addHours, addDays } from 'date-fns';
@@ -21,10 +23,18 @@ interface LeadRemindersTabProps {
 
 export function LeadRemindersTab({ lead, highlightReminderId }: LeadRemindersTabProps) {
   const { reminders, loading, addReminder, dismissReminder, snoozeReminder, deleteReminder } = useReminders('lead', lead.id);
+  const { tasks } = useTasks();
+  const { openTask } = useTaskDetailModal();
   const { logActivity } = useLogActivity();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [savingReminder, setSavingReminder] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(highlightReminderId || null);
+
+  const leadTaskReminders = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.lead_id === lead.id && !!t.reminder && t.status !== 'Completed')
+      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  }, [tasks, lead.id]);
 
   // Scroll to and highlight the reminder when highlightReminderId is provided
   React.useEffect(() => {
@@ -192,6 +202,41 @@ export function LeadRemindersTab({ lead, highlightReminderId }: LeadRemindersTab
           Add Reminder
         </Button>
       </div>
+
+      {leadTaskReminders.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Task reminders</h4>
+          {leadTaskReminders.map((task) => (
+            <div key={task.id} className="border rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 font-medium"
+                    onClick={() => openTask(task.id)}
+                  >
+                    {task.title}
+                  </Button>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                    <Badge variant="outline" className="text-xs">
+                      Due: {format(new Date(task.due_date), 'MMM d, yyyy')}
+                    </Badge>
+                    {task.reminder_time && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {task.reminder_time}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {reminders.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
