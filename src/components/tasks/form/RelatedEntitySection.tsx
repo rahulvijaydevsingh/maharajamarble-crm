@@ -156,7 +156,7 @@ export function RelatedEntitySection({
               <SelectTrigger>
                 <SelectValue placeholder="Select type..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[80]">
                 {ENTITY_TYPES.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     <div className="flex items-center gap-2">
@@ -187,7 +187,7 @@ export function RelatedEntitySection({
                   <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0" align="start">
+              <PopoverContent className="w-[300px] p-0 z-[80]" align="start">
                 <Command shouldFilter={false}>
                   <CommandInput
                     placeholder="Type name or phone..."

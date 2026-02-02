@@ -318,7 +318,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={templatesLoading ? "Loading templates..." : "Select a template"} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[80]">
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
@@ -342,7 +342,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.outcome && "border-destructive")}>
                   <SelectValue placeholder="Select outcome" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[80]">
                   {OUTCOME_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.value}
@@ -365,7 +365,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.nextAction && "border-destructive")}>
                   <SelectValue placeholder="Select next action" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[80]">
                   {nextActionOptions.map((a) => (
                     <SelectItem key={a.value} value={a.value} disabled={a.disabled}>
                       {a.label}
@@ -395,7 +395,7 @@ export function TaskCompletionDialog({
                       {nextDate ? format(nextDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0 z-[80]" align="start">
                     <Calendar
                       mode="single"
                       selected={nextDate}

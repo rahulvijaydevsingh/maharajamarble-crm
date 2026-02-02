@@ -77,7 +77,7 @@ export function RecurrenceSection({ data, onChange, disabled = false }: Recurren
             <SelectTrigger className="h-9">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[80]">
               {RECURRENCE_FREQUENCIES.map((freq) => (
                 <SelectItem key={freq.value} value={freq.value}>
                   {freq.label}
@@ -202,7 +202,7 @@ export function RecurrenceSection({ data, onChange, disabled = false }: Recurren
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[80]">
                   {RECURRENCE_END_TYPES.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
@@ -247,7 +247,7 @@ export function RecurrenceSection({ data, onChange, disabled = false }: Recurren
                       {data.endDate ? format(data.endDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0 z-[80]" align="start">
                     <Calendar
                       mode="single"
                       selected={data.endDate}
