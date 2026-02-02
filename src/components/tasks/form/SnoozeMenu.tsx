@@ -44,7 +44,7 @@ export function SnoozeMenu({
           </Button>
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48 z-[80]">
         {quickActions.map((preset) => (
           <DropdownMenuItem
             key={preset.value}
