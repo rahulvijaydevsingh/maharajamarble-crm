@@ -547,6 +547,92 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_backups: {
+        Row: {
+          created_at: string
+          created_by: string
+          formats: Json
+          id: string
+          include_modules: Json
+          json_file_path: string | null
+          log: Json | null
+          result_summary: Json | null
+          status: string
+          xlsx_file_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          formats?: Json
+          id?: string
+          include_modules?: Json
+          json_file_path?: string | null
+          log?: Json | null
+          result_summary?: Json | null
+          status?: string
+          xlsx_file_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          formats?: Json
+          id?: string
+          include_modules?: Json
+          json_file_path?: string | null
+          log?: Json | null
+          result_summary?: Json | null
+          status?: string
+          xlsx_file_path?: string | null
+        }
+        Relationships: []
+      }
+      crm_restores: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          include_modules: Json
+          log: Json | null
+          mode: string
+          result_summary: Json | null
+          source_backup_id: string | null
+          source_file_path: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          include_modules?: Json
+          log?: Json | null
+          mode?: string
+          result_summary?: Json | null
+          source_backup_id?: string | null
+          source_file_path?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          include_modules?: Json
+          log?: Json | null
+          mode?: string
+          result_summary?: Json | null
+          source_backup_id?: string | null
+          source_file_path?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_restores_source_backup_id_fkey"
+            columns: ["source_backup_id"]
+            isOneToOne: false
+            referencedRelation: "crm_backups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_role_permissions: {
         Row: {
           created_at: string
