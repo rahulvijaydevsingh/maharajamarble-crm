@@ -1,145 +1,231 @@
 
 Goal
-- Convert the current task detail experience from a full page into a floating “profile-style” window (modal) similar to Lead/Customer profile windows.
-- Ensure the task window always shows the related record’s name + phone (customer/lead/professional):
-  - Name opens the related profile window
-  - Phone dials (via existing PhoneLink)
-- Update all task entry points (Tasks table, Kanban cards, Lead/Customer task tabs, Calendar) to open this floating window instead of navigating away.
-- Add a “Share” action inside the task window that copies a shareable link to the task (e.g. /tasks/:id), for pasting into internal messages.
+- Add a “Backup & Restore” system to the CRM that:
+  - Lets an admin choose what to include/exclude via a checklist (and a “Complete backup” preset).
+  - Produces both JSON (for exact restore) and Excel (for human viewing).
+  - Restores from a backup with a clear choice between Merge vs Replace, with strong warnings.
+  - Includes “everything” in scope: leads/customers/tasks/reminders/automation/users/roles/Quotations/communications + attachments/files.
+  - Is reliable for larger datasets (avoids client-side 1000-row limits and RLS constraints).
 
-What’s happening now (confirmed from code)
-- Task detail currently exists as a routed page at /tasks/:id (TaskDetailPage).
-- That page only joins lead data (tasks.select(`*, lead:leads(...)`)), so if a task is related to a customer/professional via related_entity_type/related_entity_id, those details are not fetched and therefore not shown.
-- Lead/Customer “profile” experiences are implemented as Radix Dialog windows (LeadDetailView, CustomerDetailView) with custom headers and tabs.
-- Many entry points currently do navigate(`/tasks/${task.id}`).
+Non-goals / important constraints
+- We will NOT store any files inside database columns. Backup files will be stored in secure file storage (private bucket) and/or downloaded to the user.only admins can backup and restore.
+- “Users” in a CRM backup has two layers:
+  1) Profile + role assignments (profiles/user_roles/custom permissions) — we can back up and restore these.
+  2) Actual login accounts (auth users) — these can’t be fully recreated automatically without setting passwords. For restores into the SAME backend instance this is fine; for restoring into a different backend instance, we will provide a guided step to recreate staff accounts and then re-link roles by email.
 
-Design approach
-A) Introduce a Task Detail Modal component (profile-style window)
-- Create a new component (e.g. TaskDetailView.tsx) that mirrors the “modal shell” used by LeadDetailView/CustomerDetailView:
-  - <Dialog open=… onOpenChange=…>
-  - <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden">
-  - Custom header with:
-    - Task title, status badges, priority, type
-    - Related entity row: name (clickable) + phone (PhoneLink)
-    - Actions: Complete, Snooze, Edit, Delete (existing permissions respected) + Share button + Close X
-  - Body:
-    - Reuse the existing Task detail sections you already have (Task Details, Completion Details, Attachments, Activity Timeline)
+High-level UX
+1) Settings → add a new tab: “Backup & Restore”
+2) Two sections:
+   A) Create Backup
+   - Checklist with presets:
+     - “Complete Backup (recommended)” (preselects everything)
+     - “Custom”
+   - Module checklist (with tooltips):
+     - Leads
+     - Customers
+     - Professionals
+     - Tasks (includes subtasks, snooze history, task activity, completion templates if present)
+     - Reminders
+     - Calendar events (if present)
+     - Automation (rules, templates, settings, executions/logs)
+     - Communication (messages, conversations, announcements, announcement_reads)
+     - Users & Access (profiles, user_roles, custom_role_permissions)
+     - Company & System settings (company_settings, control panel tables, saved_filters, etc.)
+     - Attachments/files (entity_attachments, quotation_attachments, message file references + actual stored objects)
+   - Output formats (fixed by your request):
+     - JSON + Excel
+   - Create button → shows progress + generates a “Backup Report” (counts, file links, warnings)
+   - “Download JSON” and “Download Excel” buttons
+   - “Copy restore code / notes” (optional small helper that copies any warnings)
 
-B) Make Task Detail openable from anywhere via a small global controller
-- Add a lightweight “TaskDetailModalProvider” (React context) mounted once at app level (near App root or inside DashboardLayout):
-  - API:
-    - openTask(taskId: string, opts?: { initialTab?: string })
-    - closeTask()
-    - state: open, taskId
-  - Provider renders TaskDetailView when open.
-- This prevents duplicating modal state in every list/tab and ensures all entry points open the same window.
+   B) Restore Backup
+   - Upload JSON backup file OR select from “Previously generated backups” list
+   - Checklist: which modules to restore (default = same as backup file contents)
+   - Restore Mode:
+     - Merge (safe default): upsert-by-id for chosen modules
+     - Replace (destructive): deletes chosen modules’ rows first (in dependency order) then inserts
+   - Warning confirmation gate:
+     - Replace requires typing a confirmation phrase (e.g. RESTORE) and shows “what will be deleted”
+   - Restore button → shows progress + “Restore Report” (what changed, what failed, what was skipped)
 
-C) Keep /tasks/:id route for share links
-- Since you want shareable links, we will keep /tasks/:id working.
-- When someone opens a shared link directly, we’ll show the same modal-based UI.
-  Two implementation options (we will implement the simplest, most reliable):
-  1) “Route opens modal page”: Keep TaskDetailPage but convert its layout to a modal-like shell (DialogContent style) and include a Share button. This satisfies “floating window look”, but it’s still a route page.
-  2) “True modal on top of background”: Use react-router “background location” pattern so opening a task sets location state and displays modal above the current page.
-  
-  Recommended for your requirement (“floating window from everywhere”):
-  - Use the global provider for normal navigation clicks (no route change).
-  - Keep /tasks/:id route to open the same TaskDetailView as a “standalone modal page” (it will look identical). Additionally, include a “Back”/Close behavior that goes to /tasks (or history back if available).
-  
-  This gives:
-  - Everyday use: modal overlay without losing context
-  - Share links: openable anywhere
+Architecture decision (important)
+- Implement backup/restore primarily as backend functions (server-side), not in the browser.
+  Why:
+  - Avoids query limits and performance issues
+  - Avoids RLS headaches
+  - Allows copying attachment files in storage safely
+  - Enables progress tracking and retry
 
-D) Fix missing “Related customer details” in task detail
-- Update task loading logic to fetch related entity details:
-  - If task.lead exists → show lead name/phone
-  - Else if related_entity_type === "customer" → fetch customers(id, name, phone, site_plus_code) by related_entity_id
-  - Else if related_entity_type === "professional" → fetch professionals(id, name, phone, site_plus_code) by related_entity_id
-- Display:
-  - “Related to” section in header (preferred) and also in “Task Details” card (optional redundancy)
-  - Name uses a clickable button:
-    - lead → open LeadDetailView modal
-    - customer → open CustomerDetailView modal
-    - professional → navigate to Professionals page (or add a modal later; currently professionals use a route param in the table)
-  - Phone uses PhoneLink (already dials and optionally logs activity)
+Backend data model (new tables)
+1) crm_backups
+- id (uuid)
+- created_at
+- created_by (email or user id)
+- status: queued | running | success | failed
+- include_modules (jsonb) – what was selected
+- formats (jsonb) – always json + xlsx, but stored for future
+- result_summary (jsonb) – counts per table/module, warnings
+- json_file_path (text)
+- xlsx_file_path (text)
+- log (text or jsonb) – optional
 
-E) Add Share button
-- Add a “Share” button in the TaskDetailView header:
-  - Copies `${window.location.origin}/tasks/${task.id}` to clipboard
-  - Shows toast “Link copied”
-- Optional: If clipboard API fails, show a small dialog with the link selectable.
+2) crm_restores
+- id (uuid)
+- created_at
+- created_by
+- status: queued | running | success | failed
+- mode: merge | replace
+- include_modules (jsonb)
+- source_backup_id (uuid nullable)
+- source_file_path (text nullable)
+- result_summary (jsonb)
+- log (text or jsonb)
 
-Files likely to change (high-level)
-1) New UI + provider
-- src/components/tasks/TaskDetailView.tsx (new): Dialog-based task detail window shell using existing content sections
-- src/contexts/TaskDetailModalContext.tsx (new) or src/contexts/TaskDetailContext.tsx (new): provider + hook (useTaskDetailModal)
+RLS
+- Only admin roles can create/list/download backups and run restores.
+- Backups and restores should be visible only to admins (and optionally the creator).
 
-2) Reuse/refactor existing task page
-- src/pages/TaskDetailPage.tsx:
-  - Convert it to render TaskDetailView in “standalone” mode OR reuse shared “TaskDetailContent” component.
-  - Ensure it loads related entity details (customer/professional) as described.
-  - Add Share button (if not already provided by shared component).
+Storage
+- Create a new private bucket: crm-backups
+- Store generated files under paths like:
+  - backups/<backupId>/backup.json
+  - backups/<backupId>/backup.xlsx
+  - backups/<backupId>/files/... (if we copy attachment objects into the backup bundle)
+- Use signed download URLs (time-limited) for downloads.
 
-3) Update all entry points to open modal instead of navigate
-- src/components/tasks/EnhancedTaskTable.tsx
-  - Replace navigate(`/tasks/${task.id}`) on title click with openTask(task.id)
-- src/components/tasks/TaskKanbanView.tsx
-  - Replace navigate(`/tasks/${task.id}`) on card click with openTask(task.id)
-- src/components/leads/detail-tabs/LeadTasksTab.tsx
-  - Replace navigation with openTask(task.id)
-- src/components/customers/detail-tabs/CustomerTasksTab.tsx
-  - Replace navigation with openTask(task.id)
-- src/pages/CalendarPage.tsx (or wherever tasks are clicked from calendar task events)
-  - Replace navigation with openTask(taskId)
+Backend functions (server-side)
+A) create-crm-backup
+Input:
+- includeModules: string[]
+- includeFiles: boolean
+- formats: ["json","xlsx"] (fixed)
+Behavior:
+- Create crm_backups row (status=running)
+- Discover tables to export based on modules OR “complete backup”
+  - Implementation approach:
+    - Maintain a module→tables mapping in code for correctness and dependency ordering.
+    - Also optionally verify table existence at runtime (some deployments may differ).
+- Export data table-by-table:
+  - Paginate using ranges to avoid limits (e.g. 0..999, 1000..1999, etc.)
+  - Save into a JSON structure:
+    {
+      "meta": { version, createdAt, createdBy, includeModules },
+      "tables": {
+        "leads": [...],
+        "tasks": [...],
+        ...
+      }
+    }
+- Generate Excel workbook:
+  - One sheet per table (or one per module, whichever is more readable; plan: per table)
+  - Add a “README” sheet (restore notes + warnings + version)
+- Attachments/files handling (if includeFiles):
+  - Collect referenced file paths from:
+    - entity_attachments.file_path
+    - quotation_attachments.file_path
+    - messages.file_url/file_name (if used)
+  - Copy each referenced object from the attachments bucket into crm-backups under backups/<backupId>/files/...
+  - Record a “files manifest” in JSON with original path → backup path
+  - Note: If there are many files, this can be slow; we’ll show progress and allow “metadata-only” backups as an option later (but for now we’ll implement full copy since you requested attachments/files).
+- Upload backup.json and backup.xlsx into crm-backups
+- Update crm_backups with file paths, status=success, result_summary
+On failure:
+- status=failed + log error
 
-4) Mount provider
-- src/App.tsx or src/components/layout/DashboardLayout.tsx
-  - Wrap authenticated app layout with TaskDetailModalProvider so it’s available everywhere.
+B) list-crm-backups
+- Returns the last N backups with status and createdAt + who created it.
 
-UI details inside Task window (what will be visible after changes)
-- Header (top bar)
-  - Title: “Collect feedback from rahul”
-  - Badges: type, priority, status
-  - Related record strip:
-    - “Customer: Rahul Sharma” (click opens Customer profile window)
-    - Phone link (click to dial)
-  - Buttons: Complete, Snooze, Edit, Delete, Share, Close
+C) restore-crm-backup
+Input:
+- source: { backupId } OR { uploadedJsonPath }
+- mode: merge | replace
+- includeModules: string[]
+Behavior:
+- Create crm_restores row (status=running)
+- Load JSON from storage (or from selected backup record)
+- Validate:
+  - version compatibility
+  - required tables for selected modules exist in JSON
+- Execute restore per module in safe order.
+  - For Replace:
+    - Delete rows in dependency order (children first).
+    - Then insert rows (parents first).
+  - For Merge:
+    - Upsert by primary key (id) where possible.
+    - For join tables or unique constraints, use upsert on conflict keys.
+- Users & roles special handling:
+  - profiles/user_roles/custom_role_permissions can be restored by ID for same-backend restores.
+  - If restoring into a different backend instance, profile IDs will not match newly created auth accounts. We will:
+    - Detect mismatch (no auth user for profile.id)
+    - Provide a restore report listing emails that need staff accounts created
+    - Provide an assisted “Re-link roles by email” step (optional Phase 2 enhancement)
+- Attachments/files restore:
+  - If we copied files into the backup bucket, we can copy them back into the attachments bucket and reinsert attachment rows.
+  - If files already exist, we skip copying and just restore metadata.
+- Update crm_restores with status=success and summary.
 
-- Main body (same content you already built)
-  - Task Details card (assigned to, due, created, description, etc.)
-  - Completion Details card (status/outcome/notes/next action)
-  - Attachments (EntityAttachmentsTab entityType="task")
-  - Activity timeline (TaskActivityTimeline)
+Safety measures & warnings
+- Replace restore requires:
+  - Strong UI warning modal listing affected modules and what will be deleted
+  - A “type-to-confirm” input
+- Backups include a version number; restore refuses incompatible major versions.
+- Restore shows a dry “preflight summary” (row counts per table in backup) before executing.
+- Add guardrails:
+  - Prevent restoring “Users & Access” via Replace unless the current user is super_admin (reduces lockout risk)
+  - Always ensure at least one super_admin remains after restore (or restore fails with guidance)
 
-Edge cases and handling
-- Task has both lead_id and related_entity_type:
-  - Prefer showing lead (because it’s already joined) but also show “Related entity” if different; or show one “Related to” chosen by precedence:
-    1) related_entity_type+id if present
-    2) else lead
-  - We’ll implement explicit precedence so it’s consistent.
-- Related entity not found (deleted):
-  - Show “Related record not found” (muted) but still render task details.
-- Clicking phone/name inside modal should not close modal:
-  - Ensure stopPropagation where needed.
-- Permissions:
-  - Reuse existing usePermissions checks for edit/delete.
-- Current route /tasks/:id (you’re on it now)
-  - After implementing modal-first, this route will still be supported and will display the same UI.
-  - Share links will work regardless of where opened.
+Implementation steps (what I will do next once you approve)
+1) Explore & define module→table mapping
+- Enumerate all CRM tables used by the app (public schema) and group them into the modules you selected.
+- Define correct dependency order for replace deletes/inserts (e.g., subtasks before tasks deletes; attachments before parent entity deletes, etc.).
 
-Implementation sequence (safe, incremental)
-1) Create TaskDetailView modal component that can render task data (initially reuse current TaskDetailPage UI blocks).
-2) Add related entity fetching to the task loader (customer/professional minimal fetch).
-3) Add Share button + toast.
-4) Add TaskDetailModalProvider + useTaskDetailModal hook.
-5) Update all entry points to call openTask(task.id) instead of navigate.
-6) Adjust /tasks/:id route behavior:
-   - Keep route working and show the same UI (either by rendering TaskDetailView in standalone mode or by leaving TaskDetailPage but visually matching modal).
-7) Quick regression check list:
-   - Open task from Tasks list, Kanban, Lead tasks tab, Customer tasks tab, Calendar
-   - Verify related customer/lead/professional name + phone appear and work
-   - Verify share copies link and link opens task detail correctly
-   - Verify complete/snooze/edit/delete still function and timeline updates
+2) Database changes (migrations)
+- Create crm_backups and crm_restores tables
+- Enable RLS
+- Add strict admin-only policies
+- Create private storage bucket crm-backups (+ policies to allow admin access through the app)
 
-What I need from you (only if you want a specific behavior)
-- For “Share to staff in messages internally”: should “Share” only copy the link, or should it also open an in-app “Send in Messages” dialog?
-  - In this phase I will implement “Copy link” first (fast and reliable). We can add “Send in Messages” as a follow-up enhancement once you confirm what exact message workflow you want.
+3) Backend functions
+- Implement create-crm-backup, list-crm-backups, restore-crm-backup
+- Implement file-copy logic for attachments/files
+- Implement chunked table export/import
+
+4) Frontend UI
+- Add “Backup & Restore” UI in Settings
+- Create:
+  - BackupCreatePanel (checklist + create + progress + download)
+  - BackupRestorePanel (upload/select + merge/replace + warnings + progress)
+  - BackupHistoryPanel (list backups, download, view report)
+- Integrate toasts + success/failure states
+
+5) Testing (end-to-end)
+- Test backup creation with:
+  - Small dataset
+  - >1000 rows dataset (ensures pagination works)
+  - Attachments present
+- Test restore:
+  - Merge mode: restores without deleting
+  - Replace mode: deletes and restores cleanly
+  - Automation + communication present
+  - Verify the app still works after restore (leads, tasks, settings, staff/roles screens load)
+- Test access control: non-admin cannot see the feature or run it.
+
+Open questions resolved from your answers (recorded decisions)
+- Backup should include everything (including reminders and workflow automations): yes.
+- Restore should allow the user to choose Merge or Replace with warnings: yes.
+- Output should be JSON + Excel: yes.
+
+Known caveat (will be clearly shown in UI)
+- Restoring “login accounts” (actual authentication users) across different backend instances cannot be done purely from backup without collecting passwords. The restore report will guide the admin to recreate staff accounts and then re-link profiles/roles. Restoring within the same backend instance works normally.
+
+Optional Phase-2 enhancements (not required for initial delivery)
+- Scheduled backups (daily/weekly) with retention policies
+- Encryption-at-rest for JSON before upload (in addition to private bucket)
+- “Metadata-only attachments” option for faster backups
+- One-click “Duplicate environment” restore flow
+
+Acceptance criteria
+- Admin can create “Complete Backup” and download JSON + Excel.
+- Admin can restore from JSON using Merge or Replace; warning gates work.
+- After restore, core flows (Leads/Customers/Tasks/Automation/Settings/Messages) function without errors.
+- Attachments and their links remain intact (and files can be opened).
