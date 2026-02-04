@@ -107,9 +107,18 @@ serve(async (req) => {
 
     const admin = createAdminClient();
 
+    const createdBy = adminCheck.userEmail ?? adminCheck.userId;
+
     const { data: restoreRow, error: restoreInsErr } = await admin
       .from("crm_restores")
-      .insert({ status: "running", mode, include_modules: includeModules, source_backup_id: body.sourceBackupId || null, source_file_path: body.sourceFilePath || null })
+      .insert({
+        status: "running",
+        created_by: createdBy,
+        mode,
+        include_modules: includeModules,
+        source_backup_id: body.sourceBackupId || null,
+        source_file_path: body.sourceFilePath || null,
+      })
       .select("*")
       .single();
     if (restoreInsErr) throw new Error(restoreInsErr.message);
