@@ -1377,17 +1377,17 @@ export function EnhancedTaskTable({
 
       {/* Tasks Table */}
       <ScrollableTableContainer>
-        <Table>
-          <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
-            <TableRow>
-              <TableHead className="w-[40px] bg-background">
+        <table className="w-full caption-bottom text-sm">
+          <TableHeader className="sticky top-0 z-20 bg-background">
+            <TableRow className="border-b-2 border-border shadow-sm">
+              <TableHead className="w-[40px] bg-background sticky top-0">
                 <Checkbox 
                   checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
                   onCheckedChange={(checked) => handleSelectAll(!!checked)}
                 />
               </TableHead>
               {visibleColumns.map((column) => (
-                <TableHead key={column.key} className="bg-background">
+                <TableHead key={column.key} className="bg-background sticky top-0">
                   {renderTableHeader(column.key, column.label)}
                 </TableHead>
               ))}
@@ -1410,7 +1410,7 @@ export function EnhancedTaskTable({
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+        </table>
       </ScrollableTableContainer>
 
       {filteredTasks.length === 0 && (
