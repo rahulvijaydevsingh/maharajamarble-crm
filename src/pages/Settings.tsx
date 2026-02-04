@@ -39,6 +39,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ControlPanel } from "@/components/settings/ControlPanel";
 import { RoleManagementPanel } from "@/components/settings/RoleManagementPanel";
 import { StaffManagementPanel } from "@/components/settings/StaffManagementPanel";
+import { BackupRestorePanel } from "@/components/settings/BackupRestorePanel";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useProfileSettings } from "@/hooks/useProfileSettings";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
@@ -74,8 +75,8 @@ const Settings = () => {
           </p>
         </div>
 
-        <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid grid-cols-7 md:w-[950px]">
+          <Tabs defaultValue="profile" className="w-full">
+          	<TabsList className="grid grid-cols-8 md:w-[1050px]">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -83,6 +84,7 @@ const Settings = () => {
             <TabsTrigger value="staff">Staff</TabsTrigger>
             <TabsTrigger value="roles">Roles</TabsTrigger>
             <TabsTrigger value="control-panel">Control Panel</TabsTrigger>
+	            <TabsTrigger value="backup-restore">Backup & Restore</TabsTrigger>
           </TabsList>
           
           <TabsContent value="profile" className="space-y-4 mt-4">
@@ -552,6 +554,10 @@ const Settings = () => {
           
           <TabsContent value="control-panel" className="space-y-4 mt-4">
             <ControlPanel />
+          </TabsContent>
+
+          <TabsContent value="backup-restore" className="space-y-4 mt-4">
+            <BackupRestorePanel />
           </TabsContent>
         </Tabs>
       </div>
