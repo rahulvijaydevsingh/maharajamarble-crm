@@ -126,10 +126,17 @@ serve(async (req) => {
 
     const admin = createAdminClient();
 
+    const createdBy = adminCheck.userEmail ?? adminCheck.userId;
+
     // Create tracking row
     const { data: backupRow, error: insErr } = await admin
       .from("crm_backups")
-      .insert({ status: "running", include_modules: includeModules, formats: ["json", "xlsx"] })
+      .insert({
+        status: "running",
+        created_by: createdBy,
+        include_modules: includeModules,
+        formats: ["json", "xlsx"],
+      })
       .select("*")
       .single();
     if (insErr) throw new Error(insErr.message);
