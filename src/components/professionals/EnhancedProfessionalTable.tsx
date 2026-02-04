@@ -290,17 +290,17 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
       <div className="text-sm text-muted-foreground">Showing {filteredProfessionals.length} of {professionals.length} professionals</div>
 
       <ScrollableTableContainer>
-        <Table>
-          <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
-            <TableRow>
-              <TableHead className="w-10 bg-background">
+        <table className="w-full caption-bottom text-sm">
+          <TableHeader className="sticky top-0 z-20 bg-background">
+            <TableRow className="border-b-2 border-border shadow-sm">
+              <TableHead className="w-10 bg-background sticky top-0">
                 <Checkbox 
                   checked={selectedItems.length === filteredProfessionals.length && filteredProfessionals.length > 0} 
                   onCheckedChange={handleSelectAll} 
                 />
               </TableHead>
               {visibleColumns.map((column) => (
-                <TableHead key={column.key} className="bg-background">
+                <TableHead key={column.key} className="bg-background sticky top-0">
                   <div className="flex items-center gap-1">
                     {column.key === "name" || column.key === "professionalType" || column.key === "city" || column.key === "status" || column.key === "rating" ? (
                       <SortableHeader field={column.key === "professionalType" ? "professional_type" : column.key as SortField}>
@@ -378,7 +378,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
               ))
             )}
           </TableBody>
-        </Table>
+        </table>
       </ScrollableTableContainer>
 
       <ProfessionalSavedFilterDialog 

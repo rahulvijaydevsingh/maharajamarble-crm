@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { DuplicateCheckResult } from "@/types/lead";
 
-type EntityType = "leads" | "professionals";
+type EntityType = "leads" | "professionals" | "customers";
 
 export interface DuplicateCheckRequest {
   phone: string;
@@ -36,7 +36,7 @@ export function useEntityPhoneDuplicateCheck() {
       setChecking((prev) => ({ ...prev, [fieldKey]: true }));
 
       try {
-        // Priority order: leads -> professionals (so lead duplicates remain "blocking" in UI logic).
+        // Priority order: leads -> customers -> professionals
         for (const entity of entities) {
           if (entity === "leads") {
             const { data, error } = await supabase
@@ -67,6 +67,42 @@ export function useEntityPhoneDuplicateCheck() {
                     assigned_to: lead.assigned_to,
                     created_at: lead.created_at,
                     firm_name: lead.firm_name,
+                  },
+                },
+              }));
+              return;
+            }
+          }
+
+          if (entity === "customers") {
+            const { data, error } = await supabase
+              .from("customers")
+              .select("*")
+              .or(`phone.eq.${normalizedPhone},alternate_phone.eq.${normalizedPhone}`)
+              .limit(1);
+
+            if (error) {
+              console.error("Duplicate check (customers) error:", error);
+              continue;
+            }
+
+            if (data && data.length > 0) {
+              const customer = data[0] as any;
+              setResults((prev) => ({
+                ...prev,
+                [fieldKey]: {
+                  found: true,
+                  type: "customer",
+                  existingRecord: {
+                    id: customer.id,
+                    name: customer.name,
+                    phone: customer.phone,
+                    email: customer.email,
+                    address: customer.address,
+                    status: customer.status,
+                    assigned_to: customer.assigned_to,
+                    created_at: customer.created_at,
+                    firm_name: customer.company_name,
                   },
                 },
               }));

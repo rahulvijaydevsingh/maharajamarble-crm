@@ -587,15 +587,16 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     switch (columnKey) {
       case "name":
         return (
-          <div className="font-medium group/name relative" onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-col">
+          <div className="relative h-[40px] flex items-center font-medium min-w-[160px]" onClick={(e) => e.stopPropagation()}>
+            <span className="absolute inset-0 flex items-center truncate pr-2">{customer.name}</span>
+            <div className="absolute inset-0 flex items-center opacity-0 hover:opacity-100 bg-background/90 transition-opacity">
               <span 
-                className="cursor-pointer hover:text-primary hover:underline"
+                className="mr-2 cursor-pointer hover:text-primary hover:underline truncate"
                 onClick={() => handleViewCustomer(customer)}
               >
                 {customer.name}
               </span>
-              <div className="hidden group-hover/name:flex items-center gap-1 mt-1">
+              <div className="flex items-center gap-1 shrink-0">
                 <Button 
                   variant="ghost" 
                   size="sm" 
@@ -776,14 +777,14 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       <div className="text-sm text-muted-foreground">Showing {filteredCustomers.length} of {customers.length} customers</div>
 
       <ScrollableTableContainer>
-        <Table>
-          <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
-            <TableRow>
-              <TableHead className="w-10 bg-background">
+        <table className="w-full caption-bottom text-sm">
+          <TableHeader className="sticky top-0 z-20 bg-background">
+            <TableRow className="border-b-2 border-border shadow-sm">
+              <TableHead className="w-10 bg-background sticky top-0">
                 <Checkbox checked={selectedItems.length === filteredCustomers.length && filteredCustomers.length > 0} onCheckedChange={handleSelectAll} />
               </TableHead>
               {visibleColumns.map((column) => (
-                <TableHead key={column.key} className="bg-background">
+                <TableHead key={column.key} className="bg-background sticky top-0">
                   {renderTableHeader(column.key, column.label)}
                 </TableHead>
               ))}
@@ -807,7 +808,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               ))
             )}
           </TableBody>
-        </Table>
+        </table>
       </ScrollableTableContainer>
 
       {/* Bulk Action Confirmation Dialog */}

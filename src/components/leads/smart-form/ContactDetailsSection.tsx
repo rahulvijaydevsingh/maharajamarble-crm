@@ -92,10 +92,10 @@ export function ContactDetailsSection({
   const handlePhoneBlur = (index: number, field: 'phone' | 'alternatePhone', phone: string) => {
     if (phone.length === 10) {
       const checkKey = `${contacts[index].id}_${field}`;
-      // Always check against leads; if this contact is professional, also check professionals.
+      // Always check against leads and customers; if this contact is professional, also check professionals.
       const entities = isProfessionalDesignation(contacts[index].designation)
-        ? (["leads", "professionals"] as const)
-        : (["leads"] as const);
+        ? (["leads", "customers", "professionals"] as const)
+        : (["leads", "customers"] as const);
 
       checkDuplicate({ phone, fieldKey: checkKey, entities });
     }
