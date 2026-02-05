@@ -32,6 +32,7 @@ import {
   Edit,
   Loader2,
 } from 'lucide-react';
+ import { HeartHandshake } from 'lucide-react';
 import { Customer, useCustomers } from '@/hooks/useCustomers';
 import { useLeads } from '@/hooks/useLeads';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,6 +44,7 @@ import { CustomerRemindersTab } from './detail-tabs/CustomerRemindersTab';
 import { CustomerNotesTab } from './detail-tabs/CustomerNotesTab';
 import { CustomerActivityTab } from './detail-tabs/CustomerActivityTab';
 import { EditSmartCustomerForm } from './EditSmartCustomerForm';
+ import { KitProfileTab } from '@/components/kit/KitProfileTab';
 import { CUSTOMER_STATUSES } from '@/constants/customerConstants';
 import { useToast } from '@/hooks/use-toast';
 
@@ -379,6 +381,10 @@ export function CustomerDetailView({
                 <Activity className="h-4 w-4" />
                 Activity Log
               </TabsTrigger>
+               <TabsTrigger value="kit" className="gap-1.5 data-[state=active]:bg-muted">
+                 <HeartHandshake className="h-4 w-4" />
+                 Keep in Touch
+               </TabsTrigger>
             </TabsList>
           </div>
 
@@ -414,6 +420,15 @@ export function CustomerDetailView({
             <TabsContent value="activity" className="m-0 h-full">
               <CustomerActivityTab customer={customer} />
             </TabsContent>
+             
+             <TabsContent value="kit" className="m-0 h-full">
+               <KitProfileTab
+                 entityType="customer"
+                 entityId={customer.id}
+                 entityName={customer.name}
+                 defaultAssignee={customer.assigned_to}
+               />
+             </TabsContent>
           </div>
         </Tabs>
       </DialogContent>

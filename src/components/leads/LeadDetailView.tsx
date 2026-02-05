@@ -31,6 +31,7 @@ import {
   Download,
   Edit,
 } from 'lucide-react';
+ import { HeartHandshake } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { LeadProfileTab } from './detail-tabs/LeadProfileTab';
@@ -41,6 +42,7 @@ import { LeadRemindersTab } from './detail-tabs/LeadRemindersTab';
 import { LeadNotesTab } from './detail-tabs/LeadNotesTab';
 import { LeadActivityTab } from './detail-tabs/LeadActivityTab';
 import { EditSmartLeadForm } from './EditSmartLeadForm';
+ import { KitProfileTab } from '@/components/kit/KitProfileTab';
 
 interface LeadDetailViewProps {
   lead: Lead | null;
@@ -355,6 +357,10 @@ export function LeadDetailView({
                 <Activity className="h-4 w-4" />
                 Activity Log
               </TabsTrigger>
+               <TabsTrigger value="kit" className="gap-1.5 data-[state=active]:bg-muted">
+                 <HeartHandshake className="h-4 w-4" />
+                 Keep in Touch
+               </TabsTrigger>
             </TabsList>
           </div>
 
@@ -400,6 +406,15 @@ export function LeadDetailView({
                 }}
               />
             </TabsContent>
+             
+             <TabsContent value="kit" className="m-0 h-full">
+               <KitProfileTab
+                 entityType="lead"
+                 entityId={currentLead.id}
+                 entityName={currentLead.name}
+                 defaultAssignee={currentLead.assigned_to}
+               />
+             </TabsContent>
           </div>
         </Tabs>
       </DialogContent>
