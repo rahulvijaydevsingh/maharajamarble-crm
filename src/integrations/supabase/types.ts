@@ -672,6 +672,8 @@ export type Database = {
           id: string
           industry: string | null
           is_repeat_customer: boolean | null
+          kit_status: string | null
+          kit_subscription_id: string | null
           last_follow_up: string | null
           last_purchase: string | null
           lead_id: string | null
@@ -702,6 +704,8 @@ export type Database = {
           id?: string
           industry?: string | null
           is_repeat_customer?: boolean | null
+          kit_status?: string | null
+          kit_subscription_id?: string | null
           last_follow_up?: string | null
           last_purchase?: string | null
           lead_id?: string | null
@@ -732,6 +736,8 @@ export type Database = {
           id?: string
           industry?: string | null
           is_repeat_customer?: boolean | null
+          kit_status?: string | null
+          kit_subscription_id?: string | null
           last_follow_up?: string | null
           last_purchase?: string | null
           lead_id?: string | null
@@ -754,6 +760,13 @@ export type Database = {
             columns: ["created_from_lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_kit_subscription_id_fkey"
+            columns: ["kit_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "kit_subscriptions"
             referencedColumns: ["id"]
           },
           {
@@ -801,6 +814,238 @@ export type Database = {
         }
         Relationships: []
       }
+      kit_outcomes: {
+        Row: {
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_positive: boolean | null
+          label: string
+          requires_followup: boolean | null
+          updated_at: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_positive?: boolean | null
+          label: string
+          requires_followup?: boolean | null
+          updated_at?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_positive?: boolean | null
+          label?: string
+          requires_followup?: boolean | null
+          updated_at?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
+      kit_presets: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          default_cycle_behavior: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          touch_sequence: Json
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          default_cycle_behavior?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          touch_sequence?: Json
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          default_cycle_behavior?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          touch_sequence?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      kit_subscriptions: {
+        Row: {
+          assigned_to: string
+          completed_at: string | null
+          created_at: string | null
+          created_by: string
+          current_step: number | null
+          cycle_count: number | null
+          entity_id: string
+          entity_type: string
+          id: string
+          max_cycles: number | null
+          pause_reason: string | null
+          pause_until: string | null
+          preset_id: string | null
+          started_at: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to: string
+          completed_at?: string | null
+          created_at?: string | null
+          created_by: string
+          current_step?: number | null
+          cycle_count?: number | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          max_cycles?: number | null
+          pause_reason?: string | null
+          pause_until?: string | null
+          preset_id?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string
+          current_step?: number | null
+          cycle_count?: number | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          max_cycles?: number | null
+          pause_reason?: string | null
+          pause_until?: string | null
+          preset_id?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kit_subscriptions_preset_id_fkey"
+            columns: ["preset_id"]
+            isOneToOne: false
+            referencedRelation: "kit_presets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kit_touch_methods: {
+        Row: {
+          created_at: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          label: string
+          updated_at: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          updated_at?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          updated_at?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
+      kit_touches: {
+        Row: {
+          assigned_to: string
+          completed_at: string | null
+          created_at: string | null
+          id: string
+          method: string
+          original_scheduled_date: string | null
+          outcome: string | null
+          outcome_notes: string | null
+          reschedule_count: number | null
+          scheduled_date: string
+          scheduled_time: string | null
+          sequence_index: number
+          snoozed_until: string | null
+          status: string
+          subscription_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to: string
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          method: string
+          original_scheduled_date?: string | null
+          outcome?: string | null
+          outcome_notes?: string | null
+          reschedule_count?: number | null
+          scheduled_date: string
+          scheduled_time?: string | null
+          sequence_index: number
+          snoozed_until?: string | null
+          status?: string
+          subscription_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          method?: string
+          original_scheduled_date?: string | null
+          outcome?: string | null
+          outcome_notes?: string | null
+          reschedule_count?: number | null
+          scheduled_date?: string
+          scheduled_time?: string | null
+          sequence_index?: number
+          snoozed_until?: string | null
+          status?: string
+          subscription_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kit_touches_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "kit_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           additional_contacts: Json | null
@@ -819,6 +1064,8 @@ export type Database = {
           firm_name: string | null
           id: string
           is_converted: boolean | null
+          kit_status: string | null
+          kit_subscription_id: string | null
           last_follow_up: string | null
           material_interests: string[] | null
           name: string
@@ -851,6 +1098,8 @@ export type Database = {
           firm_name?: string | null
           id?: string
           is_converted?: boolean | null
+          kit_status?: string | null
+          kit_subscription_id?: string | null
           last_follow_up?: string | null
           material_interests?: string[] | null
           name: string
@@ -883,6 +1132,8 @@ export type Database = {
           firm_name?: string | null
           id?: string
           is_converted?: boolean | null
+          kit_status?: string | null
+          kit_subscription_id?: string | null
           last_follow_up?: string | null
           material_interests?: string[] | null
           name?: string
@@ -911,6 +1162,13 @@ export type Database = {
             columns: ["created_from_customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_kit_subscription_id_fkey"
+            columns: ["kit_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "kit_subscriptions"
             referencedColumns: ["id"]
           },
         ]
@@ -1054,6 +1312,8 @@ export type Database = {
           email: string | null
           firm_name: string | null
           id: string
+          kit_status: string | null
+          kit_subscription_id: string | null
           last_follow_up: string | null
           name: string
           next_follow_up: string | null
@@ -1079,6 +1339,8 @@ export type Database = {
           email?: string | null
           firm_name?: string | null
           id?: string
+          kit_status?: string | null
+          kit_subscription_id?: string | null
           last_follow_up?: string | null
           name: string
           next_follow_up?: string | null
@@ -1104,6 +1366,8 @@ export type Database = {
           email?: string | null
           firm_name?: string | null
           id?: string
+          kit_status?: string | null
+          kit_subscription_id?: string | null
           last_follow_up?: string | null
           name?: string
           next_follow_up?: string | null
@@ -1119,7 +1383,15 @@ export type Database = {
           total_projects?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "professionals_kit_subscription_id_fkey"
+            columns: ["kit_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "kit_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
