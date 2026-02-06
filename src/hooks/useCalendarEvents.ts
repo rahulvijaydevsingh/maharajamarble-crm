@@ -10,7 +10,8 @@ export type CalendarEventType =
   | "meeting" 
   | "delivery" 
   | "follow-up"
-  | "quotation";
+  | "quotation"
+  | "kit-touch";
 
 export interface CalendarEvent {
   id: string;
@@ -26,7 +27,7 @@ export interface CalendarEvent {
   relatedEntityType?: string | null;
   relatedEntityId?: string | null;
   relatedEntityName?: string | null;
-  source: "task" | "reminder" | "quotation";
+  source: "task" | "reminder" | "quotation" | "kit_touch";
   sourceId: string;
   color: string;
   icon: string;
@@ -49,6 +50,7 @@ const EVENT_TYPE_CONFIG: Record<CalendarEventType, { color: string; icon: string
   delivery: { color: "bg-green-500", icon: "🏢", label: "Delivery" },
   "follow-up": { color: "bg-orange-500", icon: "📋", label: "Follow-up" },
   quotation: { color: "bg-amber-500", icon: "📄", label: "Quotation" },
+  "kit-touch": { color: "bg-violet-500", icon: "💜", label: "KIT Touch" },
 };
 
 export const getEventTypeConfig = (type: CalendarEventType) => {
@@ -81,6 +83,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
   const [tasks, setTasks] = useState<any[]>([]);
   const [reminders, setReminders] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
+  const [kitTouches, setKitTouches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<CalendarFilters>({
     eventTypes: [],
@@ -161,6 +164,23 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
 
       if (quotationsError) throw quotationsError;
       setQuotations(quotationsData || []);
+
+      // Fetch KIT touches
+      const { data: kitTouchesData, error: kitTouchesError } = await supabase
+        .from("kit_touches")
+        .select(`
+          id, method, scheduled_date, scheduled_time, assigned_to, status,
+          subscription:kit_subscriptions(
+            id, entity_type, entity_id, preset:kit_presets(name)
+          )
+        `)
+        .gte("scheduled_date", startStr)
+        .lte("scheduled_date", endStr)
+        .in("status", ["pending", "snoozed"])
+        .order("scheduled_date", { ascending: true });
+
+      if (kitTouchesError) throw kitTouchesError;
+      setKitTouches(kitTouchesData || []);
 
     } catch (error) {
       console.error("Error fetching calendar events:", error);
@@ -270,8 +290,41 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
       });
     });
 
+    // Transform KIT touches
+    kitTouches.forEach((touch) => {
+      const config = getEventTypeConfig("kit-touch");
+      const sub = touch.subscription as { id: string; entity_type: string; entity_id: string; preset: { name: string } | null } | null;
+      
+      let startDate: Date;
+      if (touch.scheduled_time) {
+        startDate = new Date(`${touch.scheduled_date}T${touch.scheduled_time}`);
+      } else {
+        startDate = new Date(`${touch.scheduled_date}T10:00:00`);
+      }
+
+      const methodLabel = touch.method.charAt(0).toUpperCase() + touch.method.slice(1);
+      const presetName = sub?.preset?.name || "Custom";
+
+      allEvents.push({
+        id: `kit-${touch.id}`,
+        title: `${methodLabel} (${presetName})`,
+        description: `KIT ${methodLabel} touch`,
+        start: startDate,
+        allDay: !touch.scheduled_time,
+        type: "kit-touch",
+        assignedTo: touch.assigned_to,
+        relatedEntityType: sub?.entity_type || null,
+        relatedEntityId: sub?.entity_id || null,
+        source: "kit_touch",
+        sourceId: touch.id,
+        color: config.color,
+        icon: config.icon,
+        status: touch.status === "snoozed" ? "Snoozed" : "Pending",
+      });
+    });
+
     return allEvents.sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [tasks, reminders, quotations]);
+  }, [tasks, reminders, quotations, kitTouches]);
 
   // Apply filters
   const filteredEvents = useMemo(() => {
