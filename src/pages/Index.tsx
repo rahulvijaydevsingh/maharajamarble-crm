@@ -2,6 +2,7 @@ import { BarChart, Calendar, Phone, Users, TrendingUp, AlertTriangle } from "luc
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { RemindersWidget } from "@/components/dashboard/RemindersWidget";
+import { KitDashboardWidget } from "@/components/dashboard/KitDashboardWidget";
 import { TaskList } from "@/components/tasks/TaskList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
@@ -100,8 +101,9 @@ const Index = () => {
           </Card>
           <RemindersWidget />
         </div>
-        
-        <div className="grid gap-4 md:grid-cols-1">
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <KitDashboardWidget />
           <TaskList />
         </div>
       </div>
