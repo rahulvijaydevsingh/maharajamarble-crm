@@ -259,6 +259,85 @@ export function useKitTouches(subscriptionId?: string) {
     },
   });
 
+  // Add a new touch to subscription
+  const addTouchMutation = useMutation({
+    mutationFn: async ({
+      subscriptionId,
+      method,
+      scheduledDate,
+      scheduledTime,
+      assignedTo,
+    }: {
+      subscriptionId: string;
+      method: string;
+      scheduledDate: string;
+      scheduledTime?: string;
+      assignedTo: string;
+    }) => {
+      // Get the max sequence index
+      const { data: existingTouches } = await supabase
+        .from('kit_touches')
+        .select('sequence_index')
+        .eq('subscription_id', subscriptionId)
+        .order('sequence_index', { ascending: false })
+        .limit(1);
+
+      const maxIndex = existingTouches?.[0]?.sequence_index ?? -1;
+
+      const { error } = await supabase.from('kit_touches').insert({
+        subscription_id: subscriptionId,
+        method,
+        scheduled_date: scheduledDate,
+        scheduled_time: scheduledTime || null,
+        assigned_to: assignedTo,
+        sequence_index: maxIndex + 1,
+        status: 'pending',
+        original_scheduled_date: scheduledDate,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
+      queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      toast({ title: 'Touch added' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error adding touch', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  // Update a touch
+  const updateTouchMutation = useMutation({
+    mutationFn: async ({
+      touchId,
+      updates,
+    }: {
+      touchId: string;
+      updates: {
+        method?: string;
+        scheduled_date?: string;
+        scheduled_time?: string | null;
+        assigned_to?: string;
+      };
+    }) => {
+      const { error } = await supabase
+        .from('kit_touches')
+        .update(updates)
+        .eq('id', touchId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
+      queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      toast({ title: 'Touch updated' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error updating touch', description: error.message, variant: 'destructive' });
+    },
+  });
+
   return {
     touches: touchesQuery.data || [],
     nextTouch,
@@ -271,11 +350,15 @@ export function useKitTouches(subscriptionId?: string) {
     rescheduleTouch: rescheduleMutation.mutateAsync,
     skipTouch: skipMutation.mutateAsync,
     reassignTouch: reassignMutation.mutateAsync,
+    addTouch: addTouchMutation.mutateAsync,
+    updateTouch: updateTouchMutation.mutateAsync,
     isCompleting: completeMutation.isPending,
     isSnoozing: snoozeMutation.isPending,
     isRescheduling: rescheduleMutation.isPending,
     isSkipping: skipMutation.isPending,
     isReassigning: reassignMutation.isPending,
+    isAdding: addTouchMutation.isPending,
+    isUpdating: updateTouchMutation.isPending,
   };
 }
 

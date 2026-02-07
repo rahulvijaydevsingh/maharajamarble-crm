@@ -22,6 +22,7 @@ import {
   subDays,
   isSameDay,
 } from "date-fns";
+import { useNavigate } from "react-router-dom";
 import { useCalendarEvents, CalendarEvent } from "@/hooks/useCalendarEvents";
 import { CalendarMonthView } from "@/components/calendar/CalendarMonthView";
 import { CalendarWeekView } from "@/components/calendar/CalendarWeekView";
@@ -36,10 +37,16 @@ import { toast } from "sonner";
 import { TaskCompletionDialog } from "@/components/tasks/TaskCompletionDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
+import { KitTouchCompleteDialog } from "@/components/kit/KitTouchCompleteDialog";
+import { useKitTouches } from "@/hooks/useKitTouches";
+import { useKitActivityLog } from "@/hooks/useKitActivityLog";
+import { getEntityUrl } from "@/lib/kitHelpers";
+import type { KitTouch } from "@/constants/kitConstants";
 
 type ViewMode = "month" | "week" | "day" | "agenda";
 
 const CalendarPage = () => {
+  const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");
@@ -52,6 +59,14 @@ const CalendarPage = () => {
 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
+
+  // KIT touch management state
+  const [kitTouchDialogOpen, setKitTouchDialogOpen] = useState(false);
+  const [selectedKitEvent, setSelectedKitEvent] = useState<CalendarEvent | null>(null);
+  
+  // We need to get subscription id dynamically for the selected event
+  const { snoozeTouch, rescheduleTouch, reassignTouch, completeTouch } = useKitTouches(selectedKitEvent?.subscriptionId);
+  const { logTouchCompleted, logTouchSnoozed, logTouchRescheduled, logTouchReassigned } = useKitActivityLog();
 
   const {
     events,
@@ -126,6 +141,12 @@ const CalendarPage = () => {
       openTask(event.sourceId);
       return;
     }
+    if (event.source === "kit_touch" && event.relatedEntityType && event.relatedEntityId) {
+      // Navigate to entity profile with KIT tab
+      const url = getEntityUrl(event.relatedEntityType, event.relatedEntityId, 'kit');
+      navigate(url);
+      return;
+    }
     // Other event types can be handled later (e.g., open edit dialog)
   };
 
@@ -145,6 +166,98 @@ const CalendarPage = () => {
       } catch (error) {
         toast.error("Failed to complete task");
       }
+    }
+  };
+
+  // KIT touch handlers
+  const handleKitLog = (event: CalendarEvent) => {
+    setSelectedKitEvent(event);
+    setKitTouchDialogOpen(true);
+  };
+
+  const handleKitSnooze = async (event: CalendarEvent, snoozeUntil: string) => {
+    try {
+      await snoozeTouch({ touchId: event.sourceId, snoozeUntil });
+      if (event.relatedEntityType && event.relatedEntityId) {
+        await logTouchSnoozed({
+          entityType: event.relatedEntityType as any,
+          entityId: event.relatedEntityId,
+          entityName: event.relatedEntityName || 'Unknown',
+          method: (event.touchMethod || 'call') as any,
+          snoozeUntil,
+        });
+      }
+      refetch();
+      toast.success("Touch snoozed");
+    } catch (error) {
+      toast.error("Failed to snooze touch");
+    }
+  };
+
+  const handleKitReschedule = async (event: CalendarEvent, newDate: string) => {
+    try {
+      await rescheduleTouch({ touchId: event.sourceId, newDate });
+      if (event.relatedEntityType && event.relatedEntityId) {
+        await logTouchRescheduled({
+          entityType: event.relatedEntityType as any,
+          entityId: event.relatedEntityId,
+          entityName: event.relatedEntityName || 'Unknown',
+          method: (event.touchMethod || 'call') as any,
+          newDate,
+        });
+      }
+      refetch();
+      toast.success("Touch rescheduled");
+    } catch (error) {
+      toast.error("Failed to reschedule touch");
+    }
+  };
+
+  const handleKitReassign = async (event: CalendarEvent, newAssignee: string) => {
+    try {
+      await reassignTouch({ touchId: event.sourceId, newAssignee });
+      if (event.relatedEntityType && event.relatedEntityId) {
+        await logTouchReassigned({
+          entityType: event.relatedEntityType as any,
+          entityId: event.relatedEntityId,
+          entityName: event.relatedEntityName || 'Unknown',
+          method: (event.touchMethod || 'call') as any,
+          newAssignee,
+        });
+      }
+      refetch();
+      toast.success("Touch reassigned");
+    } catch (error) {
+      toast.error("Failed to reassign touch");
+    }
+  };
+
+  const handleKitTouchComplete = async (outcome: string, notes?: string) => {
+    if (!selectedKitEvent) return;
+    try {
+      await completeTouch({ touchId: selectedKitEvent.sourceId, outcome, outcomeNotes: notes });
+      if (selectedKitEvent.relatedEntityType && selectedKitEvent.relatedEntityId) {
+        await logTouchCompleted({
+          entityType: selectedKitEvent.relatedEntityType as any,
+          entityId: selectedKitEvent.relatedEntityId,
+          entityName: selectedKitEvent.relatedEntityName || 'Unknown',
+          method: (selectedKitEvent.touchMethod || 'call') as any,
+          outcome,
+          outcomeNotes: notes,
+        });
+      }
+      setKitTouchDialogOpen(false);
+      setSelectedKitEvent(null);
+      refetch();
+    } catch (error) {
+      toast.error("Failed to complete touch");
+    }
+  };
+
+  const handleViewRelated = (event: CalendarEvent) => {
+    if (event.relatedEntityType && event.relatedEntityId) {
+      const url = getEntityUrl(event.relatedEntityType, event.relatedEntityId);
+      navigate(url);
     }
   };
 
@@ -311,6 +424,37 @@ const CalendarPage = () => {
         task={taskToComplete}
         updateTask={updateTask}
         addTask={addTask}
+      />
+
+      {/* KIT Touch Complete Dialog */}
+      <KitTouchCompleteDialog
+        open={kitTouchDialogOpen}
+        onOpenChange={(open) => {
+          setKitTouchDialogOpen(open);
+          if (!open) setSelectedKitEvent(null);
+        }}
+        touch={selectedKitEvent ? {
+          id: selectedKitEvent.sourceId,
+          method: (selectedKitEvent.touchMethod || 'call') as any,
+          scheduled_date: format(selectedKitEvent.start, 'yyyy-MM-dd'),
+          status: 'pending' as any,
+        } as any : null}
+        entityName={selectedKitEvent?.relatedEntityName || 'Unknown'}
+        onComplete={handleKitTouchComplete}
+        onSnooze={async (snoozeUntil) => {
+          if (selectedKitEvent) {
+            await handleKitSnooze(selectedKitEvent, snoozeUntil);
+            setKitTouchDialogOpen(false);
+            setSelectedKitEvent(null);
+          }
+        }}
+        onReschedule={async (newDate) => {
+          if (selectedKitEvent) {
+            await handleKitReschedule(selectedKitEvent, newDate);
+            setKitTouchDialogOpen(false);
+            setSelectedKitEvent(null);
+          }
+        }}
       />
     </DashboardLayout>
   );
