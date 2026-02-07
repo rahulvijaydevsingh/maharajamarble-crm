@@ -86,7 +86,7 @@ export function KitPresetList() {
   const handleSavePreset = async (data: any) => {
     try {
       if (editingPreset) {
-        await updatePreset({ id: editingPreset.id, ...data });
+        await updatePreset({ id: editingPreset.id, updates: data });
         toast.success("Preset updated");
       } else {
         await createPreset(data);

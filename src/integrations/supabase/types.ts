@@ -898,6 +898,7 @@ export type Database = {
           pause_reason: string | null
           pause_until: string | null
           preset_id: string | null
+          skip_weekends: boolean | null
           started_at: string | null
           status: string
           updated_at: string | null
@@ -916,6 +917,7 @@ export type Database = {
           pause_reason?: string | null
           pause_until?: string | null
           preset_id?: string | null
+          skip_weekends?: boolean | null
           started_at?: string | null
           status?: string
           updated_at?: string | null
@@ -934,6 +936,7 @@ export type Database = {
           pause_reason?: string | null
           pause_until?: string | null
           preset_id?: string | null
+          skip_weekends?: boolean | null
           started_at?: string | null
           status?: string
           updated_at?: string | null
