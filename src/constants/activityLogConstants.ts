@@ -1,4 +1,4 @@
-import { 
+import {
   UserPlus, 
   Edit, 
   Activity, 
@@ -27,6 +27,13 @@ import {
   X,
   RotateCcw,
   Users,
+  HeartHandshake,
+  SkipForward,
+  CalendarDays,
+  UserCheck,
+  Pause,
+  Play,
+  XCircle,
   LucideIcon
 } from 'lucide-react';
 
@@ -78,7 +85,17 @@ export type ActivityType =
   | 'automation_triggered'
   | 'bulk_import'
   | 'customer_created'
-  | 'repeat_lead_created';
+  | 'repeat_lead_created'
+  | 'kit_activated'
+  | 'kit_touch_completed'
+  | 'kit_touch_skipped'
+  | 'kit_touch_snoozed'
+  | 'kit_touch_rescheduled'
+  | 'kit_touch_reassigned'
+  | 'kit_cycle_completed'
+  | 'kit_paused'
+  | 'kit_resumed'
+  | 'kit_cancelled';
 
 // Activity Categories
 export type ActivityCategory = 
@@ -95,7 +112,8 @@ export type ActivityCategory =
   | 'assignment'
   | 'status_change'
   | 'field_update'
-  | 'conversion';
+  | 'conversion'
+  | 'keep_in_touch';
 
 // Manual Entry Activity Types
 export const MANUAL_ACTIVITY_TYPES = [
@@ -176,6 +194,18 @@ export const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   // Conversion activities
   customer_created: UserPlus,
   repeat_lead_created: RotateCcw,
+  
+  // Keep in Touch activities
+  kit_activated: HeartHandshake,
+  kit_touch_completed: Check,
+  kit_touch_skipped: SkipForward,
+  kit_touch_snoozed: Clock,
+  kit_touch_rescheduled: CalendarDays,
+  kit_touch_reassigned: UserCheck,
+  kit_cycle_completed: RefreshCw,
+  kit_paused: Pause,
+  kit_resumed: Play,
+  kit_cancelled: XCircle,
 };
 
 // Activity Color Configuration
@@ -250,6 +280,18 @@ export const ACTIVITY_COLORS: Record<string, { bg: string; text: string; border?
   // Conversion
   customer_created: { bg: 'bg-primary/10', text: 'text-primary' },
   repeat_lead_created: { bg: 'bg-primary/10', text: 'text-primary' },
+  
+  // Keep in Touch
+  kit_activated: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_touch_completed: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_touch_skipped: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  kit_touch_snoozed: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_touch_rescheduled: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_touch_reassigned: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_cycle_completed: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_paused: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  kit_resumed: { bg: 'bg-violet-500/10', text: 'text-violet-600' },
+  kit_cancelled: { bg: 'bg-destructive/10', text: 'text-destructive' },
 };
 
 // Get activity icon
@@ -311,6 +353,17 @@ export const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   bulk_import: 'Bulk Import',
   customer_created: 'Customer Created',
   repeat_lead_created: 'Repeat Lead Created',
+  // Keep in Touch
+  kit_activated: 'KIT Activated',
+  kit_touch_completed: 'Touch Completed',
+  kit_touch_skipped: 'Touch Skipped',
+  kit_touch_snoozed: 'Touch Snoozed',
+  kit_touch_rescheduled: 'Touch Rescheduled',
+  kit_touch_reassigned: 'Touch Reassigned',
+  kit_cycle_completed: 'Cycle Completed',
+  kit_paused: 'KIT Paused',
+  kit_resumed: 'KIT Resumed',
+  kit_cancelled: 'KIT Cancelled',
 };
 
 // Filter categories for activity log
@@ -325,6 +378,7 @@ export const ACTIVITY_FILTER_CATEGORIES = [
   { value: 'status_change', label: 'Status Changes' },
   { value: 'automation', label: 'Automation Triggers' },
   { value: 'manual', label: 'Manual Entries' },
+  { value: 'keep_in_touch', label: 'Keep in Touch' },
 ] as const;
 
 // Date grouping options
