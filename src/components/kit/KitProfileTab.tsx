@@ -94,11 +94,15 @@ export function KitProfileTab({
     rescheduleTouch,
     skipTouch,
     reassignTouch,
+    updateTouch,
+    addTouch,
     isCompleting: isTouchCompleting,
     isSnoozing,
     isRescheduling,
     isSkipping,
     isReassigning,
+    isUpdating,
+    isAdding,
   } = useKitTouches(subscription?.id);
 
   const {
@@ -243,6 +247,79 @@ export function KitProfileTab({
     });
   };
 
+  // Handler for adding a new touch
+  const handleAddTouch = async (data: {
+    method: string;
+    scheduledDate: string;
+    scheduledTime?: string;
+    assignedTo: string;
+    createTask?: boolean;
+    taskTitle?: string;
+    createReminder?: boolean;
+  }) => {
+    if (!subscription) return;
+    
+    await addTouch({
+      subscriptionId: subscription.id,
+      method: data.method,
+      scheduledDate: data.scheduledDate,
+      scheduledTime: data.scheduledTime,
+      assignedTo: data.assignedTo,
+    });
+    
+    // Create task if requested
+    if (data.createTask && data.taskTitle) {
+      await addTask({
+        title: data.taskTitle,
+        description: `KIT touch follow-up for ${entityName}`,
+        type: 'Follow-up Call',
+        priority: 'Medium',
+        status: 'Pending',
+        assigned_to: data.assignedTo,
+        due_date: data.scheduledDate,
+        related_entity_type: entityType,
+        related_entity_id: entityId,
+      });
+      
+      // Create reminder if requested
+      if (data.createReminder) {
+        await addReminder({
+          title: data.taskTitle,
+          description: `Reminder for KIT touch with ${entityName}`,
+          reminder_datetime: `${data.scheduledDate}T09:00:00`,
+          entity_type: entityType,
+          entity_id: entityId,
+          assigned_to: data.assignedTo,
+          created_by: user?.email || 'System',
+        });
+      }
+    }
+    
+    setAddTouchOpen(false);
+  };
+
+  // Handler for editing a touch
+  const handleEditTouch = async (data: {
+    method: string;
+    scheduledDate: string;
+    scheduledTime?: string;
+    assignedTo: string;
+  }) => {
+    if (!editingTouch) return;
+    
+    await updateTouch({
+      touchId: editingTouch.id,
+      updates: {
+        method: data.method,
+        scheduled_date: data.scheduledDate,
+        scheduled_time: data.scheduledTime || null,
+        assigned_to: data.assignedTo,
+      },
+    });
+    
+    setEditingTouch(null);
+  };
+
   const handleRepeatCycle = async () => {
     if (!subscription) return;
     await createNextCycle(subscription.id);
@@ -370,7 +447,7 @@ export function KitProfileTab({
             </div>
             <div>
               <p className="text-muted-foreground">Assigned To</p>
-              <p className="font-medium">{subscription.assigned_to}</p>
+              <p className="font-medium">{getStaffDisplayName(subscription.assigned_to, staffMembers)}</p>
             </div>
             {subscription.status === 'paused' && subscription.pause_until && (
               <div>
@@ -429,21 +506,54 @@ export function KitProfileTab({
       {/* Remaining Touches */}
       {remainingTouches.length > 1 && (
         <div className="space-y-3">
-          <h4 className="font-semibold text-sm uppercase text-muted-foreground">
-            Remaining in Cycle ({remainingTouches.length - 1})
-          </h4>
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-sm uppercase text-muted-foreground">
+              Remaining in Cycle ({remainingTouches.length - 1})
+            </h4>
+            <Button variant="outline" size="sm" onClick={() => setAddTouchOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Touch
+            </Button>
+          </div>
           <div className="space-y-2">
             {remainingTouches.slice(1).map((touch) => (
               <KitTouchCard
                 key={touch.id}
                 touch={touch}
-                onComplete={() => {}}
-                isUpcoming
+                onComplete={() => setCompleteDialogTouch(touch)}
+                onSnooze={(snoozeUntil) => handleDirectSnooze(touch, snoozeUntil)}
+                onReschedule={(newDate) => handleDirectReschedule(touch, newDate)}
+                onSkip={() => handleSkipTouch(touch)}
+                onReassign={(newAssignee) => handleReassignTouch(touch, newAssignee)}
+                onEdit={() => setEditingTouch(touch)}
+                disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
+                entityPhone={entityPhone}
+                entityLocation={entityLocation}
               />
             ))}
           </div>
         </div>
       )}
+      
+      {/* Add Touch Dialog */}
+      <AddTouchDialog
+        open={addTouchOpen}
+        onOpenChange={setAddTouchOpen}
+        subscriptionId={subscription.id}
+        entityName={entityName}
+        defaultAssignee={defaultAssignee}
+        onAdd={handleAddTouch}
+        isLoading={isAdding}
+      />
+
+      {/* Edit Touch Dialog */}
+      <EditTouchDialog
+        open={!!editingTouch}
+        onOpenChange={(open) => !open && setEditingTouch(null)}
+        touch={editingTouch}
+        onSave={handleEditTouch}
+        isLoading={isUpdating}
+      />
       
       {/* Dialogs */}
       <KitTouchCompleteDialog

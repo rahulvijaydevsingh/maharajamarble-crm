@@ -16,9 +16,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from '@/components/ui/select';
 import { format, parseISO, isPast, isToday, addHours, addDays } from 'date-fns';
-import { Check, Clock, CalendarDays, SkipForward, User, Phone, MessageCircle, MapPin } from 'lucide-react';
+import { Check, Clock, CalendarDays, SkipForward, User, Phone, MessageCircle, MapPin, Pencil } from 'lucide-react';
 import type { KitTouch } from '@/constants/kitConstants';
 import {
   KIT_TOUCH_METHOD_ICONS,
@@ -30,6 +32,8 @@ import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { cn } from '@/lib/utils';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
+import { buildStaffGroups } from '@/lib/staffSelect';
+import { getStaffDisplayName } from '@/lib/kitHelpers';
 
 interface KitTouchCardProps {
   touch: KitTouch;
@@ -38,6 +42,7 @@ interface KitTouchCardProps {
   onReschedule?: (newDate: string) => void;
   onSkip?: () => void;
   onReassign?: (newAssignee: string) => void;
+  onEdit?: () => void;
   isUpcoming?: boolean;
   disabled?: boolean;
   entityPhone?: string;
@@ -63,6 +68,7 @@ export function KitTouchCard({
   onReschedule,
   onSkip,
   onReassign,
+  onEdit,
   isUpcoming = false,
   disabled = false,
   entityPhone,
@@ -72,7 +78,8 @@ export function KitTouchCard({
   const [reassignOpen, setReassignOpen] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState<Date>();
   const { staffMembers } = useActiveStaff();
-  
+  const staffGroups = buildStaffGroups(staffMembers);
+  const displayName = getStaffDisplayName(touch.assigned_to, staffMembers);
   const Icon = KIT_TOUCH_METHOD_ICONS[touch.method];
   const methodColor = KIT_TOUCH_METHOD_COLORS[touch.method];
   const statusColor = KIT_TOUCH_STATUS_COLORS[touch.status];
@@ -172,7 +179,7 @@ export function KitTouchCard({
               {/* Assignee display with reassign option */}
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <User className="h-3 w-3" />
-                <span>{touch.assigned_to}</span>
+                <span>{displayName}</span>
                 {touch.status === 'pending' && !isUpcoming && onReassign && (
                   <Popover open={reassignOpen} onOpenChange={setReassignOpen}>
                     <PopoverTrigger asChild>
@@ -180,16 +187,21 @@ export function KitTouchCard({
                         Reassign
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-56 p-2" align="start">
+                    <PopoverContent className="w-64 p-2" align="start">
                       <Select onValueChange={handleReassign}>
                         <SelectTrigger className="h-8">
                           <SelectValue placeholder="Select staff..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {staffMembers.map((staff) => (
-                            <SelectItem key={staff.id} value={staff.email || staff.id}>
-                              {staff.name || staff.email}
-                            </SelectItem>
+                          {staffGroups.map((group) => (
+                            <SelectGroup key={group.label}>
+                              <SelectLabel>{group.label}</SelectLabel>
+                              {group.members.map((member) => (
+                                <SelectItem key={member.id} value={member.email || member.id}>
+                                  {member._display}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
                           ))}
                         </SelectContent>
                       </Select>
@@ -226,6 +238,13 @@ export function KitTouchCard({
                 <Check className="h-4 w-4" />
                 Log
               </Button>
+              
+              {/* Edit Button */}
+              {onEdit && (
+                <Button size="sm" variant="outline" onClick={onEdit} disabled={disabled}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
               
               {/* Direct Snooze Dropdown */}
               {onSnooze && (
