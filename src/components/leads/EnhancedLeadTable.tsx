@@ -268,16 +268,20 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     }
   }, [savedFilters]);
 
-  // Handle ?view= URL parameter to open lead detail view
+  // Handle ?view= or ?selected= URL parameters to open lead detail view
   useEffect(() => {
-    const viewLeadId = searchParams.get('view');
+    const viewLeadId = searchParams.get('view') || searchParams.get('selected');
+    const tabParam = searchParams.get('tab');
     if (viewLeadId && leads.length > 0) {
       const leadToView = leads.find(l => l.id === viewLeadId);
       if (leadToView) {
         setSelectedLead(leadToView);
+        setDetailInitialTab(tabParam || undefined);
         setDetailViewOpen(true);
-        // Clear the URL parameter
+        // Clear the URL parameters
         searchParams.delete('view');
+        searchParams.delete('selected');
+        searchParams.delete('tab');
         setSearchParams(searchParams, { replace: true });
       }
     }

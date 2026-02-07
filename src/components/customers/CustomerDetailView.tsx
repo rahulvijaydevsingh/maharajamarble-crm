@@ -56,6 +56,7 @@ interface CustomerDetailViewProps {
   onCreateLead?: (customer: Customer) => void;
   onDelete?: (id: string) => void;
   initialEditMode?: boolean;
+  initialTab?: string;
 }
 
 export function CustomerDetailView({
@@ -66,13 +67,21 @@ export function CustomerDetailView({
   onCreateLead,
   onDelete,
   initialEditMode = false,
+  initialTab,
 }: CustomerDetailViewProps) {
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(initialEditMode);
   const [convertingToLead, setConvertingToLead] = useState(false);
   const { updateCustomer, refetch } = useCustomers();
   const { addLead } = useLeads();
   const { toast } = useToast();
+
+  // Reset tab when customer changes
+  useEffect(() => {
+    if (customer) {
+      setActiveTab(initialTab || 'profile');
+    }
+  }, [customer?.id, initialTab]);
 
   const handleConvertToLead = async () => {
     if (!customer) return;

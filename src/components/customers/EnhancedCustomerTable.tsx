@@ -225,6 +225,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [detailViewOpen, setDetailViewOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [detailInitialTab, setDetailInitialTab] = useState<string | undefined>(undefined);
 
   // Bulk action dialog
   const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
@@ -263,16 +264,20 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     }
   }, [columnVisibility]);
 
-  // Handle ?view= URL parameter to open customer detail view
+  // Handle ?view= or ?selected= URL parameters to open customer detail view
   useEffect(() => {
-    const viewCustomerId = searchParams.get('view');
+    const viewCustomerId = searchParams.get('view') || searchParams.get('selected');
+    const tabParam = searchParams.get('tab');
     if (viewCustomerId && customers.length > 0) {
       const customerToView = customers.find(c => c.id === viewCustomerId);
       if (customerToView) {
         setSelectedCustomer(customerToView);
+        setDetailInitialTab(tabParam || undefined);
         setDetailViewOpen(true);
-        // Clear the URL parameter
+        // Clear the URL parameters
         searchParams.delete('view');
+        searchParams.delete('selected');
+        searchParams.delete('tab');
         setSearchParams(searchParams, { replace: true });
       }
     }
@@ -833,11 +838,15 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         open={detailViewOpen}
         onOpenChange={(open) => {
           setDetailViewOpen(open);
-          if (!open) setIsEditing(false);
+          if (!open) {
+            setIsEditing(false);
+            setDetailInitialTab(undefined);
+          }
         }}
         onEdit={handleEditCustomer}
         onDelete={handleDeleteCustomer}
         initialEditMode={isEditing}
+        initialTab={detailInitialTab}
         onCreateLead={(customer) => {
           // Navigate to leads page with customer data to create a new lead
           navigate('/leads', { 
