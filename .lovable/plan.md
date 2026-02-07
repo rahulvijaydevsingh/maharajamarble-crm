@@ -1,232 +1,255 @@
 
-# KIT Module Modifications - Implementation Plan
+
+# KIT Module Enhancements - Implementation Plan
 
 ## Overview
 
-This plan addresses 10 modifications to the Keep in Touch (KIT) module to improve functionality, fix bugs, and enhance the user experience.
+This plan addresses additional enhancements to the Keep in Touch (KIT) module based on user feedback, including adding touches to active cycles, editing remaining touches, displaying staff names with designations, task/reminder creation, and calendar management capabilities.
 
 ---
 
 ## Issue Summary
 
-| # | Issue | Type |
-|---|-------|------|
-| 1 | Can only select presets, no custom/individual sequence creation | Feature |
-| 2 | Cannot see/reassign touch assignee in upcoming section | Feature |
-| 3 | Skip action not logged to activity log | Bug |
-| 4 | All 3 buttons open same dialog, need direct reschedule option | UX |
-| 5 | Cycle completion dialog not shown when skipping touches | Bug |
-| 6 | Error editing preset: "cannot read properties of undefined" | Bug |
-| 7 | Same error on any preset edit | Bug (same as #6) |
-| 8 | Allow creating individual touch sequences per entity | Feature |
-| 9 | Option to skip weekends (Sunday touches move to Monday) | Feature |
-| 10 | Calendar shows entity ID instead of name, links not working | Bug |
+| # | Issue | Type | Priority |
+|---|-------|------|----------|
+| 1 | Add touch to active cycle | Feature | High |
+| 2 | Edit remaining touch points after activation | Feature | High |
+| 3 | Display staff name + designation instead of email | UX Fix | Medium |
+| 4 | Create task/reminder from touch (checkbox to auto-create) | Feature | High |
+| 5 | Calendar card: Add Log, Snooze, Reschedule, Reassign options | Feature | High |
+| 6 | Calendar: Show entity name instead of ID, with navigation | Bug Fix | High |
+| 7 | Calendar: Add contact links (Phone, WhatsApp, Location) | Feature | Medium |
+| 8 | Remaining fixes from previous plan (entity names in calendar) | Bug Fix | High |
 
 ---
 
 ## Technical Implementation
 
-### Fix #1, #8: Custom Touch Sequences (Combined)
+### Fix #1: Add Touch to Active Cycle
 
-**Problem:** Currently, users can only select admin-created presets. They need the ability to create custom one-off touch sequences directly on entity profiles.
+**Problem:** Users cannot add new touches to an already active KIT subscription.
 
-**Solution:** Add a "Create Custom Sequence" option in the KitActivationDialog that allows inline sequence building.
+**Solution:** Add an "Add Touch" button in the KitProfileTab that opens a dialog to insert a new touch into the sequence.
 
 **Files to Modify:**
-- `src/components/kit/KitActivationDialog.tsx`
-  - Add tabs: "Use Preset" and "Create Custom"
-  - Import and integrate `KitTouchSequenceBuilder` for custom mode
-  - Handle activation without preset_id (store sequence directly or create temp preset)
 
-- `src/hooks/useKitSubscriptions.ts`
-  - Modify `activateMutation` to accept custom touch_sequence instead of preset_id
-  - Store custom sequences with preset_id = null
+1. **`src/components/kit/KitProfileTab.tsx`**
+   - Add "Add Touch" button near the "Remaining in Cycle" section
+   - Implement `AddTouchDialog` trigger
 
-**Schema Consideration:** No database changes needed. When preset_id is null, the touch sequence is stored directly on the subscription or inline touches are created without preset reference.
+2. **New File: `src/components/kit/AddTouchDialog.tsx`**
+   - Dialog with touch method selector
+   - Date picker for scheduled date
+   - Time picker (optional)
+   - Assignee selector using `buildStaffGroups` for "Role - Name" format
+   - On save: insert new touch via `useKitTouches` mutation
+
+3. **`src/hooks/useKitTouches.ts`**
+   - Add `addTouchMutation` to insert a new touch with:
+     - `subscription_id`
+     - `method`
+     - `scheduled_date`
+     - `scheduled_time` (optional)
+     - `assigned_to`
+     - `sequence_index` (calculated as max existing + 1)
+     - `status: 'pending'`
 
 ---
 
-### Fix #2: Show Assignee and Allow Reassignment
+### Fix #2: Edit Remaining Touch Points After Activation
 
-**Problem:** Cannot see who is assigned to upcoming touches or reassign them.
+**Problem:** Users cannot modify upcoming touches in the active cycle (reschedule, reassign, change method).
 
-**Solution:** Display assignee on touch cards and add reassign action.
+**Solution:** Make remaining touch cards editable with inline edit options.
 
 **Files to Modify:**
-- `src/components/kit/KitTouchCard.tsx`
-  - Add `assigned_to` display with user icon
-  - Add "Reassign" button that opens a staff selector popover
-  - New prop: `onReassign?: (newAssignee: string) => void`
 
-- `src/components/kit/KitProfileTab.tsx`
-  - Pass `onReassign` handler to `KitTouchCard`
-  - Implement reassign logic calling `useKitTouches` mutation
+1. **`src/components/kit/KitTouchCard.tsx`**
+   - Add edit mode for non-completed touches
+   - Add "Edit" button that opens inline edit or edit dialog
+   - Allow changing: method, scheduled_date, scheduled_time, assigned_to
 
-- `src/hooks/useKitTouches.ts`
-  - Add `reassignTouchMutation` to update `assigned_to` field
+2. **`src/components/kit/KitProfileTab.tsx`**
+   - Pass `onEdit` handler to `KitTouchCard` for remaining touches
+   - Enable edit actions for touches in "Remaining in Cycle" section
+
+3. **New File: `src/components/kit/EditTouchDialog.tsx`**
+   - Reusable edit dialog for touch properties
+   - Fields: method, date, time, assignee
+   - Calls update mutation from `useKitTouches`
+
+4. **`src/hooks/useKitTouches.ts`**
+   - Add `updateTouchMutation` to modify touch properties
 
 ---
 
-### Fix #3: Log Skip Action to Activity
+### Fix #3: Display Staff Name + Designation Instead of Email
 
-**Problem:** When a touch is skipped, it's not logged to the activity timeline.
+**Problem:** Touch cards and calendar show email addresses; should show "Role - Name" format.
 
-**Solution:** Add activity logging for the skip action.
-
-**Files to Modify:**
-- `src/hooks/useKitActivityLog.ts`
-  - Add `logTouchSkipped` helper function
-  - New activity type: `kit_touch_skipped`
-
-- `src/components/kit/KitProfileTab.tsx`
-  - Modify `onSkip` handler to call `logTouchSkipped` after skip
-
-- `src/constants/activityLogConstants.ts`
-  - Add `kit_touch_skipped` to activity types with appropriate icon
-
----
-
-### Fix #4: Separate Reschedule Button
-
-**Problem:** All three action buttons (Complete, Snooze, Reschedule) open the same "Log Touch Outcome" dialog. Users want direct reschedule access.
-
-**Solution:** Restructure the touch card buttons:
-1. **Log** button - Opens outcome dialog (primary action)
-2. **Snooze** button - Shows quick snooze dropdown (1h, 2h, 4h, Tomorrow)
-3. **Reschedule** button - Opens date picker directly
+**Solution:** Use `buildStaffGroups` helper and create a staff lookup to display formatted names.
 
 **Files to Modify:**
-- `src/components/kit/KitTouchCard.tsx`
-  - Replace single dialog trigger with distinct actions
-  - Snooze: Add dropdown with snooze options
-  - Reschedule: Add calendar popover for date selection
-  - New props: `onDirectSnooze`, `onDirectReschedule`
 
-- `src/components/kit/KitProfileTab.tsx`
-  - Implement direct snooze/reschedule handlers
-  - Remove indirect dialog opening for these actions
+1. **`src/components/kit/KitTouchCard.tsx`**
+   - Import `useActiveStaff` and `buildStaffGroups`
+   - Create staff lookup map
+   - Replace `touch.assigned_to` display with formatted name: "Role - Name"
 
----
+2. **`src/components/kit/KitProfileTab.tsx`**
+   - Similar lookup for subscription `assigned_to` display
 
-### Fix #5: Cycle Completion Not Triggered After Skips
+3. **`src/hooks/useCalendarEvents.ts`**
+   - Add staff lookup when transforming events
+   - Update `assignedTo` field to show formatted name
 
-**Problem:** When touches are skipped/completed, the cycle completion dialog doesn't appear for `user_defined` behavior.
-
-**Root Cause:** The completion logic in `useKitTouches.ts` only checks if the current touch is the last in sequence. It doesn't account for skipped touches.
-
-**Solution:** Update completion logic to check if ALL touches in the subscription are in terminal states (completed, skipped, missed).
-
-**Files to Modify:**
-- `src/hooks/useKitTouches.ts`
-  - In `completeMutation` and `skipMutation`: After update, query all touches for subscription
-  - If all are in terminal state AND behavior is `user_defined`, trigger a prompt
-  - Add state/callback mechanism to surface the continuation prompt
-
-- `src/components/kit/KitProfileTab.tsx`
-  - Add `KitCycleCompleteDialog` component
-  - Show dialog when cycle is complete asking: "Continue with another cycle?" or "Mark as completed"
-
-- New file: `src/components/kit/KitCycleCompleteDialog.tsx`
-  - Options: "Repeat Cycle", "Stop (Mark Complete)"
-  - Calls appropriate subscription update
-
----
-
-### Fix #6 & #7: Preset Editing Error
-
-**Problem:** "Cannot read properties of undefined (reading 'touch_sequence')" when editing presets.
-
-**Root Cause:** In `KitPresetList.tsx`, `handleSavePreset` calls:
-```javascript
-await updatePreset({ id: editingPreset.id, ...data });
-```
-But `updatePreset` expects: `{ id, updates }` format per `useKitPresets.ts`.
-
-**Solution:** Fix the function call signature.
-
-**Files to Modify:**
-- `src/components/kit/presets/KitPresetList.tsx`
-  - Line 88-89: Change from `{ id: editingPreset.id, ...data }` to `{ id: editingPreset.id, updates: data }`
-
----
-
-### Fix #9: Skip Weekends Option
-
-**Problem:** Touches scheduled on Sunday should auto-shift to Monday.
-
-**Solution:** Add `skip_weekends` flag to subscriptions and handle in scheduling logic.
-
-**Database Changes:**
-- Add column `skip_weekends` (BOOLEAN DEFAULT false) to `kit_subscriptions` table
-
-**Files to Modify:**
-- `src/hooks/useKitSubscriptions.ts`
-  - Add `skipWeekends` parameter to activation
-  - In touch scheduling, if `skip_weekends` is true and date falls on Sunday, shift to Monday
-
-- `src/components/kit/KitActivationDialog.tsx`
-  - Add toggle: "Skip Sundays (move to Monday)"
-
-- `src/hooks/useKitTouches.ts`
-  - In `createNextCycle`, respect the skip_weekends flag
+4. **`src/components/calendar/CalendarEventCard.tsx`**
+   - Display will automatically update when `assignedTo` contains the formatted name
 
 **Helper Function:**
 ```typescript
-function adjustForWeekend(date: Date, skipWeekends: boolean): Date {
-  if (!skipWeekends) return date;
-  const day = date.getDay();
-  if (day === 0) return addDays(date, 1); // Sunday -> Monday
-  return date;
+function getStaffDisplayName(email: string, staffMembers: ActiveStaffMember[]): string {
+  const staff = staffMembers.find(s => s.email === email || s.name === email);
+  if (staff) {
+    const roleLabel = getRoleLabel(staff.role);
+    return `${roleLabel} - ${staff.name}`;
+  }
+  return email;
 }
 ```
 
 ---
 
-### Fix #10: Calendar KIT Touches - Name & Links
+### Fix #4: Create Task/Reminder from Touch
 
-**Problem:** 
-1. Calendar shows entity ID instead of name
-2. Clicking doesn't open entity profile
-3. No quick-action links (phone, WhatsApp, location)
+**Problem:** Users want to create a task or reminder when logging or creating a touch, with auto-linked reminder option.
 
-**Solution:** Fetch entity name during calendar event transformation and add navigation + contact links.
+**Solution:** Add checkbox options in touch completion and creation dialogs.
 
 **Files to Modify:**
 
-**1. Fix entity name display:**
-- `src/hooks/useCalendarEvents.ts`
-  - After fetching kit_touches, batch-fetch entity names from leads/customers/professionals tables
-  - Add `relatedEntityName` to the KIT touch events
-  - Store phone/site_plus_code in event metadata
+1. **`src/components/kit/KitTouchCompleteDialog.tsx`**
+   - Add expandable section "Create Follow-up Actions"
+   - Checkbox: "Create Task"
+     - When checked: show task title input (pre-filled), due date (defaulting to tomorrow)
+   - Checkbox: "Create Reminder" (auto-checked when task is checked)
+     - When unchecked but task checked: reminder still optional
+   - On submit: call `useTasks().addTask()` and `useReminders().addReminder()` as needed
 
-**2. Fix click navigation:**
-- `src/components/calendar/CalendarEventCard.tsx`
-  - For `kit-touch` type, implement `onClick` to navigate to entity profile with KIT tab
-  - Add contact action buttons in the card/tooltip
+2. **`src/components/kit/AddTouchDialog.tsx`**
+   - Same checkboxes for creating task/reminder when adding a new touch
 
-**3. Add contact links to KitTouchCard:**
-- `src/components/kit/KitTouchCard.tsx`
-  - Import `PhoneLink` and `PlusCodeLink` components
-  - Show phone link for call touches
-  - Show WhatsApp link (https://wa.me/{phone}) for WhatsApp touches
-  - Show location link for visit touches
+3. **`src/hooks/useReminders.ts`** (verify exists)
+   - Ensure `addReminder` mutation is available
 
-**WhatsApp Link Helper:**
-```typescript
-function getWhatsAppLink(phone: string): string {
-  const normalized = phone.replace(/[^\d+]/g, '');
-  return `https://wa.me/${normalized}`;
-}
+**UI Design:**
+```text
+┌─────────────────────────────────────┐
+│ □ Create Task                       │
+│   └─ Title: [Follow up with _____ ]│
+│   └─ Due: [Tomorrow] [10:00 AM]    │
+│   └─ □ Create Reminder for Task    │
+│        └─ [30 min before]          │
+└─────────────────────────────────────┘
 ```
 
 ---
 
-## Database Migration
+### Fix #5 & #7: Calendar Card Management Options
 
-```sql
--- Add skip_weekends column
-ALTER TABLE kit_subscriptions 
-ADD COLUMN skip_weekends BOOLEAN DEFAULT false;
+**Problem:** Calendar KIT touch cards only show "View Related" - need Log, Snooze, Reschedule, Reassign actions plus contact links.
+
+**Solution:** Enhance `CalendarEventCard` dropdown for kit-touch events.
+
+**Files to Modify:**
+
+1. **`src/components/calendar/CalendarEventCard.tsx`**
+   - Add props for KIT-specific actions:
+     - `onKitLog?: (event: CalendarEvent) => void`
+     - `onKitSnooze?: (event: CalendarEvent, snoozeUntil: string) => void`
+     - `onKitReschedule?: (event: CalendarEvent, newDate: string) => void`
+     - `onKitReassign?: (event: CalendarEvent, newAssignee: string) => void`
+   - Add dropdown menu items for kit-touch type:
+     - "Log Touch" - opens completion dialog
+     - "Snooze" - submenu with 1h, 2h, 4h, Tomorrow options
+     - "Reschedule" - opens date picker
+     - "Reassign" - opens staff selector
+   - Add contact action buttons based on method:
+     - Call: Phone icon with `PhoneLink`
+     - WhatsApp: MessageCircle icon linking to `wa.me/{phone}`
+     - Visit: MapPin icon with `PlusCodeLink`
+
+2. **`src/pages/CalendarPage.tsx`**
+   - Add state for KIT touch management dialogs
+   - Implement handlers for kit touch actions
+   - Pass handlers to calendar view components
+
+3. **`src/components/calendar/CalendarDayView.tsx`** & other views
+   - Pass new props to `CalendarEventCard`
+
+4. **`src/hooks/useCalendarEvents.ts`**
+   - Store entity phone and location in event metadata for contact links
+   - Add fields: `entityPhone`, `entityLocation` to CalendarEvent interface
+
+---
+
+### Fix #6 & #8: Calendar Entity Names & Navigation
+
+**Problem:** Calendar shows entity ID (e.g., "lead: cca9504e") instead of name; clicking doesn't navigate.
+
+**Solution:** Fetch entity names and implement proper navigation.
+
+**Files to Modify:**
+
+1. **`src/hooks/useCalendarEvents.ts`**
+   - After fetching kit_touches, batch-fetch entity details:
+     ```typescript
+     // Collect unique entity IDs by type
+     const leadIds = kitTouches.filter(t => t.subscription?.entity_type === 'lead').map(t => t.subscription.entity_id);
+     const customerIds = kitTouches.filter(t => t.subscription?.entity_type === 'customer').map(t => t.subscription.entity_id);
+     const professionalIds = kitTouches.filter(t => t.subscription?.entity_type === 'professional').map(t => t.subscription.entity_id);
+     
+     // Fetch names and contact info
+     const { data: leads } = await supabase.from('leads').select('id, name, phone, site_plus_code').in('id', leadIds);
+     const { data: customers } = await supabase.from('customers').select('id, name, phone, site_plus_code').in('id', customerIds);
+     const { data: professionals } = await supabase.from('professionals').select('id, name, phone, site_plus_code').in('id', professionalIds);
+     ```
+   - Build lookup maps and populate:
+     - `relatedEntityName`: Entity name (e.g., "Rahul Sharma")
+     - `entityPhone`: Phone number for contact links
+     - `entityLocation`: Plus code for location links
+
+2. **`src/components/calendar/CalendarEventCard.tsx`**
+   - Update badge to show entity name instead of ID
+   - Implement `onViewRelated` to navigate to entity profile with `?tab=kit`
+   - Add navigation URL builder:
+     ```typescript
+     const getEntityUrl = (entityType: string, entityId: string) => {
+       const typeMap = { lead: 'leads', customer: 'customers', professional: 'professionals' };
+       return `/${typeMap[entityType]}?selected=${entityId}&tab=kit`;
+     };
+     ```
+
+3. **`src/pages/CalendarPage.tsx`**
+   - Implement `handleViewRelated` to navigate using `useNavigate`
+
+**Event Title Update:**
+Change from: `Call (regular type call message call)` with `lead: cca9504e`
+To: `Call - Rahul Sharma (Monthly Check-in)`
+
+---
+
+## CalendarEvent Interface Update
+
+```typescript
+export interface CalendarEvent {
+  // Existing fields...
+  
+  // New fields for KIT enhancement
+  entityPhone?: string | null;
+  entityLocation?: string | null;
+  touchMethod?: string; // For contact link logic
+}
 ```
 
 ---
@@ -235,51 +258,55 @@ ADD COLUMN skip_weekends BOOLEAN DEFAULT false;
 
 | File | Change Type | Issues Addressed |
 |------|-------------|------------------|
-| `src/components/kit/KitActivationDialog.tsx` | Major | #1, #8, #9 |
-| `src/components/kit/KitTouchCard.tsx` | Major | #2, #4, #10 |
-| `src/components/kit/KitProfileTab.tsx` | Moderate | #2, #3, #4, #5 |
-| `src/components/kit/KitTouchCompleteDialog.tsx` | Minor | #4 |
-| `src/components/kit/presets/KitPresetList.tsx` | Minor | #6, #7 |
-| `src/hooks/useKitTouches.ts` | Major | #2, #5 |
-| `src/hooks/useKitSubscriptions.ts` | Moderate | #1, #8, #9 |
-| `src/hooks/useKitActivityLog.ts` | Minor | #3 |
-| `src/hooks/useCalendarEvents.ts` | Major | #10 |
-| `src/components/calendar/CalendarEventCard.tsx` | Moderate | #10 |
-| `src/constants/activityLogConstants.ts` | Minor | #3 |
-| New: `src/components/kit/KitCycleCompleteDialog.tsx` | New | #5 |
+| `src/components/kit/KitProfileTab.tsx` | Major | #1, #2, #3 |
+| `src/components/kit/KitTouchCard.tsx` | Major | #2, #3 |
+| `src/components/kit/KitTouchCompleteDialog.tsx` | Major | #4 |
+| `src/components/kit/AddTouchDialog.tsx` | New | #1, #4 |
+| `src/components/kit/EditTouchDialog.tsx` | New | #2 |
+| `src/hooks/useKitTouches.ts` | Moderate | #1, #2 |
+| `src/hooks/useCalendarEvents.ts` | Major | #3, #6, #7, #8 |
+| `src/components/calendar/CalendarEventCard.tsx` | Major | #5, #6, #7 |
+| `src/pages/CalendarPage.tsx` | Moderate | #5, #6 |
+| `src/components/calendar/CalendarDayView.tsx` | Minor | #5 |
+| `src/components/calendar/CalendarAgendaView.tsx` | Minor | #5 |
+| `src/components/calendar/CalendarWeekView.tsx` | Minor | #5 |
 
 ---
 
 ## Implementation Order
 
-1. **Bug Fixes First:**
-   - Fix #6/#7: Preset editing error (quick fix)
-   - Fix #3: Skip activity logging
+1. **Fix Entity Names in Calendar (#6, #8)**
+   - Update `useCalendarEvents.ts` to fetch entity names and contact info
+   - This is the foundational fix others depend on
 
-2. **Core Feature Improvements:**
-   - Fix #5: Cycle completion detection
-   - Fix #2: Assignee display and reassignment
-   - Fix #4: Separate action buttons
+2. **Update Calendar Event Card (#5, #7)**
+   - Add KIT action handlers and contact links
+   - Implement navigation to entity profiles
 
-3. **New Features:**
-   - Fix #1/#8: Custom touch sequences
-   - Fix #9: Skip weekends option
+3. **Staff Name Display (#3)**
+   - Create helper function and update touch cards
+   - Update calendar event transformation
 
-4. **Calendar & Contact Links:**
-   - Fix #10: Entity names, navigation, contact links
+4. **Add/Edit Touch Features (#1, #2)**
+   - Create AddTouchDialog and EditTouchDialog
+   - Add mutations to useKitTouches
+
+5. **Task/Reminder Creation (#4)**
+   - Enhance KitTouchCompleteDialog with checkboxes
+   - Implement task/reminder creation logic
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Create and edit presets without errors
-- [ ] Skip a touch and verify activity log entry appears
-- [ ] Direct snooze and reschedule work without opening outcome dialog
-- [ ] Skip/complete all touches and see cycle completion prompt (user_defined)
-- [ ] View and reassign touch assignee from profile tab
-- [ ] Create custom touch sequence without preset
-- [ ] Enable skip weekends and verify Sunday touches shift to Monday
-- [ ] Calendar KIT events show entity name, not ID
-- [ ] Click calendar KIT event navigates to entity profile
-- [ ] Touch card shows phone/WhatsApp/location links based on method
+- [ ] Calendar KIT touches show entity name (e.g., "Call - Rahul Sharma")
+- [ ] Clicking calendar KIT event navigates to entity profile's KIT tab
+- [ ] Touch cards display "Role - Name" format for assignees
+- [ ] Can add new touch to active cycle
+- [ ] Can edit remaining touches (reschedule, reassign, change method)
+- [ ] Calendar dropdown shows Log, Snooze, Reschedule, Reassign options
+- [ ] Contact links work: Phone call, WhatsApp chat, Maps location
+- [ ] Task/Reminder checkboxes create proper records
+- [ ] Task with reminder auto-checked creates both records
+
