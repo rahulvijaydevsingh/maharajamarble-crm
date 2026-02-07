@@ -11,13 +11,22 @@
    meeting: Users,
  };
  
- export const KIT_TOUCH_METHOD_COLORS: Record<KitTouchMethod, string> = {
-   call: 'bg-blue-500/10 text-blue-600',
-   whatsapp: 'bg-green-500/10 text-green-600',
-   visit: 'bg-orange-500/10 text-orange-600',
-   email: 'bg-purple-500/10 text-purple-600',
-   meeting: 'bg-pink-500/10 text-pink-600',
- };
+export const KIT_TOUCH_METHOD_COLORS: Record<KitTouchMethod, string> = {
+  call: 'bg-blue-500/10 text-blue-600',
+  whatsapp: 'bg-green-500/10 text-green-600',
+  visit: 'bg-orange-500/10 text-orange-600',
+  email: 'bg-purple-500/10 text-purple-600',
+  meeting: 'bg-pink-500/10 text-pink-600',
+};
+
+// Touch methods array for dropdowns
+export const KIT_TOUCH_METHODS: { value: KitTouchMethod; label: string }[] = [
+  { value: 'call', label: 'Phone Call' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'visit', label: 'Site Visit' },
+  { value: 'email', label: 'Email' },
+  { value: 'meeting', label: 'Meeting' },
+];
  
  // Subscription statuses
  export type KitSubscriptionStatus = 'active' | 'paused' | 'completed' | 'cancelled';

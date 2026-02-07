@@ -31,6 +31,11 @@ export interface CalendarEvent {
   sourceId: string;
   color: string;
   icon: string;
+  // KIT-specific fields
+  entityPhone?: string | null;
+  entityLocation?: string | null;
+  touchMethod?: string;
+  subscriptionId?: string;
 }
 
 export interface CalendarFilters {
@@ -180,7 +185,59 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
         .order("scheduled_date", { ascending: true });
 
       if (kitTouchesError) throw kitTouchesError;
-      setKitTouches(kitTouchesData || []);
+
+      // Fetch entity names and contact info for KIT touches
+      const touches = kitTouchesData || [];
+      const entityLookup: Record<string, { name: string; phone?: string; location?: string }> = {};
+      
+      if (touches.length > 0) {
+        // Collect unique entity IDs by type
+        const leadIds: string[] = [];
+        const customerIds: string[] = [];
+        const professionalIds: string[] = [];
+        
+        touches.forEach((touch: any) => {
+          const sub = touch.subscription;
+          if (!sub?.entity_id || !sub?.entity_type) return;
+          if (entityLookup[sub.entity_id]) return;
+          
+          if (sub.entity_type === 'lead') leadIds.push(sub.entity_id);
+          else if (sub.entity_type === 'customer') customerIds.push(sub.entity_id);
+          else if (sub.entity_type === 'professional') professionalIds.push(sub.entity_id);
+        });
+        
+        // Fetch entity details in parallel
+        const [leadsResult, customersResult, professionalsResult] = await Promise.all([
+          leadIds.length > 0 
+            ? supabase.from('leads').select('id, name, phone, site_plus_code').in('id', leadIds)
+            : { data: [] },
+          customerIds.length > 0
+            ? supabase.from('customers').select('id, name, phone, site_plus_code').in('id', customerIds)
+            : { data: [] },
+          professionalIds.length > 0
+            ? supabase.from('professionals').select('id, name, phone, site_plus_code').in('id', professionalIds)
+            : { data: [] },
+        ]);
+        
+        // Build lookup
+        [...(leadsResult.data || []), ...(customersResult.data || []), ...(professionalsResult.data || [])].forEach((entity: any) => {
+          entityLookup[entity.id] = {
+            name: entity.name,
+            phone: entity.phone,
+            location: entity.site_plus_code,
+          };
+        });
+      }
+      
+      // Attach entity info to touches
+      const enrichedTouches = touches.map((touch: any) => ({
+        ...touch,
+        _entityInfo: touch.subscription?.entity_id 
+          ? entityLookup[touch.subscription.entity_id] 
+          : null,
+      }));
+      
+      setKitTouches(enrichedTouches);
 
     } catch (error) {
       console.error("Error fetching calendar events:", error);
@@ -294,6 +351,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
     kitTouches.forEach((touch) => {
       const config = getEventTypeConfig("kit-touch");
       const sub = touch.subscription as { id: string; entity_type: string; entity_id: string; preset: { name: string } | null } | null;
+      const entityInfo = touch._entityInfo as { name: string; phone?: string; location?: string } | null;
       
       let startDate: Date;
       if (touch.scheduled_time) {
@@ -303,23 +361,30 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
       }
 
       const methodLabel = touch.method.charAt(0).toUpperCase() + touch.method.slice(1);
+      const entityName = entityInfo?.name || sub?.entity_id?.slice(0, 8) || "Unknown";
       const presetName = sub?.preset?.name || "Custom";
 
       allEvents.push({
         id: `kit-${touch.id}`,
-        title: `${methodLabel} (${presetName})`,
-        description: `KIT ${methodLabel} touch`,
+        title: `${methodLabel} - ${entityName}`,
+        description: `${presetName} • KIT ${methodLabel} touch`,
         start: startDate,
         allDay: !touch.scheduled_time,
         type: "kit-touch",
         assignedTo: touch.assigned_to,
         relatedEntityType: sub?.entity_type || null,
         relatedEntityId: sub?.entity_id || null,
+        relatedEntityName: entityName,
         source: "kit_touch",
         sourceId: touch.id,
         color: config.color,
         icon: config.icon,
         status: touch.status === "snoozed" ? "Snoozed" : "Pending",
+        // KIT-specific fields
+        entityPhone: entityInfo?.phone || null,
+        entityLocation: entityInfo?.location || null,
+        touchMethod: touch.method,
+        subscriptionId: sub?.id,
       });
     });
 

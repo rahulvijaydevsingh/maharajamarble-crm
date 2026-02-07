@@ -12,18 +12,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { HeartHandshake, Pause, Play, X, Calendar, Loader2 } from 'lucide-react';
+import { HeartHandshake, Pause, Play, X, Calendar, Loader2, Plus, Pencil } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useKitSubscriptions } from '@/hooks/useKitSubscriptions';
 import { useKitTouches } from '@/hooks/useKitTouches';
 import { useKitActivityLog } from '@/hooks/useKitActivityLog';
+import { useTasks } from '@/hooks/useTasks';
+import { useReminders } from '@/hooks/useReminders';
+import { useAuth } from '@/contexts/AuthContext';
 import { KitActivationDialog } from './KitActivationDialog';
 import { KitTouchCard } from './KitTouchCard';
 import { KitTouchCompleteDialog } from './KitTouchCompleteDialog';
 import { KitPauseDialog } from './KitPauseDialog';
 import { KitProgressIndicator } from './KitProgressIndicator';
 import { KitCycleCompleteDialog } from './KitCycleCompleteDialog';
-import type { KitEntityType, KitTouch, KitTouchSequenceItem } from '@/constants/kitConstants';
+import { AddTouchDialog } from './AddTouchDialog';
+import { EditTouchDialog } from './EditTouchDialog';
+import { useActiveStaff } from '@/hooks/useActiveStaff';
+import { getStaffDisplayName } from '@/lib/kitHelpers';
+import type { KitEntityType, KitTouch, KitTouchSequenceItem, KitTouchMethod } from '@/constants/kitConstants';
 import {
   KIT_SUBSCRIPTION_STATUS_COLORS,
   KIT_SUBSCRIPTION_STATUS_LABELS,
@@ -51,6 +58,13 @@ export function KitProfileTab({
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [completeDialogTouch, setCompleteDialogTouch] = useState<KitTouch | null>(null);
   const [cycleCompleteOpen, setCycleCompleteOpen] = useState(false);
+  const [addTouchOpen, setAddTouchOpen] = useState(false);
+  const [editingTouch, setEditingTouch] = useState<KitTouch | null>(null);
+  
+  const { user } = useAuth();
+  const { staffMembers } = useActiveStaff();
+  const { addTask } = useTasks();
+  const { addReminder } = useReminders();
   
   const {
     subscription,
