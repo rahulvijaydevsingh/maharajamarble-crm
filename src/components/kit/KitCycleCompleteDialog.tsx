@@ -34,7 +34,7 @@ export function KitCycleCompleteDialog({
 }: KitCycleCompleteDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="z-[100]">
         <AlertDialogHeader>
           <AlertDialogTitle>🎉 Cycle {cycleNumber} Complete!</AlertDialogTitle>
           <AlertDialogDescription className="space-y-2">

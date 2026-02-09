@@ -32,6 +32,7 @@ export function useKitTouches(subscriptionId?: string) {
         .from('kit_touches')
         .select('*')
         .eq('subscription_id', subscriptionId)
+        .order('scheduled_date')
         .order('sequence_index');
 
       if (error) throw error;

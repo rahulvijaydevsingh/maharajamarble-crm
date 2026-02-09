@@ -19,6 +19,7 @@ import {
   SelectGroup,
   SelectLabel,
 } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { format, parseISO, isPast, isToday, addHours, addDays } from 'date-fns';
 import { Check, Clock, CalendarDays, SkipForward, User, Phone, MessageCircle, MapPin, Pencil } from 'lucide-react';
 import type { KitTouch } from '@/constants/kitConstants';
@@ -221,12 +222,12 @@ export function KitTouchCard({
                         Reassign
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
+                    <PopoverContent className="w-64 p-2 z-[100]" align="start">
                       <Select onValueChange={handleReassign}>
                         <SelectTrigger className="h-8">
                           <SelectValue placeholder="Select staff..." />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-[100]">
                           {staffGroups.map((group) => (
                             <SelectGroup key={group.label}>
                               <SelectLabel>{group.label}</SelectLabel>
@@ -262,80 +263,107 @@ export function KitTouchCard({
           </div>
           
           {touch.status === 'pending' && !isUpcoming && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button
-                size="sm"
-                onClick={onComplete}
-                disabled={disabled}
-                className="gap-1"
-              >
-                <Check className="h-4 w-4" />
-                Log
-              </Button>
-              
-              {/* Edit Button */}
-              {onEdit && (
-                <Button size="sm" variant="outline" onClick={onEdit} disabled={disabled}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              )}
-              
-              {/* Direct Snooze Dropdown */}
-              {onSnooze && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" disabled={disabled}>
-                      <Clock className="h-4 w-4" />
+            <TooltipProvider delayDuration={300}>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      onClick={onComplete}
+                      disabled={disabled}
+                      className="gap-1"
+                    >
+                      <Check className="h-4 w-4" />
+                      Log
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {SNOOZE_OPTIONS.map((opt) => (
-                      <DropdownMenuItem key={opt.value} onClick={() => handleSnooze(opt.value)}>
-                        {opt.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-              
-              {/* Direct Reschedule Popover */}
-              {onReschedule && (
-                <Popover open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
-                  <PopoverTrigger asChild>
-                    <Button size="sm" variant="outline" disabled={disabled}>
-                      <CalendarDays className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end">
-                    <Calendar
-                      mode="single"
-                      selected={rescheduleDate}
-                      onSelect={setRescheduleDate}
-                      disabled={(date) => date < new Date()}
-                      className="p-3 pointer-events-auto"
-                    />
-                    {rescheduleDate && (
-                      <div className="p-3 border-t">
-                        <Button size="sm" onClick={handleReschedule} className="w-full">
-                          Reschedule to {format(rescheduleDate, 'MMM d')}
-                        </Button>
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
-              )}
-              
-              {onSkip && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={onSkip}
-                  disabled={disabled}
-                >
-                  <SkipForward className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+                  </TooltipTrigger>
+                  <TooltipContent>Log touch outcome</TooltipContent>
+                </Tooltip>
+                
+                {/* Edit Button */}
+                {onEdit && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="outline" onClick={onEdit} disabled={disabled}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit touch</TooltipContent>
+                  </Tooltip>
+                )}
+                
+                {/* Direct Snooze Dropdown */}
+                {onSnooze && (
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline" disabled={disabled}>
+                            <Clock className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>Snooze</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end" className="z-[100]">
+                      {SNOOZE_OPTIONS.map((opt) => (
+                        <DropdownMenuItem key={opt.value} onClick={() => handleSnooze(opt.value)}>
+                          {opt.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                
+                {/* Direct Reschedule Popover */}
+                {onReschedule && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Popover open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
+                        <PopoverTrigger asChild>
+                          <Button size="sm" variant="outline" disabled={disabled}>
+                            <CalendarDays className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 z-[100]" align="end">
+                          <Calendar
+                            mode="single"
+                            selected={rescheduleDate}
+                            onSelect={setRescheduleDate}
+                            disabled={(date) => date < new Date()}
+                            className="p-3 pointer-events-auto"
+                          />
+                          {rescheduleDate && (
+                            <div className="p-3 border-t">
+                              <Button size="sm" onClick={handleReschedule} className="w-full">
+                                Reschedule to {format(rescheduleDate, 'MMM d')}
+                              </Button>
+                            </div>
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                    </TooltipTrigger>
+                    <TooltipContent>Reschedule</TooltipContent>
+                  </Tooltip>
+                )}
+                
+                {onSkip && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={onSkip}
+                        disabled={disabled}
+                      >
+                        <SkipForward className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Skip touch</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </TooltipProvider>
           )}
         </div>
       </CardContent>
