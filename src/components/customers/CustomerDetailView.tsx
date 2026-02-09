@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -263,7 +265,10 @@ export function CustomerDetailView({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden">
+        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[70]">
+          <VisuallyHidden>
+            <DialogTitle>Edit Customer: {customer.name}</DialogTitle>
+          </VisuallyHidden>
           <div className="flex-1 overflow-y-auto p-6">
             <EditSmartCustomerForm
               customer={customer}
@@ -278,7 +283,10 @@ export function CustomerDetailView({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
+        <VisuallyHidden>
+          <DialogTitle>Customer Details: {customer.name}</DialogTitle>
+        </VisuallyHidden>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-3">
