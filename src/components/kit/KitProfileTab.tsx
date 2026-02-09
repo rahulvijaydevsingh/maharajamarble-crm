@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { HeartHandshake, Pause, Play, X, Calendar, Loader2, Plus, Pencil } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useKitSubscriptions } from '@/hooks/useKitSubscriptions';
@@ -460,32 +461,49 @@ export function KitProfileTab({
               </CardTitle>
               <Badge className={statusColor}>{statusLabel}</Badge>
             </div>
-            <div className="flex items-center gap-2">
-              {subscription.status === 'active' && (
-                <Button variant="outline" size="sm" onClick={() => setPauseOpen(true)}>
-                  <Pause className="h-4 w-4 mr-1" />
-                  Pause
-                </Button>
-              )}
-              {subscription.status === 'paused' && (
-                <Button size="sm" onClick={handleResume} disabled={isResuming}>
-                  {isResuming ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <Play className="h-4 w-4 mr-1" />
-                  )}
-                  Resume
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setCancelConfirmOpen(true)}
-                className="text-destructive hover:text-destructive"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <TooltipProvider delayDuration={300}>
+              <div className="flex items-center gap-2">
+                {subscription.status === 'active' && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="sm" onClick={() => setPauseOpen(true)}>
+                        <Pause className="h-4 w-4 mr-1" />
+                        Pause
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Pause all scheduled touches</TooltipContent>
+                  </Tooltip>
+                )}
+                {subscription.status === 'paused' && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" onClick={handleResume} disabled={isResuming}>
+                        {isResuming ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4 mr-1" />
+                        )}
+                        Resume
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Resume scheduled touches</TooltipContent>
+                  </Tooltip>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCancelConfirmOpen(true)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Cancel KIT</TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
           </div>
           {preset && <CardDescription>{preset.name}</CardDescription>}
         </CardHeader>
@@ -567,10 +585,17 @@ export function KitProfileTab({
             <h4 className="font-semibold text-sm uppercase text-muted-foreground">
               Remaining in Cycle ({remainingTouches.length - 1})
             </h4>
-            <Button variant="outline" size="sm" onClick={() => setAddTouchOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add Touch
-            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => setAddTouchOpen(true)}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Touch
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add a new touch to this cycle</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <div className="space-y-2">
             {remainingTouches.slice(1).map((touch) => (
@@ -643,7 +668,7 @@ export function KitProfileTab({
       />
       
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[100]">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Keep in Touch?</AlertDialogTitle>
             <AlertDialogDescription>
