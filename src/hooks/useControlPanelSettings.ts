@@ -209,6 +209,7 @@ const defaultSystemOptions: OptionModule[] = [
         displayName: "Task Type",
         allowColors: false,
         options: [
+          // Standard task types
           { id: "tt1", label: "Follow-up Call", value: "Follow-up Call", isActive: true, isDefault: true, isSystemReserved: false, sortOrder: 1 },
           { id: "tt2", label: "Follow-up Meeting", value: "Follow-up Meeting", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 2 },
           { id: "tt3", label: "Sample Delivery", value: "Sample Delivery", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 3 },
@@ -216,6 +217,10 @@ const defaultSystemOptions: OptionModule[] = [
           { id: "tt5", label: "Quotation Preparation", value: "Quotation Preparation", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 5 },
           { id: "tt6", label: "Feedback Collection", value: "Feedback Collection", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 6 },
           { id: "tt7", label: "Other", value: "Other", isActive: true, isDefault: false, isSystemReserved: true, sortOrder: 7 },
+          // KIT Task types
+          { id: "tt_kit1", label: "KIT Follow-up", value: "KIT Follow-up", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 10 },
+          { id: "tt_kit2", label: "KIT Relationship Check", value: "KIT Relationship Check", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 11 },
+          { id: "tt_kit3", label: "KIT Touch Reminder", value: "KIT Touch Reminder", isActive: true, isDefault: false, isSystemReserved: false, sortOrder: 12 },
         ],
       },
     ],

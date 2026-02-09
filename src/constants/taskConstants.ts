@@ -12,6 +12,16 @@ export const TASK_TYPES = [
   "Other"
 ];
 
+// KIT-specific task types
+export const KIT_TASK_TYPES = [
+  "KIT Follow-up",
+  "KIT Relationship Check",
+  "KIT Touch Reminder"
+];
+
+// All task types combined for forms
+export const ALL_TASK_TYPES = [...TASK_TYPES, ...KIT_TASK_TYPES];
+
 export const TASK_PRIORITIES = [
   { value: "High", label: "High", color: "text-red-600" },
   { value: "Medium", label: "Medium", color: "text-yellow-600" },

@@ -82,9 +82,12 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
     }
   }, [highlightTaskId, tasks]);
 
-  // Filter tasks for this lead
+  // Filter tasks for this lead (including KIT tasks via related_entity)
   const leadTasks = useMemo(() => {
-    let filtered = tasks.filter(t => t.lead_id === lead.id);
+    let filtered = tasks.filter(t => 
+      t.lead_id === lead.id || 
+      (t.related_entity_type === 'lead' && t.related_entity_id === lead.id)
+    );
 
     switch (filter) {
       case 'open':
