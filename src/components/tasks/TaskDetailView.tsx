@@ -7,7 +7,8 @@ import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
 import { useToast } from "@/hooks/use-toast";
 
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -286,6 +287,9 @@ export function TaskDetailView({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[60]">
+          <VisuallyHidden>
+            <DialogTitle>{task?.title || "Task Details"}</DialogTitle>
+          </VisuallyHidden>
           <div className="flex items-start justify-between gap-4 px-6 py-4 border-b">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold truncate">
