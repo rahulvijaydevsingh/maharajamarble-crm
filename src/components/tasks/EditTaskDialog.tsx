@@ -41,10 +41,15 @@ import { RelatedEntitySection } from "./form/RelatedEntitySection";
 import { SnoozeMenu } from "./form/SnoozeMenu";
 import {
   TASK_TYPES,
+  KIT_TASK_TYPES,
   TASK_PRIORITIES,
   TASK_STATUSES,
   REMINDER_OPTIONS,
 } from "@/constants/taskConstants";
+import {
+  SelectGroup,
+  SelectLabel,
+} from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 
 interface RelatedEntity {
@@ -500,9 +505,18 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent className="z-[80]">
-                  {TASK_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel>Standard Tasks</SelectLabel>
+                    {TASK_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>KIT Tasks</SelectLabel>
+                    {KIT_TASK_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>

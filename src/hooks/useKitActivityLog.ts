@@ -171,6 +171,52 @@ export function useKitActivityLog() {
     });
   };
 
+  const logTouchAdded = async (
+    params: LogKitActivityParams & { method: KitTouchMethod; scheduledDate: string }
+  ) => {
+    await logActivity({
+      ...params,
+      activityType: 'kit_touch_added',
+      title: `New ${params.method} touch scheduled`,
+      description: `Scheduled for ${params.scheduledDate}`,
+      metadata: { method: params.method, scheduled_date: params.scheduledDate },
+    });
+  };
+
+  const logTouchEdited = async (
+    params: LogKitActivityParams & { method: KitTouchMethod; changes: string }
+  ) => {
+    await logActivity({
+      ...params,
+      activityType: 'kit_touch_edited',
+      title: `${params.method.charAt(0).toUpperCase() + params.method.slice(1)} touch updated`,
+      description: params.changes,
+      metadata: { method: params.method },
+    });
+  };
+
+  const logTaskCreatedFromKit = async (
+    params: LogKitActivityParams & { taskTitle: string }
+  ) => {
+    await logActivity({
+      ...params,
+      activityType: 'kit_task_created',
+      title: `Task created from KIT: "${params.taskTitle}"`,
+      metadata: { task_title: params.taskTitle },
+    });
+  };
+
+  const logReminderCreatedFromKit = async (
+    params: LogKitActivityParams & { reminderTitle: string }
+  ) => {
+    await logActivity({
+      ...params,
+      activityType: 'kit_reminder_created',
+      title: `Reminder created from KIT: "${params.reminderTitle}"`,
+      metadata: { reminder_title: params.reminderTitle },
+    });
+  };
+
   return {
     logKitActivated,
     logTouchCompleted,
@@ -182,5 +228,9 @@ export function useKitActivityLog() {
     logKitPaused,
     logKitResumed,
     logKitCancelled,
+    logTouchAdded,
+    logTouchEdited,
+    logTaskCreatedFromKit,
+    logReminderCreatedFromKit,
   };
 }

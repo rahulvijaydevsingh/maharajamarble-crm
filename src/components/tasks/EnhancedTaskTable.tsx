@@ -74,6 +74,8 @@ import {
   Building2,
   UserCheck
 } from "lucide-react";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { TaskSavedFilterDialog } from "@/components/tasks/filters/TaskSavedFilterDialog";
 import { TaskManageFiltersDialog } from "@/components/tasks/filters/TaskManageFiltersDialog";
 import { LeadDetailView } from "@/components/leads/LeadDetailView";
@@ -323,6 +325,7 @@ export function EnhancedTaskTable({
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
+  const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("tasks");
   const { 
     columns, 
@@ -959,7 +962,7 @@ export function EnhancedTaskTable({
         return (
           <div className="flex items-center gap-2">
             <User className="h-4 w-4" />
-            <span className="text-sm">{task.assigned_to}</span>
+            <span className="text-sm">{getStaffDisplayName(task.assigned_to, staffMembers)}</span>
           </div>
         );
       case "relatedTo":
@@ -1022,12 +1025,32 @@ export function EnhancedTaskTable({
                 <User className="h-3 w-3 text-primary shrink-0" />
               )}
               <span className="text-sm font-medium text-primary group-hover:underline truncate">
-                {task.related_entity_type === 'lead' && task.lead?.name 
-                  ? task.lead.name 
+                {task.related_entity_type === 'lead' 
+                  ? (task.lead?.name || leads.find(l => l.id === task.related_entity_id)?.name || 'View Details')
                   : task.related_entity_type === 'customer'
-                  ? customers.find(c => c.id === task.related_entity_id)?.name || 'View Details'
+                  ? (customers.find(c => c.id === task.related_entity_id)?.name || 'View Details')
+                  : task.related_entity_type === 'professional'
+                  ? (professionals.find(p => p.id === task.related_entity_id)?.name || 'View Details')
                   : 'View Details'}
               </span>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              {(() => {
+                let phone = null;
+                if (task.related_entity_type === 'lead') {
+                  phone = task.lead?.phone || leads.find(l => l.id === task.related_entity_id)?.phone;
+                } else if (task.related_entity_type === 'customer') {
+                  phone = customers.find(c => c.id === task.related_entity_id)?.phone;
+                } else if (task.related_entity_type === 'professional') {
+                  phone = professionals.find(p => p.id === task.related_entity_id)?.phone;
+                }
+                return phone ? (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    <PhoneLink phone={phone} className="text-xs" />
+                  </div>
+                ) : null;
+              })()}
             </div>
             <Badge variant="outline" className="text-xs capitalize mt-0.5">{task.related_entity_type}</Badge>
           </button>

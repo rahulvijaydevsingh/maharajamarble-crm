@@ -40,10 +40,15 @@ import { RecurrenceSection } from "./form/RecurrenceSection";
 import { RelatedEntitySection } from "./form/RelatedEntitySection";
 import {
   TASK_TYPES,
+  KIT_TASK_TYPES,
   TASK_PRIORITIES,
   REMINDER_OPTIONS,
   TASK_TEMPLATES,
 } from "@/constants/taskConstants";
+import {
+  SelectGroup,
+  SelectLabel,
+} from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 
 interface RelatedEntity {
@@ -381,9 +386,18 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TASK_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel>Standard Tasks</SelectLabel>
+                    {TASK_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>KIT Tasks</SelectLabel>
+                    {KIT_TASK_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>

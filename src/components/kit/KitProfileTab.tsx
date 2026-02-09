@@ -116,6 +116,10 @@ export function KitProfileTab({
     logKitPaused,
     logKitResumed,
     logKitCancelled,
+    logTouchAdded,
+    logTouchEdited,
+    logTaskCreatedFromKit,
+    logReminderCreatedFromKit,
   } = useKitActivityLog();
   
   const handleActivate = async (
@@ -267,18 +271,36 @@ export function KitProfileTab({
       assignedTo: data.assignedTo,
     });
     
+    // Log the touch addition
+    await logTouchAdded({
+      entityType,
+      entityId,
+      entityName,
+      method: data.method as KitTouchMethod,
+      scheduledDate: data.scheduledDate,
+    });
+    
     // Create task if requested
     if (data.createTask && data.taskTitle) {
       await addTask({
         title: data.taskTitle,
         description: `KIT touch follow-up for ${entityName}`,
-        type: 'Follow-up Call',
+        type: 'KIT Follow-up',
         priority: 'Medium',
         status: 'Pending',
         assigned_to: data.assignedTo,
         due_date: data.scheduledDate,
+        lead_id: entityType === 'lead' ? entityId : null,
         related_entity_type: entityType,
         related_entity_id: entityId,
+      });
+      
+      // Log task creation
+      await logTaskCreatedFromKit({
+        entityType,
+        entityId,
+        entityName,
+        taskTitle: data.taskTitle,
       });
       
       // Create reminder if requested
@@ -291,6 +313,14 @@ export function KitProfileTab({
           entity_id: entityId,
           assigned_to: data.assignedTo,
           created_by: user?.email || 'System',
+        });
+        
+        // Log reminder creation
+        await logReminderCreatedFromKit({
+          entityType,
+          entityId,
+          entityName,
+          reminderTitle: data.taskTitle,
         });
       }
     }
@@ -307,6 +337,21 @@ export function KitProfileTab({
   }) => {
     if (!editingTouch) return;
     
+    // Track changes for logging
+    const changes: string[] = [];
+    if (editingTouch.method !== data.method) {
+      changes.push(`Method: ${editingTouch.method} → ${data.method}`);
+    }
+    if (editingTouch.scheduled_date !== data.scheduledDate) {
+      changes.push(`Date: ${editingTouch.scheduled_date} → ${data.scheduledDate}`);
+    }
+    if ((editingTouch.scheduled_time || '') !== (data.scheduledTime || '')) {
+      changes.push(`Time: ${editingTouch.scheduled_time || 'not set'} → ${data.scheduledTime || 'not set'}`);
+    }
+    if (editingTouch.assigned_to !== data.assignedTo) {
+      changes.push(`Assigned to: ${editingTouch.assigned_to} → ${data.assignedTo}`);
+    }
+    
     await updateTouch({
       touchId: editingTouch.id,
       updates: {
@@ -316,6 +361,17 @@ export function KitProfileTab({
         assigned_to: data.assignedTo,
       },
     });
+    
+    // Log the edit if there were changes
+    if (changes.length > 0) {
+      await logTouchEdited({
+        entityType,
+        entityId,
+        entityName,
+        method: data.method as KitTouchMethod,
+        changes: changes.join(', '),
+      });
+    }
     
     setEditingTouch(null);
   };
@@ -479,6 +535,7 @@ export function KitProfileTab({
             onReschedule={(newDate) => handleDirectReschedule(nextTouch, newDate)}
             onSkip={() => handleSkipTouch(nextTouch)}
             onReassign={(newAssignee) => handleReassignTouch(nextTouch, newAssignee)}
+            onEdit={() => setEditingTouch(nextTouch)}
             disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
             entityPhone={entityPhone}
             entityLocation={entityLocation}

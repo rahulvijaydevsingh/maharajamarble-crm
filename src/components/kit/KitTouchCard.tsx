@@ -111,6 +111,40 @@ export function KitTouchCard({
     }
   };
 
+  // Render the method name as a clickable link
+  const renderMethodWithLink = () => {
+    const methodLabel = touch.method.charAt(0).toUpperCase() + touch.method.slice(1);
+    
+    if (touch.method === 'call' && entityPhone) {
+      return (
+        <a href={`tel:${entityPhone}`} className="font-medium hover:underline text-primary">
+          {methodLabel}
+        </a>
+      );
+    }
+    if (touch.method === 'whatsapp' && entityPhone) {
+      return (
+        <a 
+          href={getWhatsAppLink(entityPhone)} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="font-medium hover:underline text-primary"
+        >
+          {methodLabel}
+        </a>
+      );
+    }
+    if (touch.method === 'visit') {
+      if (entityLocation) {
+        return (
+          <PlusCodeLink plusCode={entityLocation} className="font-medium" />
+        );
+      }
+      return <span className="font-medium">{methodLabel}</span>;
+    }
+    return <span className="font-medium capitalize">{methodLabel}</span>;
+  };
+
   // Render contact links based on method
   const renderContactLinks = () => {
     if (!entityPhone && !entityLocation) return null;
@@ -154,7 +188,7 @@ export function KitTouchCard({
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium capitalize">{touch.method}</span>
+                {renderMethodWithLink()}
                 {touch.status !== 'pending' && (
                   <Badge variant="secondary" className={cn('text-xs', statusColor)}>
                     {statusLabel}
