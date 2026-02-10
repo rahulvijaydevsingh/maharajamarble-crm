@@ -10,7 +10,8 @@ export type BackupModuleKey =
   | "users_access"
   | "company_system"
   | "todo"
-  | "attachments_files";
+  | "attachments_files"
+  | "kit";
 
 export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; description: string }> = [
   { key: "leads", label: "Leads", description: "Leads + related activity" },
