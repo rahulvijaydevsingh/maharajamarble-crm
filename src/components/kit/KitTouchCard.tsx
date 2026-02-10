@@ -135,12 +135,13 @@ export function KitTouchCard({
         </a>
       );
     }
-    if (touch.method === 'visit') {
+    if (touch.method === 'visit' || touch.method === 'meeting') {
       if (entityLocation) {
         return (
           <PlusCodeLink plusCode={entityLocation} className="font-medium" />
         );
       }
+      // Fallback: show method name as plain text, contact links section will handle address
       return <span className="font-medium">{methodLabel}</span>;
     }
     return <span className="font-medium capitalize">{methodLabel}</span>;
@@ -169,7 +170,7 @@ export function KitTouchCard({
             WhatsApp
           </a>
         )}
-        {touch.method === 'visit' && entityLocation && (
+        {(touch.method === 'visit' || touch.method === 'meeting') && entityLocation && (
           <span className="inline-flex items-center text-xs">
             <MapPin className="h-3 w-3 mr-1" />
             <PlusCodeLink plusCode={entityLocation} className="text-xs" />

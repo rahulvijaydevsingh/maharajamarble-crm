@@ -990,6 +990,8 @@ export type Database = {
           completed_at: string | null
           created_at: string | null
           id: string
+          linked_reminder_id: string | null
+          linked_task_id: string | null
           method: string
           original_scheduled_date: string | null
           outcome: string | null
@@ -1008,6 +1010,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string | null
           id?: string
+          linked_reminder_id?: string | null
+          linked_task_id?: string | null
           method: string
           original_scheduled_date?: string | null
           outcome?: string | null
@@ -1026,6 +1030,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string | null
           id?: string
+          linked_reminder_id?: string | null
+          linked_task_id?: string | null
           method?: string
           original_scheduled_date?: string | null
           outcome?: string | null
@@ -1040,6 +1046,20 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "kit_touches_linked_reminder_id_fkey"
+            columns: ["linked_reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kit_touches_linked_task_id_fkey"
+            columns: ["linked_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "kit_touches_subscription_id_fkey"
             columns: ["subscription_id"]

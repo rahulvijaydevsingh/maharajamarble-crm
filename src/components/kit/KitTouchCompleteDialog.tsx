@@ -89,8 +89,8 @@
    };
    
    return (
-     <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent className="max-w-md z-[100]">
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+        <DialogContent className="max-w-md z-[100]">
          <DialogHeader>
            <DialogTitle>Log Touch Outcome</DialogTitle>
          </DialogHeader>
@@ -149,7 +149,7 @@
                        <SelectTrigger className="w-32 h-8">
                          <SelectValue />
                        </SelectTrigger>
-                       <SelectContent>
+                       <SelectContent className="z-[200]">
                          {SNOOZE_OPTIONS.map((opt) => (
                            <SelectItem key={opt.value} value={opt.value}>
                              {opt.label}
@@ -176,7 +176,7 @@
                            {rescheduleDate ? format(rescheduleDate, 'MMM d') : 'Pick date'}
                          </Button>
                        </PopoverTrigger>
-                       <PopoverContent className="w-auto p-0" align="start">
+                       <PopoverContent className="w-auto p-0 z-[200]" align="start">
                          <Calendar
                            mode="single"
                            selected={rescheduleDate}

@@ -41,6 +41,8 @@ import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { format, isPast, isToday } from 'date-fns';
 import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
+import { useActiveStaff } from '@/hooks/useActiveStaff';
+import { getStaffDisplayName } from '@/lib/kitHelpers';
 
 interface LeadTasksTabProps {
   lead: Lead;
@@ -62,6 +64,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
   const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
+  const { staffMembers } = useActiveStaff();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -281,7 +284,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                         {statusConfig.label}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm">{task.assigned_to}</TableCell>
+                    <TableCell className="text-sm">{getStaffDisplayName(task.assigned_to, staffMembers)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {format(new Date(task.created_at), 'dd MMM yyyy')}
                     </TableCell>

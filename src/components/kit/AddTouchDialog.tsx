@@ -83,7 +83,7 @@ export function AddTouchDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-md z-[100]">
         <DialogHeader>
           <DialogTitle>Add Touch to Cycle</DialogTitle>

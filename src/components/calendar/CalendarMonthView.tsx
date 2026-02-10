@@ -47,7 +47,7 @@ export function CalendarMonthView({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full overflow-y-auto">
         {/* Weekday headers */}
         <div className="grid grid-cols-7 border-b">
           {WEEKDAYS.map((day) => (
@@ -61,7 +61,7 @@ export function CalendarMonthView({
         </div>
 
         {/* Calendar grid */}
-        <div className="grid grid-cols-7 flex-1">
+        <div className="grid grid-cols-7" style={{ gridAutoRows: 'minmax(100px, 1fr)' }}>
           {days.map((day, idx) => {
             const dayEvents = getEventsForDate(day);
             const isCurrentMonth = isSameMonth(day, currentDate);

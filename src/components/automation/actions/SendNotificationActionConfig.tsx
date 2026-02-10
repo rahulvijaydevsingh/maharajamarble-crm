@@ -1,11 +1,13 @@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 import { NOTIFICATION_PRIORITIES, RECIPIENT_OPTIONS } from "@/constants/automationConstants";
 
 interface SendNotificationActionConfigProps {
@@ -14,6 +16,9 @@ interface SendNotificationActionConfigProps {
 }
 
 export const SendNotificationActionConfig = ({ config, onConfigChange }: SendNotificationActionConfigProps) => {
+  const { staffMembers } = useActiveStaff();
+  const staffGroups = buildStaffGroups(staffMembers);
+
   const handleChange = (field: string, value: any) => {
     onConfigChange({ ...config, [field]: value });
   };
@@ -52,12 +57,51 @@ export const SendNotificationActionConfig = ({ config, onConfigChange }: SendNot
           ))}
         </div>
         {selectedRecipients.includes("specific_user") && (
-          <Input
-            className="mt-2"
-            value={config.specific_users || ""}
-            onChange={(e) => handleChange("specific_users", e.target.value)}
-            placeholder="Enter user names (comma-separated)"
-          />
+          <div className="mt-2 space-y-2">
+            <Select
+              onValueChange={(v) => {
+                const current = config.specific_users ? config.specific_users.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+                if (!current.includes(v)) {
+                  handleChange("specific_users", [...current, v].join(", "));
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select staff member..." />
+              </SelectTrigger>
+              <SelectContent>
+                {staffGroups.map((group) => (
+                  <SelectGroup key={group.label}>
+                    <SelectLabel>{group.label}</SelectLabel>
+                    {group.members.map((member) => (
+                      <SelectItem key={member.id} value={member.email || member.id}>
+                        {member._display}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+            {config.specific_users && (
+              <div className="flex flex-wrap gap-1">
+                {config.specific_users.split(",").map((u: string) => u.trim()).filter(Boolean).map((u: string) => (
+                  <Badge key={u} variant="secondary" className="text-xs gap-1">
+                    {u}
+                    <button
+                      type="button"
+                      className="ml-1 text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        const updated = config.specific_users.split(",").map((s: string) => s.trim()).filter((s: string) => s !== u).join(", ");
+                        handleChange("specific_users", updated);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {selectedRecipients.includes("custom_email") && (
           <Input

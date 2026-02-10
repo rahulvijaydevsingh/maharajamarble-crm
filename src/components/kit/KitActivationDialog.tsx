@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -41,7 +42,10 @@ interface KitActivationDialogProps {
     assignedTo: string,
     maxCycles?: number,
     customSequence?: KitTouchSequenceItem[],
-    skipWeekends?: boolean
+    skipWeekends?: boolean,
+    createTask?: boolean,
+    taskTitle?: string,
+    createReminder?: boolean
   ) => Promise<void>;
   isLoading?: boolean;
 }
@@ -65,6 +69,9 @@ export function KitActivationDialog({
   const [assignedTo, setAssignedTo] = useState<string>(defaultAssignee);
   const [maxCycles, setMaxCycles] = useState<string>('');
   const [skipWeekends, setSkipWeekends] = useState(false);
+  const [createTask, setCreateTask] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [createReminder, setCreateReminder] = useState(false);
   
   // Custom sequence state
   const [customSequence, setCustomSequence] = useState<KitTouchSequenceItem[]>([
@@ -84,7 +91,10 @@ export function KitActivationDialog({
       assignedTo,
       maxCycles ? parseInt(maxCycles) : undefined,
       mode === 'custom' ? customSequence : undefined,
-      skipWeekends
+      skipWeekends,
+      createTask,
+      createTask ? (taskTitle || `Follow up with ${entityName}`) : undefined,
+      createTask && createReminder
     );
     onOpenChange(false);
   };
@@ -98,7 +108,7 @@ export function KitActivationDialog({
     (mode === 'custom' && customSequence.length > 0 && assignedTo);
   
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100]">
         <DialogHeader>
           <DialogTitle>Enable Keep in Touch</DialogTitle>
@@ -126,7 +136,7 @@ export function KitActivationDialog({
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a preset..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[200]">
                     {presets.filter(p => p.is_active).map((preset) => (
                       <SelectItem key={preset.id} value={preset.id}>
                         {preset.name}
@@ -200,7 +210,7 @@ export function KitActivationDialog({
               <SelectTrigger>
                 <SelectValue placeholder="Select assignee..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {staffGroups.map((group) => (
                   <React.Fragment key={group.label}>
                     {group.members.map((staff) => (
@@ -240,6 +250,42 @@ export function KitActivationDialog({
               checked={skipWeekends}
               onCheckedChange={setSkipWeekends}
             />
+          </div>
+
+          {/* Task/Reminder creation */}
+          <div className="space-y-3 p-3 bg-muted/50 rounded-lg border">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="activateCreateTask"
+                checked={createTask}
+                onCheckedChange={(checked) => {
+                  setCreateTask(checked === true);
+                  if (!checked) setCreateReminder(false);
+                }}
+              />
+              <Label htmlFor="activateCreateTask" className="cursor-pointer">Create Task for first touch</Label>
+            </div>
+
+            {createTask && (
+              <div className="ml-6 space-y-3">
+                <Input
+                  placeholder={`Follow up with ${entityName}`}
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                />
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="activateCreateReminder"
+                    checked={createReminder}
+                    onCheckedChange={(checked) => setCreateReminder(checked === true)}
+                  />
+                  <Label htmlFor="activateCreateReminder" className="cursor-pointer text-sm">
+                    Create Reminder for Task
+                  </Label>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         
