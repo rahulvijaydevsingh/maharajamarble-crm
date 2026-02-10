@@ -96,7 +96,7 @@ export function AddTouchDialog({
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {KIT_TOUCH_METHODS.map((m) => (
                   <SelectItem key={m.value} value={m.value}>
                     {m.label}
