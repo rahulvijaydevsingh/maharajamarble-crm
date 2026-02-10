@@ -444,6 +444,8 @@ export function CustomerDetailView({
                  entityId={customer.id}
                  entityName={customer.name}
                  defaultAssignee={customer.assigned_to}
+                 entityPhone={customer.phone || undefined}
+                 entityLocation={customer.site_plus_code || undefined}
                />
              </TabsContent>
           </div>
