@@ -73,7 +73,7 @@ export function EditTouchDialog({
   if (!touch) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-md z-[100]">
         <DialogHeader>
           <DialogTitle>Edit Touch</DialogTitle>

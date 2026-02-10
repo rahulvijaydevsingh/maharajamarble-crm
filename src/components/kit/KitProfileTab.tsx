@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -128,9 +129,12 @@ export function KitProfileTab({
     assignedTo: string,
     maxCycles?: number,
     customSequence?: KitTouchSequenceItem[],
-    skipWeekends?: boolean
+    skipWeekends?: boolean,
+    createTask?: boolean,
+    taskTitle?: string,
+    createReminder?: boolean
   ) => {
-    await activateKit({ entityType, entityId, presetId: presetId || '', assignedTo, maxCycles, customSequence, skipWeekends });
+    const result = await activateKit({ entityType, entityId, presetId: presetId || '', assignedTo, maxCycles, customSequence, skipWeekends });
     await logKitActivated({
       entityType,
       entityId,
@@ -138,6 +142,48 @@ export function KitProfileTab({
       presetName: subscription?.preset?.name || 'Custom Sequence',
       assignedTo,
     });
+
+    // Create task if requested during activation
+    if (createTask && taskTitle) {
+      await addTask({
+        title: taskTitle,
+        description: `KIT touch follow-up for ${entityName}`,
+        type: 'KIT Follow-up',
+        priority: 'Medium',
+        status: 'Pending',
+        assigned_to: assignedTo,
+        due_date: new Date().toISOString().split('T')[0],
+        lead_id: entityType === 'lead' ? entityId : null,
+        related_entity_type: entityType,
+        related_entity_id: entityId,
+      });
+
+      await logTaskCreatedFromKit({
+        entityType,
+        entityId,
+        entityName,
+        taskTitle,
+      });
+
+      if (createReminder) {
+        await addReminder({
+          title: taskTitle,
+          description: `Reminder for KIT touch with ${entityName}`,
+          reminder_datetime: `${new Date().toISOString().split('T')[0]}T09:00:00`,
+          entity_type: entityType,
+          entity_id: entityId,
+          assigned_to: assignedTo,
+          created_by: user?.email || 'System',
+        });
+
+        await logReminderCreatedFromKit({
+          entityType,
+          entityId,
+          entityName,
+          reminderTitle: taskTitle,
+        });
+      }
+    }
   };
   
   const handlePause = async (pauseUntil?: string, pauseReason?: string) => {
@@ -362,6 +408,22 @@ export function KitProfileTab({
         assigned_to: data.assignedTo,
       },
     });
+
+    // Sync linked task if exists
+    if ((editingTouch as any).linked_task_id) {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({
+            due_date: data.scheduledDate,
+            assigned_to: data.assignedTo,
+          })
+          .eq('id', (editingTouch as any).linked_task_id);
+        if (error) console.error('Failed to sync linked task:', error);
+      } catch (e) {
+        console.error('Failed to sync linked task:', e);
+      }
+    }
     
     // Log the edit if there were changes
     if (changes.length > 0) {

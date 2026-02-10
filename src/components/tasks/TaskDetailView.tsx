@@ -6,6 +6,8 @@ import { useTasks, Task } from "@/hooks/useTasks";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
@@ -68,6 +70,7 @@ export function TaskDetailView({
   const { tasks, updateTask, addTask, deleteTask, snoozeTask } = useTasks();
   const { leads } = useLeads();
   const { customers } = useCustomers();
+  const { staffMembers } = useActiveStaff();
 
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
@@ -285,7 +288,7 @@ export function TaskDetailView({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[80]">
           <VisuallyHidden>
             <DialogTitle>{task?.title || "Task Details"}</DialogTitle>
@@ -402,7 +405,7 @@ export function TaskDetailView({
                       <CardTitle>Task Details</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      <ValueRow label="Assigned to" value={task.assigned_to} />
+                      <ValueRow label="Assigned to" value={getStaffDisplayName(task.assigned_to, staffMembers)} />
                       <ValueRow
                         label="Due"
                         value={
@@ -426,7 +429,7 @@ export function TaskDetailView({
                         }
                       />
 
-                      <ValueRow label="Created by" value={task.created_by} />
+                      <ValueRow label="Created by" value={getStaffDisplayName(task.created_by, staffMembers)} />
                       <ValueRow label="Created" value={format(new Date(task.created_at), "dd MMM yyyy, HH:mm")} />
                       <ValueRow label="Updated" value={format(new Date(task.updated_at), "dd MMM yyyy, HH:mm")} />
                       {task.description && (
