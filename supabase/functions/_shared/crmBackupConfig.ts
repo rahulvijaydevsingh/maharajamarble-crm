@@ -150,6 +150,11 @@ export const RESTORE_INSERT_ORDER: string[] = [
   "user_status",
   "user_table_preferences",
   "notifications",
+  "kit_outcomes",
+  "kit_touch_methods",
+  "kit_presets",
+  "kit_subscriptions",
+  "kit_touches",
 ];
 
 export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
