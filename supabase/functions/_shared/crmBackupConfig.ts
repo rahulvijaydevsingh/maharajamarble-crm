@@ -63,6 +63,7 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   ],
   todo: ["todo_lists", "todo_items"],
   attachments_files: ["entity_attachments", "quotation_attachments", "messages"],
+  kit: ["kit_subscriptions", "kit_touches", "kit_presets", "kit_outcomes", "kit_touch_methods"],
 };
 
 // Deletion order for REPLACE restores: children first.
