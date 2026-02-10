@@ -51,6 +51,7 @@ import {
   UserPlus,
   Briefcase,
   CheckSquare,
+  HeartHandshake,
 } from "lucide-react";
 import { format } from "date-fns";
 import { 
@@ -73,6 +74,7 @@ const entityIcons: Record<EntityType, React.ReactNode> = {
   customers: <Users className="h-4 w-4" />,
   professionals: <Briefcase className="h-4 w-4" />,
   quotations: <FileText className="h-4 w-4" />,
+  kit: <HeartHandshake className="h-4 w-4" />,
 };
 
 const triggerIcons: Record<TriggerType, React.ReactNode> = {

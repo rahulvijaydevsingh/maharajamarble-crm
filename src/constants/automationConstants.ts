@@ -8,6 +8,7 @@ export const ENTITY_TYPES: { value: EntityType; label: string; icon: string }[] 
   { value: "customers", label: "Customers", icon: "Users" },
   { value: "professionals", label: "Professionals", icon: "Briefcase" },
   { value: "quotations", label: "Quotations", icon: "FileText" },
+  { value: "kit", label: "Keep in Touch", icon: "HeartHandshake" },
 ];
 
 export const TRIGGER_TYPES: { value: TriggerType; label: string; description: string; icon: string }[] = [
@@ -445,6 +446,24 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
       { value: "sanjay.patel", label: "Sanjay Patel" },
       { value: "meera.singh", label: "Meera Singh" },
     ]},
+  ],
+  kit: [
+    { name: "entity_type", label: "Entity Type", type: "select", editable: false, options: [
+      { value: "lead", label: "Lead" },
+      { value: "customer", label: "Customer" },
+      { value: "professional", label: "Professional" },
+    ]},
+    { name: "status", label: "Status", type: "select", editable: true, options: [
+      { value: "active", label: "Active" },
+      { value: "paused", label: "Paused" },
+      { value: "completed", label: "Completed" },
+      { value: "cancelled", label: "Cancelled" },
+    ]},
+    { name: "assigned_to", label: "Assigned To", type: "select", editable: true, options: [] },
+    { name: "current_step", label: "Current Step", type: "number", editable: false },
+    { name: "cycle_count", label: "Cycle Count", type: "number", editable: false },
+    { name: "created_at", label: "Created At", type: "datetime", editable: false },
+    { name: "created_by", label: "Created By", type: "text", editable: false },
   ],
 };
 

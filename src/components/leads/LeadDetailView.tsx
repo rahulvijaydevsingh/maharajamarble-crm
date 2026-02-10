@@ -421,6 +421,8 @@ export function LeadDetailView({
                  entityId={currentLead.id}
                  entityName={currentLead.name}
                  defaultAssignee={currentLead.assigned_to}
+                 entityPhone={currentLead.phone || undefined}
+                 entityLocation={currentLead.site_plus_code || undefined}
                />
              </TabsContent>
           </div>

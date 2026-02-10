@@ -13,7 +13,8 @@ export type BackupModuleKey =
   | "users_access"
   | "company_system"
   | "todo"
-  | "attachments_files";
+  | "attachments_files"
+  | "kit";
 
 export type CrmBackupRow = {
   id: string;

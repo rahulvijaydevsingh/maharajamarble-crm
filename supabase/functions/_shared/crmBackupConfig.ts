@@ -10,7 +10,8 @@ export type BackupModuleKey =
   | "users_access"
   | "company_system"
   | "todo"
-  | "attachments_files";
+  | "attachments_files"
+  | "kit";
 
 export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; description: string }> = [
   { key: "leads", label: "Leads", description: "Leads + related activity" },
@@ -25,6 +26,7 @@ export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; descri
   { key: "company_system", label: "Company & System", description: "Company settings, control panel, filters" },
   { key: "todo", label: "Todo Lists", description: "Todo lists and items" },
   { key: "attachments_files", label: "Attachments/Files", description: "Attachment metadata + stored objects" },
+  { key: "kit", label: "Keep in Touch", description: "KIT subscriptions, touches, presets" },
 ];
 
 export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
@@ -61,6 +63,7 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   ],
   todo: ["todo_lists", "todo_items"],
   attachments_files: ["entity_attachments", "quotation_attachments", "messages"],
+  kit: ["kit_subscriptions", "kit_touches", "kit_presets", "kit_outcomes", "kit_touch_methods"],
 };
 
 // Deletion order for REPLACE restores: children first.
@@ -101,6 +104,11 @@ export const REPLACE_DELETE_ORDER: string[] = [
   "user_table_preferences",
   "announcements",
   "activity_log",
+  "kit_touches",
+  "kit_subscriptions",
+  "kit_presets",
+  "kit_outcomes",
+  "kit_touch_methods",
 ];
 
 // Insert order for restores: parents first.
@@ -142,6 +150,11 @@ export const RESTORE_INSERT_ORDER: string[] = [
   "user_status",
   "user_table_preferences",
   "notifications",
+  "kit_outcomes",
+  "kit_touch_methods",
+  "kit_presets",
+  "kit_subscriptions",
+  "kit_touches",
 ];
 
 export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
@@ -170,6 +183,13 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   control_panel_option_values: "id",
   crm_backups: "id",
   crm_restores: "id",
+
+  // KIT
+  kit_subscriptions: "id",
+  kit_touches: "id",
+  kit_presets: "id",
+  kit_outcomes: "id",
+  kit_touch_methods: "id",
 
   // Non-id PKs
   user_roles: "user_id",

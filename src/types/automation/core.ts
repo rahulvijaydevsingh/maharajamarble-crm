@@ -1,6 +1,6 @@
 // Automation System Types (core primitives)
 
-export type EntityType = "leads" | "tasks" | "customers" | "professionals" | "quotations";
+export type EntityType = "leads" | "tasks" | "customers" | "professionals" | "quotations" | "kit";
 
 export type TriggerType = "field_change" | "time_based" | "count_based" | "saved_filter";
 

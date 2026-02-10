@@ -86,7 +86,7 @@ export function EditTouchDialog({
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {KIT_TOUCH_METHODS.map((m) => (
                   <SelectItem key={m.value} value={m.value}>
                     {m.label}
@@ -108,7 +108,7 @@ export function EditTouchDialog({
                   {scheduledDate ? format(scheduledDate, 'PPP') : 'Pick a date'}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
+              <PopoverContent className="w-auto p-0 z-[200]" align="start">
                 <Calendar
                   mode="single"
                   selected={scheduledDate}
@@ -135,7 +135,7 @@ export function EditTouchDialog({
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {staffGroups.map((group) => (
                   <SelectGroup key={group.label}>
                     <SelectLabel>{group.label}</SelectLabel>

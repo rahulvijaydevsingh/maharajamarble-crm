@@ -25,6 +25,7 @@ const MODULES: Array<{ key: BackupModuleKey; label: string; description: string 
   { key: "company_system", label: "Company & System", description: "Company settings, control panel, filters" },
   { key: "todo", label: "Todo Lists", description: "Todo lists and items" },
   { key: "attachments_files", label: "Attachments/Files", description: "Attachment metadata + stored objects" },
+  { key: "kit", label: "Keep in Touch", description: "KIT subscriptions, touches, presets" },
 ];
 
 const ALL_MODULE_KEYS = MODULES.map((m) => m.key);

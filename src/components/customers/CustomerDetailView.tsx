@@ -330,7 +330,7 @@ export function CustomerDetailView({
                   <MoreHorizontal className="h-4 w-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="z-[80]">
                 <DropdownMenuItem onClick={handleEditClick}>
                   <Edit className="h-4 w-4 mr-2" />
                   Edit Customer
@@ -444,6 +444,8 @@ export function CustomerDetailView({
                  entityId={customer.id}
                  entityName={customer.name}
                  defaultAssignee={customer.assigned_to}
+                 entityPhone={customer.phone || undefined}
+                 entityLocation={customer.site_plus_code || undefined}
                />
              </TabsContent>
           </div>
