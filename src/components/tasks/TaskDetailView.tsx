@@ -286,7 +286,7 @@ export function TaskDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[60]">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[80]">
           <VisuallyHidden>
             <DialogTitle>{task?.title || "Task Details"}</DialogTitle>
           </VisuallyHidden>
