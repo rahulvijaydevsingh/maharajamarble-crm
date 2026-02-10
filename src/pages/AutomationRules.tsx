@@ -73,6 +73,7 @@ const entityIcons: Record<EntityType, React.ReactNode> = {
   customers: <Users className="h-4 w-4" />,
   professionals: <Briefcase className="h-4 w-4" />,
   quotations: <FileText className="h-4 w-4" />,
+  kit: <Heart className="h-4 w-4" />,
 };
 
 const triggerIcons: Record<TriggerType, React.ReactNode> = {

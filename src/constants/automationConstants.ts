@@ -447,6 +447,24 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
       { value: "meera.singh", label: "Meera Singh" },
     ]},
   ],
+  kit: [
+    { name: "entity_type", label: "Entity Type", type: "select", editable: false, options: [
+      { value: "lead", label: "Lead" },
+      { value: "customer", label: "Customer" },
+      { value: "professional", label: "Professional" },
+    ]},
+    { name: "status", label: "Status", type: "select", editable: true, options: [
+      { value: "active", label: "Active" },
+      { value: "paused", label: "Paused" },
+      { value: "completed", label: "Completed" },
+      { value: "cancelled", label: "Cancelled" },
+    ]},
+    { name: "assigned_to", label: "Assigned To", type: "select", editable: true, options: [] },
+    { name: "current_step", label: "Current Step", type: "number", editable: false },
+    { name: "cycle_count", label: "Cycle Count", type: "number", editable: false },
+    { name: "created_at", label: "Created At", type: "datetime", editable: false },
+    { name: "created_by", label: "Created By", type: "text", editable: false },
+  ],
 };
 
 // Task types for action configuration
