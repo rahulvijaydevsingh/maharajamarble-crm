@@ -184,6 +184,13 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   crm_backups: "id",
   crm_restores: "id",
 
+  // KIT
+  kit_subscriptions: "id",
+  kit_touches: "id",
+  kit_presets: "id",
+  kit_outcomes: "id",
+  kit_touch_methods: "id",
+
   // Non-id PKs
   user_roles: "user_id",
   custom_role_permissions: "role",

@@ -512,7 +512,7 @@ export function TaskDetailView({
           />
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogContent className="z-[70]">
+            <AlertDialogContent className="z-[100]">
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete task</AlertDialogTitle>
                 <AlertDialogDescription>

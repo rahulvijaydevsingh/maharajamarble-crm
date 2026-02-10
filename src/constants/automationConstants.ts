@@ -8,6 +8,7 @@ export const ENTITY_TYPES: { value: EntityType; label: string; icon: string }[] 
   { value: "customers", label: "Customers", icon: "Users" },
   { value: "professionals", label: "Professionals", icon: "Briefcase" },
   { value: "quotations", label: "Quotations", icon: "FileText" },
+  { value: "kit", label: "Keep in Touch", icon: "HeartHandshake" },
 ];
 
 export const TRIGGER_TYPES: { value: TriggerType; label: string; description: string; icon: string }[] = [
