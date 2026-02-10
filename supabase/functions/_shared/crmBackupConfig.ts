@@ -104,6 +104,11 @@ export const REPLACE_DELETE_ORDER: string[] = [
   "user_table_preferences",
   "announcements",
   "activity_log",
+  "kit_touches",
+  "kit_subscriptions",
+  "kit_presets",
+  "kit_outcomes",
+  "kit_touch_methods",
 ];
 
 // Insert order for restores: parents first.
