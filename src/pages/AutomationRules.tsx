@@ -51,6 +51,7 @@ import {
   UserPlus,
   Briefcase,
   CheckSquare,
+  HeartHandshake,
 } from "lucide-react";
 import { format } from "date-fns";
 import { 
