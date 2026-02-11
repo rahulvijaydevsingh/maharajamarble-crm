@@ -1,173 +1,157 @@
 
 
-# Comprehensive Fix: Layering, Display, and Integration Issues
+# Comprehensive Fix Plan: KIT Module, Task System, and UI Issues
 
-## Root Cause: The Recurring Overlay/Layering Problem
+## Issues Identified and Root Causes
 
-The core issue causing gray-to-black backgrounds and hidden dialogs is in `dialog.tsx`. Every `<DialogContent>` renders its own `<DialogOverlay>` hardcoded at `z-50 bg-black/80`. When dialogs are nested (e.g., Lead Profile z-[70] opens Task Detail z-[80] opens Edit Dialog z-[100]), each creates a **new dark overlay at z-50**, stacking multiple semi-transparent black layers and making the screen progressively darker/blacker.
+### 1. KIT Activation Dialog Scroll Not Working
+**Root Cause:** `modal={false}` on the Dialog prevents Radix from managing focus/scroll trapping. The `overflow-y-auto` on `DialogContent` works for manual drag but mouse wheel events pass through to the background.
+**Fix:** Change `KitActivationDialog` back to `modal={true}` but use a custom approach - since the real layering fix should happen in `dialog.tsx` itself. The proper fix: keep `modal={false}` but add `onWheel` event capture or add `pointer-events-auto` and `overscroll-behavior: contain` CSS to the scrollable content area.
 
-The permanent fix is to modify `dialog.tsx` so the overlay inherits the z-index from its content, and to ensure nested dialogs opened from within other dialogs use `modal={false}` to avoid adding extra overlays on top of already-open dialogs.
-also address if there is a loop like when the task is opened from lead information window and lead profile is opened from the task profile window. 
+### 2. Visit/Meeting Touch Shows Plus Code as Touch Name
+**Root Cause:** In `KitTouchCard.tsx` line 140-142, when `entityLocation` exists for visit/meeting, it renders `<PlusCodeLink plusCode={entityLocation} />` which displays the plus code string as the link text (line 68 of PlusCodeLink.tsx: `{plusCode}`).
+**Fix:** Change to show the method label ("Site Visit" / "Meeting") as the visible text with a small map icon/link, instead of replacing the name with the raw plus code.
 
----
+### 3. KIT Activation Creates Only 1 Task/Reminder Instead of Per-Touch
+**Root Cause:** In `KitProfileTab.tsx` `handleActivate` (lines 147-186), task/reminder creation only happens once for a single generic "follow-up" task. There's no loop over the touch sequence. The activation creates all touches in `useKitSubscriptions.ts` but the task/reminder logic in `handleActivate` doesn't iterate over them.
+**Fix:** After activation, query all created touches for the subscription, then create a task and reminder for EACH touch, storing the `linked_task_id` and `linked_reminder_id` on each touch record.
 
-## Issues & Fixes
+### 4. Custom Touch Sequence Builder Broken (Dropdowns, Rearranging)
+**Root Cause:** `KitTouchSequenceBuilder.tsx` uses `<Select>` components without `z-[200]` on `<SelectContent>`, so they render behind the activation dialog (z-[100]). The drag handle has no actual drag-and-drop functionality (just a visual icon with `cursor-grab`), and movement buttons (up/down) are missing.
+**Fix:** Add `z-[200]` to all `SelectContent` elements. Replace the non-functional drag handle with up/down arrow buttons that call the existing `moveTouch()` function.
 
-### 1. Dialog Overlay Stacking (THE ROOT FIX)
+### 5. KIT Save/Activation Error
+**Root Cause:** Likely caused by the task/reminder creation logic failing (e.g., missing required fields or linked_task_id column not being recognized in the type system). The `linked_task_id` and `linked_reminder_id` columns were added via migration but the Supabase types may not have updated properly, or the `addTask` return value isn't being captured to store the ID.
+**Fix:** Ensure robust error handling around task/reminder creation so it doesn't block KIT activation. Use `try/catch` around task creation within the activation flow.
 
-**Problem:** `DialogOverlay` is always `z-50 bg-black/80`. With 3 nested dialogs, you get 3 overlays = nearly opaque black.
+### 6. System Unresponsive on Task Deletion from Lead Profile
+**Root Cause:** In `LeadTasksTab.tsx` line 157-163, `handleDeleteConfirm` calls `deleteTask` then immediately sets state. The `deleteTask` in `useTasks` likely triggers a cascade query invalidation that causes the entire task list to refetch, and if the lead profile dialog is also re-rendering, it creates a loop. Also, the `AlertDialogContent` for delete confirmation lacks a z-index class, so it may be hidden.
+**Fix:** Add `z-[100]` to the delete confirmation `AlertDialogContent`. Add error handling with `try/catch` around `deleteTask`. Ensure state cleanup happens in a `.finally()` block.
 
-**Fix:** Modify `dialog.tsx` to accept an optional `overlayClassName` prop so each dialog layer can control its overlay's z-index. Additionally, for dialogs that open on top of other dialogs (KIT dialogs, Task detail, entity profiles from Task detail), use `modal={false}` on the inner dialog to prevent creating additional overlay layers.
+### 7. KIT Task Types Mismatch (5 touch types vs 3 KIT task types)
+**Root Cause:** `KIT_TASK_TYPES` in `taskConstants.ts` only has 3 entries: "KIT Follow-up", "KIT Relationship Check", "KIT Touch Reminder". The 5 touch methods are: Call, WhatsApp, Visit, Email, Meeting.
+**Fix:** Update `KIT_TASK_TYPES` to mirror the 5 touch methods: "KIT Call", "KIT WhatsApp", "KIT Visit", "KIT Email", "KIT Meeting". Update the control panel defaults accordingly.
 
-**Files:** `src/components/ui/dialog.tsx`
+### 8. Edit Task Dialog "Assigned To" Shows Blank
+**Root Cause:** In `EditTaskDialog.tsx` line 116, `formData.assignedTo` is initialized from `taskData.assigned_to` which stores an **email** (e.g., "user@example.com"). But the Select options use `value={member.name}` (line 551). Since email !== name, no option matches and the field shows blank.
+**Fix:** Change the Select options to use `value={member.email || member.id}` instead of `value={member.name}`, and display `member._display` (Role - Name format) as the label. This matches how all other staff dropdowns work across the system.
 
-Changes:
-- Add a `modal` prop pass-through pattern so nested dialogs don't spawn extra overlays
-- The content z-index already works; the issue is purely the overlay accumulation
+### 9. Touch Edit Not Syncing to Linked Task/Reminder
+**Root Cause:** In `KitProfileTab.tsx` `handleEditTouch` (lines 412-426), the sync uses `(editingTouch as any).linked_task_id` but the `touchesQuery` in `useKitTouches.ts` does `select('*')` which should include `linked_task_id`. However, the `KitTouch` TypeScript interface in `kitConstants.ts` does NOT have `linked_task_id` or `linked_reminder_id` fields, so the cast to `KitTouch` type loses those fields. Additionally, reminder sync is completely missing.
+**Fix:** Add `linked_task_id` and `linked_reminder_id` to the `KitTouch` interface. Add reminder sync logic alongside the task sync in `handleEditTouch`.
 
-For the specific components:
-- `KitActivationDialog`, `AddTouchDialog`, `EditTouchDialog`, `KitTouchCompleteDialog`, `KitPauseDialog`, `KitCycleCompleteDialog` -- all opened from within LeadDetailView (z-[70]), so they should use `modal={false}` on their `<Dialog>` to avoid additional overlays
-- `TaskDetailView` when opened from within LeadDetailView should also not add another overlay
-- `LeadDetailView` / `CustomerDetailView` when opened from within TaskDetailView should also not add another overlay
-
-### 2. KIT Activation Missing Task/Reminder Option
-
-**Problem:** When first activating KIT, there's no option to create a task and reminder (unlike AddTouchDialog).
-
-**Fix:** Add the same task/reminder creation section from `AddTouchDialog` to `KitActivationDialog`, including:
-- "Create Task" checkbox
-- Task title input
-- "Create Reminder" checkbox
-
-**File:** `src/components/kit/KitActivationDialog.tsx`
-
-The `onActivate` callback signature needs to be extended to include `createTask`, `taskTitle`, and `createReminder` parameters, and `KitProfileTab.tsx` `handleActivate` needs to handle creating the task/reminder after activation completes.
-
-### 3. Task Tab "Assigned To" Showing Email
-
-**Problem:** In `LeadTasksTab.tsx`, line 284 renders `{task.assigned_to}` directly -- raw email.
-
-**Fix:** Import `useActiveStaff` and `getStaffDisplayName`, and replace `{task.assigned_to}` with `{getStaffDisplayName(task.assigned_to, staffMembers)}`.
-
-**File:** `src/components/leads/detail-tabs/LeadTasksTab.tsx` (line 284)
-
-### 4. Task Detail Window "Assigned To" and "Created By" Showing Email
-
-**Problem:** In `TaskDetailView.tsx`, line 405 renders `<ValueRow label="Assigned to" value={task.assigned_to} />` -- raw email. Same for `created_by` on line 429.
-
-**Fix:** Import and use `getStaffDisplayName` for both fields.
-
-**File:** `src/components/tasks/TaskDetailView.tsx` (lines 405, 429)
-
-### 5. Activity Log Showing Email
-
-**Problem:** Activity log entries show raw email for the actor/assignee.
-
-**Fix:** Wherever activity log entries display `assigned_to` or `created_by`, apply `getStaffDisplayName`.
-
-**Files:** Activity log rendering components (need to check `ActivityLogItem.tsx`)
-
-### 6. Touch Edit Not Syncing to Linked Task
-
-**Problem:** When a touch is edited, the associated task's due_date and assigned_to are not updated.
-
-**Fix:** This requires:
-1. A DB migration to add `linked_task_id` and `linked_reminder_id` columns to `kit_touches`
-2. Update `handleAddTouch` in `KitProfileTab.tsx` to store the task/reminder IDs after creation
-3. Update `handleEditTouch` to also update the linked task when touch date/assignee changes
-
-**Files:** `KitProfileTab.tsx`, DB migration
-
-### 7. Calendar Month View Only Half Visible
-
-**Problem:** The month grid has `flex-1` but the parent `CardContent` has `overflow-hidden` and the grid may not get enough height.
-
-**Fix:** Add `overflow-y-auto` to the calendar grid container and ensure proper `min-h` so all weeks are visible.
-
-**File:** `src/components/calendar/CalendarMonthView.tsx`
-
-### 8. Send Notification "Specific User" Should Be Dropdown
-
-**Problem:** When "Specific User" is selected in automation notification action, it shows a text input instead of a staff dropdown.
-
-**Fix:** Replace the `<Input>` for `specific_users` with a staff multi-select using `useActiveStaff` and `buildStaffGroups`.
-
-**File:** `src/components/automation/actions/SendNotificationActionConfig.tsx`
-
-### 9. Visit/Meeting Touch Not Hyperlinking to Address
-
-**Problem:** The `renderMethodWithLink()` and `renderContactLinks()` in `KitTouchCard.tsx` check for `entityLocation` but the visit method only links to PlusCodeLink. If there's no plus code but there IS an address, it should fall back to linking to the profile tab.
-
-**Fix:** Update the visit handler in `renderMethodWithLink()` to handle both plus code and address scenarios. When neither is available, add an `onClick` that navigates to the entity's profile tab.
-
-**File:** `src/components/kit/KitTouchCard.tsx`
-
-### 10. Task Title Click in Task Management Not Working
-
-**Problem:** Looking at the code, the task title click handler in `EnhancedTaskTable.tsx` (line 936-939) correctly calls `openTask(task.id)`. This should work. The issue may be that `openTask` opens `TaskDetailView` but with the lead profile already open, the overlay stacking makes it appear unresponsive.
-
-**Fix:** This is resolved by Fix #1 (the overlay stacking fix).
+### 10. Dialog `modal={false}` Causing Scroll and Interaction Issues
+**Root Cause:** When `modal={false}` is set on Radix Dialog, it stops rendering the overlay AND stops trapping pointer events/scroll. This is why the activation dialog can't detect scroll - pointer events pass through to the underlying page. However, `modal={true}` would add another overlay layer causing the black screen issue.
+**Fix:** The correct approach is to keep `modal={true}` (default) for ALL dialogs but modify `dialog.tsx` so that when a dialog has a custom z-index class on its content, the overlay is conditionally rendered only for the first/base dialog. For nested dialogs, we'll suppress the overlay by adding a prop `hideOverlay` to `DialogContent`.
 
 ---
 
 ## Technical Implementation
 
-### dialog.tsx Changes
-The key change is allowing nested dialogs to not produce additional overlays. Radix `Dialog.Root` accepts a `modal` prop -- when set to `false`, it won't render an overlay or trap focus. We'll use this for all child dialogs.
+### Phase 1: Fix dialog.tsx to Support Nested Dialogs Without Overlay Stacking
 
-### Z-Index Hierarchy (Final, Definitive)
+Modify `dialog.tsx` to add a `hideOverlay` variant. When `hideOverlay` is true, the overlay is not rendered. All nested dialogs (KIT dialogs, EditTask from LeadProfile, etc.) will use this variant. Remove `modal={false}` from all dialogs (restoring proper scroll/interaction).
 
-```text
-Layer 0: App content - z-auto
-Layer 1: Base dialog overlays - z-[50] (from dialog.tsx)  
-Layer 2: Entity profiles (Lead/Customer) - z-[70]
-Layer 3: Task Detail (global modal) - z-[80]
-Layer 4: Entity profiles from Task Detail - z-[90]
-Layer 5: Action dialogs (KIT, Edit, Complete) - z-[100]  
-Layer 6: Select/Popover dropdowns - z-[200]
+```tsx
+// dialog.tsx - Add hideOverlay support
+const DialogContent = React.forwardRef<...>(
+  ({ className, children, hideOverlay, ...props }, ref) => (
+    <DialogPortal>
+      {!hideOverlay && <DialogOverlay />}
+      <DialogPrimitive.Content ...>
+        {children}
+        <DialogPrimitive.Close .../>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  )
+)
 ```
 
-The fix: dialogs at Layer 5 that open ON TOP of Layer 2 dialogs must use `modal={false}` to avoid extra overlays.
+Then all nested dialogs change from `modal={false}` + `<Dialog>` to regular `<Dialog>` + `<DialogContent hideOverlay>`.
 
-### DB Migration for Touch-Task Linking
+### Phase 2: Fix Touch Card Display
 
-```sql
-ALTER TABLE kit_touches 
-ADD COLUMN IF NOT EXISTS linked_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS linked_reminder_id UUID REFERENCES reminders(id) ON DELETE SET NULL;
+In `KitTouchCard.tsx` `renderMethodWithLink()`, for visit/meeting:
+```tsx
+if (touch.method === 'visit' || touch.method === 'meeting') {
+  const label = touch.method === 'visit' ? 'Site Visit' : 'Meeting';
+  if (entityLocation) {
+    return (
+      <span className="font-medium">
+        {label}{' '}
+        <PlusCodeLink plusCode={entityLocation} className="text-xs ml-1" />
+      </span>
+    );
+  }
+  return <span className="font-medium">{label}</span>;
+}
 ```
+
+### Phase 3: Fix KIT Activation to Create Task/Reminder Per Touch
+
+Update `handleActivate` in `KitProfileTab.tsx`:
+1. After `activateKit()` returns, query all newly created touches for the subscription
+2. For each touch, create a task with the touch method as type (e.g., "KIT Call")
+3. Create reminder if requested
+4. Update each touch record with `linked_task_id` and `linked_reminder_id`
+
+### Phase 4: Fix Custom Touch Sequence Builder
+
+In `KitTouchSequenceBuilder.tsx`:
+- Add `className="z-[200]"` to all `<SelectContent>` elements
+- Replace visual-only `GripVertical` with up/down arrow buttons
+
+### Phase 5: Fix KIT Task Types
+
+Update `taskConstants.ts`:
+```typescript
+export const KIT_TASK_TYPES = [
+  "KIT Call",
+  "KIT WhatsApp", 
+  "KIT Visit",
+  "KIT Email",
+  "KIT Meeting"
+];
+```
+
+### Phase 6: Fix Edit Task Assigned To
+
+In `EditTaskDialog.tsx` line 551, change:
+```tsx
+// FROM
+<SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
+// TO
+<SelectItem key={member.id} value={member.email || member.id}>{member._display}</SelectItem>
+```
+Same fix needed in `AddTaskDialog.tsx`.
+
+### Phase 7: Fix Touch-Task/Reminder Sync
+
+Update `KitTouch` interface in `kitConstants.ts` to include `linked_task_id` and `linked_reminder_id`. Update `handleEditTouch` to also sync the linked reminder.
+
+### Phase 8: Fix Task Deletion
+
+Add `z-[100]` to delete confirmation dialog and wrap delete in try/catch.
 
 ---
 
 ## Files to Modify
 
-| File | Changes | Issues Fixed |
-|------|---------|-------------|
-| `src/components/ui/dialog.tsx` | No changes needed -- we'll use `modal={false}` on individual Dialog instances | #1 |
-| `src/components/kit/KitActivationDialog.tsx` | Add `modal={false}`, add task/reminder creation | #1, #2 |
-| `src/components/kit/AddTouchDialog.tsx` | Add `modal={false}` | #1 |
-| `src/components/kit/EditTouchDialog.tsx` | Add `modal={false}` | #1 |
-| `src/components/kit/KitTouchCompleteDialog.tsx` | Add `modal={false}` | #1 |
-| `src/components/kit/KitPauseDialog.tsx` | Add `modal={false}` | #1 |
-| `src/components/kit/KitCycleCompleteDialog.tsx` | Add `modal={false}` | #1 |
-| `src/components/tasks/TaskDetailView.tsx` | Use `getStaffDisplayName` for assigned_to/created_by; nested entity views use `modal={false}` | #1, #4 |
-| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Use `getStaffDisplayName` for assigned_to column | #3 |
-| `src/components/kit/KitProfileTab.tsx` | Handle activation with task creation; handle touch-task sync on edit | #2, #6 |
-| `src/components/kit/KitTouchCard.tsx` | Improve visit/meeting fallback navigation | #9 |
-| `src/components/calendar/CalendarMonthView.tsx` | Fix height/overflow for full month visibility | #7 |
-| `src/components/automation/actions/SendNotificationActionConfig.tsx` | Replace text input with staff dropdown | #8 |
-| `src/components/leads/activity/ActivityLogItem.tsx` | Use `getStaffDisplayName` for assignee display | #5 |
-| DB Migration | Add linked_task_id, linked_reminder_id to kit_touches | #6 |
-
----
-
-## Implementation Order
-
-1. Fix the overlay stacking (modal={false} on all nested dialogs) -- fixes issues #1, #10
-2. Staff display name fixes (LeadTasksTab, TaskDetailView, ActivityLogItem) -- fixes #3, #4, #5
-3. KIT activation task/reminder creation -- fixes #2
-4. Touch-task sync on edit (DB migration + handler update) -- fixes #6
-5. Calendar month view height fix -- fixes #7
-6. Send notification staff dropdown -- fixes #8
-7. Visit/meeting touch hyperlink fallback -- fixes #9
+| File | Changes |
+|------|---------|
+| `src/components/ui/dialog.tsx` | Add `hideOverlay` prop to `DialogContent` |
+| `src/components/kit/KitActivationDialog.tsx` | Remove `modal={false}`, use `hideOverlay`, fix per-touch task creation |
+| `src/components/kit/AddTouchDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
+| `src/components/kit/EditTouchDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
+| `src/components/kit/KitTouchCompleteDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
+| `src/components/kit/KitPauseDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
+| `src/components/kit/KitTouchCard.tsx` | Fix visit/meeting label display |
+| `src/components/kit/KitProfileTab.tsx` | Per-touch task/reminder creation on activation, reminder sync on edit |
+| `src/components/kit/presets/KitTouchSequenceBuilder.tsx` | Add z-[200] to SelectContent, add move buttons |
+| `src/constants/kitConstants.ts` | Add `linked_task_id` and `linked_reminder_id` to `KitTouch` interface |
+| `src/constants/taskConstants.ts` | Update KIT_TASK_TYPES to 5 types matching touch methods |
+| `src/components/tasks/EditTaskDialog.tsx` | Fix assigned_to value to use email, display _display |
+| `src/components/tasks/AddTaskDialog.tsx` | Fix assigned_to value to use email for consistency |
+| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Add z-[100] to delete dialog, error handling |
+| `src/hooks/useControlPanelSettings.ts` | Update KIT task type defaults |
 
