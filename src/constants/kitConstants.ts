@@ -125,25 +125,27 @@ export const KIT_TOUCH_METHODS: { value: KitTouchMethod; label: string }[] = [
  }
  
  // Touch interface
- export interface KitTouch {
-   id: string;
-   subscription_id: string;
-   sequence_index: number;
-   method: KitTouchMethod;
-   scheduled_date: string;
-   scheduled_time: string | null;
-   assigned_to: string;
-   status: KitTouchStatus;
-   outcome: string | null;
-   outcome_notes: string | null;
-   completed_at: string | null;
-   snoozed_until: string | null;
-   reschedule_count: number;
-   original_scheduled_date: string | null;
-   created_at: string;
-   updated_at: string;
-   subscription?: KitSubscription;
- }
+  export interface KitTouch {
+    id: string;
+    subscription_id: string;
+    sequence_index: number;
+    method: KitTouchMethod;
+    scheduled_date: string;
+    scheduled_time: string | null;
+    assigned_to: string;
+    status: KitTouchStatus;
+    outcome: string | null;
+    outcome_notes: string | null;
+    completed_at: string | null;
+    snoozed_until: string | null;
+    reschedule_count: number;
+    original_scheduled_date: string | null;
+    linked_task_id: string | null;
+    linked_reminder_id: string | null;
+    created_at: string;
+    updated_at: string;
+    subscription?: KitSubscription;
+  }
  
  // Outcome interface
  export interface KitOutcome {

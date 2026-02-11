@@ -73,8 +73,8 @@ export function EditTouchDialog({
   if (!touch) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
-      <DialogContent className="max-w-md z-[100]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle>Edit Touch</DialogTitle>
         </DialogHeader>

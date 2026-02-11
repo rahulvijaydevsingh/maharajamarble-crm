@@ -548,7 +548,9 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                 </SelectTrigger>
                 <SelectContent className="z-[80]">
                   {staffMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
+                    <SelectItem key={member.id} value={member.email || member.id}>
+                      {(member as any)._display || member.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

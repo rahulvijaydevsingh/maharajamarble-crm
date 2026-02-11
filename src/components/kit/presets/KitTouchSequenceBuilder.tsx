@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { Plus, Trash2, GripVertical, ArrowDown } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, ArrowDownIcon } from "lucide-react";
 import {
   KitTouchSequenceItem,
   KitTouchMethod,
@@ -89,12 +89,29 @@ export function KitTouchSequenceBuilder({ sequence, onChange }: KitTouchSequence
               <React.Fragment key={index}>
                 <Card className="p-3">
                   <div className="flex items-start gap-3">
-                    {/* Drag Handle & Index */}
-                    <div className="flex flex-col items-center pt-2">
-                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                      <span className="text-xs font-medium text-muted-foreground mt-1">
+                    {/* Move Buttons & Index */}
+                    <div className="flex flex-col items-center gap-0.5 pt-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={index === 0}
+                        onClick={() => moveTouch(index, index - 1)}
+                      >
+                        <ArrowUp className="h-3 w-3" />
+                      </Button>
+                      <span className="text-xs font-medium text-muted-foreground">
                         #{index + 1}
                       </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={index === sequence.length - 1}
+                        onClick={() => moveTouch(index, index + 1)}
+                      >
+                        <ArrowDown className="h-3 w-3" />
+                      </Button>
                     </div>
 
                     {/* Method Icon */}
@@ -113,7 +130,7 @@ export function KitTouchSequenceBuilder({ sequence, onChange }: KitTouchSequence
                           <SelectTrigger className="h-8">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[300]">
                             {TOUCH_METHODS.map((m) => (
                               <SelectItem key={m.value} value={m.value}>
                                 {m.label}
@@ -151,7 +168,7 @@ export function KitTouchSequenceBuilder({ sequence, onChange }: KitTouchSequence
                           <SelectTrigger className="h-8">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[300]">
                             {ASSIGNEE_TYPES.map((a) => (
                               <SelectItem key={a.value} value={a.value}>
                                 {a.label}
@@ -177,7 +194,7 @@ export function KitTouchSequenceBuilder({ sequence, onChange }: KitTouchSequence
                 {/* Arrow between touches */}
                 {index < sequence.length - 1 && (
                   <div className="flex justify-center">
-                    <ArrowDown className="h-4 w-4 text-muted-foreground" />
+                    <ArrowDownIcon className="h-4 w-4 text-muted-foreground" />
                   </div>
                 )}
               </React.Fragment>
