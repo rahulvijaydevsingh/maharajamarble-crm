@@ -108,8 +108,8 @@ export function KitActivationDialog({
     (mode === 'custom' && customSequence.length > 0 && assignedTo);
   
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle>Enable Keep in Touch</DialogTitle>
           <DialogDescription>
@@ -263,7 +263,7 @@ export function KitActivationDialog({
                   if (!checked) setCreateReminder(false);
                 }}
               />
-              <Label htmlFor="activateCreateTask" className="cursor-pointer">Create Task for first touch</Label>
+              <Label htmlFor="activateCreateTask" className="cursor-pointer">Create Task & Reminder for each touch</Label>
             </div>
 
             {createTask && (

@@ -156,9 +156,14 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
 
   const handleDeleteConfirm = async () => {
     if (selectedTask) {
-      await deleteTask(selectedTask.id);
-      setDeleteDialogOpen(false);
-      setSelectedTask(null);
+      try {
+        await deleteTask(selectedTask.id);
+      } catch (e) {
+        console.error('Failed to delete task:', e);
+      } finally {
+        setDeleteDialogOpen(false);
+        setSelectedTask(null);
+      }
     }
   };
 
@@ -357,7 +362,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[100]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>

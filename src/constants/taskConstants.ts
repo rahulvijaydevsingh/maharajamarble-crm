@@ -12,11 +12,13 @@ export const TASK_TYPES = [
   "Other"
 ];
 
-// KIT-specific task types
+// KIT-specific task types (mirrors KIT touch methods)
 export const KIT_TASK_TYPES = [
-  "KIT Follow-up",
-  "KIT Relationship Check",
-  "KIT Touch Reminder"
+  "KIT Call",
+  "KIT WhatsApp",
+  "KIT Visit",
+  "KIT Email",
+  "KIT Meeting",
 ];
 
 // All task types combined for forms

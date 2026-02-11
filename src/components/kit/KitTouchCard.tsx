@@ -136,13 +136,16 @@ export function KitTouchCard({
       );
     }
     if (touch.method === 'visit' || touch.method === 'meeting') {
+      const label = touch.method === 'visit' ? 'Site Visit' : 'Meeting';
       if (entityLocation) {
         return (
-          <PlusCodeLink plusCode={entityLocation} className="font-medium" />
+          <span className="font-medium">
+            {label}{' '}
+            <PlusCodeLink plusCode={entityLocation} className="text-xs ml-1" />
+          </span>
         );
       }
-      // Fallback: show method name as plain text, contact links section will handle address
-      return <span className="font-medium">{methodLabel}</span>;
+      return <span className="font-medium">{label}</span>;
     }
     return <span className="font-medium capitalize">{methodLabel}</span>;
   };

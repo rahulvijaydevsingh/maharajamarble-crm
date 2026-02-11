@@ -94,7 +94,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
   // Set default assignee when staff loads
   useEffect(() => {
     if (staffMembers.length > 0 && !formData.assignedTo) {
-      setFormData(prev => ({ ...prev, assignedTo: staffMembers[0].name }));
+      setFormData(prev => ({ ...prev, assignedTo: staffMembers[0].email || staffMembers[0].id }));
     }
   }, [staffMembers]);
 
@@ -296,7 +296,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
     setFormData({
       title: "",
       type: "Follow-up Call",
-      assignedTo: "Vijay Kumar",
+      assignedTo: "",
       priority: "Medium",
       dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
       dueTime: "10:00",
@@ -428,7 +428,9 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
               </SelectTrigger>
               <SelectContent>
                 {staffMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
+                  <SelectItem key={member.id} value={member.email || member.id}>
+                    {(member as any)._display || member.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

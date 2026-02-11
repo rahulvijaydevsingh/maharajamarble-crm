@@ -124,6 +124,18 @@ export function KitProfileTab({
     logReminderCreatedFromKit,
   } = useKitActivityLog();
   
+  // Map touch method to KIT task type
+  const getKitTaskType = (method: string): string => {
+    const map: Record<string, string> = {
+      call: 'KIT Call',
+      whatsapp: 'KIT WhatsApp',
+      visit: 'KIT Visit',
+      email: 'KIT Email',
+      meeting: 'KIT Meeting',
+    };
+    return map[method] || 'KIT Call';
+  };
+
   const handleActivate = async (
     presetId: string | null,
     assignedTo: string,
@@ -143,45 +155,84 @@ export function KitProfileTab({
       assignedTo,
     });
 
-    // Create task if requested during activation
-    if (createTask && taskTitle) {
-      await addTask({
-        title: taskTitle,
-        description: `KIT touch follow-up for ${entityName}`,
-        type: 'KIT Follow-up',
-        priority: 'Medium',
-        status: 'Pending',
-        assigned_to: assignedTo,
-        due_date: new Date().toISOString().split('T')[0],
-        lead_id: entityType === 'lead' ? entityId : null,
-        related_entity_type: entityType,
-        related_entity_id: entityId,
-      });
+    // Create task & reminder PER TOUCH if requested
+    if (createTask && result) {
+      try {
+        // Query newly created touches for this subscription
+        const subId = typeof result === 'string' ? result : (result as any)?.id;
+        if (!subId) throw new Error('No subscription ID returned');
+        
+        const { data: newTouches } = await supabase
+          .from('kit_touches')
+          .select('*')
+          .eq('subscription_id', subId)
+          .order('sequence_index', { ascending: true });
 
-      await logTaskCreatedFromKit({
-        entityType,
-        entityId,
-        entityName,
-        taskTitle,
-      });
+        if (newTouches && newTouches.length > 0) {
+          for (const touch of newTouches) {
+            const touchTaskTitle = taskTitle
+              ? `${taskTitle} - ${touch.method.charAt(0).toUpperCase() + touch.method.slice(1)}`
+              : `${getKitTaskType(touch.method)} with ${entityName}`;
 
-      if (createReminder) {
-        await addReminder({
-          title: taskTitle,
-          description: `Reminder for KIT touch with ${entityName}`,
-          reminder_datetime: `${new Date().toISOString().split('T')[0]}T09:00:00`,
-          entity_type: entityType,
-          entity_id: entityId,
-          assigned_to: assignedTo,
-          created_by: user?.email || 'System',
-        });
+            try {
+              const createdTask = await addTask({
+                title: touchTaskTitle,
+                description: `KIT touch follow-up for ${entityName}`,
+                type: getKitTaskType(touch.method),
+                priority: 'Medium',
+                status: 'Pending',
+                assigned_to: touch.assigned_to || assignedTo,
+                due_date: touch.scheduled_date,
+                lead_id: entityType === 'lead' ? entityId : null,
+                related_entity_type: entityType,
+                related_entity_id: entityId,
+              });
 
-        await logReminderCreatedFromKit({
-          entityType,
-          entityId,
-          entityName,
-          reminderTitle: taskTitle,
-        });
+              let createdReminderId: string | null = null;
+
+              if (createReminder) {
+                const reminder = await addReminder({
+                  title: touchTaskTitle,
+                  description: `Reminder for KIT touch with ${entityName}`,
+                  reminder_datetime: `${touch.scheduled_date}T09:00:00`,
+                  entity_type: entityType,
+                  entity_id: entityId,
+                  assigned_to: touch.assigned_to || assignedTo,
+                  created_by: user?.email || 'System',
+                });
+                createdReminderId = reminder?.id || null;
+              }
+
+              // Link task and reminder to touch
+              const touchUpdates: Record<string, any> = {};
+              if (createdTask?.id) touchUpdates.linked_task_id = createdTask.id;
+              if (createdReminderId) touchUpdates.linked_reminder_id = createdReminderId;
+
+              if (Object.keys(touchUpdates).length > 0) {
+                await supabase
+                  .from('kit_touches')
+                  .update(touchUpdates)
+                  .eq('id', touch.id);
+              }
+
+              await logTaskCreatedFromKit({
+                entityType, entityId, entityName,
+                taskTitle: touchTaskTitle,
+              });
+
+              if (createReminder) {
+                await logReminderCreatedFromKit({
+                  entityType, entityId, entityName,
+                  reminderTitle: touchTaskTitle,
+                });
+              }
+            } catch (touchErr) {
+              console.error(`Failed to create task/reminder for touch ${touch.id}:`, touchErr);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to create per-touch tasks:', err);
       }
     }
   };
@@ -410,18 +461,32 @@ export function KitProfileTab({
     });
 
     // Sync linked task if exists
-    if ((editingTouch as any).linked_task_id) {
+    if (editingTouch.linked_task_id) {
       try {
-        const { error } = await supabase
+        await supabase
           .from('tasks')
           .update({
             due_date: data.scheduledDate,
             assigned_to: data.assignedTo,
           })
-          .eq('id', (editingTouch as any).linked_task_id);
-        if (error) console.error('Failed to sync linked task:', error);
+          .eq('id', editingTouch.linked_task_id);
       } catch (e) {
         console.error('Failed to sync linked task:', e);
+      }
+    }
+
+    // Sync linked reminder if exists
+    if (editingTouch.linked_reminder_id) {
+      try {
+        await supabase
+          .from('reminders')
+          .update({
+            reminder_datetime: `${data.scheduledDate}T09:00:00`,
+            assigned_to: data.assignedTo,
+          })
+          .eq('id', editingTouch.linked_reminder_id);
+      } catch (e) {
+        console.error('Failed to sync linked reminder:', e);
       }
     }
     
