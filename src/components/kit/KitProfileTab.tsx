@@ -45,6 +45,7 @@ interface KitProfileTabProps {
   defaultAssignee: string;
   entityPhone?: string;
   entityLocation?: string;
+  entityAddress?: string;
 }
 
 export function KitProfileTab({
@@ -54,6 +55,7 @@ export function KitProfileTab({
   defaultAssignee,
   entityPhone,
   entityLocation,
+  entityAddress,
 }: KitProfileTabProps) {
   const [activationOpen, setActivationOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -146,7 +148,7 @@ export function KitProfileTab({
     taskTitle?: string,
     createReminder?: boolean
   ) => {
-    const result = await activateKit({ entityType, entityId, presetId: presetId || '', assignedTo, maxCycles, customSequence, skipWeekends });
+    const result = await activateKit({ entityType, entityId, presetId: presetId || null, assignedTo, maxCycles, customSequence, skipWeekends });
     await logKitActivated({
       entityType,
       entityId,
@@ -194,7 +196,7 @@ export function KitProfileTab({
                 const reminder = await addReminder({
                   title: touchTaskTitle,
                   description: `Reminder for KIT touch with ${entityName}`,
-                  reminder_datetime: `${touch.scheduled_date}T09:00:00`,
+                  reminder_datetime: `${touch.scheduled_date}T${touch.scheduled_time || '09:00'}:00`,
                   entity_type: entityType,
                   entity_id: entityId,
                   assigned_to: touch.assigned_to || assignedTo,
@@ -218,6 +220,7 @@ export function KitProfileTab({
               await logTaskCreatedFromKit({
                 entityType, entityId, entityName,
                 taskTitle: touchTaskTitle,
+                taskId: createdTask?.id,
               });
 
               if (createReminder) {
@@ -266,6 +269,7 @@ export function KitProfileTab({
       method: completeDialogTouch.method,
       outcome,
       outcomeNotes: notes,
+      linkedTaskId: completeDialogTouch.linked_task_id || undefined,
     });
     setCompleteDialogTouch(null);
     
@@ -406,7 +410,7 @@ export function KitProfileTab({
         await addReminder({
           title: data.taskTitle,
           description: `Reminder for KIT touch with ${entityName}`,
-          reminder_datetime: `${data.scheduledDate}T09:00:00`,
+          reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
           entity_type: entityType,
           entity_id: entityId,
           assigned_to: data.assignedTo,
@@ -481,7 +485,7 @@ export function KitProfileTab({
         await supabase
           .from('reminders')
           .update({
-            reminder_datetime: `${data.scheduledDate}T09:00:00`,
+            reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
             assigned_to: data.assignedTo,
           })
           .eq('id', editingTouch.linked_reminder_id);
@@ -498,6 +502,7 @@ export function KitProfileTab({
         entityName,
         method: data.method as KitTouchMethod,
         changes: changes.join(', '),
+        linkedTaskId: editingTouch.linked_task_id || undefined,
       });
     }
     
@@ -684,6 +689,7 @@ export function KitProfileTab({
             disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
             entityPhone={entityPhone}
             entityLocation={entityLocation}
+            entityAddress={entityAddress}
           />
         </div>
       )}
@@ -738,6 +744,7 @@ export function KitProfileTab({
                 disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
                 entityPhone={entityPhone}
                 entityLocation={entityLocation}
+                entityAddress={entityAddress}
               />
             ))}
           </div>

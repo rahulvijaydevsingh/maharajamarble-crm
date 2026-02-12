@@ -109,7 +109,7 @@ export function KitActivationDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100] pointer-events-auto" hideOverlay style={{ overscrollBehaviorY: 'contain' }}>
         <DialogHeader>
           <DialogTitle>Enable Keep in Touch</DialogTitle>
           <DialogDescription>
