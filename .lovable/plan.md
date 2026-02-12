@@ -1,137 +1,88 @@
 
 
-# Comprehensive Fix Plan: KIT Module, Task System, and UI Issues
+# Fix Plan: KIT Scroll, Custom Activation, Time Sync, Address Fallback, and Activity Log
 
-## Issues Identified and Root Causes
+## Issues and Root Causes
 
-### 1. KIT Activation Dialog Scroll Not Working
-**Root Cause:** `modal={false}` on the Dialog prevents Radix from managing focus/scroll trapping. The `overflow-y-auto` on `DialogContent` works for manual drag but mouse wheel events pass through to the background.
-**Fix:** Change `KitActivationDialog` back to `modal={true}` but use a custom approach - since the real layering fix should happen in `dialog.tsx` itself. The proper fix: keep `modal={false}` but add `onWheel` event capture or add `pointer-events-auto` and `overscroll-behavior: contain` CSS to the scrollable content area.
-
-### 2. Visit/Meeting Touch Shows Plus Code as Touch Name
-**Root Cause:** In `KitTouchCard.tsx` line 140-142, when `entityLocation` exists for visit/meeting, it renders `<PlusCodeLink plusCode={entityLocation} />` which displays the plus code string as the link text (line 68 of PlusCodeLink.tsx: `{plusCode}`).
-**Fix:** Change to show the method label ("Site Visit" / "Meeting") as the visible text with a small map icon/link, instead of replacing the name with the raw plus code.
-
-### 3. KIT Activation Creates Only 1 Task/Reminder Instead of Per-Touch
-**Root Cause:** In `KitProfileTab.tsx` `handleActivate` (lines 147-186), task/reminder creation only happens once for a single generic "follow-up" task. There's no loop over the touch sequence. The activation creates all touches in `useKitSubscriptions.ts` but the task/reminder logic in `handleActivate` doesn't iterate over them.
-**Fix:** After activation, query all created touches for the subscription, then create a task and reminder for EACH touch, storing the `linked_task_id` and `linked_reminder_id` on each touch record.
-
-### 4. Custom Touch Sequence Builder Broken (Dropdowns, Rearranging)
-**Root Cause:** `KitTouchSequenceBuilder.tsx` uses `<Select>` components without `z-[200]` on `<SelectContent>`, so they render behind the activation dialog (z-[100]). The drag handle has no actual drag-and-drop functionality (just a visual icon with `cursor-grab`), and movement buttons (up/down) are missing.
-**Fix:** Add `z-[200]` to all `SelectContent` elements. Replace the non-functional drag handle with up/down arrow buttons that call the existing `moveTouch()` function.
-
-### 5. KIT Save/Activation Error
-**Root Cause:** Likely caused by the task/reminder creation logic failing (e.g., missing required fields or linked_task_id column not being recognized in the type system). The `linked_task_id` and `linked_reminder_id` columns were added via migration but the Supabase types may not have updated properly, or the `addTask` return value isn't being captured to store the ID.
-**Fix:** Ensure robust error handling around task/reminder creation so it doesn't block KIT activation. Use `try/catch` around task creation within the activation flow.
-
-### 6. System Unresponsive on Task Deletion from Lead Profile
-**Root Cause:** In `LeadTasksTab.tsx` line 157-163, `handleDeleteConfirm` calls `deleteTask` then immediately sets state. The `deleteTask` in `useTasks` likely triggers a cascade query invalidation that causes the entire task list to refetch, and if the lead profile dialog is also re-rendering, it creates a loop. Also, the `AlertDialogContent` for delete confirmation lacks a z-index class, so it may be hidden.
-**Fix:** Add `z-[100]` to the delete confirmation `AlertDialogContent`. Add error handling with `try/catch` around `deleteTask`. Ensure state cleanup happens in a `.finally()` block.
-
-### 7. KIT Task Types Mismatch (5 touch types vs 3 KIT task types)
-**Root Cause:** `KIT_TASK_TYPES` in `taskConstants.ts` only has 3 entries: "KIT Follow-up", "KIT Relationship Check", "KIT Touch Reminder". The 5 touch methods are: Call, WhatsApp, Visit, Email, Meeting.
-**Fix:** Update `KIT_TASK_TYPES` to mirror the 5 touch methods: "KIT Call", "KIT WhatsApp", "KIT Visit", "KIT Email", "KIT Meeting". Update the control panel defaults accordingly.
-
-### 8. Edit Task Dialog "Assigned To" Shows Blank
-**Root Cause:** In `EditTaskDialog.tsx` line 116, `formData.assignedTo` is initialized from `taskData.assigned_to` which stores an **email** (e.g., "user@example.com"). But the Select options use `value={member.name}` (line 551). Since email !== name, no option matches and the field shows blank.
-**Fix:** Change the Select options to use `value={member.email || member.id}` instead of `value={member.name}`, and display `member._display` (Role - Name format) as the label. This matches how all other staff dropdowns work across the system.
-
-### 9. Touch Edit Not Syncing to Linked Task/Reminder
-**Root Cause:** In `KitProfileTab.tsx` `handleEditTouch` (lines 412-426), the sync uses `(editingTouch as any).linked_task_id` but the `touchesQuery` in `useKitTouches.ts` does `select('*')` which should include `linked_task_id`. However, the `KitTouch` TypeScript interface in `kitConstants.ts` does NOT have `linked_task_id` or `linked_reminder_id` fields, so the cast to `KitTouch` type loses those fields. Additionally, reminder sync is completely missing.
-**Fix:** Add `linked_task_id` and `linked_reminder_id` to the `KitTouch` interface. Add reminder sync logic alongside the task sync in `handleEditTouch`.
-
-### 10. Dialog `modal={false}` Causing Scroll and Interaction Issues
-**Root Cause:** When `modal={false}` is set on Radix Dialog, it stops rendering the overlay AND stops trapping pointer events/scroll. This is why the activation dialog can't detect scroll - pointer events pass through to the underlying page. However, `modal={true}` would add another overlay layer causing the black screen issue.
-**Fix:** The correct approach is to keep `modal={true}` (default) for ALL dialogs but modify `dialog.tsx` so that when a dialog has a custom z-index class on its content, the overlay is conditionally rendered only for the first/base dialog. For nested dialogs, we'll suppress the overlay by adding a prop `hideOverlay` to `DialogContent`.
+| # | Issue | Root Cause |
+|---|-------|-----------|
+| 1 | KIT Activation dialog doesn't detect mouse scroll | `hideOverlay` removes the overlay but Radix Dialog still needs `modal={true}` (default) for scroll trapping. The issue is that `hideOverlay` prevents the overlay from rendering, but the dialog content needs `pointer-events-auto` and `overscroll-behavior: contain` to capture scroll within the scrollable area |
+| 2 | Custom touch cycle gives error on save | `KitProfileTab.tsx` line 149: `presetId: presetId || ''` converts `null` to empty string `''`, which gets inserted into `preset_id` (a UUID FK column), causing a foreign key constraint violation |
+| 3 | Touch edit updates date but not time on reminder and task  | `KitProfileTab.tsx` line 484: `reminder_datetime` is hardcoded to `T09:00:00` instead of using `data.scheduledTime`. Same hardcoded time on activation (line 197) |
+| 4 | Visit/Meeting doesn't link to address when plus code unavailable | `KitProfileTab` only passes `entityLocation` (set from `site_plus_code`). No fallback to `address` field. `KitTouchCard` only handles `entityLocation`, not a separate `entityAddress` prop |
+| 5 | Activity log shows emails instead of usernames | `useKitActivityLog.ts` line 14: `userName = user?.email` stores raw email. Also, description fields like "Reassigned to user@email.com" store raw email. The `ActivityLogItem.tsx` line 158 renders `activity.user_name` directly without staff lookup |
+| 6 | Touch log shows "View lead" instead of related task | `useKitActivityLog.ts` sets `related_entity_type: entityType` (lead/customer) and `related_entity_id: entityId` for all KIT events, so the activity log renders "View lead" link. For task-related KIT events, it should link to the task instead |
 
 ---
 
-## Technical Implementation
+## Fix Details
 
-### Phase 1: Fix dialog.tsx to Support Nested Dialogs Without Overlay Stacking
+### Fix 1: KIT Activation Dialog Scroll
 
-Modify `dialog.tsx` to add a `hideOverlay` variant. When `hideOverlay` is true, the overlay is not rendered. All nested dialogs (KIT dialogs, EditTask from LeadProfile, etc.) will use this variant. Remove `modal={false}` from all dialogs (restoring proper scroll/interaction).
+Add `pointer-events-auto` and `overscroll-behavior-y: contain` CSS to the scrollable `DialogContent` in `KitActivationDialog.tsx`. This ensures mouse wheel events are captured by the dialog content instead of passing through.
 
+**File:** `src/components/kit/KitActivationDialog.tsx` (line 112)
+
+Change:
 ```tsx
-// dialog.tsx - Add hideOverlay support
-const DialogContent = React.forwardRef<...>(
-  ({ className, children, hideOverlay, ...props }, ref) => (
-    <DialogPortal>
-      {!hideOverlay && <DialogOverlay />}
-      <DialogPrimitive.Content ...>
-        {children}
-        <DialogPrimitive.Close .../>
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  )
-)
+<DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
 ```
-
-Then all nested dialogs change from `modal={false}` + `<Dialog>` to regular `<Dialog>` + `<DialogContent hideOverlay>`.
-
-### Phase 2: Fix Touch Card Display
-
-In `KitTouchCard.tsx` `renderMethodWithLink()`, for visit/meeting:
+To:
 ```tsx
-if (touch.method === 'visit' || touch.method === 'meeting') {
-  const label = touch.method === 'visit' ? 'Site Visit' : 'Meeting';
-  if (entityLocation) {
-    return (
-      <span className="font-medium">
-        {label}{' '}
-        <PlusCodeLink plusCode={entityLocation} className="text-xs ml-1" />
-      </span>
-    );
-  }
-  return <span className="font-medium">{label}</span>;
-}
+<DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100] pointer-events-auto" hideOverlay style={{ overscrollBehaviorY: 'contain' }}>
 ```
 
-### Phase 3: Fix KIT Activation to Create Task/Reminder Per Touch
+### Fix 2: Custom Sequence Activation Error
 
-Update `handleActivate` in `KitProfileTab.tsx`:
-1. After `activateKit()` returns, query all newly created touches for the subscription
-2. For each touch, create a task with the touch method as type (e.g., "KIT Call")
-3. Create reminder if requested
-4. Update each touch record with `linked_task_id` and `linked_reminder_id`
+**File:** `src/components/kit/KitProfileTab.tsx` (line 149)
 
-### Phase 4: Fix Custom Touch Sequence Builder
+Change `presetId: presetId || ''` to `presetId: presetId || null` so that when custom mode sends `null`, it stays `null` (which the DB accepts for nullable UUID FK columns).
 
-In `KitTouchSequenceBuilder.tsx`:
-- Add `className="z-[200]"` to all `<SelectContent>` elements
-- Replace visual-only `GripVertical` with up/down arrow buttons
+Also update `ActivateKitParams` in `useKitSubscriptions.ts` and the insert to use `preset_id: presetId || null` to ensure empty strings are never sent.
 
-### Phase 5: Fix KIT Task Types
+### Fix 3: Reminder Time Sync
 
-Update `taskConstants.ts`:
-```typescript
-export const KIT_TASK_TYPES = [
-  "KIT Call",
-  "KIT WhatsApp", 
-  "KIT Visit",
-  "KIT Email",
-  "KIT Meeting"
-];
-```
+**File:** `src/components/kit/KitProfileTab.tsx`
 
-### Phase 6: Fix Edit Task Assigned To
+Two locations need fixing:
+- Line 197 (activation): Change `\`${touch.scheduled_date}T09:00:00\`` to use the touch's scheduled_time if available, defaulting to 09:00
+- Line 484 (edit sync): Change `\`${data.scheduledDate}T09:00:00\`` to `\`${data.scheduledDate}T${data.scheduledTime || '09:00'}:00\``
 
-In `EditTaskDialog.tsx` line 551, change:
-```tsx
-// FROM
-<SelectItem key={member.id} value={member.name}>{member.name}</SelectItem>
-// TO
-<SelectItem key={member.id} value={member.email || member.id}>{member._display}</SelectItem>
-```
-Same fix needed in `AddTaskDialog.tsx`.
+### Fix 4: Visit/Meeting Address Fallback
 
-### Phase 7: Fix Touch-Task/Reminder Sync
+**Files:** `KitProfileTab.tsx`, `KitTouchCard.tsx`, `LeadDetailView.tsx`, `CustomerDetailView.tsx`
 
-Update `KitTouch` interface in `kitConstants.ts` to include `linked_task_id` and `linked_reminder_id`. Update `handleEditTouch` to also sync the linked reminder.
+1. Add `entityAddress` prop to `KitProfileTabProps` and `KitTouchCardProps`
+2. Pass `address` from Lead/Customer to `KitProfileTab` as `entityAddress`
+3. In `KitTouchCard.tsx` `renderMethodWithLink()`, when `entityLocation` (plus code) is absent but `entityAddress` is present, create a Google Maps link from the address
+4. Same in `renderContactLinks()`
 
-### Phase 8: Fix Task Deletion
+### Fix 5: Activity Log Email-to-Name Resolution
 
-Add `z-[100]` to delete confirmation dialog and wrap delete in try/catch.
+**File:** `src/components/leads/activity/ActivityLogItem.tsx`
+
+Import `useActiveStaff` and `getStaffDisplayName`, then:
+- Line 158: Replace `{activity.user_name}` with `{getStaffDisplayName(activity.user_name, staffMembers)}`
+- For description text containing emails (like "Reassigned to user@email.com"), parse metadata and display staff names
+
+**File:** `src/hooks/useKitActivityLog.ts`
+
+Update `logTouchReassigned` (line 129) to resolve `newAssignee` email to display name before storing in description. Import `useActiveStaff` at hook level and use it in the log functions.
+
+### Fix 6: KIT Activity Log - Link to Task Instead of Lead
+
+**File:** `src/hooks/useKitActivityLog.ts`
+
+For task-related KIT events (`kit_task_created`, `kit_touch_completed`, `kit_touch_edited`, etc.), store the task ID in metadata and set `related_entity_type: 'task'` when a linked task exists.
+
+Update the following log functions to accept optional `linkedTaskId` parameter:
+- `logTouchCompleted` - set related entity to task if `linkedTaskId` provided
+- `logTouchEdited` - same
+- `logTaskCreatedFromKit` - store task ID in metadata as `task_id`
+
+**File:** `src/components/kit/KitProfileTab.tsx`
+
+Pass `touch.linked_task_id` to log functions when available.
 
 ---
 
@@ -139,19 +90,21 @@ Add `z-[100]` to delete confirmation dialog and wrap delete in try/catch.
 
 | File | Changes |
 |------|---------|
-| `src/components/ui/dialog.tsx` | Add `hideOverlay` prop to `DialogContent` |
-| `src/components/kit/KitActivationDialog.tsx` | Remove `modal={false}`, use `hideOverlay`, fix per-touch task creation |
-| `src/components/kit/AddTouchDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
-| `src/components/kit/EditTouchDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
-| `src/components/kit/KitTouchCompleteDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
-| `src/components/kit/KitPauseDialog.tsx` | Remove `modal={false}`, use `hideOverlay` |
-| `src/components/kit/KitTouchCard.tsx` | Fix visit/meeting label display |
-| `src/components/kit/KitProfileTab.tsx` | Per-touch task/reminder creation on activation, reminder sync on edit |
-| `src/components/kit/presets/KitTouchSequenceBuilder.tsx` | Add z-[200] to SelectContent, add move buttons |
-| `src/constants/kitConstants.ts` | Add `linked_task_id` and `linked_reminder_id` to `KitTouch` interface |
-| `src/constants/taskConstants.ts` | Update KIT_TASK_TYPES to 5 types matching touch methods |
-| `src/components/tasks/EditTaskDialog.tsx` | Fix assigned_to value to use email, display _display |
-| `src/components/tasks/AddTaskDialog.tsx` | Fix assigned_to value to use email for consistency |
-| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Add z-[100] to delete dialog, error handling |
-| `src/hooks/useControlPanelSettings.ts` | Update KIT task type defaults |
+| `src/components/kit/KitActivationDialog.tsx` | Add `pointer-events-auto` + `overscrollBehaviorY: contain` |
+| `src/components/kit/KitProfileTab.tsx` | Fix `presetId || ''` to `presetId || null`; fix reminder time sync; pass `entityAddress`; pass `linkedTaskId` to logs |
+| `src/hooks/useKitSubscriptions.ts` | Ensure `preset_id: presetId || null` in insert |
+| `src/components/kit/KitTouchCard.tsx` | Add `entityAddress` prop; address fallback for visit/meeting |
+| `src/components/leads/LeadDetailView.tsx` | Pass `entityAddress={currentLead.address}` to KitProfileTab |
+| `src/components/customers/CustomerDetailView.tsx` | Pass `entityAddress` to KitProfileTab |
+| `src/components/leads/activity/ActivityLogItem.tsx` | Use `getStaffDisplayName` for `user_name` display |
+| `src/hooks/useKitActivityLog.ts` | Store staff display names; link to task for KIT events |
+
+## Implementation Order
+
+1. Fix custom activation error (Fix 2) - prevents activation failures
+2. Fix scroll (Fix 1) - simple CSS addition
+3. Fix reminder time sync (Fix 3)
+4. Fix address fallback (Fix 4)
+5. Fix activity log emails (Fix 5)
+6. Fix activity log task links (Fix 6)
 
