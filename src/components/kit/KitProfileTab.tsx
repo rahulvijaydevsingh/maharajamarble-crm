@@ -185,6 +185,7 @@ export function KitProfileTab({
                 status: 'Pending',
                 assigned_to: touch.assigned_to || assignedTo,
                 due_date: touch.scheduled_date,
+                due_time: touch.scheduled_time || null,
                 lead_id: entityType === 'lead' ? entityId : null,
                 related_entity_type: entityType,
                 related_entity_id: entityId,
@@ -227,6 +228,7 @@ export function KitProfileTab({
                 await logReminderCreatedFromKit({
                   entityType, entityId, entityName,
                   reminderTitle: touchTaskTitle,
+                  linkedTaskId: createdTask?.id,
                 });
               }
             } catch (touchErr) {
@@ -384,46 +386,53 @@ export function KitProfileTab({
     
     // Create task if requested
     if (data.createTask && data.taskTitle) {
-      await addTask({
-        title: data.taskTitle,
-        description: `KIT touch follow-up for ${entityName}`,
-        type: 'KIT Follow-up',
-        priority: 'Medium',
-        status: 'Pending',
-        assigned_to: data.assignedTo,
-        due_date: data.scheduledDate,
-        lead_id: entityType === 'lead' ? entityId : null,
-        related_entity_type: entityType,
-        related_entity_id: entityId,
-      });
-      
-      // Log task creation
-      await logTaskCreatedFromKit({
-        entityType,
-        entityId,
-        entityName,
-        taskTitle: data.taskTitle,
-      });
-      
-      // Create reminder if requested
-      if (data.createReminder) {
-        await addReminder({
+      try {
+        const createdTask = await addTask({
           title: data.taskTitle,
-          description: `Reminder for KIT touch with ${entityName}`,
-          reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
-          entity_type: entityType,
-          entity_id: entityId,
+          description: `KIT touch follow-up for ${entityName}`,
+          type: getKitTaskType(data.method),
+          priority: 'Medium',
+          status: 'Pending',
           assigned_to: data.assignedTo,
-          created_by: user?.email || 'System',
+          due_date: data.scheduledDate,
+          due_time: data.scheduledTime || null,
+          lead_id: entityType === 'lead' ? entityId : null,
+          related_entity_type: entityType,
+          related_entity_id: entityId,
         });
         
-        // Log reminder creation
-        await logReminderCreatedFromKit({
+        // Log task creation
+        await logTaskCreatedFromKit({
           entityType,
           entityId,
           entityName,
-          reminderTitle: data.taskTitle,
+          taskTitle: data.taskTitle,
+          taskId: createdTask?.id,
         });
+        
+        // Create reminder if requested
+        if (data.createReminder) {
+          await addReminder({
+            title: data.taskTitle,
+            description: `Reminder for KIT touch with ${entityName}`,
+            reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
+            entity_type: entityType,
+            entity_id: entityId,
+            assigned_to: data.assignedTo,
+            created_by: user?.email || 'System',
+          });
+          
+          // Log reminder creation
+          await logReminderCreatedFromKit({
+            entityType,
+            entityId,
+            entityName,
+            reminderTitle: data.taskTitle,
+            linkedTaskId: createdTask?.id,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to create task/reminder for added touch:', err);
       }
     }
     
@@ -471,6 +480,7 @@ export function KitProfileTab({
           .from('tasks')
           .update({
             due_date: data.scheduledDate,
+            due_time: data.scheduledTime || null,
             assigned_to: data.assignedTo,
           })
           .eq('id', editingTouch.linked_task_id);
@@ -711,25 +721,29 @@ export function KitProfileTab({
         </div>
       )}
       
+      {/* Add Touch Button - always visible when subscription is active */}
+      {subscription.status === 'active' && (
+        <div className="flex justify-end">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => setAddTouchOpen(true)}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Touch
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Add a new touch to this cycle</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      )}
+
       {/* Remaining Touches */}
       {remainingTouches.length > 1 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm uppercase text-muted-foreground">
-              Remaining in Cycle ({remainingTouches.length - 1})
-            </h4>
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => setAddTouchOpen(true)}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Touch
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Add a new touch to this cycle</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          <h4 className="font-semibold text-sm uppercase text-muted-foreground">
+            Remaining in Cycle ({remainingTouches.length - 1})
+          </h4>
           <div className="space-y-2">
             {remainingTouches.slice(1).map((touch) => (
               <KitTouchCard

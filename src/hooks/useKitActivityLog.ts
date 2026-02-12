@@ -223,13 +223,15 @@ export function useKitActivityLog() {
   };
 
   const logReminderCreatedFromKit = async (
-    params: LogKitActivityParams & { reminderTitle: string }
+    params: LogKitActivityParams & { reminderTitle: string; linkedTaskId?: string }
   ) => {
     await logActivity({
       ...params,
       activityType: 'kit_reminder_created',
       title: `Reminder created from KIT: "${params.reminderTitle}"`,
-      metadata: { reminder_title: params.reminderTitle },
+      metadata: { reminder_title: params.reminderTitle, task_id: params.linkedTaskId },
+      relatedEntityType: params.linkedTaskId ? 'task' : undefined,
+      relatedEntityId: params.linkedTaskId || undefined,
     });
   };
 
