@@ -48,6 +48,7 @@ interface KitTouchCardProps {
   disabled?: boolean;
   entityPhone?: string;
   entityLocation?: string;
+  entityAddress?: string;
 }
 
 const SNOOZE_OPTIONS = [
@@ -74,6 +75,7 @@ export function KitTouchCard({
   disabled = false,
   entityPhone,
   entityLocation,
+  entityAddress,
 }: KitTouchCardProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -145,6 +147,18 @@ export function KitTouchCard({
           </span>
         );
       }
+      if (entityAddress) {
+        return (
+          <a
+            href={`https://www.google.com/maps/search/${encodeURIComponent(entityAddress)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium hover:underline text-primary"
+          >
+            {label}
+          </a>
+        );
+      }
       return <span className="font-medium">{label}</span>;
     }
     return <span className="font-medium capitalize">{methodLabel}</span>;
@@ -178,6 +192,17 @@ export function KitTouchCard({
             <MapPin className="h-3 w-3 mr-1" />
             <PlusCodeLink plusCode={entityLocation} className="text-xs" />
           </span>
+        )}
+        {(touch.method === 'visit' || touch.method === 'meeting') && !entityLocation && entityAddress && (
+          <a
+            href={`https://www.google.com/maps/search/${encodeURIComponent(entityAddress)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center text-xs text-primary hover:underline"
+          >
+            <MapPin className="h-3 w-3 mr-1" />
+            {entityAddress.length > 40 ? entityAddress.slice(0, 40) + '...' : entityAddress}
+          </a>
         )}
       </div>
     );

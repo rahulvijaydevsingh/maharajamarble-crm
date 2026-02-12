@@ -1,5 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActiveStaff } from '@/hooks/useActiveStaff';
+import { getStaffDisplayName } from '@/lib/kitHelpers';
 import type { KitEntityType, KitTouchMethod } from '@/constants/kitConstants';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -11,7 +13,10 @@ interface LogKitActivityParams {
 
 export function useKitActivityLog() {
   const { user } = useAuth();
-  const userName = user?.email || 'System';
+  const { staffMembers } = useActiveStaff();
+  const userName = user?.email
+    ? getStaffDisplayName(user.email, staffMembers)
+    : 'System';
 
   const logActivity = async (
     params: LogKitActivityParams & {
@@ -19,9 +24,11 @@ export function useKitActivityLog() {
       title: string;
       description?: string;
       metadata?: Record<string, unknown>;
+      relatedEntityType?: string;
+      relatedEntityId?: string;
     }
   ) => {
-    const { entityType, entityId, activityType, title, description, metadata } = params;
+    const { entityType, entityId, activityType, title, description, metadata, relatedEntityType, relatedEntityId } = params;
 
     const insertData: {
       activity_type: string;
@@ -43,8 +50,8 @@ export function useKitActivityLog() {
       user_name: userName,
       user_id: user?.id || null,
       metadata: (metadata || {}) as Json,
-      related_entity_type: entityType,
-      related_entity_id: entityId,
+      related_entity_type: relatedEntityType || entityType,
+      related_entity_id: relatedEntityId || entityId,
     };
 
     if (entityType === 'lead') {
@@ -59,11 +66,12 @@ export function useKitActivityLog() {
   const logKitActivated = async (
     params: LogKitActivityParams & { presetName: string; assignedTo: string }
   ) => {
+    const displayAssignee = getStaffDisplayName(params.assignedTo, staffMembers);
     await logActivity({
       ...params,
       activityType: 'kit_activated',
       title: `Keep in Touch activated with "${params.presetName}"`,
-      description: `Assigned to ${params.assignedTo}`,
+      description: `Assigned to ${displayAssignee}`,
       metadata: { preset_name: params.presetName, assigned_to: params.assignedTo },
     });
   };
@@ -73,6 +81,7 @@ export function useKitActivityLog() {
       method: KitTouchMethod;
       outcome: string;
       outcomeNotes?: string;
+      linkedTaskId?: string;
     }
   ) => {
     await logActivity({
@@ -80,7 +89,9 @@ export function useKitActivityLog() {
       activityType: 'kit_touch_completed',
       title: `${params.method.charAt(0).toUpperCase() + params.method.slice(1)} touch completed`,
       description: `Outcome: ${params.outcome}${params.outcomeNotes ? ` - ${params.outcomeNotes}` : ''}`,
-      metadata: { method: params.method, outcome: params.outcome },
+      metadata: { method: params.method, outcome: params.outcome, task_id: params.linkedTaskId },
+      relatedEntityType: params.linkedTaskId ? 'task' : undefined,
+      relatedEntityId: params.linkedTaskId || undefined,
     });
   };
 
@@ -122,11 +133,12 @@ export function useKitActivityLog() {
   const logTouchReassigned = async (
     params: LogKitActivityParams & { method: KitTouchMethod; newAssignee: string }
   ) => {
+    const displayAssignee = getStaffDisplayName(params.newAssignee, staffMembers);
     await logActivity({
       ...params,
       activityType: 'kit_touch_reassigned',
       title: `${params.method.charAt(0).toUpperCase() + params.method.slice(1)} touch reassigned`,
-      description: `Reassigned to ${params.newAssignee}`,
+      description: `Reassigned to ${displayAssignee}`,
       metadata: { method: params.method, new_assignee: params.newAssignee },
     });
   };
@@ -184,25 +196,29 @@ export function useKitActivityLog() {
   };
 
   const logTouchEdited = async (
-    params: LogKitActivityParams & { method: KitTouchMethod; changes: string }
+    params: LogKitActivityParams & { method: KitTouchMethod; changes: string; linkedTaskId?: string }
   ) => {
     await logActivity({
       ...params,
       activityType: 'kit_touch_edited',
       title: `${params.method.charAt(0).toUpperCase() + params.method.slice(1)} touch updated`,
       description: params.changes,
-      metadata: { method: params.method },
+      metadata: { method: params.method, task_id: params.linkedTaskId },
+      relatedEntityType: params.linkedTaskId ? 'task' : undefined,
+      relatedEntityId: params.linkedTaskId || undefined,
     });
   };
 
   const logTaskCreatedFromKit = async (
-    params: LogKitActivityParams & { taskTitle: string }
+    params: LogKitActivityParams & { taskTitle: string; taskId?: string }
   ) => {
     await logActivity({
       ...params,
       activityType: 'kit_task_created',
       title: `Task created from KIT: "${params.taskTitle}"`,
-      metadata: { task_title: params.taskTitle },
+      metadata: { task_title: params.taskTitle, task_id: params.taskId },
+      relatedEntityType: params.taskId ? 'task' : undefined,
+      relatedEntityId: params.taskId || undefined,
     });
   };
 

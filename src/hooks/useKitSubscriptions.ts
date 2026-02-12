@@ -108,7 +108,7 @@ export function useKitSubscriptions(entityType?: KitEntityType, entityId?: strin
         .insert({
           entity_type: entityType,
           entity_id: entityId,
-          preset_id: presetId,
+          preset_id: presetId || null,
           status: 'active',
           assigned_to: assignedTo,
           max_cycles: maxCycles || null,

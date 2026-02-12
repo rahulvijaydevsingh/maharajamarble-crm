@@ -24,6 +24,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 
 interface ActivityLogItemProps {
   activity: ActivityLogEntry;
@@ -43,6 +45,7 @@ export function ActivityLogItem({
   onViewReminder
 }: ActivityLogItemProps) {
   const navigate = useNavigate();
+  const { staffMembers } = useActiveStaff();
   const Icon = getActivityIcon(activity.activity_type);
   const colors = getActivityColors(activity.activity_type);
   const typeLabel = ACTIVITY_TYPE_LABELS[activity.activity_type] || activity.title;
@@ -155,7 +158,7 @@ export function ActivityLogItem({
                         {getUserInitials(activity.user_name)}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="text-sm text-muted-foreground">{activity.user_name}</span>
+                    <span className="text-sm text-muted-foreground">{getStaffDisplayName(activity.user_name, staffMembers)}</span>
                   </>
                 ) : (
                   <span className="text-sm text-muted-foreground">System</span>
