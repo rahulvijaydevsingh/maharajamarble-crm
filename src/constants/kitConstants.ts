@@ -104,25 +104,27 @@ export const KIT_TOUCH_METHODS: { value: KitTouchMethod; label: string }[] = [
  }
  
  // Subscription interface
- export interface KitSubscription {
-   id: string;
-   entity_type: KitEntityType;
-   entity_id: string;
-   preset_id: string | null;
-   status: KitSubscriptionStatus;
-   assigned_to: string;
-   cycle_count: number;
-   max_cycles: number | null;
-   current_step: number;
-   pause_until: string | null;
-   pause_reason: string | null;
-   started_at: string;
-   completed_at: string | null;
-   created_by: string;
-   created_at: string;
-   updated_at: string;
-   preset?: KitPreset;
- }
+export interface KitSubscription {
+    id: string;
+    entity_type: KitEntityType;
+    entity_id: string;
+    preset_id: string | null;
+    status: KitSubscriptionStatus;
+    assigned_to: string;
+    cycle_count: number;
+    max_cycles: number | null;
+    current_step: number;
+    pause_until: string | null;
+    pause_reason: string | null;
+    started_at: string;
+    completed_at: string | null;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+    skip_weekends?: boolean;
+    custom_touch_sequence?: KitTouchSequenceItem[] | null;
+    preset?: KitPreset;
+  }
  
  // Touch interface
   export interface KitTouch {

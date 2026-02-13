@@ -148,13 +148,14 @@ export function KitTouchCard({
         );
       }
       if (entityAddress) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(entityAddress)}`;
         return (
           <span className="font-medium">
             {label}{' '}
-            <span className="text-xs text-muted-foreground ml-1">
+            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline ml-1">
               <MapPin className="h-3 w-3 inline mr-0.5" />
               {entityAddress.length > 30 ? entityAddress.slice(0, 30) + '...' : entityAddress}
-            </span>
+            </a>
           </span>
         );
       }
@@ -193,10 +194,15 @@ export function KitTouchCard({
           </span>
         )}
         {(touch.method === 'visit' || touch.method === 'meeting') && !entityLocation && entityAddress && (
-          <span className="inline-flex items-center text-xs text-muted-foreground">
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(entityAddress)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center text-xs text-primary hover:underline"
+          >
             <MapPin className="h-3 w-3 mr-1" />
             {entityAddress.length > 40 ? entityAddress.slice(0, 40) + '...' : entityAddress}
-          </span>
+          </a>
         )}
       </div>
     );

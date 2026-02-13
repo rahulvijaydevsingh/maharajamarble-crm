@@ -1,0 +1,1 @@
+ALTER TABLE public.kit_subscriptions ADD COLUMN custom_touch_sequence jsonb DEFAULT NULL;
