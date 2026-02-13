@@ -98,6 +98,7 @@ import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
+import { ALL_TASK_TYPES } from "@/constants/taskConstants";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -1444,7 +1445,7 @@ export function EnhancedTaskTable({
 
       {/* Bulk Action Dialog */}
       <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[400px] z-[60]" hideOverlay>
           <DialogHeader>
             <DialogTitle>
               {bulkActionType === "delete" ? "Delete Tasks" : 
@@ -1503,7 +1504,7 @@ export function EnhancedTaskTable({
                       <SelectValue placeholder="Select task type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {uniqueTypes.map(type => (
+                      {ALL_TASK_TYPES.map(type => (
                         <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
                     </SelectContent>

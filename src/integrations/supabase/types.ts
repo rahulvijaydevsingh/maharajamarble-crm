@@ -890,6 +890,7 @@ export type Database = {
           created_at: string | null
           created_by: string
           current_step: number | null
+          custom_touch_sequence: Json | null
           cycle_count: number | null
           entity_id: string
           entity_type: string
@@ -909,6 +910,7 @@ export type Database = {
           created_at?: string | null
           created_by: string
           current_step?: number | null
+          custom_touch_sequence?: Json | null
           cycle_count?: number | null
           entity_id: string
           entity_type: string
@@ -928,6 +930,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string
           current_step?: number | null
+          custom_touch_sequence?: Json | null
           cycle_count?: number | null
           entity_id?: string
           entity_type?: string

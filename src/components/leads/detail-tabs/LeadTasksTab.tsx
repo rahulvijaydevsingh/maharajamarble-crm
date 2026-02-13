@@ -181,7 +181,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[100]">
               <SelectItem value="all">All</SelectItem>
               <SelectItem value="open">Open</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>

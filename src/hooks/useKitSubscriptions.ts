@@ -55,17 +55,19 @@ export function useKitSubscriptions(entityType?: KitEntityType, entityId?: strin
       if (!data) return null;
 
       const preset = data.preset as unknown as KitPreset | null;
+      const customTouchSeq = (data as any).custom_touch_sequence as KitTouchSequenceItem[] | null;
       
       return {
         ...data,
         status: data.status as KitSubscriptionStatus,
         entity_type: data.entity_type as KitEntityType,
+        custom_touch_sequence: customTouchSeq || undefined,
         preset: preset ? {
           ...preset,
           touch_sequence: (preset.touch_sequence as unknown as KitTouchSequenceItem[]) || [],
           default_cycle_behavior: preset.default_cycle_behavior as KitCycleBehavior,
         } : undefined,
-      };
+      } as KitSubscription;
     },
     enabled: !!entityType && !!entityId,
   });
@@ -114,6 +116,7 @@ export function useKitSubscriptions(entityType?: KitEntityType, entityId?: strin
           max_cycles: maxCycles || null,
           skip_weekends: skipWeekends,
           created_by: user?.email || 'system',
+          custom_touch_sequence: customSequence && !presetId ? customSequence as any : null,
         })
         .select()
         .single();
@@ -251,6 +254,23 @@ export function useKitSubscriptions(entityType?: KitEntityType, entityId?: strin
         .eq('id', subscriptionId)
         .single();
 
+      // Delete linked tasks and reminders before cancelling
+      const { data: touchesWithLinks } = await supabase
+        .from('kit_touches')
+        .select('linked_task_id, linked_reminder_id')
+        .eq('subscription_id', subscriptionId);
+
+      if (touchesWithLinks) {
+        const taskIds = touchesWithLinks.map(t => t.linked_task_id).filter(Boolean) as string[];
+        const reminderIds = touchesWithLinks.map(t => t.linked_reminder_id).filter(Boolean) as string[];
+        if (taskIds.length > 0) {
+          await supabase.from('tasks').delete().in('id', taskIds);
+        }
+        if (reminderIds.length > 0) {
+          await supabase.from('reminders').delete().in('id', reminderIds);
+        }
+      }
+
       const { error } = await supabase
         .from('kit_subscriptions')
         .update({ status: 'cancelled' })
@@ -286,7 +306,8 @@ export function useKitSubscriptions(entityType?: KitEntityType, entityId?: strin
       if (subError) throw subError;
 
       const preset = subscription.preset as unknown as KitPreset | null;
-      const touchSequence = preset?.touch_sequence || [];
+      const customSeq = (subscription as any).custom_touch_sequence as KitTouchSequenceItem[] | null;
+      const touchSequence = preset?.touch_sequence || customSeq || [];
       const skipWeekends = subscription.skip_weekends || false;
 
       if (touchSequence.length === 0) {
