@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { format, parseISO, isPast, isToday, addHours, addDays } from 'date-fns';
-import { Check, Clock, CalendarDays, SkipForward, User, Phone, MessageCircle, MapPin, Pencil } from 'lucide-react';
+import { Check, Clock, CalendarDays, SkipForward, User, Phone, MessageCircle, MapPin, Pencil, Trash2 } from 'lucide-react';
 import type { KitTouch } from '@/constants/kitConstants';
 import {
   KIT_TOUCH_METHOD_ICONS,
@@ -44,6 +44,7 @@ interface KitTouchCardProps {
   onSkip?: () => void;
   onReassign?: (newAssignee: string) => void;
   onEdit?: () => void;
+  onDelete?: () => void;
   isUpcoming?: boolean;
   disabled?: boolean;
   entityPhone?: string;
@@ -71,6 +72,7 @@ export function KitTouchCard({
   onSkip,
   onReassign,
   onEdit,
+  onDelete,
   isUpcoming = false,
   disabled = false,
   entityPhone,
@@ -318,6 +320,18 @@ export function KitTouchCard({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Edit touch</TooltipContent>
+                  </Tooltip>
+                )}
+                
+                {/* Delete Button */}
+                {onDelete && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="ghost" onClick={onDelete} disabled={disabled} className="text-destructive hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete touch</TooltipContent>
                   </Tooltip>
                 )}
                 
