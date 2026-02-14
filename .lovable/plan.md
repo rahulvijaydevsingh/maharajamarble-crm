@@ -1,188 +1,148 @@
+# Comprehensive Fix Plan: 8 Issues
 
-# Comprehensive Fix Plan: KIT Cycle Restart, Scroll, Sync, Activity Log, and Bulk Edit Issues
+## Issues and Root Causes
 
-## Issues Identified and Root Causes
 
-| # | Issue | Root Cause |
-|---|-------|-----------|
-| 1 | Custom single-touch cycle skip gives "No touch sequence defined" on restart | `createNextCycleMutation` in `useKitSubscriptions.ts` (line 289) gets `touchSequence` from `preset?.touch_sequence`. Custom sequences have NO preset (`preset_id = null`), so `touchSequence = []`, triggering the error on line 292. The original custom sequence is never stored. |
-| 2 | KIT cancel doesn't delete linked tasks/reminders | `cancelMutation` in `useKitSubscriptions.ts` only updates subscription status. It never queries the subscription's touches for `linked_task_id`/`linked_reminder_id` to delete them. |
-| 3 | Meeting/Visit doesn't link to profile address | The `KitTouchCard` shows address as plain text (line 154-158) with a MapPin icon but no clickable link. It should navigate to the lead/customer profile tab. However, linking to the profile tab is complex; a Google Maps link from the address is more useful. |
-| 4 | Touch edit doesn't sync time to task/reminder | `handleEditTouch` in `KitProfileTab.tsx` (line 482-484) does update `due_time` and `reminder_datetime`. Need to verify if `due_time` column exists on `tasks` table and if the update is actually executing. The `linked_task_id` may be null if the touch was created before per-touch task creation was implemented. |
-| 5 | Filter dropdown and Add Task button not working in lead profile Tasks tab | `LeadTasksTab` filter `SelectContent` (line 184) has NO z-index. It renders behind the z-[70] lead profile dialog. `AddTaskDialog` `DialogContent` (line 329) also has no z-index and no `hideOverlay`, so it opens behind the lead profile or creates a blocking overlay. |
-| 6 | Activity log shows "View lead" instead of "View task" for KIT touch edit events | The `logTouchEdited` function passes `linkedTaskId` which maps to `relatedEntityType: 'task'`. However, the activity log item checks `activity.related_entity_type === 'task'` to show "View task" via `handleViewRelatedEntity` (line 98-100), BUT line 227 also checks `activity.related_entity_type !== 'task'` to show the "View lead/entity" link. The problem is that `taskId` from `activity.metadata?.task_id` (line 114) is used for the explicit "View Task" button. If `task_id` is not in metadata for older entries or the logTouchEdited doesn't store it in metadata, the button won't show. Looking at the code: `logTouchEdited` passes `metadata: { method, task_id: linkedTaskId }` - this should work. The issue is likely that existing activity log entries were created BEFORE this fix, so they don't have `task_id` in metadata. For the screenshot, the "Call touch updated" entry shows "View lead" because `related_entity_type` is still 'lead' (the `linkedTaskId` was likely null/undefined when the touch was edited). |
-| 7 | KIT Activation dialog scroll still not working | The `hideOverlay` div (dialog.tsx line 36-42) uses `onWheel` with `stopPropagation()` but this div is a sibling of the content, not a parent. The wheel events on the dialog content don't pass through this div. The real fix: the dialog content itself needs to properly trap scroll. The issue is that `hideOverlay` removes the overlay (which normally handles pointer/scroll trapping in Radix), and the replacement div doesn't actually help. The fix should be to make the `DialogContent` itself handle scroll properly. |
-| 8 | Bulk edit task type shows only KIT types | `uniqueTypes` (line 461) is `[...new Set(transformedTasks.map(task => task.type))]` - it shows only types that exist in current tasks. If the only tasks are KIT tasks, only KIT types appear. Should use `ALL_TASK_TYPES` for the bulk type dropdown. |
-| 9 | Bulk action dialog cancel causes scroll to stop + can't uncheck tasks | The bulk action dialog (line 1446) is a regular `Dialog` with no z-index. When opened and closed, it may interfere with the page scroll because the overlay isn't properly cleaned up when multiple dialogs interact. Also, closing the dialog doesn't clear `selectedTasks`. |
+| #   | Issue                                                                | Root Cause                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | KIT task title doesn't include touch type                            | `KitProfileTab.tsx` line 176: task title uses `taskTitle` or generic `getKitTaskType(touch.method) with {entityName}` but doesn't include the method label in the title consistently. The `getKitTaskType` function returns e.g. "KIT Call" which IS the type, but the default title format is `KIT Call with {name}` which is correct. However, when user provides a custom taskTitle (line 176), it appends the method, which is correct. Need to verify this is actually working.                                |
+| 2   | Lead Tasks tab has no "Type" column and no column manager            | `LeadTasksTab.tsx` has a hardcoded table with columns: Title, Description, Due Date, Time, Priority, Status, Assigned To, Created, Updated, Actions. There is no "Type" column and no `ColumnManagerDialog` integration.                                                                                                                                                                                                                                                                                            |
+| 3   | Touch edit doesn't sync time/date to linked task/reminder            | The code at `KitProfileTab.tsx` lines 477-504 DOES sync. But the `addTouch` handler (line 370-437) creates a task but never links (`linked_task_id`) back to the new touch because `addTouchMutation` in `useKitTouches.ts` doesn't return the created touch ID, so the linking between touch and task is broken for newly added touches.                                                                                                                                                                           |
+| 4   | Deleting a touch doesn't delete linked task/reminder                 | There is NO touch deletion feature at all. The UI only has skip, complete, snooze, reschedule, and edit. There's no delete touch functionality in `useKitTouches.ts`. the cancel KIT also can be considered as deletion and in case of skip it can be considered as delete.                                                                                                                                                                                                                                         |
+| 5   | Activity log shows "View lead" instead of "View task" for KIT events | The `logTouchEdited` function passes `linkedTaskId` which sets `relatedEntityType: 'task'`. However, the `logActivity` function (line 53-54) defaults `relatedEntityType` to `entityType` (lead/customer) when `relatedEntityType` is `undefined`. If `linkedTaskId` is undefined/null/falsy, it falls back to the entity type. The issue: `editingTouch.linked_task_id` is null for touches created via `addTouch` handler because the touch-task link was never established (see issue 3).                        |
+| 6   | Bulk task type dropdown appears behind dialog                        | `SelectContent` inside the bulk action dialog at line 1506 has no z-index. The dialog has `z-[60]`, but `SelectContent` renders in a portal at default z-index, appearing behind the dialog.                                                                                                                                                                                                                                                                                                                        |
+| 7   | Page becomes unresponsive after cancelling bulk action dialog        | The `hideOverlay` on the bulk action dialog (line 1448) uses a transparent `DialogPrimitive.Overlay` which should handle cleanup. But the `onOpenChange` handler doesn't clear `selectedTasks`, so task checkboxes stay checked. The main issue: when `setBulkActionDialogOpen(false)` is called via the Dialog's `onOpenChange`, React state is still holding selected tasks but the overlay cleanup may not be releasing scroll lock properly. Adding `modal={false}` to the dialog would prevent scroll locking. |
+| 8   | Edge function error when adding staff                                | The CORS headers in `create-staff-user/index.ts` line 12 are missing newer Supabase client headers: `x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version`. This causes preflight CORS failures.                                                                                                                                                                                                                                            |
+
 
 ---
 
-## Technical Implementation
+## Fix Details
 
-### Fix 1: Custom Cycle Restart - Store Touch Sequence on Subscription
+### Fix 1: Task Title with Touch Type (Already Working, Verify)
 
-The root cause: custom sequences are never persisted. When restarting a cycle, `createNextCycleMutation` reads from `preset.touch_sequence` which is null for custom sequences.
+The code already creates task titles with touch type: `KIT Call with {entityName}` (line 177). The `type` field is set via `getKitTaskType(touch.method)` (line 183). This should be working correctly. No change needed unless the user provided a custom title that overrides the method label. Verify the activation flow creates correct titles.
 
-**Solution:** Store the custom touch sequence directly on the `kit_subscriptions` table in a `custom_touch_sequence` JSONB column. On cycle restart, check `custom_touch_sequence` if no preset exists.
+### Fix 2: Add "Type" Column to LeadTasksTab
 
-**Files:**
-- Database migration: Add `custom_touch_sequence` JSONB column to `kit_subscriptions`
-- `useKitSubscriptions.ts`: Store `customSequence` in `custom_touch_sequence` during activation. In `createNextCycleMutation`, fall back to `subscription.custom_touch_sequence` when no preset.
-- `kitConstants.ts`: Add `custom_touch_sequence` to `KitSubscription` interface
+**File:** `src/components/leads/detail-tabs/LeadTasksTab.tsx`
 
-### Fix 2: KIT Cancel Deletes Linked Tasks/Reminders
+Add a "Type" column to the hardcoded table between "Title" and "Description":
 
-**File:** `useKitSubscriptions.ts` - `cancelMutation`
+- Add `<TableHead>Type</TableHead>` in the header
+- Add `<TableCell><Badge variant="outline">{task.type}</Badge></TableCell>` in the body
 
-Before updating subscription status to 'cancelled', query all touches for this subscription that have `linked_task_id` or `linked_reminder_id`. Delete/cancel those tasks and reminders.
+### Fix 3: Fix Touch-Task Linking for Added Touches
+
+**File:** `src/hooks/useKitTouches.ts` - `addTouchMutation`
+
+The `addTouchMutation` doesn't return the created touch. Change it to `.select().single()` to return the new touch, so `KitProfileTab.tsx` can link it.
+
+**File:** `src/components/kit/KitProfileTab.tsx` - `handleAddTouch`
+
+After creating the task, update the newly created touch with `linked_task_id` and `linked_reminder_id`.
+
+### Fix 4: Add Touch Deletion with Cleanup
+
+**File:** `src/hooks/useKitTouches.ts`
+
+Add a `deleteTouchMutation` that:
+
+1. Fetches the touch's `linked_task_id` and `linked_reminder_id`
+2. Deletes the linked task and reminder
+3. Deletes the touch itself
+
+**File:** `src/components/kit/KitProfileTab.tsx`
+
+Add `onDelete` handler to `KitTouchCard` components. Wire it to the new `deleteTouch` function.
+
+**File:** `src/components/kit/KitTouchCard.tsx`
+
+Add a delete button (Trash icon) next to the edit button, visible for pending touches.
+
+### Fix 5: Activity Log "View Task" for KIT Events
+
+This will be fixed by Fix 3 - once touches are properly linked to tasks via `linked_task_id`, the `logTouchEdited` function will correctly pass `linkedTaskId` which sets `relatedEntityType: 'task'`, making "View task" appear instead of "View lead".
+
+### Fix 6: Bulk Task Type Dropdown Z-Index
+
+**File:** `src/components/tasks/EnhancedTaskTable.tsx`
+
+Add `className="z-[200]"` to all `SelectContent` elements inside the bulk action dialog (lines 1474, 1490, 1506, 1522) to ensure they render above the `z-[60]` dialog.
+
+### Fix 7: Page Unresponsiveness After Bulk Action Cancel
+
+**File:** `src/components/tasks/EnhancedTaskTable.tsx`
+
+Remove `hideOverlay` from the bulk action dialog. The bulk dialog is a top-level dialog (not nested), so it should use the standard overlay. The `hideOverlay` with transparent Radix overlay may be causing scroll lock issues on cancel. Also, in the `onOpenChange` callback, clear selected tasks and reset bulk action state.
+
+Change:
+
+```tsx
+<DialogContent className="sm:max-w-[400px] z-[60]" hideOverlay>
+```
+
+To:
+
+```tsx
+<DialogContent className="sm:max-w-[400px]">
+```
+
+And update `onOpenChange`:
+
+```tsx
+<Dialog open={bulkActionDialogOpen} onOpenChange={(open) => {
+  setBulkActionDialogOpen(open);
+  if (!open) {
+    setBulkActionType("");
+    setBulkActionValue("");
+    setBulkRescheduleDate(undefined);
+  }
+}}>
+```
+
+### Fix 8: Edge Function CORS Headers
+
+**File:** `supabase/functions/create-staff-user/index.ts`
+
+Update CORS headers to include all required Supabase client headers:
 
 ```typescript
-// In cancelMutation, before status update:
-const { data: touchesWithLinks } = await supabase
-  .from('kit_touches')
-  .select('linked_task_id, linked_reminder_id')
-  .eq('subscription_id', subscriptionId);
-
-if (touchesWithLinks) {
-  const taskIds = touchesWithLinks.map(t => t.linked_task_id).filter(Boolean);
-  const reminderIds = touchesWithLinks.map(t => t.linked_reminder_id).filter(Boolean);
-  if (taskIds.length > 0) {
-    await supabase.from('tasks').delete().in('id', taskIds);
-  }
-  if (reminderIds.length > 0) {
-    await supabase.from('reminders').delete().in('id', reminderIds);
-  }
-}
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
 ```
 
-### Fix 3: Address Link for Visit/Meeting
-
-**File:** `KitTouchCard.tsx`
-
-Change the address fallback (lines 150-159) from plain text to a clickable Google Maps link:
-```tsx
-if (entityAddress) {
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(entityAddress)}`;
-  return (
-    <span className="font-medium">
-      {label}{' '}
-      <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline ml-1">
-        <MapPin className="h-3 w-3 inline mr-0.5" />
-        {entityAddress.length > 30 ? entityAddress.slice(0, 30) + '...' : entityAddress}
-      </a>
-    </span>
-  );
-}
-```
-
-Same for `renderContactLinks()` (lines 195-199).
-
-### Fix 4: Touch Edit Task/Reminder Sync Verification
-
-The code at `KitProfileTab.tsx` lines 477-504 already syncs `due_time` and `reminder_datetime`. The issue is that `editingTouch.linked_task_id` may be null for touches created before per-touch task creation was implemented.
-
-**Verify:** Add console.log to track if `linked_task_id` is actually populated. If null, the sync silently does nothing. No code change needed if the touch was created with task linking enabled - the existing code is correct.
-
-### Fix 5: Fix Filter/Add Task Inside Lead Profile
-
-**File:** `LeadTasksTab.tsx`
-- Line 184: Add `className="z-[100]"` to `SelectContent` for the filter dropdown
-- The `AddTaskDialog` and `EditTaskDialog` opened from lead profile need `hideOverlay` and proper z-index
-
-**File:** `AddTaskDialog.tsx`
-- Line 329: Add `z-[100]` to `DialogContent` and add `hideOverlay`
-
-**File:** `EditTaskDialog.tsx`
-- Line 467: Change `z-[70]` to `z-[100]` and add `hideOverlay` when opened from within another dialog
-
-Since we can't pass `hideOverlay` conditionally based on context, the safest approach: always add `hideOverlay` to both `AddTaskDialog` and `EditTaskDialog` `DialogContent` components, and increase their z-index to `z-[100]`.
-
-### Fix 6: Activity Log "View Task" for KIT Events
-
-The code in `ActivityLogItem.tsx` already handles this (lines 201-210). The "View Task" button shows when `taskId = activity.metadata?.task_id` exists. The issue is that existing activity log entries were created before the `task_id` metadata was added.
-
-For new entries, the `logTouchEdited` function already stores `task_id: linkedTaskId` in metadata. No code change needed for new entries. Old entries will still show "View lead".
-
-Also need to make sure that when `related_entity_type` is 'task', it also shows "View task" via the related entity link (currently line 227-238 excludes tasks from this section, which is correct since line 201-210 handles it via metadata).
-
-### Fix 7: Dialog Scroll Fix
-
-**Root cause:** The `hideOverlay` approach adds a sibling `div` that captures wheel events, but this div sits BEHIND the dialog content (same z-index), so wheel events on the content never reach it. The content itself doesn't prevent scroll from propagating to the body.
-
-**Fix approach:** Remove the sibling div. Instead, use `modal={true}` (Radix default) which provides proper scroll trapping. The overlay stacking issue was the original reason for `hideOverlay` - fix this by making the overlay transparent for nested dialogs.
-
-Alternative simpler fix: Keep `hideOverlay` but add `onWheel` handler directly on the `DialogContent` element to prevent body scroll, and add CSS `overflow-y: auto` to ensure the content is scrollable.
-
-**File:** `dialog.tsx`
-- Remove the sibling div (lines 36-42)
-- On the `DialogPrimitive.Content` element, when `hideOverlay` is true, add an `onWheel` handler and ensure the element has `overflow-y: auto` to be scrollable
-
-Actually, the simplest and most reliable fix: For the KIT Activation dialog specifically, wrap the scrollable content in a div with `onWheel={(e) => e.stopPropagation()}` and ensure `overflow-y: auto`. The dialog itself should use `modal={true}` (default).
-
-**File:** `KitActivationDialog.tsx`
-- Remove `hideOverlay` from DialogContent
-- Add back the standard overlay (which provides scroll trapping)
-- Since this dialog is opened from KitProfileTab which is inside a LeadDetailView/CustomerDetailView (z-70), the KIT dialog at z-100 will stack properly over it
-- The overlay from the KIT dialog will add a second dark layer - to prevent this, use `hideOverlay` but fix the scroll differently
-
-Better approach for `dialog.tsx`: When `hideOverlay` is true, instead of the sibling div, add a transparent overlay that still blocks body scroll:
-```tsx
-{hideOverlay && (
-  <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-transparent" />
-)}
-```
-This uses Radix's own overlay which properly handles scroll blocking, but is transparent so no visual stacking.
-
-### Fix 8: Bulk Edit Task Type Shows All Types
-
-**File:** `EnhancedTaskTable.tsx`
-
-Line 1505-1508: Replace `uniqueTypes` with `ALL_TASK_TYPES` for the bulk type change dropdown:
-```tsx
-import { ALL_TASK_TYPES } from "@/constants/taskConstants";
-// ...
-{bulkActionType === "type" && (
-  <SelectContent>
-    {ALL_TASK_TYPES.map(type => (
-      <SelectItem key={type} value={type}>{type}</SelectItem>
-    ))}
-  </SelectContent>
-)}
-```
-
-### Fix 9: Bulk Action Dialog Cleanup
-
-**File:** `EnhancedTaskTable.tsx`
-
-- Line 1447: Add `z-[60]` to bulk action `DialogContent` to ensure it appears properly
-- The `onOpenChange` handler for the bulk action dialog should NOT clear selected tasks when closing - only clear them after a successful action. Currently the cancel button (line 1555) doesn't clear `selectedTasks`, which is correct. But the `Dialog` `onOpenChange` at line 1446 just toggles `bulkActionDialogOpen` without side effects, so selected tasks persist after cancel. The "can't uncheck" issue is likely related to scroll/pointer events being blocked after the dialog closes.
-
-The scroll stopping after dialog cancel is the same root issue as Fix 7 - the overlay cleanup. Adding proper z-index to the dialog should help.
+Also update all other edge functions (`reset-staff-password`, `update-staff-profile`, `update-staff-role`, `seed-demo-users`, `crm-backup-create`, `crm-backup-list`, `crm-backup-restore`) with the same CORS headers.
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| Database migration | Add `custom_touch_sequence` JSONB column to `kit_subscriptions` |
-| `src/components/ui/dialog.tsx` | Fix `hideOverlay` to use transparent Radix overlay for proper scroll blocking |
-| `src/hooks/useKitSubscriptions.ts` | Store custom sequence on activation; read it for cycle restart; delete linked tasks/reminders on cancel |
-| `src/constants/kitConstants.ts` | Add `custom_touch_sequence` and `skip_weekends` to `KitSubscription` interface |
-| `src/components/kit/KitTouchCard.tsx` | Make address a clickable Google Maps link |
-| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Add `z-[100]` to filter `SelectContent` |
-| `src/components/tasks/AddTaskDialog.tsx` | Add `z-[100]` and `hideOverlay` to `DialogContent` |
-| `src/components/tasks/EditTaskDialog.tsx` | Keep `hideOverlay` and ensure z-[100] |
-| `src/components/tasks/EnhancedTaskTable.tsx` | Use `ALL_TASK_TYPES` for bulk type change; add z-index to bulk dialog |
-| `src/components/kit/KitActivationDialog.tsx` | Remove broken scroll workarounds, rely on fixed dialog.tsx |
+
+| File                                                | Changes                                                                                     |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Add "Type" column to task table                                                             |
+| `src/hooks/useKitTouches.ts`                        | Return created touch from `addTouchMutation`; add `deleteTouchMutation`                     |
+| `src/components/kit/KitProfileTab.tsx`              | Fix `handleAddTouch` to link task/reminder to touch; add touch delete handler               |
+| `src/components/kit/KitTouchCard.tsx`               | Add delete button for pending touches                                                       |
+| `src/components/tasks/EnhancedTaskTable.tsx`        | Fix bulk dialog: add z-index to SelectContent, remove hideOverlay, fix onOpenChange cleanup |
+| `supabase/functions/create-staff-user/index.ts`     | Update CORS headers                                                                         |
+| `supabase/functions/reset-staff-password/index.ts`  | Update CORS headers                                                                         |
+| `supabase/functions/update-staff-profile/index.ts`  | Update CORS headers                                                                         |
+| `supabase/functions/update-staff-role/index.ts`     | Update CORS headers                                                                         |
+| `supabase/functions/seed-demo-users/index.ts`       | Update CORS headers                                                                         |
+| `supabase/functions/crm-backup-create/index.ts`     | Update CORS headers                                                                         |
+| `supabase/functions/crm-backup-list/index.ts`       | Update CORS headers                                                                         |
+| `supabase/functions/crm-backup-restore/index.ts`    | Update CORS headers                                                                         |
+
 
 ## Implementation Order
 
-1. Database migration (add `custom_touch_sequence` column)
-2. Fix `dialog.tsx` scroll (transparent overlay for `hideOverlay`)
-3. Fix `useKitSubscriptions.ts` (store custom sequence, cycle restart, cancel cleanup)
-4. Fix `kitConstants.ts` interface
-5. Fix nested dialog z-indexes (LeadTasksTab, AddTaskDialog, EditTaskDialog)
-6. Fix address link in KitTouchCard
-7. Fix bulk edit type dropdown in EnhancedTaskTable
-8. Clean up KitActivationDialog
+1. Fix edge function CORS headers (Fix 8)
+2. Fix touch-task linking in addTouch (Fix 3)
+3. Add touch deletion with cleanup (Fix 4)
+4. Add Type column to LeadTasksTab (Fix 2)
+5. Fix bulk action dialog z-index and responsiveness (Fix 6 + 7)
+6. Deploy edge functions
