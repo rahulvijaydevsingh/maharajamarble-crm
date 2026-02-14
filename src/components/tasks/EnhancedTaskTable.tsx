@@ -1444,8 +1444,15 @@ export function EnhancedTaskTable({
       )}
 
       {/* Bulk Action Dialog */}
-      <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
-        <DialogContent className="sm:max-w-[400px] z-[60]" hideOverlay>
+      <Dialog open={bulkActionDialogOpen} onOpenChange={(open) => {
+        setBulkActionDialogOpen(open);
+        if (!open) {
+          setBulkActionType("");
+          setBulkActionValue("");
+          setBulkRescheduleDate(undefined);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>
               {bulkActionType === "delete" ? "Delete Tasks" : 
@@ -1471,7 +1478,7 @@ export function EnhancedTaskTable({
                     <SelectTrigger>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                       <SelectItem value="Pending">Pending</SelectItem>
                       <SelectItem value="In Progress">In Progress</SelectItem>
                       <SelectItem value="Completed">Completed</SelectItem>
@@ -1487,7 +1494,7 @@ export function EnhancedTaskTable({
                     <SelectTrigger>
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                       <SelectItem value="High">High</SelectItem>
                       <SelectItem value="Medium">Medium</SelectItem>
                       <SelectItem value="Low">Low</SelectItem>
@@ -1503,7 +1510,7 @@ export function EnhancedTaskTable({
                     <SelectTrigger>
                       <SelectValue placeholder="Select task type" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                       {ALL_TASK_TYPES.map(type => (
                         <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
@@ -1519,7 +1526,7 @@ export function EnhancedTaskTable({
                     <SelectTrigger>
                       <SelectValue placeholder="Select team member" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                       {uniqueAssignees.map(assignee => (
                         <SelectItem key={assignee} value={assignee}>{assignee}</SelectItem>
                       ))}

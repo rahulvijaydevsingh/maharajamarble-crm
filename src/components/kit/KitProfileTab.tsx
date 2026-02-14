@@ -100,6 +100,7 @@ export function KitProfileTab({
     reassignTouch,
     updateTouch,
     addTouch,
+    deleteTouch,
     isCompleting: isTouchCompleting,
     isSnoozing,
     isRescheduling,
@@ -107,6 +108,7 @@ export function KitProfileTab({
     isReassigning,
     isUpdating,
     isAdding,
+    isDeleting,
   } = useKitTouches(subscription?.id);
 
   const {
@@ -367,7 +369,7 @@ export function KitProfileTab({
   }) => {
     if (!subscription) return;
     
-    await addTouch({
+    const createdTouch = await addTouch({
       subscriptionId: subscription.id,
       method: data.method,
       scheduledDate: data.scheduledDate,
@@ -401,6 +403,37 @@ export function KitProfileTab({
           related_entity_id: entityId,
         });
         
+        let createdReminderId: string | null = null;
+        
+        // Create reminder if requested
+        if (data.createReminder) {
+          const reminder = await addReminder({
+            title: data.taskTitle,
+            description: `Reminder for KIT touch with ${entityName}`,
+            reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
+            entity_type: entityType,
+            entity_id: entityId,
+            assigned_to: data.assignedTo,
+            created_by: user?.email || 'System',
+          });
+          createdReminderId = reminder?.id || null;
+        }
+        
+        // Link task and reminder back to the touch
+        const touchId = createdTouch?.id;
+        if (touchId) {
+          const touchUpdates: Record<string, any> = {};
+          if (createdTask?.id) touchUpdates.linked_task_id = createdTask.id;
+          if (createdReminderId) touchUpdates.linked_reminder_id = createdReminderId;
+          
+          if (Object.keys(touchUpdates).length > 0) {
+            await supabase
+              .from('kit_touches')
+              .update(touchUpdates)
+              .eq('id', touchId);
+          }
+        }
+        
         // Log task creation
         await logTaskCreatedFromKit({
           entityType,
@@ -410,19 +443,7 @@ export function KitProfileTab({
           taskId: createdTask?.id,
         });
         
-        // Create reminder if requested
         if (data.createReminder) {
-          await addReminder({
-            title: data.taskTitle,
-            description: `Reminder for KIT touch with ${entityName}`,
-            reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
-            entity_type: entityType,
-            entity_id: entityId,
-            assigned_to: data.assignedTo,
-            created_by: user?.email || 'System',
-          });
-          
-          // Log reminder creation
           await logReminderCreatedFromKit({
             entityType,
             entityId,
@@ -517,6 +538,11 @@ export function KitProfileTab({
     }
     
     setEditingTouch(null);
+  };
+
+  // Handler for deleting a touch
+  const handleDeleteTouch = async (touch: KitTouch) => {
+    await deleteTouch(touch.id);
   };
 
   const handleRepeatCycle = async () => {
@@ -696,7 +722,8 @@ export function KitProfileTab({
             onSkip={() => handleSkipTouch(nextTouch)}
             onReassign={(newAssignee) => handleReassignTouch(nextTouch, newAssignee)}
             onEdit={() => setEditingTouch(nextTouch)}
-            disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
+            onDelete={() => handleDeleteTouch(nextTouch)}
+            disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping || isDeleting}
             entityPhone={entityPhone}
             entityLocation={entityLocation}
             entityAddress={entityAddress}
@@ -755,7 +782,8 @@ export function KitProfileTab({
                 onSkip={() => handleSkipTouch(touch)}
                 onReassign={(newAssignee) => handleReassignTouch(touch, newAssignee)}
                 onEdit={() => setEditingTouch(touch)}
-                disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
+                onDelete={() => handleDeleteTouch(touch)}
+                disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping || isDeleting}
                 entityPhone={entityPhone}
                 entityLocation={entityLocation}
                 entityAddress={entityAddress}

@@ -216,6 +216,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
               <TableRow className="bg-muted/50">
                 <TableHead className="w-12"></TableHead>
                 <TableHead className="min-w-[150px]">Title</TableHead>
+                <TableHead className="min-w-[100px]">Type</TableHead>
                 <TableHead className="min-w-[150px]">Description</TableHead>
                 <TableHead className="min-w-[100px]">Due Date</TableHead>
                 <TableHead className="min-w-[80px]">Time</TableHead>
@@ -248,6 +249,11 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                       >
                         {task.title}
                       </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs whitespace-nowrap">
+                        {task.type || 'General'}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       <TooltipProvider>

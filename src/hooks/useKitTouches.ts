@@ -285,7 +285,7 @@ export function useKitTouches(subscriptionId?: string) {
 
       const maxIndex = existingTouches?.[0]?.sequence_index ?? -1;
 
-      const { error } = await supabase.from('kit_touches').insert({
+      const { data, error } = await supabase.from('kit_touches').insert({
         subscription_id: subscriptionId,
         method,
         scheduled_date: scheduledDate,
@@ -294,9 +294,10 @@ export function useKitTouches(subscriptionId?: string) {
         sequence_index: maxIndex + 1,
         status: 'pending',
         original_scheduled_date: scheduledDate,
-      });
+      }).select().single();
 
       if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
@@ -339,6 +340,44 @@ export function useKitTouches(subscriptionId?: string) {
     },
   });
 
+  // Delete a touch with cleanup of linked task/reminder
+  const deleteTouchMutation = useMutation({
+    mutationFn: async (touchId: string) => {
+      // Fetch linked IDs first
+      const { data: touch, error: fetchErr } = await supabase
+        .from('kit_touches')
+        .select('linked_task_id, linked_reminder_id')
+        .eq('id', touchId)
+        .single();
+
+      if (fetchErr) throw fetchErr;
+
+      // Delete linked task
+      if (touch?.linked_task_id) {
+        await supabase.from('tasks').delete().eq('id', touch.linked_task_id);
+      }
+
+      // Delete linked reminder
+      if (touch?.linked_reminder_id) {
+        await supabase.from('reminders').delete().eq('id', touch.linked_reminder_id);
+      }
+
+      // Delete the touch itself
+      const { error } = await supabase.from('kit_touches').delete().eq('id', touchId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
+      queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['reminders'] });
+      toast({ title: 'Touch deleted' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting touch', description: error.message, variant: 'destructive' });
+    },
+  });
+
   return {
     touches: touchesQuery.data || [],
     nextTouch,
@@ -353,6 +392,7 @@ export function useKitTouches(subscriptionId?: string) {
     reassignTouch: reassignMutation.mutateAsync,
     addTouch: addTouchMutation.mutateAsync,
     updateTouch: updateTouchMutation.mutateAsync,
+    deleteTouch: deleteTouchMutation.mutateAsync,
     isCompleting: completeMutation.isPending,
     isSnoozing: snoozeMutation.isPending,
     isRescheduling: rescheduleMutation.isPending,
@@ -360,6 +400,7 @@ export function useKitTouches(subscriptionId?: string) {
     isReassigning: reassignMutation.isPending,
     isAdding: addTouchMutation.isPending,
     isUpdating: updateTouchMutation.isPending,
+    isDeleting: deleteTouchMutation.isPending,
   };
 }
 
