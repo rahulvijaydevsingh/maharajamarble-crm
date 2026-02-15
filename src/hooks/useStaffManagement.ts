@@ -104,7 +104,12 @@ export function useStaffManagement() {
       });
 
       if (error) {
-        throw new Error(error.message);
+        let msg = error.message;
+        try {
+          const body = await (error as any).context?.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        throw new Error(msg);
       }
 
       if (result?.error) {
@@ -146,7 +151,11 @@ export function useStaffManagement() {
           body: { user_id: userId, updates: profileUpdates },
         });
 
-        if (profileError) throw new Error(profileError.message);
+        if (profileError) {
+          let msg = profileError.message;
+          try { const body = await (profileError as any).context?.json(); if (body?.error) msg = body.error; } catch {}
+          throw new Error(msg);
+        }
         if (result?.error) throw new Error(result.error);
       }
 
@@ -156,7 +165,11 @@ export function useStaffManagement() {
           body: { user_id: userId, role: data.role },
         });
 
-        if (roleError) throw new Error(roleError.message);
+        if (roleError) {
+          let msg = roleError.message;
+          try { const body = await (roleError as any).context?.json(); if (body?.error) msg = body.error; } catch {}
+          throw new Error(msg);
+        }
         if (result?.error) throw new Error(result.error);
       }
 
