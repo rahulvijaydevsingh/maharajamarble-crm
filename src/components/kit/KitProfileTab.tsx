@@ -100,7 +100,6 @@ export function KitProfileTab({
     reassignTouch,
     updateTouch,
     addTouch,
-    deleteTouch,
     isCompleting: isTouchCompleting,
     isSnoozing,
     isRescheduling,
@@ -108,7 +107,6 @@ export function KitProfileTab({
     isReassigning,
     isUpdating,
     isAdding,
-    isDeleting,
   } = useKitTouches(subscription?.id);
 
   const {
@@ -138,6 +136,18 @@ export function KitProfileTab({
       meeting: 'KIT Meeting',
     };
     return map[method] || 'KIT Call';
+  };
+
+  // Get method label for task title
+  const getMethodLabel = (method: string): string => {
+    const map: Record<string, string> = {
+      call: 'Call',
+      whatsapp: 'WhatsApp',
+      visit: 'Site Visit',
+      email: 'Email',
+      meeting: 'Meeting',
+    };
+    return map[method] || 'Call';
   };
 
   const handleActivate = async (
@@ -174,9 +184,7 @@ export function KitProfileTab({
 
         if (newTouches && newTouches.length > 0) {
           for (const touch of newTouches) {
-            const touchTaskTitle = taskTitle
-              ? `${taskTitle} - ${touch.method.charAt(0).toUpperCase() + touch.method.slice(1)}`
-              : `${getKitTaskType(touch.method)} with ${entityName}`;
+            const touchTaskTitle = `KIT for - ${entityName} - ${getMethodLabel(touch.method)}`;
 
             try {
               const createdTask = await addTask({
@@ -199,7 +207,7 @@ export function KitProfileTab({
                 const reminder = await addReminder({
                   title: touchTaskTitle,
                   description: `Reminder for KIT touch with ${entityName}`,
-                  reminder_datetime: `${touch.scheduled_date}T${touch.scheduled_time || '09:00'}:00`,
+                  reminder_datetime: new Date(`${touch.scheduled_date}T${touch.scheduled_time || '09:00'}`).toISOString(),
                   entity_type: entityType,
                   entity_id: entityId,
                   assigned_to: touch.assigned_to || assignedTo,
@@ -389,8 +397,9 @@ export function KitProfileTab({
     // Create task if requested
     if (data.createTask && data.taskTitle) {
       try {
+        const taskTitleForTouch = `KIT for - ${entityName} - ${getMethodLabel(data.method)}`;
         const createdTask = await addTask({
-          title: data.taskTitle,
+          title: taskTitleForTouch,
           description: `KIT touch follow-up for ${entityName}`,
           type: getKitTaskType(data.method),
           priority: 'Medium',
@@ -410,7 +419,7 @@ export function KitProfileTab({
           const reminder = await addReminder({
             title: data.taskTitle,
             description: `Reminder for KIT touch with ${entityName}`,
-            reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
+            reminder_datetime: new Date(`${data.scheduledDate}T${data.scheduledTime || '09:00'}`).toISOString(),
             entity_type: entityType,
             entity_id: entityId,
             assigned_to: data.assignedTo,
@@ -516,7 +525,7 @@ export function KitProfileTab({
         await supabase
           .from('reminders')
           .update({
-            reminder_datetime: `${data.scheduledDate}T${data.scheduledTime || '09:00'}:00`,
+            reminder_datetime: new Date(`${data.scheduledDate}T${data.scheduledTime || '09:00'}`).toISOString(),
             assigned_to: data.assignedTo,
           })
           .eq('id', editingTouch.linked_reminder_id);
@@ -540,10 +549,8 @@ export function KitProfileTab({
     setEditingTouch(null);
   };
 
-  // Handler for deleting a touch
-  const handleDeleteTouch = async (touch: KitTouch) => {
-    await deleteTouch(touch.id);
-  };
+
+
 
   const handleRepeatCycle = async () => {
     if (!subscription) return;
@@ -722,8 +729,7 @@ export function KitProfileTab({
             onSkip={() => handleSkipTouch(nextTouch)}
             onReassign={(newAssignee) => handleReassignTouch(nextTouch, newAssignee)}
             onEdit={() => setEditingTouch(nextTouch)}
-            onDelete={() => handleDeleteTouch(nextTouch)}
-            disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping || isDeleting}
+            disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
             entityPhone={entityPhone}
             entityLocation={entityLocation}
             entityAddress={entityAddress}
@@ -782,8 +788,7 @@ export function KitProfileTab({
                 onSkip={() => handleSkipTouch(touch)}
                 onReassign={(newAssignee) => handleReassignTouch(touch, newAssignee)}
                 onEdit={() => setEditingTouch(touch)}
-                onDelete={() => handleDeleteTouch(touch)}
-                disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping || isDeleting}
+                disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
                 entityPhone={entityPhone}
                 entityLocation={entityLocation}
                 entityAddress={entityAddress}

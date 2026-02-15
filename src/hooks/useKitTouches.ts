@@ -213,12 +213,27 @@ export function useKitTouches(subscriptionId?: string) {
     },
   });
 
-  // Skip a touch
+  // Skip a touch (with linked task/reminder cleanup)
   const skipMutation = useMutation({
     mutationFn: async (touchId: string) => {
+      // Fetch linked IDs before skipping
+      const { data: touchData } = await supabase
+        .from('kit_touches')
+        .select('linked_task_id, linked_reminder_id')
+        .eq('id', touchId)
+        .single();
+
+      // Delete linked task and reminder
+      if (touchData?.linked_task_id) {
+        await supabase.from('tasks').delete().eq('id', touchData.linked_task_id);
+      }
+      if (touchData?.linked_reminder_id) {
+        await supabase.from('reminders').delete().eq('id', touchData.linked_reminder_id);
+      }
+
       const { data: touch } = await supabase
         .from('kit_touches')
-        .update({ status: 'skipped' })
+        .update({ status: 'skipped', linked_task_id: null, linked_reminder_id: null })
         .eq('id', touchId)
         .select('subscription_id')
         .single();
@@ -233,6 +248,8 @@ export function useKitTouches(subscriptionId?: string) {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
       queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['reminders'] });
       toast({ title: 'Touch skipped' });
     },
     onError: (error: Error) => {

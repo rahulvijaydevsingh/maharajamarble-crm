@@ -177,7 +177,7 @@ export function AddTouchDialog({
             {createTask && (
               <div className="ml-6 space-y-3">
                 <Input
-                  placeholder={`Follow up with ${entityName}`}
+                  placeholder={`KIT for - ${entityName} - Call`}
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
                 />
