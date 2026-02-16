@@ -1,149 +1,123 @@
 
-# Fix Plan: Time Sync, Task Titles, Skip Cleanup, Delete Removal, and Staff Error
+
+# Fix Plan: Staff Creation Auth, Control Panel Alignment, and Form Integration
 
 ## Issues Identified
 
 | # | Issue | Root Cause |
 |---|-------|-----------|
-| 1 | Touch time 4:05 PM creates reminder at 9:35 PM | Reminder datetime is built as `${date}T${time}:00` without timezone offset. This gets stored as UTC in the database. A user in IST setting 16:05 gets it stored as 16:05 UTC, which displays as 21:35 IST (9:35 PM). The fix: convert local time to proper ISO string using JavaScript Date. |
-| 2 | Task title format wrong | Currently creates `KIT Call with {name}`. User wants `KIT for - {name} - Call`. |
-| 3 | Delete button causes cycle-complete confusion | Deleting touches directly bypasses the cycle-complete check. User wants delete removed; skip and cancel should handle cleanup instead. |
-| 4 | Skip touch doesn't delete linked task/reminder | `skipMutation` in `useKitTouches.ts` only updates status to 'skipped'. It never cleans up the linked task and reminder. |
-| 5 | Activity log shows "View lead" instead of "View task" | For touches created BEFORE the linking fix, `linked_task_id` is null, so `metadata.task_id` is undefined and "View Task" button doesn't appear. New touches (created with the fixed linking) will correctly show "View Task". No code fix needed -- this is a data issue for old entries. |
-| 6 | Staff creation error message unhelpful | `supabase.functions.invoke` returns generic "Edge Function returned a non-2xx status code" but the actual error message is in the response body. The invoke call doesn't extract the body error. |
+| 1 | Staff creation fails with "Only admins can create staff" even for admin/super_admin users | The edge function uses a **service role** Supabase client to call `get_user_role` RPC. This RPC function uses `auth.uid()` internally, which is NULL when called via service role client. So the WHERE clause `_user_id = auth.uid() OR public.is_admin()` always evaluates to false, returning no role. |
+| 2 | Materials: Control panel has 6 options, lead form has 10 | Control panel defaults have Italian Marble, Indian Marble, Granite, Quartz, Tiles, Onyx. The lead form (`MATERIAL_INTERESTS` constant) has Italian Marble, Granite (South), Granite (North), Quartz, Sandstone, Tiles, Onyx, Engineered Marble, Cladding Stone, Wooden Flooring. The form reads from the hardcoded constant, not from the control panel. |
+| 3 | Lead form material options not managed by control panel | `SiteDetailsSection.tsx` imports `MATERIAL_INTERESTS` from constants instead of using `getFieldOptions("materials", "materials")`. |
+| 4 | Lead form source/construction stage not managed by control panel | `SourceRelationshipSection.tsx` uses `LEAD_SOURCES` from constants. `SiteDetailsSection.tsx` uses `CONSTRUCTION_STAGES` from constants. Both have corresponding control panel fields but forms don't read from them. |
+| 5 | Task form not managed by control panel | `AddTaskDialog.tsx` uses `TASK_TYPES`, `KIT_TASK_TYPES`, `TASK_PRIORITIES` from `taskConstants.ts` instead of `getFieldOptions`. |
+| 6 | Customer form not managed by control panel | `AddCustomerDialog.tsx` uses constants from `customerConstants.ts`. Also, customer control panel is missing: source, city, and priority fields. |
 
 ## Technical Changes
 
-### 1. Fix Reminder Datetime Timezone (KitProfileTab.tsx)
+### Fix 1: Edge Function Auth Fix
 
-In both `handleActivate` (line 202) and `handleAddTouch` (line 413), the reminder datetime is constructed as a naive string:
+**Root cause detail:** The `get_user_role` SQL function has:
+```sql
+WHERE user_id = _user_id AND (_user_id = auth.uid() OR public.is_admin())
 ```
-`${date}T${time}:00`
-```
+When called via service role client, `auth.uid()` is NULL. Even though service role bypasses RLS, `SECURITY DEFINER` functions still evaluate `auth.uid()` as NULL.
 
-This is treated as UTC by the database. The fix: use `new Date()` to properly convert local time to ISO:
+**Fix:** In `create-staff-user/index.ts` (and all similar edge functions), replace the RPC call with a direct query to `user_roles` table. The service role client bypasses RLS, so this works:
 
 ```typescript
-// Instead of:
-reminder_datetime: `${date}T${time || '09:00'}:00`
-// Use:
-reminder_datetime: new Date(`${date}T${time || '09:00'}`).toISOString()
-```
-
-This ensures the browser's local timezone is used for the conversion, so 4:05 PM IST becomes the correct UTC equivalent.
-
-Same fix needed in `handleEditTouch` (line 519).
-
-**Files:** `src/components/kit/KitProfileTab.tsx` (3 locations)
-
-### 2. Fix Task Title Format (KitProfileTab.tsx)
-
-Change the `getKitTaskType` mapping and the title construction.
-
-Current: `KIT Call with {entityName}`
-New: `KIT for - {entityName} - Call`
-
-The method label mapping:
-- call -> Call
-- whatsapp -> WhatsApp
-- visit -> Site Visit
-- email -> Email
-- meeting -> Meeting
-
-Update `handleActivate` (line 179) and `handleAddTouch` (line 393) title construction.
-
-**Files:** `src/components/kit/KitProfileTab.tsx`, `src/components/kit/AddTouchDialog.tsx`
-
-### 3. Remove Delete Button, Add Cleanup to Skip
-
-**Remove delete button from KitTouchCard.tsx:**
-- Remove the `onDelete` prop usage and the Trash2 delete button (lines 326-336)
-- Remove `onDelete` from the interface (line 47)
-
-**Remove delete handler from KitProfileTab.tsx:**
-- Remove `handleDeleteTouch` function (lines 543-546)
-- Remove `onDelete` prop from all `KitTouchCard` usages (lines 725, 785)
-- Remove `deleteTouch` and `isDeleting` from the hook destructure
-
-**Add linked task/reminder cleanup to skipMutation in useKitTouches.ts:**
-Before updating status to 'skipped', fetch and delete `linked_task_id` and `linked_reminder_id`:
-
-```typescript
-// In skipMutation, before status update:
-const { data: touchData } = await supabase
-  .from('kit_touches')
-  .select('linked_task_id, linked_reminder_id')
-  .eq('id', touchId)
+// Instead of: supabase.rpc("get_user_role", { _user_id: requestingUser.id })
+// Use direct query:
+const { data: roleRow } = await supabase
+  .from('user_roles')
+  .select('role')
+  .eq('user_id', requestingUser.id)
   .single();
-
-if (touchData?.linked_task_id) {
-  await supabase.from('tasks').delete().eq('id', touchData.linked_task_id);
-}
-if (touchData?.linked_reminder_id) {
-  await supabase.from('reminders').delete().eq('id', touchData.linked_reminder_id);
-}
+const roleData = roleRow?.role;
 ```
 
-**Files:** `src/components/kit/KitTouchCard.tsx`, `src/components/kit/KitProfileTab.tsx`, `src/hooks/useKitTouches.ts`
+Apply this fix to all edge functions that check admin roles:
+- `create-staff-user/index.ts`
+- `reset-staff-password/index.ts`
+- `update-staff-profile/index.ts`
+- `update-staff-role/index.ts`
 
-### 4. Fix Staff Creation Error Handling (useStaffManagement.ts)
+### Fix 2: Update Control Panel Material Defaults
 
-The current code throws "Edge Function returned a non-2xx status code" because it reads `error.message`. The actual error message is in the response data. Update to extract the body:
+Update the `defaultSystemOptions` in `useControlPanelSettings.ts` to match the 10 materials in the lead form:
 
-```typescript
-const { data: result, error } = await supabase.functions.invoke("create-staff-user", { body: {...} });
-
-if (error) {
-  // Try to get the actual error message from the response
-  const errorBody = result?.error || error.message;
-  throw new Error(errorBody);
-}
+```
+Italian Marble, Granite (South), Granite (North), Quartz, Sandstone,
+Tiles, Onyx, Engineered Marble, Cladding Stone, Wooden Flooring
 ```
 
-Actually, when `supabase.functions.invoke` returns a non-2xx, `data` is null and `error` is a `FunctionsHttpError`. The response body is accessible via `error.context`. The fix:
+### Fix 3: Connect Lead Form to Control Panel
 
-```typescript
-if (error) {
-  let msg = error.message;
-  try {
-    const body = await error.context?.json();
-    if (body?.error) msg = body.error;
-  } catch {}
-  throw new Error(msg);
-}
-```
+**Files to modify:**
 
-**File:** `src/hooks/useStaffManagement.ts`
+**`SiteDetailsSection.tsx`:**
+- Import `useControlPanelSettings`
+- Replace `MATERIAL_INTERESTS` constant usage with `getFieldOptions("materials", "materials")`
+- Replace `CONSTRUCTION_STAGES` constant usage with `getFieldOptions("leads", "construction_stage")`
 
-### 5. Add Invalidation for Tasks/Reminders on Skip
+**`SourceRelationshipSection.tsx`:**
+- Import `useControlPanelSettings`
+- Replace `LEAD_SOURCES` constant usage with `getFieldOptions("leads", "source")`
 
-After skip deletes linked records, invalidate task and reminder queries:
+### Fix 4: Connect Task Form to Control Panel
 
-```typescript
-onSuccess: (result) => {
-  queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
-  queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
-  queryClient.invalidateQueries({ queryKey: ['tasks'] });
-  queryClient.invalidateQueries({ queryKey: ['reminders'] });
-  toast({ title: 'Touch skipped' });
-},
-```
+**`AddTaskDialog.tsx`:**
+- Import `useControlPanelSettings`
+- Replace `TASK_TYPES` and `KIT_TASK_TYPES` with `getFieldOptions("tasks", "type")`
+- Replace `TASK_PRIORITIES` with `getFieldOptions("tasks", "priority")`
 
-**File:** `src/hooks/useKitTouches.ts`
+**`EditTaskDialog.tsx`:**
+- Same changes as AddTaskDialog
+
+### Fix 5: Connect Customer Form to Control Panel
+
+**`AddCustomerDialog.tsx`:**
+- Import `useControlPanelSettings`
+- Replace `CUSTOMER_TYPES` with `getFieldOptions("customers", "customer_type")`
+- Replace `INDUSTRIES` with `getFieldOptions("customers", "industry")`
+- Replace `CUSTOMER_SOURCES` with `getFieldOptions("customers", "customer_source")`
+- Replace `CITIES` with `getFieldOptions("customers", "city")`
+- Replace `PRIORITY_LEVELS` with `getFieldOptions("customers", "priority")`
+
+### Fix 6: Add Missing Customer Control Panel Fields
+
+Add to `defaultSystemOptions` in `useControlPanelSettings.ts` under the "customers" module:
+
+- **customer_source**: Direct, Referral, Lead Conversion, Website, Social Media, Trade Show
+- **city**: Same as professionals (Jaipur, Delhi, Mumbai, etc.)
+- **priority**: Same 5-level priority as leads/professionals
+
+### Fix 7: Add KIT Task Types to Control Panel
+
+The control panel already has some KIT types (KIT Follow-up, KIT Relationship Check, KIT Touch Reminder) but the form uses different ones (KIT Call, KIT WhatsApp, KIT Visit, KIT Email, KIT Meeting). Update the control panel defaults to include all KIT task types from the form constants.
+
+---
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/kit/KitProfileTab.tsx` | Fix reminder datetime timezone (3 places); fix task title format; remove delete handler and delete prop from touch cards |
-| `src/components/kit/KitTouchCard.tsx` | Remove delete button and `onDelete` prop |
-| `src/components/kit/AddTouchDialog.tsx` | Update default task title format |
-| `src/hooks/useKitTouches.ts` | Add task/reminder cleanup to skipMutation; add query invalidation |
-| `src/hooks/useStaffManagement.ts` | Extract actual error message from edge function response |
+| `supabase/functions/create-staff-user/index.ts` | Replace `rpc("get_user_role")` with direct `user_roles` query |
+| `supabase/functions/reset-staff-password/index.ts` | Same auth fix |
+| `supabase/functions/update-staff-profile/index.ts` | Same auth fix |
+| `supabase/functions/update-staff-role/index.ts` | Same auth fix |
+| `src/hooks/useControlPanelSettings.ts` | Update material defaults (10 items); add customer source/city/priority fields; update KIT task types |
+| `src/components/leads/smart-form/SiteDetailsSection.tsx` | Use control panel for materials and construction stages |
+| `src/components/leads/smart-form/SourceRelationshipSection.tsx` | Use control panel for lead sources |
+| `src/components/tasks/AddTaskDialog.tsx` | Use control panel for task types and priorities |
+| `src/components/tasks/EditTaskDialog.tsx` | Use control panel for task types and priorities |
+| `src/components/customers/AddCustomerDialog.tsx` | Use control panel for all dropdown options |
 
 ## Implementation Order
 
-1. Fix timezone handling in reminder datetime
-2. Fix task title format
-3. Remove delete button, add cleanup to skip
-4. Fix staff error message extraction
+1. Fix edge function auth (direct query instead of RPC) and deploy
+2. Update control panel defaults (materials, customer fields, KIT types)
+3. Connect lead form to control panel (materials, sources, construction stages)
+4. Connect task form to control panel (types, priorities)
+5. Connect customer form to control panel (types, industries, sources, cities, priorities)
+
