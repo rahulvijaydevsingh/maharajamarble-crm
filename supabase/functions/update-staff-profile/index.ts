@@ -42,8 +42,13 @@ serve(async (req) => {
       );
     }
 
-    // Check if requesting user is admin
-    const { data: roleData } = await supabase.rpc("get_user_role", { _user_id: requestingUser.id });
+    // Check if requesting user is admin (direct query bypasses auth.uid() issue in RPC)
+    const { data: roleRow } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', requestingUser.id)
+      .single();
+    const roleData = roleRow?.role;
     if (roleData !== "super_admin" && roleData !== "admin") {
       return new Response(
         JSON.stringify({ error: "Only admins can update staff profiles" }),

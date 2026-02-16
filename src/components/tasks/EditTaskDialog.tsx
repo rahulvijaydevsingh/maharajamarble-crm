@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -40,9 +40,9 @@ import { RecurrenceSection } from "./form/RecurrenceSection";
 import { RelatedEntitySection } from "./form/RelatedEntitySection";
 import { SnoozeMenu } from "./form/SnoozeMenu";
 import {
-  TASK_TYPES,
-  KIT_TASK_TYPES,
-  TASK_PRIORITIES,
+  TASK_TYPES as FALLBACK_TASK_TYPES,
+  KIT_TASK_TYPES as FALLBACK_KIT_TASK_TYPES,
+  TASK_PRIORITIES as FALLBACK_TASK_PRIORITIES,
   TASK_STATUSES,
   REMINDER_OPTIONS,
 } from "@/constants/taskConstants";
@@ -51,6 +51,7 @@ import {
   SelectLabel,
 } from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface RelatedEntity {
   id: string;
@@ -72,6 +73,32 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
   const { subtasks, addSubtask, updateSubtask, deleteSubtask, refetch: refetchSubtasks } = useSubtasks(taskData?.id);
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { logActivity } = useLogActivity();
+  const { getFieldOptions } = useControlPanelSettings();
+
+  // Use control panel options, fallback to constants
+  const TASK_TYPES = useMemo(() => {
+    const cpOptions = getFieldOptions("tasks", "type");
+    if (cpOptions.length > 0) {
+      return cpOptions.filter(o => !o.value.startsWith("KIT")).map(o => o.value);
+    }
+    return FALLBACK_TASK_TYPES;
+  }, [getFieldOptions]);
+
+  const KIT_TASK_TYPES = useMemo(() => {
+    const cpOptions = getFieldOptions("tasks", "type");
+    if (cpOptions.length > 0) {
+      return cpOptions.filter(o => o.value.startsWith("KIT")).map(o => o.value);
+    }
+    return FALLBACK_KIT_TASK_TYPES;
+  }, [getFieldOptions]);
+
+  const TASK_PRIORITIES = useMemo(() => {
+    const cpOptions = getFieldOptions("tasks", "priority");
+    if (cpOptions.length > 0) {
+      return cpOptions.map(o => ({ value: o.value, label: o.label, color: o.color ? `text-[${o.color}]` : "text-foreground" }));
+    }
+    return FALLBACK_TASK_PRIORITIES;
+  }, [getFieldOptions]);
 
   const [formData, setFormData] = useState({
     title: "",

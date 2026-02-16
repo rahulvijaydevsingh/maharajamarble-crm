@@ -29,9 +29,10 @@ import { Badge } from "@/components/ui/badge";
 import { Link2, Users, Search, X, Phone, Mail, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LeadSource, ProfessionalRef } from "@/types/lead";
-import { LEAD_SOURCES, MOCK_PROFESSIONALS } from "@/constants/leadConstants";
+import { LEAD_SOURCES as FALLBACK_LEAD_SOURCES, MOCK_PROFESSIONALS } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { buildStaffGroups } from "@/lib/staffSelect";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
@@ -55,6 +56,16 @@ export function SourceRelationshipSection({
   const [professionalSearchOpen, setProfessionalSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { staffMembers, loading: staffLoading } = useActiveStaff();
+  const { getFieldOptions } = useControlPanelSettings();
+
+  // Use control panel options, fallback to constants
+  const LEAD_SOURCES = useMemo(() => {
+    const cpOptions = getFieldOptions("leads", "source");
+    if (cpOptions.length > 0) {
+      return cpOptions.map(o => ({ value: o.value, label: o.label, autoFollowUpHours: 24 }));
+    }
+    return FALLBACK_LEAD_SOURCES;
+  }, [getFieldOptions]);
 
   const staffGroups = useMemo(() => buildStaffGroups(staffMembers), [staffMembers]);
 
