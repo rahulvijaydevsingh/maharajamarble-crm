@@ -22,10 +22,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCustomers, Customer, CustomerInsert } from "@/hooks/useCustomers";
-import { CUSTOMER_TYPES, INDUSTRIES, CUSTOMER_SOURCES, CITIES, PRIORITY_LEVELS } from "@/constants/customerConstants";
+import {
+  CUSTOMER_TYPES as FALLBACK_CUSTOMER_TYPES,
+  INDUSTRIES as FALLBACK_INDUSTRIES,
+  CUSTOMER_SOURCES as FALLBACK_CUSTOMER_SOURCES,
+  CITIES as FALLBACK_CITIES,
+  PRIORITY_LEVELS as FALLBACK_PRIORITY_LEVELS,
+} from "@/constants/customerConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildStaffGroups } from "@/lib/staffSelect";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface AddCustomerDialogProps {
   open: boolean;
@@ -38,8 +45,44 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { getFieldOptions } = useControlPanelSettings();
 
   const staffGroups = useMemo(() => buildStaffGroups(staffMembers), [staffMembers]);
+
+  // Use control panel options, fallback to constants
+  const CUSTOMER_TYPES = useMemo(() => {
+    const cpOptions = getFieldOptions("customers", "customer_type");
+    if (cpOptions.length > 0) return cpOptions.map(o => ({ value: o.value, label: o.label }));
+    return FALLBACK_CUSTOMER_TYPES;
+  }, [getFieldOptions]);
+
+  const INDUSTRIES = useMemo(() => {
+    const cpOptions = getFieldOptions("customers", "industry");
+    if (cpOptions.length > 0) return cpOptions.map(o => ({ value: o.value, label: o.label }));
+    return FALLBACK_INDUSTRIES;
+  }, [getFieldOptions]);
+
+  const CUSTOMER_SOURCES = useMemo(() => {
+    const cpOptions = getFieldOptions("customers", "customer_source");
+    if (cpOptions.length > 0) return cpOptions.map(o => ({ value: o.value, label: o.label }));
+    return FALLBACK_CUSTOMER_SOURCES;
+  }, [getFieldOptions]);
+
+  const CITIES = useMemo(() => {
+    const cpOptions = getFieldOptions("customers", "city");
+    if (cpOptions.length > 0) return cpOptions.map(o => ({ value: o.value, label: o.label }));
+    return FALLBACK_CITIES;
+  }, [getFieldOptions]);
+
+  const PRIORITY_LEVELS = useMemo(() => {
+    const cpOptions = getFieldOptions("customers", "priority");
+    if (cpOptions.length > 0) {
+      const map: Record<string, { label: string; color: string }> = {};
+      cpOptions.forEach(o => { map[o.value] = { label: o.label, color: o.color ? `text-[${o.color}]` : "text-foreground" }; });
+      return map;
+    }
+    return FALLBACK_PRIORITY_LEVELS;
+  }, [getFieldOptions]);
 
   const getDefaultAssignedTo = () => {
     const currentUserName = staffMembers.find(m => m.id === user?.id)?.name;

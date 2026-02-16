@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,8 +15,9 @@ import {
 } from "@/components/ui/select";
 import { MapPin, Package, AlertCircle, X, Camera, Upload, Loader2 } from "lucide-react";
 import { ConstructionStage } from "@/types/lead";
-import { CONSTRUCTION_STAGES, MATERIAL_INTERESTS } from "@/constants/leadConstants";
+import { CONSTRUCTION_STAGES as FALLBACK_CONSTRUCTION_STAGES, MATERIAL_INTERESTS as FALLBACK_MATERIAL_INTERESTS } from "@/constants/leadConstants";
 import { extractGPSFromExif, coordinatesToPlusCode } from "@/lib/plusCode";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface SiteDetailsSectionProps {
   siteLocation: string;
@@ -57,6 +57,25 @@ export function SiteDetailsSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [gpsExtractionStatus, setGpsExtractionStatus] = useState<'idle' | 'extracting' | 'success' | 'no_gps'>('idle');
+  const { getFieldOptions } = useControlPanelSettings();
+
+  // Use control panel options, fallback to constants
+  const MATERIAL_INTERESTS = useMemo(() => {
+    const cpOptions = getFieldOptions("materials", "materials");
+    if (cpOptions.length > 0) {
+      return cpOptions.map(o => ({ value: o.value, label: o.label }));
+    }
+    return FALLBACK_MATERIAL_INTERESTS;
+  }, [getFieldOptions]);
+
+  const CONSTRUCTION_STAGES = useMemo(() => {
+    const cpOptions = getFieldOptions("leads", "construction_stage");
+    if (cpOptions.length > 0) {
+      return cpOptions.map(o => ({ value: o.value, label: o.label, urgency: "medium" as const, followUpDays: 7 }));
+    }
+    return FALLBACK_CONSTRUCTION_STAGES;
+  }, [getFieldOptions]);
+
   // Normalize material interest value for comparison (lowercase, replace spaces with underscores)
   const normalizeMaterialValue = (value: string): string => {
     return value.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
@@ -67,9 +86,7 @@ export function SiteDetailsSection({
     const normalizedTarget = normalizeMaterialValue(materialValue);
     return materialInterests.some(m => {
       const normalizedM = normalizeMaterialValue(m);
-      // Check if matches value directly
       if (normalizedM === normalizedTarget) return true;
-      // Check if the label matches (e.g., "Tiles" matches "tiles")
       const material = MATERIAL_INTERESTS.find(mi => normalizeMaterialValue(mi.value) === normalizedTarget);
       if (material && normalizeMaterialValue(material.label) === normalizedM) return true;
       return false;
@@ -90,7 +107,6 @@ export function SiteDetailsSection({
     const isCurrentlySelected = isMaterialSelected(materialValue);
     
     if (isCurrentlySelected) {
-      // Remove by filtering out both value and label matches
       onMaterialInterestsChange(materialInterests.filter(m => {
         const normalizedM = normalizeMaterialValue(m);
         if (normalizedM === normalizedTarget) return false;
@@ -102,7 +118,6 @@ export function SiteDetailsSection({
         onOtherMaterialChange("");
       }
     } else {
-      // Add the canonical value (not label)
       onMaterialInterestsChange([...materialInterests, materialValue]);
     }
   };
@@ -125,27 +140,20 @@ export function SiteDetailsSection({
     setGpsExtractionStatus('extracting');
 
     try {
-      // Create preview URL
       const photoUrl = URL.createObjectURL(file);
-      
-      // Extract GPS coordinates from EXIF data
       const gpsData = await extractGPSFromExif(file);
-      
       let plusCode: string | null = null;
       
       if (gpsData) {
-        // Convert GPS coordinates to Plus Code
         try {
           plusCode = coordinatesToPlusCode(gpsData.latitude, gpsData.longitude);
           setGpsExtractionStatus('success');
-          console.log(`GPS extracted: ${gpsData.latitude}, ${gpsData.longitude} -> Plus Code: ${plusCode}`);
         } catch (error) {
           console.error("Error converting to plus code:", error);
           setGpsExtractionStatus('no_gps');
         }
       } else {
         setGpsExtractionStatus('no_gps');
-        console.log("No GPS data found in image");
       }
       
       onSitePhotoChange(photoUrl, plusCode);
@@ -169,6 +177,7 @@ export function SiteDetailsSection({
     const stageConfig = CONSTRUCTION_STAGES.find(s => s.value === stage);
     if (!stageConfig) return null;
 
+    const urgency = (stageConfig as any).urgency || "medium";
     const colorMap = {
       high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
       medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
@@ -176,8 +185,8 @@ export function SiteDetailsSection({
     };
 
     return (
-      <Badge className={colorMap[stageConfig.urgency as keyof typeof colorMap]}>
-        {stageConfig.urgency === "high" ? "High Urgency" : stageConfig.urgency === "medium" ? "Medium Urgency" : "Long-term"}
+      <Badge className={colorMap[urgency as keyof typeof colorMap] || colorMap.medium}>
+        {urgency === "high" ? "High Urgency" : urgency === "medium" ? "Medium Urgency" : "Long-term"}
       </Badge>
     );
   };
@@ -222,23 +231,11 @@ export function SiteDetailsSection({
             {sitePhotoUrl ? (
               <div className="space-y-2">
                 <div className="relative inline-block">
-                  <img
-                    src={sitePhotoUrl}
-                    alt="Site photo"
-                    className="w-32 h-32 object-cover rounded-lg border"
-                  />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="icon"
-                    onClick={handleRemovePhoto}
-                    className="absolute -top-2 -right-2 h-6 w-6"
-                  >
+                  <img src={sitePhotoUrl} alt="Site photo" className="w-32 h-32 object-cover rounded-lg border" />
+                  <Button type="button" variant="destructive" size="icon" onClick={handleRemovePhoto} className="absolute -top-2 -right-2 h-6 w-6">
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                
-                {/* GPS Status */}
                 <div className="flex items-center gap-2">
                   {gpsExtractionStatus === 'success' && sitePlusCode ? (
                     <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
@@ -270,14 +267,7 @@ export function SiteDetailsSection({
                 )}
               </div>
             )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handlePhotoUpload}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} className="hidden" />
           </div>
         )}
 
@@ -300,7 +290,7 @@ export function SiteDetailsSection({
                   <SelectItem key={stage.value} value={stage.value}>
                     <div className="flex items-center gap-2">
                       {stage.label}
-                      {stage.urgency === "high" && (
+                      {(stage as any).urgency === "high" && (
                         <AlertCircle className="h-3 w-3 text-red-500" />
                       )}
                     </div>
@@ -335,21 +325,9 @@ export function SiteDetailsSection({
               Material Interests *
             </Label>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleSelectAllMaterials}
-                className="text-xs text-primary hover:underline"
-              >
-                Select All
-              </button>
+              <button type="button" onClick={handleSelectAllMaterials} className="text-xs text-primary hover:underline">Select All</button>
               <span className="text-xs text-muted-foreground">|</span>
-              <button
-                type="button"
-                onClick={handleClearAllMaterials}
-                className="text-xs text-muted-foreground hover:underline"
-              >
-                Clear All
-              </button>
+              <button type="button" onClick={handleClearAllMaterials} className="text-xs text-muted-foreground hover:underline">Clear All</button>
             </div>
           </div>
 
@@ -361,31 +339,17 @@ export function SiteDetailsSection({
                   checked={isMaterialSelected(material.value)}
                   onCheckedChange={() => handleMaterialToggle(material.value)}
                 />
-                <Label
-                  htmlFor={material.value}
-                  className="text-sm font-normal cursor-pointer"
-                >
+                <Label htmlFor={material.value} className="text-sm font-normal cursor-pointer">
                   {material.label}
                 </Label>
               </div>
             ))}
-            {/* Other checkbox */}
             <div className="flex items-center space-x-2">
-              <Checkbox
-                id="other_material"
-                checked={hasOtherMaterial}
-                onCheckedChange={() => handleMaterialToggle("other")}
-              />
-              <Label
-                htmlFor="other_material"
-                className="text-sm font-normal cursor-pointer"
-              >
-                Other
-              </Label>
+              <Checkbox id="other_material" checked={hasOtherMaterial} onCheckedChange={() => handleMaterialToggle("other")} />
+              <Label htmlFor="other_material" className="text-sm font-normal cursor-pointer">Other</Label>
             </div>
           </div>
 
-          {/* Other Material Text Input */}
           {hasOtherMaterial && (
             <div className="space-y-2">
               <Label htmlFor="otherMaterial">Specify Other Material *</Label>
@@ -409,20 +373,14 @@ export function SiteDetailsSection({
                 return (
                   <Badge key={interest} variant="secondary" className="gap-1">
                     {material?.label || interest}
-                    <X
-                      className="h-3 w-3 cursor-pointer"
-                      onClick={() => handleMaterialToggle(interest)}
-                    />
+                    <X className="h-3 w-3 cursor-pointer" onClick={() => handleMaterialToggle(interest)} />
                   </Badge>
                 );
               })}
               {hasOtherMaterial && otherMaterial && (
                 <Badge variant="secondary" className="gap-1">
                   {otherMaterial}
-                  <X
-                    className="h-3 w-3 cursor-pointer"
-                    onClick={() => handleMaterialToggle("other")}
-                  />
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => handleMaterialToggle("other")} />
                 </Badge>
               )}
             </div>
