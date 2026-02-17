@@ -48,11 +48,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(profileData as Profile);
       }
 
-      // Fetch role - using type assertion since types may not be regenerated yet
+      // Fetch role - try RPC first, fallback to direct query
       const { data: roleData } = await (supabase.rpc as any)("get_user_role", { _user_id: userId });
 
       if (roleData) {
         setRole(roleData as AppRole);
+      } else {
+        // Fallback: direct query to user_roles table
+        const { data: roleRow } = await (supabase
+          .from("user_roles" as any)
+          .select("role")
+          .eq("user_id", userId)
+          .single() as any);
+        if (roleRow?.role) {
+          setRole(roleRow.role as AppRole);
+        }
       }
     } catch (error) {
       console.error("Error fetching user data:", error);

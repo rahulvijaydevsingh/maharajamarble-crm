@@ -59,6 +59,7 @@ import {
   LEAD_SOURCES,
   FOLLOW_UP_PRIORITIES,
 } from "@/constants/leadConstants";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { extractGPSFromExif, coordinatesToPlusCode } from "@/lib/plusCode";
 import { ConstructionStage, LeadSource, FollowUpPriority } from "@/types/lead";
 import {
@@ -138,7 +139,7 @@ const PRIORITY_OPTIONS = [
   { value: "4", label: "4 - Low" },
   { value: "5", label: "5 - Very Low" },
 ];
-const SOURCE_OPTIONS = LEAD_SOURCES.map(s => s.label);
+const SOURCE_OPTIONS_FALLBACK = LEAD_SOURCES.map(s => s.label);
 
 export function BulkUploadDialog({
   open,
@@ -148,6 +149,7 @@ export function BulkUploadDialog({
   const { toast } = useToast();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
+  const { getFieldOptions } = useControlPanelSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -297,6 +299,10 @@ export function BulkUploadDialog({
     XLSX.utils.book_append_sheet(workbook, templateSheet, "Lead Template");
 
     // Sheet 2: Options Reference
+    const cpSourceOptions = getFieldOptions("leads", "source");
+    const cpStageOptions = getFieldOptions("leads", "construction_stage");
+    const cpMaterialOptions = getFieldOptions("materials", "materials");
+
     const optionsData = [
       ["FIELD OPTIONS REFERENCE"],
       [""],
@@ -310,13 +316,13 @@ export function BulkUploadDialog({
       ...staffMembers.map(m => [m.name]),
       [""],
       ["Source Options"],
-      ...SOURCE_OPTIONS.map(s => [s]),
+      ...(cpSourceOptions.length > 0 ? cpSourceOptions : LEAD_SOURCES).map((s: any) => [s.label]),
       [""],
       ["Construction Stage Options"],
-      ...CONSTRUCTION_STAGES.map(s => [s.label]),
+      ...(cpStageOptions.length > 0 ? cpStageOptions : CONSTRUCTION_STAGES).map((s: any) => [s.label]),
       [""],
       ["Materials Options"],
-      ...MATERIAL_INTERESTS.map(m => [m.label]),
+      ...(cpMaterialOptions.length > 0 ? cpMaterialOptions : MATERIAL_INTERESTS).map((m: any) => [m.label]),
     ];
     const optionsSheet = XLSX.utils.aoa_to_sheet(optionsData);
     optionsSheet['!cols'] = [{ wch: 30 }];
