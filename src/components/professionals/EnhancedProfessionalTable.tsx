@@ -13,7 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
-import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings } from "lucide-react";
+import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Professional, useProfessionals } from "@/hooks/useProfessionals";
@@ -34,9 +34,11 @@ type SortDirection = "asc" | "desc" | null;
 interface EnhancedProfessionalTableProps {
   onEdit: (professional: Professional) => void;
   onAdd: () => void;
+  onSelectProfessional?: (professional: Professional) => void;
+  onBulkUpload?: () => void;
 }
 
-export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessionalTableProps) {
+export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional, onBulkUpload }: EnhancedProfessionalTableProps) {
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("professionals");
   const { 
@@ -191,10 +193,19 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
   const renderCell = (professional: Professional, columnKey: string) => {
     switch (columnKey) {
       case "name":
+        const displayName = professional.name || professional.firm_name || professional.phone;
         return (
-          <div>
-            <div className="font-medium">{professional.name}</div>
-            {professional.firm_name && <div className="text-xs text-muted-foreground">{professional.firm_name}</div>}
+          <div 
+            className="cursor-pointer hover:text-primary transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectProfessional?.(professional);
+            }}
+          >
+            <div className="font-medium">{displayName}</div>
+            {professional.name && professional.firm_name && (
+              <div className="text-xs text-muted-foreground">{professional.firm_name}</div>
+            )}
           </div>
         );
       case "firmName":
@@ -283,6 +294,9 @@ export function EnhancedProfessionalTable({ onEdit, onAdd }: EnhancedProfessiona
           <Button variant="outline" size="icon" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           </Button>
+          {onBulkUpload && (
+            <Button variant="outline" onClick={onBulkUpload}><Upload className="h-4 w-4 mr-1" /> Upload</Button>
+          )}
           <Button onClick={onAdd}><Plus className="h-4 w-4 mr-1" /> Add Professional</Button>
         </div>
       </div>

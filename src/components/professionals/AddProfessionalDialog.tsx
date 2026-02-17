@@ -81,14 +81,21 @@ export function AddProfessionalDialog({ open, onOpenChange, editingProfessional 
     [getFieldOptions]
   );
 
+  // Helper to find default value from control panel options
+  const getDefaultValue = (moduleName: string, fieldName: string, fallback: string): string => {
+    const options = getFieldOptions(moduleName, fieldName);
+    const defaultOpt = options.find(o => o.isDefault);
+    return defaultOpt?.value || fallback;
+  };
+
   const [formData, setFormData] = useState({
     name: "",
     firm_name: "",
     city: "",
-    professional_type: "contractor",
+    professional_type: getDefaultValue("professionals", "professional_type", "contractor"),
     service_category: "",
-    status: "active",
-    priority: 3,
+    status: getDefaultValue("professionals", "professional_status", "active"),
+    priority: parseInt(getDefaultValue("professionals", "priority", "3")) || 3,
     rating: "",
     notes: "",
     assigned_to: staffMembers[0]?.name || "",
@@ -128,10 +135,10 @@ export function AddProfessionalDialog({ open, onOpenChange, editingProfessional 
       name: "",
       firm_name: "",
       city: "",
-      professional_type: "contractor",
+      professional_type: getDefaultValue("professionals", "professional_type", "contractor"),
       service_category: "",
-      status: "active",
-      priority: 3,
+      status: getDefaultValue("professionals", "professional_status", "active"),
+      priority: parseInt(getDefaultValue("professionals", "priority", "3")) || 3,
       rating: "",
       notes: "",
       assigned_to: staffMembers[0]?.name || "",
