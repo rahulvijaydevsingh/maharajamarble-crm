@@ -203,23 +203,21 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
             }}
           >
             <div className="font-medium">{displayName}</div>
-            {professional.name && professional.firm_name && (
-              <div className="text-xs text-muted-foreground">{professional.firm_name}</div>
-            )}
           </div>
         );
       case "firmName":
         return professional.firm_name || "-";
       case "phone":
         return (
-          <div>
-            <div className="flex items-center gap-1">
-              <Phone className="h-3 w-3" />
-              <PhoneLink phone={professional.phone} />
-            </div>
-            {professional.email && <div className="text-xs text-muted-foreground">{professional.email}</div>}
+          <div className="flex items-center gap-1">
+            <Phone className="h-3 w-3" />
+            <PhoneLink phone={professional.phone} />
           </div>
         );
+      case "email":
+        return professional.email ? (
+          <a href={`mailto:${professional.email}`} className="text-primary hover:underline text-sm">{professional.email}</a>
+        ) : "-";
       case "sitePlusCode":
         return (
           <PlusCodeLink

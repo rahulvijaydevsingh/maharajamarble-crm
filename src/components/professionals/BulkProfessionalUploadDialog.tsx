@@ -104,15 +104,15 @@ export function BulkProfessionalUploadDialog({
 
     // Sheet 1: Template
     const templateHeaders = [
-      "Name*", "Phone*", "Alternate Phone", "Email", "Firm Name",
+      "Name*", "Mobile 1*", "Mobile 2", "Mobile 3", "Landline", "Email", "Firm Name",
       "Professional Type*", "Service Category", "City", "Status",
-      "Priority", "Assigned To", "Address", "Notes"
+      "Priority", "Assigned To", "Address", "Additional Address", "Notes"
     ];
     const exampleRow = [
-      "John Smith", "9876543210", "", "john@example.com", "Smith Constructions",
+      "John Smith", "9876543210", "", "", "", "john@example.com", "Smith Constructions",
       typeOptions[0]?.label || "Contractor", categoryOptions[0]?.label || "Construction",
       cityOptions[0]?.label || "Jaipur", statusOptions[0]?.label || "Active",
-      "3 - Medium", staffMembers[0]?.name || "Staff Member", "123 Main St", "Sample professional"
+      "3 - Medium", staffMembers[0]?.name || "Staff Member", "123 Main St", "", "Sample professional"
     ];
     const templateData = [templateHeaders, exampleRow];
     const templateSheet = XLSX.utils.aoa_to_sheet(templateData);
@@ -151,15 +151,25 @@ export function BulkProfessionalUploadDialog({
       [""],
       ["REQUIRED FIELDS:"],
       ["- Name: Full name of the professional"],
-      ["- Phone: 10-digit mobile number (starts with 6-9)"],
+      ["- Mobile 1: 10-digit mobile number (starts with 6-9)"],
       ["- Professional Type: Must match options in 'Options' sheet"],
+      [""],
+      ["PHONE COLUMNS:"],
+      ["- Mobile 1: Primary mobile (required, 10 digits)"],
+      ["- Mobile 2: Secondary mobile (optional, 10 digits)"],
+      ["- Mobile 3: Third mobile (optional, 10 digits)"],
+      ["- Landline: Landline numbers (optional, can have multiple comma-separated)"],
+      [""],
+      ["ADDRESS COLUMNS:"],
+      ["- Address: Primary address"],
+      ["- Additional Address: Secondary/site address"],
       [""],
       ["OPTIONAL FIELDS:"],
       ["- All other fields are optional"],
       ["- Values should match the 'Options' sheet where applicable"],
       [""],
       ["IMPORTANT NOTES:"],
-      ["1. Phone numbers must be unique - duplicates will be flagged"],
+      ["1. Mobile 1 numbers must be unique - duplicates will be flagged"],
       ["2. Column order must match the template exactly"],
       ["3. Maximum 1000 professionals per upload"],
       ["4. Do not delete or rename column headers"],
@@ -222,8 +232,12 @@ export function BulkProfessionalUploadDialog({
         const warnings: string[] = [];
 
         const name = getColumnValue(row, ["Name*", "Name"]);
-        const phoneRaw = getColumnValue(row, ["Phone*", "Phone"]);
+        const phoneRaw = getColumnValue(row, ["Mobile 1*", "Mobile 1", "Phone*", "Phone"]);
         const profType = getColumnValue(row, ["Professional Type*", "Professional Type"]);
+        const mobile2Raw = getColumnValue(row, ["Mobile 2"]);
+        const mobile3Raw = getColumnValue(row, ["Mobile 3"]);
+        const landline = getColumnValue(row, ["Landline"]);
+        const additionalAddress = getColumnValue(row, ["Additional Address"]);
 
         if (!name) errors.push("Name is required");
 
@@ -258,10 +272,22 @@ export function BulkProfessionalUploadDialog({
           t => t.label.toLowerCase() === profType.toLowerCase() || t.value === profType.toLowerCase()
         );
 
+        // Build alternate phone from Mobile 2
+        const altPhone = mobile2Raw.replace(/\D/g, "").slice(-10);
+        
+        // Build notes with extra phone/address info
+        const extraInfo: string[] = [];
+        const m3 = mobile3Raw.replace(/\D/g, "").slice(-10);
+        if (m3) extraInfo.push(`Mobile 3: ${m3}`);
+        if (landline) extraInfo.push(`Landline: ${landline}`);
+        if (additionalAddress) extraInfo.push(`Additional Address: ${additionalAddress}`);
+        const baseNotes = getColumnValue(row, ["Notes"]);
+        const combinedNotes = [baseNotes, ...extraInfo].filter(Boolean).join("\n");
+
         parsed.push({
           name,
           phone,
-          alternate_phone: getColumnValue(row, ["Alternate Phone"]),
+          alternate_phone: altPhone || "",
           email: getColumnValue(row, ["Email"]),
           firm_name: getColumnValue(row, ["Firm Name"]),
           professional_type: matchedType?.value || profType.toLowerCase().replace(/\s+/g, "_"),
@@ -271,7 +297,7 @@ export function BulkProfessionalUploadDialog({
           priority,
           assigned_to: getColumnValue(row, ["Assigned To"]) || staffMembers[0]?.name || "Unassigned",
           address: getColumnValue(row, ["Address"]),
-          notes: getColumnValue(row, ["Notes"]),
+          notes: combinedNotes,
           rowNumber: i + 2,
           errors,
           warnings,
