@@ -1,177 +1,151 @@
-# Plan: Bulk Professional Upload, Control Panel Default Verification, and Professional Profile View
 
-## Summary of Findings
 
-### Staff Creation
+# Plan: Professional Profile Enhancements, Quick-Add Menu, Dashboard Fixes, and Mobile Responsiveness
 
-The edge function is working correctly (tested - returns 200). The fix from the previous plan (direct `user_roles` query) is in place. The error the user saw was likely a cached state or the client-side `isAdmin()` check in `useStaffManagement.ts` not detecting the role correctly. The client-side `AuthContext` still uses `supabase.rpc("get_user_role")` which could fail silently. I'll add a fallback direct query for role detection in `AuthContext`.
+## Issues Found
 
-### Bulk Professional Upload
-
-Currently, bulk upload only exists for Leads (`BulkUploadDialog.tsx`). We need a similar component for Professionals with:
-
-- Excel template download with options reference sheet
-- File upload, validation, duplicate phone checking
-- Import with progress tracking
-
-### Excel Template Options Sync
-
-The Lead bulk upload template (`BulkUploadDialog.tsx` lines 300-320) uses **hardcoded constants** (`LEAD_SOURCES`, `CONSTRUCTION_STAGES`, `MATERIAL_INTERESTS`) instead of control panel options. This means if options are changed in the control panel, the Excel template won't reflect them. Same issue needs to be prevented for the new Professional template.
-
-### Control Panel Default Values
-
-The `isDefault` flag exists in the control panel options. Forms currently don't check for defaults when initializing. Need to verify and wire up default detection so that when a field has a default option, the form pre-selects it.
-
-### Professional Name as Clickable Profile Link
-
-The Lead table uses `LeadDetailView` opened via `selectedLead` state. The Professional table currently shows the name as plain text. Need to make it clickable to open a profile view(same tabs and option as for a lead), with fallback to firm name, then to phone number.
+| # | Issue | Current State |
+|---|-------|--------------|
+| 1 | Professional Tasks tab has no Add Task button or filters | Simple list, no controls (unlike LeadTasksTab which has both) |
+| 2 | Professional profile has no Quotations tab | Missing entirely |
+| 3 | Professional Reminders tab has no Add Reminder button | Simple list only (unlike LeadRemindersTab which has full CRUD) |
+| 4 | Excel template missing extra phone/address columns | Only 1 phone + 1 alt phone + 1 address |
+| 5 | Email shown below phone in table instead of separate column | `renderCell` for "phone" appends email below it |
+| 6 | Firm name shown below name when name exists | `renderCell` for "name" shows firm below name |
+| 7 | No quick-add dropdown in header | Header only has search, notifications, and profile |
+| 8 | Dashboard TaskList widget uses hardcoded dummy data | `TaskList.tsx` has static mock tasks, not connected to database |
+| 9 | Mobile browser accessibility | No viewport meta optimizations, layout not responsive on small screens |
 
 ---
 
 ## Implementation Details
 
-### 1. Fix AuthContext Role Detection Fallback
+### 1. Replace Professional Tasks Tab with Full-Featured Version
 
-**File:** `src/contexts/AuthContext.tsx`
+Rewrite `ProfessionalTasksTab` inside `ProfessionalDetailView.tsx` to match `LeadTasksTab` functionality:
+- Add Task button with prefilled `related_entity_type: 'professional'` and `related_entity_id`
+- Filter dropdown (All / Open / Completed / Overdue)
+- Full table with columns: checkbox, title, type, description, due date, time, priority, status, assigned to, created, updated, actions
+- Edit and Delete actions
+- Task completion dialog integration
+- Click-to-open task detail modal
 
-The `fetchUserData` function calls `supabase.rpc("get_user_role")` which can fail silently. Add a fallback direct query to `user_roles` table:
+### 2. Add Quotations Tab to Professional Profile
 
-```typescript
-// Try RPC first, fallback to direct query
-const { data: roleData } = await supabase.rpc("get_user_role", { _user_id: userId });
-if (roleData) {
-  setRole(roleData as AppRole);
-} else {
-  // Fallback: direct query
-  const { data: roleRow } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .single();
-  if (roleRow?.role) setRole(roleRow.role as AppRole);
-}
+- Add a `quotations` tab trigger (with FileText icon) to the TabsList
+- Create `ProfessionalQuotationsTab` component inside `ProfessionalDetailView.tsx`, modeled after `LeadQuotationsTab`
+- Filter quotations by `client_id === professional.id`
+- Include "Add Quotation" button with prefilled professional data
+
+### 3. Replace Professional Reminders Tab with Full-Featured Version
+
+Rewrite `ProfessionalRemindersTab` to match `LeadRemindersTab` functionality:
+- Add Reminder button opening `AddReminderDialog`
+- Task-based reminders section
+- Dismiss, Snooze (1h, 3h, tomorrow, next week), Delete actions
+- Time labels and color-coded badges
+- Activity logging for reminder actions
+
+### 4. Update Excel Template with Extra Columns
+
+**File:** `src/components/professionals/BulkProfessionalUploadDialog.tsx`
+
+Update template columns to:
+```
+Name*, Mobile 1*, Mobile 2, Mobile 3, Landline, Email, Firm Name,
+Professional Type*, Service Category, City, Status, Priority,
+Assigned To, Address, Additional Address, Notes
 ```
 
-### 2. Create Bulk Professional Upload Dialog
+- 3 mobile phone columns (Mobile 1 required, Mobile 2/3 optional)
+- 1 landline column (can contain comma-separated numbers)
+- 2 address columns (Address + Additional Address)
+- Update parsing logic to concatenate phones and addresses appropriately
+- Mobile 1 maps to `phone`, Mobile 2 maps to `alternate_phone`, Mobile 3 and Landline stored in notes or a new field
 
-**New file:** `src/components/professionals/BulkProfessionalUploadDialog.tsx`
-
-Modeled after `BulkUploadDialog.tsx` (leads), adapted for professionals:
-
-- **Template columns:** Name*, Phone*, Alternate Phone, Email, Firm Name, Professional Type*, Service Category, City, Status, Priority, Assigned To, Address, Notes
-- **Options sheet:** Dynamically pulled from control panel via `useControlPanelSettings().getFieldOptions()`
-- **Validation:** Phone format (10 digits, starts with 6-9), duplicate check against `professionals` table, required fields (Name, Phone, Professional Type)
-- **Import:** Insert into `professionals` table with progress tracking
-
-### 3. Update Lead Bulk Upload Template to Use Control Panel Options
-
-**File:** `src/components/leads/BulkUploadDialog.tsx`
-
-Currently at lines 56-63, it imports hardcoded constants:
-
-```typescript
-import { CONSTRUCTION_STAGES, MATERIAL_INTERESTS, LEAD_SOURCES, ... } from "@/constants/leadConstants";
-```
-
-And uses them directly in the template options sheet (lines 300-320).
-
-**Fix:** Import `useControlPanelSettings` and use `getFieldOptions()` to build the options sheet dynamically:
-
-```typescript
-const { getFieldOptions } = useControlPanelSettings();
-
-// In downloadTemplate():
-const sourceOptions = getFieldOptions("leads", "source").map(o => o.label);
-const stageOptions = getFieldOptions("leads", "construction_stage").map(o => o.label);
-const materialOptions = getFieldOptions("materials", "materials").map(o => o.label);
-```
-
-### 4. Wire Up Control Panel Default Values in Forms
-
-**Files to check/update:**
-
-- `AddProfessionalDialog.tsx` - Initial `formData.professional_type` is hardcoded to `"contractor"`. Should find the default from control panel.
-- `SmartLeadForm.tsx` / form sections - Check if defaults are used.
-
-Add a helper to find default values:
-
-```typescript
-const getDefaultValue = (moduleName: string, fieldName: string): string => {
-  const options = getFieldOptions(moduleName, fieldName);
-  const defaultOpt = options.find(o => o.isDefault);
-  return defaultOpt?.value || options[0]?.value || "";
-};
-```
-
-### 5. Professional Name as Clickable Profile Link
-
-**New file:** `src/components/professionals/ProfessionalDetailView.tsx`
-
-Create a detail view dialog similar to `LeadDetailView.tsx` with tabs:
-
-- Profile tab (view/edit professional info)
-- Activity tab
-- Notes tab
-- Attachments tab
+### 5. Fix Email Display in Professional Table
 
 **File:** `src/components/professionals/EnhancedProfessionalTable.tsx`
 
-Update the `renderCell` for `"name"` column to make it clickable:
+- Remove email from the "phone" column `renderCell`
+- Add a new "email" column key to show email separately
+- Update the default column configuration to include the email column
 
-```typescript
-case "name":
-  const displayName = professional.name || professional.firm_name || professional.phone;
-  return (
-    <div 
-      className="cursor-pointer hover:text-primary"
-      onClick={() => handleSelectProfessional(professional)}
-    >
-      <div className="font-medium">{displayName}</div>
-      {professional.name && professional.firm_name && (
-        <div className="text-xs text-muted-foreground">{professional.firm_name}</div>
-      )}
-    </div>
-  );
-```
+### 6. Remove Firm Name from Name Column
 
-**File:** `src/pages/Professionals.tsx`
+**File:** `src/components/professionals/EnhancedProfessionalTable.tsx`
 
-Add state for selected professional and the detail view dialog. Support URL deep-linking via `?selected={id}&tab={tab}` query params (matching the lead/customer pattern).
+In the `renderCell` for "name", remove the conditional that shows `professional.firm_name` below the name. The firm name already has its own "firmName" column.
 
-### 6. Add Bulk Upload Button to Professionals Page
+### 7. Add Quick-Add Dropdown to Header
 
-**File:** `src/pages/Professionals.tsx` or `EnhancedProfessionalTable.tsx`
+**File:** `src/components/shared/Header.tsx`
 
-Add an "Upload" button next to "Add Professional" that opens the bulk upload dialog.
+Add a "+" button dropdown between the notification bell and the user avatar with options:
+- Add Lead (opens `AddLeadDialog` or navigates to `/leads` with auto-open)
+- Add Customer (opens `AddCustomerDialog`)
+- Add Professional (opens `AddProfessionalDialog`)
+- Add Quotation (opens `AddQuotationDialog`)
+- Add Task (opens `AddTaskDialog`)
+- Add To-Do List (opens `AddTodoListDialog`)
+
+Each option will use a state-based dialog approach. The Header will manage dialog open states and render the dialog components. On successful creation, it will show a toast and invalidate relevant queries.
+
+### 8. Fix Dashboard TaskList Widget
+
+**File:** `src/components/tasks/TaskList.tsx`
+
+Replace the hardcoded mock data with real database data:
+- Import and use `useTasks()` hook
+- Filter to show pending/in-progress tasks sorted by due date
+- Show loading state
+- Limit display to 5 most urgent tasks
+- Make task titles clickable (open task detail modal)
+- Show "View All" link to navigate to `/tasks`
+
+### 9. Mobile Browser Accessibility
+
+**Files to modify:**
+- `index.html` - Ensure proper viewport meta tag exists
+- `src/index.css` - Add responsive utility classes
+- `src/components/layout/DashboardLayout.tsx` - Reduce padding on mobile
+- `src/components/shared/Header.tsx` - Make header compact on mobile, hide search on small screens
+- `src/components/shared/Sidebar.tsx` - Ensure sidebar collapses properly on mobile
+- Various dialog components - Ensure dialogs are full-screen on mobile
+
+Key responsive changes:
+- Header: Hide search bar on screens < 640px, compact padding
+- Sidebar: Already uses SidebarProvider which handles mobile collapse
+- Dashboard: Stack cards vertically on mobile, reduce gap
+- Tables: Already use `ScrollableTableContainer` for horizontal scroll
+- Dialogs: Add `max-h-[100dvh]` and proper overflow on mobile
+- Add touch-friendly tap targets (min 44px)
 
 ---
 
 ## Files to Create
 
-
-| File                                                            | Purpose                             |
-| --------------------------------------------------------------- | ----------------------------------- |
-| `src/components/professionals/BulkProfessionalUploadDialog.tsx` | Excel bulk upload for professionals |
-| `src/components/professionals/ProfessionalDetailView.tsx`       | Profile detail view with tabs       |
-
+None (all changes are modifications to existing files)
 
 ## Files to Modify
 
-
-| File                                                         | Changes                                                               |
-| ------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `src/contexts/AuthContext.tsx`                               | Add fallback direct query for role detection                          |
-| `src/components/leads/BulkUploadDialog.tsx`                  | Use control panel options for template instead of hardcoded constants |
-| `src/components/professionals/EnhancedProfessionalTable.tsx` | Make name clickable, add bulk upload button, add detail view state    |
-| `src/components/professionals/AddProfessionalDialog.tsx`     | Use control panel defaults for initial form values                    |
-| `src/pages/Professionals.tsx`                                | Add detail view, bulk upload dialog, URL deep-linking                 |
-
+| File | Changes |
+|------|---------|
+| `src/components/professionals/ProfessionalDetailView.tsx` | Rewrite Tasks tab with Add/Filter/Edit/Delete; rewrite Reminders tab with Add/Dismiss/Snooze/Delete; add Quotations tab |
+| `src/components/professionals/EnhancedProfessionalTable.tsx` | Add email column; remove firm name from name column; remove email from phone column |
+| `src/components/professionals/BulkProfessionalUploadDialog.tsx` | Add Mobile 2, Mobile 3, Landline, Additional Address columns to template |
+| `src/components/shared/Header.tsx` | Add quick-add dropdown with 6 creation options (Lead, Customer, Professional, Quotation, Task, To-Do) |
+| `src/components/tasks/TaskList.tsx` | Replace hardcoded data with real database tasks via `useTasks()` hook |
+| `src/components/layout/DashboardLayout.tsx` | Add responsive padding (`p-4 md:p-6`) |
+| `src/index.css` | Add mobile-specific utility styles |
+| `index.html` | Verify/add proper viewport meta tag |
 
 ## Implementation Order
 
-1. Fix AuthContext role detection fallback
-2. Create ProfessionalDetailView with profile tab and clickable name
-3. Create BulkProfessionalUploadDialog with dynamic control panel options
-4. Update Lead BulkUploadDialog to use control panel options
-5. Wire up control panel default values in forms
-6. Add URL deep-linking for professionals
+1. Fix Professional Detail View tabs (Tasks, Reminders, Quotations)
+2. Fix Professional table columns (email separation, firm name removal)
+3. Update Excel template columns
+4. Add Quick-Add dropdown to Header
+5. Fix Dashboard TaskList widget with real data
+6. Mobile responsiveness improvements
+
