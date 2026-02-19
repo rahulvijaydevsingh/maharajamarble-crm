@@ -1752,6 +1752,48 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_activity_log: {
+        Row: {
+          action_description: string | null
+          action_type: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          user_agent: string | null
+          user_email: string
+          user_id: string
+        }
+        Insert: {
+          action_description?: string | null
+          action_type: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_agent?: string | null
+          user_email: string
+          user_id: string
+        }
+        Update: {
+          action_description?: string | null
+          action_type?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_agent?: string | null
+          user_email?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       task_activity_log: {
         Row: {
           created_at: string
