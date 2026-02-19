@@ -35,12 +35,14 @@ import {
   Loader2,
   CheckCircle,
   HeartHandshake,
+  Activity,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ControlPanel } from "@/components/settings/ControlPanel";
 import { RoleManagementPanel } from "@/components/settings/RoleManagementPanel";
 import { StaffManagementPanel } from "@/components/settings/StaffManagementPanel";
 import { BackupRestorePanel } from "@/components/settings/BackupRestorePanel";
+import { StaffActivityPanel } from "@/components/settings/StaffActivityPanel";
 import { KitPresetList } from "@/components/kit/presets/KitPresetList";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useProfileSettings } from "@/hooks/useProfileSettings";
@@ -78,7 +80,7 @@ const Settings = () => {
         </div>
 
           <Tabs defaultValue="profile" className="w-full">
-          	<TabsList className="grid grid-cols-9 md:w-[1200px]">
+          	<TabsList className="grid grid-cols-10 md:w-[1300px]">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -89,6 +91,10 @@ const Settings = () => {
             <TabsTrigger value="kit">
               <HeartHandshake className="h-4 w-4 mr-1" />
               KIT
+            </TabsTrigger>
+            <TabsTrigger value="staff-activity">
+              <Activity className="h-4 w-4 mr-1" />
+              Activity
             </TabsTrigger>
 	            <TabsTrigger value="backup-restore">Backup</TabsTrigger>
           </TabsList>
@@ -564,6 +570,10 @@ const Settings = () => {
 
           <TabsContent value="kit" className="space-y-4 mt-4">
             <KitPresetList />
+          </TabsContent>
+
+          <TabsContent value="staff-activity" className="space-y-4 mt-4">
+            <StaffActivityPanel />
           </TabsContent>
 
           <TabsContent value="backup-restore" className="space-y-4 mt-4">

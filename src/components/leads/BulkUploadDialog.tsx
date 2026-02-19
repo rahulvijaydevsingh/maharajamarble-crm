@@ -380,11 +380,21 @@ export function BulkUploadDialog({
     toast({ title: "Template Downloaded", description: "Fill in the template starting from row 3 and upload it back." });
   };
 
-  // Helper function to get column value with flexible header matching
+  // Helper function to get column value with flexible header matching (case-insensitive)
   const getColumnValue = (row: Record<string, any>, possibleHeaders: string[]): string => {
+    // First try exact match
     for (const header of possibleHeaders) {
       if (row[header] !== undefined && row[header] !== null && row[header] !== "") {
         return row[header].toString().trim();
+      }
+    }
+    // Then try case-insensitive match (strip *, spaces)
+    const rowKeys = Object.keys(row);
+    for (const header of possibleHeaders) {
+      const headerNorm = header.toLowerCase().replace(/[*\s]/g, '');
+      const match = rowKeys.find(k => k.toLowerCase().replace(/[*\s]/g, '') === headerNorm);
+      if (match && row[match] !== undefined && row[match] !== null && row[match] !== "") {
+        return row[match].toString().trim();
       }
     }
     return "";
@@ -428,10 +438,10 @@ export function BulkUploadDialog({
         const errors: string[] = [];
         const warnings: string[] = [];
 
-        // Map columns (handle multiple header variations)
-        const name = getColumnValue(row, ["Name*", "Name"]);
-        const phoneRaw = getColumnValue(row, ["Phone*", "Phone"]);
-        const source = getColumnValue(row, ["Source*", "Source"]);
+        // Map columns (handle multiple header variations, case-insensitive fallback)
+        const name = getColumnValue(row, ["Name*", "Name", "NAME", "name", "Full Name", "FULL NAME"]);
+        const phoneRaw = getColumnValue(row, ["Phone*", "Phone", "PHONE", "phone", "Mobile", "MOBILE", "Mobile 1", "Contact"]);
+        const source = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
         
         // Check required fields
         if (!name) {
@@ -458,14 +468,14 @@ export function BulkUploadDialog({
         }
 
         // Validate email
-        const email = getColumnValue(row, ["Email"]);
+        const email = getColumnValue(row, ["Email", "EMAIL", "email", "E MAIL", "E-Mail", "e mail"]);
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           warnings.push("Invalid email format");
         }
 
         // Parse priority
         let priority = 3;
-        const priorityRaw = getColumnValue(row, ["Priority"]);
+        const priorityRaw = getColumnValue(row, ["Priority", "PRIORITY", "PRIORTY", "priority"]);
         if (priorityRaw) {
           const priorityNum = parseInt(priorityRaw.charAt(0));
           if (priorityNum >= 1 && priorityNum <= 5) {
@@ -474,7 +484,7 @@ export function BulkUploadDialog({
         }
 
         // Parse materials
-        const materialsRaw = getColumnValue(row, ["Materials"]);
+        const materialsRaw = getColumnValue(row, ["Materials", "MATERIALS", "Material", "MATERIAL"]);
         const materials = materialsRaw
           ? materialsRaw.split(",").map((m: string) => m.trim()).filter(Boolean)
           : [];
@@ -486,17 +496,17 @@ export function BulkUploadDialog({
           name,
           phone,
           email,
-          source: source || getColumnValue(row, ["Source*", "Source"]) || "Other",
-          address: getColumnValue(row, ["Address"]),
-          status: getColumnValue(row, ["Status"]).toLowerCase() || "new",
+          source: source || "Other",
+          address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
+          status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
-          assigned_to: getColumnValue(row, ["Assigned To"]) || staffMembers[0]?.name || "Unassigned",
+          assigned_to: getColumnValue(row, ["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]) || staffMembers[0]?.name || "Unassigned",
           materials,
-          notes: getColumnValue(row, ["Notes"]),
-          construction_stage: getColumnValue(row, ["Construction Stage"]),
-          estimated_quantity: getColumnValue(row, ["Estimated Quantity"]),
-          referred_by: getColumnValue(row, ["Referred By"]),
-          next_action_date: getColumnValue(row, ["Next Action Date"]),
+          notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
+          construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
+          estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
+          referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
+          next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
           rowNumber: actualRowNumber,
           errors,
           warnings,

@@ -708,6 +708,7 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
         onOpenChange={setAddDialogOpen}
         onSave={handleAddReminder}
         entityName={professional.name || professional.firm_name || professional.phone}
+        contentClassName="z-[80]"
       />
     </div>
   );
@@ -791,6 +792,7 @@ function ProfessionalQuotationsTab({ professional }: { professional: Professiona
           client_id: professional.id,
           client_type: 'customer',
         }}
+        contentClassName="z-[80]"
       />
     </div>
   );

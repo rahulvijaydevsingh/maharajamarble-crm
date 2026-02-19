@@ -48,6 +48,7 @@ interface AddReminderDialogProps {
     assigned_to: string;
   }) => Promise<void>;
   entityName: string;
+  contentClassName?: string;
 }
 
 export function AddReminderDialog({
@@ -55,6 +56,7 @@ export function AddReminderDialog({
   onOpenChange,
   onSave,
   entityName,
+  contentClassName,
 }: AddReminderDialogProps) {
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const [title, setTitle] = useState("");
@@ -152,7 +154,7 @@ export function AddReminderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`sm:max-w-[550px] max-h-[90vh] overflow-y-auto ${contentClassName || ''}`}>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Add Reminder</DialogTitle>

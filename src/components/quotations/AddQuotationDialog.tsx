@@ -37,6 +37,7 @@ interface AddQuotationDialogProps {
     client_id?: string;
     client_type?: 'lead' | 'customer';
   };
+  contentClassName?: string;
 }
 
 interface UploadedFile {
@@ -52,7 +53,8 @@ export function AddQuotationDialog({
   open, 
   onOpenChange, 
   editQuotation,
-  prefillData 
+  prefillData,
+  contentClassName 
 }: AddQuotationDialogProps) {
   const { addQuotation, updateQuotation } = useQuotations();
   const { leads } = useLeads();
@@ -227,7 +229,7 @@ export function AddQuotationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto ${contentClassName || ''}`}>
         <DialogHeader>
           <DialogTitle>
             {editQuotation ? 'Edit Quotation' : 'New Quotation'}
