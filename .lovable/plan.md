@@ -1,199 +1,109 @@
-# Fix Plan: Dialog Stacking, Excel Upload, Staff Management, and Staff Activity Log
-
-## Issues Identified
 
 
-| #   | Issue                                                                     | Root Cause                                                                                                                                                                                                                              |
-| --- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Add Quotation / Add Reminder dialogs open behind the Professional profile | Professional Detail View uses `z-[70]`, but AddQuotationDialog and AddReminderDialog use default `z-50`. Nested dialogs need higher z-index.                                                                                            |
-| 2   | Staff edit/reset password causes page unresponsiveness                    | The `isSubmitting` state is shared across all staff dialogs. If one fails, it can block others. Also, dialog `onOpenChange` doesn't reset `isSubmitting`.                                                                               |
-| 3   | Reset password error                                                      | The `reset-staff-password` edge function may not be deployed or has issues with the auth check.                                                                                                                                         |
-| 4   | No delete staff option                                                    | Only deactivate/activate exists. Need a proper deletion workflow with responsibility transfer.                                                                                                                                          |
-| 5   | No staff activity log                                                     | Not implemented. Need a comprehensive audit trail for all staff actions.with intigraton in workflow [automations. so](http://automations.so) that an automation can be created based of activity log.                                   |
-| 6   | Excel upload "Name/Phone/Source required" error                           | The parser uses `getColumnValue()` with exact header matching (`"Name*"`, `"Name"`, `"Phone*"`, `"Phone"`, `"Source*"`, `"Source"`), but user's file has uppercase headers (`NAME`, `PHONE`, `SOURCE`). The matching is case-sensitive. |
+# Fix Plan: Remaining Issues - Staff, Dialogs, Bulk Upload, and Automation Triggers
 
+## Issues Found
+
+| # | Issue | Root Cause |
+|---|-------|-----------|
+| 1 | Deleted staff still showing (grayed out) | `delete-staff-user` edge function only deactivates profile (`is_active: false`) but doesn't remove them from the list. `fetchStaffMembers` in `useStaffManagement.ts` queries ALL profiles with no filter. |
+| 2 | Bulk lead upload list not scrollable, limited columns | `ScrollArea` wrapping the table has `flex-1` but parent container constrains height. Also only 6 columns shown (Row, Name, Phone, Source, Status, Issues). |
+| 3 | Add Quotation / Add Reminder dialogs still behind profile | The `contentClassName="z-[80]"` is applied to `DialogContent`, but the `DialogOverlay` inside `dialog.tsx` is hardcoded at `z-50`. The parent profile dialog at `z-[70]` renders above the overlay, blocking interaction. |
+| 4 | Reset password still errors | Edge function `reset-staff-password` exists and was deployed, but may have deployment issues. Need to verify and redeploy. |
+| 5 | No "staff_activity_log" trigger in automation | The automation system's `ENTITY_FIELDS` and `TRIGGER_TYPES` don't include staff activity as a trigger source. |
+| 6 | No "field currently has value" trigger (static condition) | `FIELD_CHANGE_WHEN_OPTIONS` only has change-based triggers. Missing a "field_matches" / "field_currently_equals" option for triggering on existing data. |
 
 ---
 
-## Technical Implementation
+## Implementation Details
 
-### 1. Fix Dialog Z-Index Stacking (Professional Profile)
+### 1. Hide Deleted Staff from List (or Mark Clearly)
 
-**File:** `src/components/professionals/ProfessionalDetailView.tsx`
+**File:** `src/hooks/useStaffManagement.ts`
 
-The ProfessionalDetailView's DialogContent uses `z-[70]`. Child dialogs (AddQuotationDialog, AddReminderDialog, AddTaskDialog, EditTaskDialog) all render their own `<Dialog>` which creates a new portal at `z-50`. Since `z-50 < z-70`, they appear behind the profile.
+The `fetchStaffMembers` function queries all profiles. After deletion, the profile is deactivated but still shows. Two options:
 
-**Fix:** Wrap the child dialogs' `DialogContent` with a higher z-index. Since we can't easily modify AddQuotationDialog and AddReminderDialog without breaking them elsewhere, the solution is:
+- **Option A (Recommended):** Filter out profiles that have no `user_roles` entry (deleted staff have their role removed). After fetching profiles, filter those with `roleData === null` AND `is_active === false` (truly deleted, not just deactivated).
+- **Option B:** Add a `is_deleted` column to profiles (requires migration).
 
-- Add a CSS class `z-[80]` to the `AddQuotationDialog`'s DialogContent (via a wrapper or by modifying the component to accept a className prop)
-- Or, lower the ProfessionalDetailView's z-index and use `modal={false}` to prevent focus trapping, then let child dialogs render above
-- **Best approach:** Add a `className` prop to `AddQuotationDialog` and `AddReminderDialog`'s DialogContent, and pass `z-[80]` from the Professional view. Alternatively, modify the Dialog component's portal container.
+Implementation: In the `fetchStaffMembers` mapping, if `roleData` is null AND `is_active` is false, exclude them from the results. This differentiates "deactivated" (has role, not active) from "deleted" (no role, not active).
 
-**Simplest fix:** Change the ProfessionalDetailView to not trap focus when sub-dialogs are open. Use Radix's `modal={false}` on the parent Dialog when a child dialog is open, OR wrap sub-dialogs in their own DialogPortal with higher z-index.
-
-**Recommended approach:** Add a `containerClassName` prop to `AddQuotationDialog` and `AddReminderDialog` to allow higher z-index from parent contexts. Pass `"z-[80]"` when used inside ProfessionalDetailView.
-
-### 2. Fix Excel Upload Header Matching
+### 2. Fix Bulk Upload Validation List (Scrollable + More Columns)
 
 **File:** `src/components/leads/BulkUploadDialog.tsx`
 
-The `getColumnValue` function at line 384 does exact string matching. The user's Excel has headers like `NAME`, `PHONE`, `E MAIL`, `SOURCE`, `ADDRESS`, `PRIORTY`, `ASSIGNED`, `MATERIAL`.
+**Scrolling fix:** The `ScrollArea` at line 1133 needs an explicit `max-height` or the parent needs `min-h-0` to allow flex children to shrink. Add `className="flex-1 border rounded-md max-h-[400px]"` to the ScrollArea.
 
-**Fix:** Make `getColumnValue` case-insensitive and add more header variations:
+**More columns:** Add columns for Email, Priority, Assigned To, Materials, Construction Stage, Address, Notes. The data is already parsed and available in the `ParsedLead` object. Update the table to show all relevant columns with horizontal scroll.
 
-```typescript
-const getColumnValue = (row: Record<string, any>, possibleHeaders: string[]): string => {
-  // First try exact match
-  for (const header of possibleHeaders) {
-    if (row[header] !== undefined && row[header] !== null && row[header] !== "") {
-      return row[header].toString().trim();
-    }
-  }
-  // Then try case-insensitive match
-  const rowKeys = Object.keys(row);
-  for (const header of possibleHeaders) {
-    const headerLower = header.toLowerCase().replace(/[*\s]/g, '');
-    const match = rowKeys.find(k => k.toLowerCase().replace(/[*\s]/g, '') === headerLower);
-    if (match && row[match] !== undefined && row[match] !== null && row[match] !== "") {
-      return row[match].toString().trim();
-    }
-  }
-  return "";
-};
-```
+### 3. Fix Dialog Z-Index Stacking (Root Cause Fix)
 
-Also add more header variations to each `getColumnValue` call:
+**File:** `src/components/ui/dialog.tsx`
 
-- Name: `["Name*", "Name", "NAME", "name", "Full Name", "FULL NAME"]`
-- Phone: `["Phone*", "Phone", "PHONE", "phone", "Mobile", "MOBILE", "Contact"]`
-- Source: `["Source*", "Source", "SOURCE", "source", "Lead Source"]`
-- Email: `["Email", "EMAIL", "email", "E MAIL", "E-Mail", "e mail"]`
-- Materials: `["Materials", "MATERIALS", "Material", "MATERIAL"]`
-- Address: `["Address", "ADDRESS", "address"]`
-- Priority: `["Priority", "PRIORITY", "PRIORTY", "priority"]`
-- Assigned To: `["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]`
+The real problem: `DialogOverlay` is hardcoded at `z-50`. When `DialogContent` gets `z-[80]`, the overlay stays at `z-50`, which is below the parent dialog's content at `z-[70]`. The overlay blocks pointer events.
 
-### 3. Fix Staff Management Unresponsiveness
+**Fix:** Make the overlay's z-index match the content's z-index. Extract the z-index from the className prop and apply it to both overlay and content. Or simpler: when a className contains a custom z-index, apply it to the entire portal container.
 
-**File:** `src/components/settings/StaffManagementPanel.tsx`
+**Simplest approach:** Modify `DialogContent` to accept an `overlayClassName` prop that gets forwarded to `DialogOverlay`. Then in `AddQuotationDialog` and `AddReminderDialog`, pass both `contentClassName` for the content z-index and the overlay z-index.
 
-Issues:
+**Even simpler:** Change the dialog.tsx `DialogContent` to use the same className's z-index for both overlay and content by wrapping them in a div with the z-index class.
 
-- `isSubmitting` is a single shared state for all dialogs. If edit fails, reset password button is also disabled.
-- Dialog `onOpenChange` handlers don't reset `isSubmitting`.
+### 4. Redeploy Reset Password Edge Function
 
-**Fix:**
+The `reset-staff-password` edge function exists and looks correct. Need to redeploy it and test it to confirm it works.
 
-- Use separate submitting states per dialog: `isAddSubmitting`, `isEditSubmitting`, `isResetSubmitting`, `isDeactivateSubmitting`
-- Ensure `onOpenChange` handlers reset the corresponding submitting state
-- Add proper error handling with finally blocks
+### 5. Add "Field Currently Matches" Trigger Type
 
-### 4. Add Delete Staff with Responsibility Transfer
+**Concept:** A new trigger option called "field_matches" or "field_currently_equals" that fires based on an existing field value rather than a change. This enables automations like "for all leads with medium priority, do X."
 
-**File:** `src/hooks/useStaffManagement.ts` and `src/components/settings/StaffManagementPanel.tsx`
+**Files to modify:**
 
-**Workflow:**
+- `src/constants/automationConstants.ts` - Add new `FIELD_CHANGE_WHEN_OPTIONS` entry: `{ value: "field_matches", label: "Field currently has value..." }`
+- `src/types/automation/triggers.ts` - Add `"field_matches"` to the `when` union in `FieldChangeTriggerConfig`
+- `src/components/automation/TriggerConditionBlock.tsx` - Add UI for `field_matches` showing field selector + operator + value (operators: equals, not_equals, contains, greater_than, less_than, is_empty, is_not_empty)
 
-1. Admin clicks "Delete Staff" from the actions dropdown
-2. A multi-step dialog opens:
-  - Step 1: Shows staff's current responsibilities (assigned leads, tasks, customers, professionals)
-  - Step 2: Select a target staff member to transfer all responsibilities to
-  - Step 3: Confirm deletion
-3. On confirm:
-  - Transfer all `assigned_to` references in leads, tasks, customers, professionals, reminders
-  - Log the transfer in activity_log
-  - Delete the user via a new edge function `delete-staff-user`
+This allows creating rules like:
+- "When field `priority` currently equals `medium`" - triggers for all existing records matching
+- Combined with a time-based or count-based secondary condition for periodic checks
 
-**New Edge Function:** `supabase/functions/delete-staff-user/index.ts`
+### 6. Add Staff Activity Log as Automation Trigger Source
 
-- Validates admin role
-- Transfers all entity assignments to target user
-- Deletes user_roles entry
-- Deactivates profile (soft delete - keeps data for audit)
-- Optionally deletes auth user via admin API
+**Files to modify:**
 
-### 5. Staff Activity Log
+- `src/constants/automationConstants.ts` - Add `"staff_activity"` to `ENTITY_TYPES` and define `ENTITY_FIELDS` for it (action_type, user_email, entity_type, etc.)
+- `src/types/automation/core.ts` - Add `"staff_activity"` to `EntityType` union
 
-**Database:** Create a new `staff_activity_log` table:
-
-```sql
-CREATE TABLE public.staff_activity_log (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  user_email text NOT NULL,
-  action_type text NOT NULL, -- 'login', 'logout', 'create_lead', 'update_task', etc.
-  action_description text,
-  entity_type text, -- 'lead', 'task', 'customer', etc.
-  entity_id uuid,
-  metadata jsonb DEFAULT '{}',
-  ip_address text,
-  user_agent text,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.staff_activity_log ENABLE ROW LEVEL SECURITY;
-
--- Only admins and managers (with permission) can view
-CREATE POLICY "Admins can view all staff activity" ON public.staff_activity_log
-  FOR SELECT USING (is_admin());
-
--- System/authenticated users can insert their own activity
-CREATE POLICY "Users can log own activity" ON public.staff_activity_log
-  FOR INSERT WITH CHECK (true);
-
--- Admins can delete old logs
-CREATE POLICY "Admins can delete staff activity" ON public.staff_activity_log
-  FOR DELETE USING (is_admin());
-```
-
-**Client-side logging hook:** `src/hooks/useStaffActivityLog.ts`
-
-- `logStaffAction(actionType, description, entityType?, entityId?, metadata?)`
-- Auto-captures login/logout events from AuthContext
-- Called from key CRM actions (create lead, update task, etc.)
-
-**Admin UI:** Add a "Staff Activity" tab in Settings that shows:
-
-- Filterable table by staff member, action type, date range
-- Timeline view of all actions
-- Export capability
+This allows automations like:
+- "When a staff member logs in, send a notification"
+- "When a staff creates a lead, trigger a follow-up task"
 
 ---
 
-## Files to Create
-
-
-| File                                            | Purpose                                                             |
-| ----------------------------------------------- | ------------------------------------------------------------------- |
-| `supabase/functions/delete-staff-user/index.ts` | Edge function to handle staff deletion with responsibility transfer |
-| `src/hooks/useStaffActivityLog.ts`              | Hook for logging and querying staff activity                        |
-
-
 ## Files to Modify
 
+| File | Changes |
+|------|---------|
+| `src/hooks/useStaffManagement.ts` | Filter out deleted staff (no role + inactive) from list |
+| `src/components/leads/BulkUploadDialog.tsx` | Add explicit max-height to ScrollArea, add more columns (Email, Priority, Assigned To, Materials, etc.) with horizontal scroll |
+| `src/components/ui/dialog.tsx` | Support `overlayClassName` prop to allow z-index override on overlay |
+| `src/components/quotations/AddQuotationDialog.tsx` | Pass overlay z-index alongside content z-index |
+| `src/components/leads/detail-tabs/AddReminderDialog.tsx` | Pass overlay z-index alongside content z-index |
+| `src/components/professionals/ProfessionalDetailView.tsx` | Update dialog calls with overlay z-index |
+| `src/constants/automationConstants.ts` | Add "field_matches" to FIELD_CHANGE_WHEN_OPTIONS; add "staff_activity" entity type with fields |
+| `src/types/automation/triggers.ts` | Add "field_matches" to FieldChangeTriggerConfig when union |
+| `src/types/automation/core.ts` | Add "staff_activity" to EntityType |
+| `src/components/automation/TriggerConditionBlock.tsx` | Add UI for "field_matches" trigger with operator selector |
 
-| File                                                      | Changes                                                                     |
-| --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `src/components/professionals/ProfessionalDetailView.tsx` | Fix z-index for sub-dialogs (Quotation, Reminder, Task)                     |
-| `src/components/quotations/AddQuotationDialog.tsx`        | Accept optional className prop for z-index override                         |
-| `src/components/leads/detail-tabs/AddReminderDialog.tsx`  | Accept optional className prop for z-index override                         |
-| `src/components/leads/BulkUploadDialog.tsx`               | Case-insensitive header matching with more variations                       |
-| `src/components/settings/StaffManagementPanel.tsx`        | Separate submitting states, add delete staff workflow, fix unresponsiveness |
-| `src/hooks/useStaffManagement.ts`                         | Add deleteStaff function with responsibility transfer                       |
-| `src/contexts/AuthContext.tsx`                            | Log login/logout to staff_activity_log                                      |
-| `src/pages/Settings.tsx`                                  | Add Staff Activity tab                                                      |
+## Edge Function Actions
 
-
-## Database Changes
-
-- Create `staff_activity_log` table with RLS policies (admin-only read, authenticated insert)
+- Redeploy `reset-staff-password` edge function
 
 ## Implementation Order
 
-1. Fix Excel upload header matching (case-insensitive)
-2. Fix dialog z-index stacking for nested dialogs
-3. Fix staff management dialog unresponsiveness (separate submitting states)
-4. Create staff_activity_log table with RLS
-5. Implement staff activity logging hook
-6. Add delete staff workflow with responsibility transfer
-7. Add Staff Activity admin UI tab
+1. Fix dialog z-index (root cause in dialog.tsx + overlay)
+2. Fix deleted staff visibility in list
+3. Fix bulk upload scrolling + add more columns
+4. Redeploy reset-staff-password
+5. Add "field_matches" trigger type to automation
+6. Add staff_activity as automation entity type
+
