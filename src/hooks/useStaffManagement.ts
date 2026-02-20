@@ -69,7 +69,11 @@ export function useStaffManagement() {
         })
       );
 
-      setStaffMembers(staffWithRoles);
+      // Filter out truly deleted staff (no role + inactive)
+      const filteredStaff = staffWithRoles.filter(
+        (s) => !(s.role === null && s.is_active === false)
+      );
+      setStaffMembers(filteredStaff);
     } catch (error) {
       console.error("Error fetching staff:", error);
       toast({

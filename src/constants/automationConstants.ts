@@ -9,6 +9,7 @@ export const ENTITY_TYPES: { value: EntityType; label: string; icon: string }[] 
   { value: "professionals", label: "Professionals", icon: "Briefcase" },
   { value: "quotations", label: "Quotations", icon: "FileText" },
   { value: "kit", label: "Keep in Touch", icon: "HeartHandshake" },
+  { value: "staff_activity", label: "Staff Activity", icon: "Activity" },
 ];
 
 export const TRIGGER_TYPES: { value: TriggerType; label: string; description: string; icon: string }[] = [
@@ -52,6 +53,7 @@ export const ACTION_TYPES: { value: ActionType; label: string; description: stri
 export const FIELD_CHANGE_WHEN_OPTIONS = [
   { value: "field_changes_to", label: "Field value changes to..." },
   { value: "field_changes_from_to", label: "Field value changes from X to Y..." },
+  { value: "field_matches", label: "Field currently has value..." },
   { value: "any_field_updated", label: "Any field is updated" },
   { value: "record_created", label: "Record is created" },
   { value: "record_deleted", label: "Record is deleted" },
@@ -464,6 +466,33 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
     { name: "cycle_count", label: "Cycle Count", type: "number", editable: false },
     { name: "created_at", label: "Created At", type: "datetime", editable: false },
     { name: "created_by", label: "Created By", type: "text", editable: false },
+  ],
+  staff_activity: [
+    { name: "action_type", label: "Action Type", type: "select", editable: false, options: [
+      { value: "login", label: "Login" },
+      { value: "logout", label: "Logout" },
+      { value: "create_lead", label: "Create Lead" },
+      { value: "update_lead", label: "Update Lead" },
+      { value: "create_task", label: "Create Task" },
+      { value: "update_task", label: "Update Task" },
+      { value: "complete_task", label: "Complete Task" },
+      { value: "create_customer", label: "Create Customer" },
+      { value: "update_customer", label: "Update Customer" },
+      { value: "create_quotation", label: "Create Quotation" },
+      { value: "create_reminder", label: "Create Reminder" },
+      { value: "transfer_responsibility", label: "Transfer Responsibility" },
+    ]},
+    { name: "user_email", label: "Staff Email", type: "text", editable: false },
+    { name: "entity_type", label: "Related Entity Type", type: "select", editable: false, options: [
+      { value: "lead", label: "Lead" },
+      { value: "task", label: "Task" },
+      { value: "customer", label: "Customer" },
+      { value: "professional", label: "Professional" },
+      { value: "quotation", label: "Quotation" },
+      { value: "reminder", label: "Reminder" },
+    ]},
+    { name: "action_description", label: "Description", type: "text", editable: false },
+    { name: "created_at", label: "Timestamp", type: "datetime", editable: false },
   ],
 };
 

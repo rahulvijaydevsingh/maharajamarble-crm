@@ -80,6 +80,9 @@ export const TriggerConditionBlock = ({
         if (triggerConfig.when === "record_created") {
           return "Record created";
         }
+        if (triggerConfig.when === "field_matches" && triggerConfig.field) {
+          return `${triggerConfig.field} ${triggerConfig.operator || "equals"} ${triggerConfig.value || "..."}`;
+        }
         return "Field change";
       case "time_based":
         if (triggerConfig.offset_value && triggerConfig.field) {
@@ -205,14 +208,14 @@ export const TriggerConditionBlock = ({
                     </SelectContent>
                   </Select>
 
-                  {(condition.triggerConfig.when === "field_changes_to" || condition.triggerConfig.when === "record_created") && (
+                  {(condition.triggerConfig.when === "field_changes_to" || condition.triggerConfig.when === "record_created" || condition.triggerConfig.when === "field_matches") && (
                     <>
                       <div className="space-y-2">
                         <Label className="text-xs text-muted-foreground">Select Field</Label>
                         <Select
                           value={condition.triggerConfig.field || ""}
                           onValueChange={(v) => onUpdate(condition.id, { 
-                            triggerConfig: { ...condition.triggerConfig, field: v, value: "" } 
+                            triggerConfig: { ...condition.triggerConfig, field: v, value: "", operator: condition.triggerConfig.when === "field_matches" ? "equals" : undefined } 
                           })}
                         >
                           <SelectTrigger>
@@ -231,7 +234,39 @@ export const TriggerConditionBlock = ({
                         </Select>
                       </div>
 
-                      {condition.triggerConfig.field && (
+                      {condition.triggerConfig.when === "field_matches" && condition.triggerConfig.field && (
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Operator</Label>
+                          <Select
+                            value={condition.triggerConfig.operator || "equals"}
+                            onValueChange={(v) => onUpdate(condition.id, { 
+                              triggerConfig: { ...condition.triggerConfig, operator: v } 
+                            })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[
+                                { value: "equals", label: "Equals" },
+                                { value: "not_equals", label: "Not equals" },
+                                { value: "contains", label: "Contains" },
+                                { value: "starts_with", label: "Starts with" },
+                                { value: "greater_than", label: "Greater than" },
+                                { value: "less_than", label: "Less than" },
+                                { value: "is_empty", label: "Is empty" },
+                                { value: "is_not_empty", label: "Is not empty" },
+                              ].map(o => (
+                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {condition.triggerConfig.field && 
+                       !(condition.triggerConfig.when === "field_matches" && 
+                         (condition.triggerConfig.operator === "is_empty" || condition.triggerConfig.operator === "is_not_empty")) && (
                         <div className="space-y-2">
                           <Label className="text-xs text-muted-foreground">Value to match</Label>
                           <FieldValueSelector
