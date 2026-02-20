@@ -1130,41 +1130,57 @@ export function BulkUploadDialog({
                   <Label htmlFor="skipDuplicates">Skip duplicate phone numbers</Label>
                 </div>
 
-                <ScrollArea className="flex-1 border rounded-md">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">Row</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="w-[200px]">Issues</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parsedLeads.map((lead, idx) => (
-                        <TableRow
-                          key={idx}
-                          className={lead.errors.length > 0 ? "bg-destructive/10" : lead.isDuplicate ? "bg-amber-500/10" : ""}
-                        >
-                          <TableCell>{lead.rowNumber}</TableCell>
-                          <TableCell>{lead.name || "-"}</TableCell>
-                          <TableCell>{lead.phone || "-"}</TableCell>
-                          <TableCell>{lead.source || "-"}</TableCell>
-                          <TableCell>{lead.status}</TableCell>
-                          <TableCell>
-                            {lead.errors.length > 0 && (
-                              <div className="text-xs text-destructive">{lead.errors.join(", ")}</div>
-                            )}
-                            {lead.warnings.length > 0 && (
-                              <div className="text-xs text-amber-600">{lead.warnings.join(", ")}</div>
-                            )}
-                          </TableCell>
+                <ScrollArea className="flex-1 border rounded-md max-h-[400px]">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12 sticky left-0 bg-background">Row</TableHead>
+                          <TableHead className="min-w-[120px]">Name</TableHead>
+                          <TableHead className="min-w-[120px]">Phone</TableHead>
+                          <TableHead className="min-w-[100px]">Source</TableHead>
+                          <TableHead className="min-w-[100px]">Status</TableHead>
+                          <TableHead className="min-w-[150px]">Email</TableHead>
+                          <TableHead className="min-w-[80px]">Priority</TableHead>
+                          <TableHead className="min-w-[120px]">Assigned To</TableHead>
+                          <TableHead className="min-w-[150px]">Materials</TableHead>
+                          <TableHead className="min-w-[120px]">Construction</TableHead>
+                          <TableHead className="min-w-[150px]">Address</TableHead>
+                          <TableHead className="min-w-[100px]">Qty</TableHead>
+                          <TableHead className="min-w-[200px]">Issues</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {parsedLeads.map((lead, idx) => (
+                          <TableRow
+                            key={idx}
+                            className={lead.errors.length > 0 ? "bg-destructive/10" : lead.isDuplicate ? "bg-amber-500/10" : ""}
+                          >
+                            <TableCell className="sticky left-0 bg-background">{lead.rowNumber}</TableCell>
+                            <TableCell>{lead.name || "-"}</TableCell>
+                            <TableCell>{lead.phone || "-"}</TableCell>
+                            <TableCell>{lead.source || "-"}</TableCell>
+                            <TableCell>{lead.status}</TableCell>
+                            <TableCell>{lead.email || "-"}</TableCell>
+                            <TableCell>{lead.priority || "-"}</TableCell>
+                            <TableCell>{lead.assigned_to || "-"}</TableCell>
+                            <TableCell className="text-xs">{lead.materials?.join(", ") || "-"}</TableCell>
+                            <TableCell>{lead.construction_stage || "-"}</TableCell>
+                            <TableCell className="text-xs max-w-[150px] truncate">{lead.address || "-"}</TableCell>
+                            <TableCell>{lead.estimated_quantity || "-"}</TableCell>
+                            <TableCell>
+                              {lead.errors.length > 0 && (
+                                <div className="text-xs text-destructive">{lead.errors.join(", ")}</div>
+                              )}
+                              {lead.warnings.length > 0 && (
+                                <div className="text-xs text-amber-600">{lead.warnings.join(", ")}</div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </ScrollArea>
 
                 <div className="flex justify-between mt-4 pt-4 border-t">

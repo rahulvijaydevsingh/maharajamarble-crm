@@ -7,7 +7,8 @@ export interface FieldChangeTriggerConfig {
     | "field_changes_from_to"
     | "any_field_updated"
     | "record_created"
-    | "record_deleted";
+    | "record_deleted"
+    | "field_matches";
   field?: string;
   value?: string | number | boolean;
   from_value?: string | number | boolean;
