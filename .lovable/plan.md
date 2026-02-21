@@ -1,109 +1,243 @@
 
+# Fix Plan: Critical Bugs - Dialogs, RLS, Bulk Operations, Global Search, and Automation
 
-# Fix Plan: Remaining Issues - Staff, Dialogs, Bulk Upload, and Automation Triggers
-
-## Issues Found
+## Issues Identified
 
 | # | Issue | Root Cause |
 |---|-------|-----------|
-| 1 | Deleted staff still showing (grayed out) | `delete-staff-user` edge function only deactivates profile (`is_active: false`) but doesn't remove them from the list. `fetchStaffMembers` in `useStaffManagement.ts` queries ALL profiles with no filter. |
-| 2 | Bulk lead upload list not scrollable, limited columns | `ScrollArea` wrapping the table has `flex-1` but parent container constrains height. Also only 6 columns shown (Row, Name, Phone, Source, Status, Issues). |
-| 3 | Add Quotation / Add Reminder dialogs still behind profile | The `contentClassName="z-[80]"` is applied to `DialogContent`, but the `DialogOverlay` inside `dialog.tsx` is hardcoded at `z-50`. The parent profile dialog at `z-[70]` renders above the overlay, blocking interaction. |
-| 4 | Reset password still errors | Edge function `reset-staff-password` exists and was deployed, but may have deployment issues. Need to verify and redeploy. |
-| 5 | No "staff_activity_log" trigger in automation | The automation system's `ENTITY_FIELDS` and `TRIGGER_TYPES` don't include staff activity as a trigger source. |
-| 6 | No "field currently has value" trigger (static condition) | `FIELD_CHANGE_WHEN_OPTIONS` only has change-based triggers. Missing a "field_matches" / "field_currently_equals" option for triggering on existing data. |
+| 1 | Quotation/Reminder dialogs behind profile window | Nested Radix Dialog modals cause focus-trap conflicts. Even with z-index fixes, the parent modal intercepts pointer events. Child dialogs must be rendered as siblings, not nested inside the parent. |
+| 2 | Reset password still errors | Edge function has zero logs -- it was never actually invoked. The `reset-staff-password` function needs redeployment and the error handling in `useStaffManagement.ts` needs to extract the real error from the response body. |
+| 3 | Bulk upload list not scrollable | The `ScrollArea` has `max-h-[400px]` but the parent `DialogContent` constrains it further. The entire validation step needs explicit height management. |
+| 4 | Bulk lead import: 0 Created, 118 Errors | **Root cause found:** `created_by` is hardcoded to `"Bulk Import"` (line 583). The RLS INSERT policy requires `created_by = get_current_user_email()`. Since `"Bulk Import"` does not equal the user's email, non-admin users are blocked by RLS. |
+| 5 | Field agent can't see leads assigned by admin via bulk update | **Root cause found:** `assigned_to` stores staff display NAMES (e.g., "Mandeep singh") but RLS uses `get_current_user_email()` which returns the EMAIL. The comparison `assigned_to = get_current_user_email()` always fails because name != email. This affects ALL entity visibility. |
+| 6 | Edit staff dialog cancel freezes page | Dialog `onOpenChange` doesn't reliably reset internal states. Multiple dialogs share the `selectedStaff` state without proper cleanup. |
+| 7 | Bulk action (delete/reassign) freezes system | `handleBulkAction` runs sequential async operations in a for-loop with no progress indicator, no error boundaries, and no batching. Large selections block the UI thread. |
+| 8 | Global search bar non-functional | The search Input in the Header is a static element with no logic attached. |
+| 9 | Automation: Can't trigger based on "task count = 0" for leads | The leads entity fields don't include cross-entity relationship fields like task count. |
+| 10 | Automation: Can't select staff member in staff_activity entity | The `user_email` field in staff_activity has no dropdown options populated from the database. |
 
 ---
+
+## CRITICAL FIX: assigned_to Name vs Email Mismatch (Issue #5)
+
+This is the highest-priority fix because it affects ALL RLS policies across leads, tasks, customers, professionals, and reminders. The `assigned_to` column stores display names but RLS compares against `get_current_user_email()`.
+
+**Fix approach:** Do NOT change the `assigned_to` column data (it's used for display everywhere). Instead, modify RLS policies to compare using a helper function that resolves names to emails via the profiles table.
+
+Create a database function `is_assigned_to_me(assigned_to_value text)` that checks if the given name or email matches the current user by looking up the profiles table:
+
+```sql
+CREATE OR REPLACE FUNCTION public.is_assigned_to_me(assigned_to_value text)
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+    AND (
+      full_name = assigned_to_value
+      OR email = assigned_to_value
+    )
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+```
+
+Then update RLS policies on leads, tasks, customers, professionals, and reminders to use `is_assigned_to_me(assigned_to)` instead of `assigned_to = get_current_user_email()`.
 
 ## Implementation Details
 
-### 1. Hide Deleted Staff from List (or Mark Clearly)
+### 1. Fix Dialog Stacking (Nested Modal Problem)
 
-**File:** `src/hooks/useStaffManagement.ts`
+**File:** `src/components/professionals/ProfessionalDetailView.tsx`
 
-The `fetchStaffMembers` function queries all profiles. After deletion, the profile is deactivated but still shows. Two options:
+The fix is to lift child dialogs (AddQuotationDialog, AddReminderDialog, AddTaskDialog, EditTaskDialog) out of the tab content and render them as siblings AFTER the parent Dialog closes its tag. This avoids nested Radix modal conflicts entirely.
 
-- **Option A (Recommended):** Filter out profiles that have no `user_roles` entry (deleted staff have their role removed). After fetching profiles, filter those with `roleData === null` AND `is_active === false` (truly deleted, not just deactivated).
-- **Option B:** Add a `is_deleted` column to profiles (requires migration).
+- Move dialog open states (`addDialogOpen`, `addReminderOpen`, `addTaskOpen`, etc.) from the tab components up to the `ProfessionalDetailView` component
+- Pass callbacks like `onOpenAddQuotation`, `onOpenAddReminder`, etc. down to tab components
+- Render all child dialogs OUTSIDE the parent `<Dialog>` as siblings:
 
-Implementation: In the `fetchStaffMembers` mapping, if `roleData` is null AND `is_active` is false, exclude them from the results. This differentiates "deactivated" (has role, not active) from "deleted" (no role, not active).
+```tsx
+return (
+  <>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="z-[70]">
+        {/* tabs content - no dialogs inside */}
+      </DialogContent>
+    </Dialog>
+    
+    {/* Child dialogs rendered as siblings, not nested */}
+    <AddQuotationDialog open={addQuotationOpen} onOpenChange={setAddQuotationOpen} ... />
+    <AddReminderDialog open={addReminderOpen} onOpenChange={setAddReminderOpen} ... />
+    <AddTaskDialog open={addTaskOpen} onOpenChange={setAddTaskOpen} ... />
+  </>
+);
+```
 
-### 2. Fix Bulk Upload Validation List (Scrollable + More Columns)
+### 2. Fix Bulk Lead Import RLS Error
 
 **File:** `src/components/leads/BulkUploadDialog.tsx`
 
-**Scrolling fix:** The `ScrollArea` at line 1133 needs an explicit `max-height` or the parent needs `min-h-0` to allow flex children to shrink. Add `className="flex-1 border rounded-md max-h-[400px]"` to the ScrollArea.
+Remove the hardcoded `created_by: "Bulk Import"` from the insert call (line 583). Let the database default `get_current_user_email()` handle it. This ensures the RLS INSERT policy check passes for all users.
 
-**More columns:** Add columns for Email, Priority, Assigned To, Materials, Construction Stage, Address, Notes. The data is already parsed and available in the `ParsedLead` object. Update the table to show all relevant columns with horizontal scroll.
+```typescript
+// Before:
+created_by: "Bulk Import",
 
-### 3. Fix Dialog Z-Index Stacking (Root Cause Fix)
+// After: Remove this line entirely (database default handles it)
+```
 
-**File:** `src/components/ui/dialog.tsx`
+Also add the bulk import source info to the `notes` field instead:
+```typescript
+notes: lead.notes ? `${lead.notes} [Bulk Import]` : '[Bulk Import]',
+```
 
-The real problem: `DialogOverlay` is hardcoded at `z-50`. When `DialogContent` gets `z-[80]`, the overlay stays at `z-50`, which is below the parent dialog's content at `z-[70]`. The overlay blocks pointer events.
+### 3. Fix RLS assigned_to Matching
 
-**Fix:** Make the overlay's z-index match the content's z-index. Extract the z-index from the className prop and apply it to both overlay and content. Or simpler: when a className contains a custom z-index, apply it to the entire portal container.
+**Database migration:**
 
-**Simplest approach:** Modify `DialogContent` to accept an `overlayClassName` prop that gets forwarded to `DialogOverlay`. Then in `AddQuotationDialog` and `AddReminderDialog`, pass both `contentClassName` for the content z-index and the overlay z-index.
+1. Create helper function `is_assigned_to_me(text)` that matches both name and email
+2. Update SELECT/UPDATE RLS policies on: leads, tasks, customers, professionals, reminders
+3. Also update `created_by` comparison to handle the same name/email mismatch
 
-**Even simpler:** Change the dialog.tsx `DialogContent` to use the same className's z-index for both overlay and content by wrapping them in a div with the z-index class.
+Updated policy example for leads SELECT:
+```sql
+DROP POLICY "Users can view assigned or created leads" ON public.leads;
+CREATE POLICY "Users can view assigned or created leads" ON public.leads
+  FOR SELECT USING (
+    is_assigned_to_me(assigned_to)
+    OR is_assigned_to_me(created_by)
+    OR is_admin()
+  );
+```
 
-### 4. Redeploy Reset Password Edge Function
+### 4. Fix Bulk Upload Scrollability
 
-The `reset-staff-password` edge function exists and looks correct. Need to redeploy it and test it to confirm it works.
+**File:** `src/components/leads/BulkUploadDialog.tsx`
 
-### 5. Add "Field Currently Matches" Trigger Type
+The DialogContent needs explicit height control and the validation table needs proper overflow:
 
-**Concept:** A new trigger option called "field_matches" or "field_currently_equals" that fires based on an existing field value rather than a change. This enables automations like "for all leads with medium priority, do X."
+- Change the validation step container to use `min-h-0` and `max-h-[60vh]`
+- Ensure ScrollArea has both vertical and horizontal scroll with `overflow-auto`
+- Wrap the table in `overflow-x-auto` div (already exists but needs min-width on table)
+- Add `min-w-[1200px]` to the Table to force horizontal scroll
 
-**Files to modify:**
+### 5. Fix Staff Dialog Freeze Issues
 
-- `src/constants/automationConstants.ts` - Add new `FIELD_CHANGE_WHEN_OPTIONS` entry: `{ value: "field_matches", label: "Field currently has value..." }`
-- `src/types/automation/triggers.ts` - Add `"field_matches"` to the `when` union in `FieldChangeTriggerConfig`
-- `src/components/automation/TriggerConditionBlock.tsx` - Add UI for `field_matches` showing field selector + operator + value (operators: equals, not_equals, contains, greater_than, less_than, is_empty, is_not_empty)
+**File:** `src/components/settings/StaffManagementPanel.tsx`
 
-This allows creating rules like:
-- "When field `priority` currently equals `medium`" - triggers for all existing records matching
-- Combined with a time-based or count-based secondary condition for periodic checks
+- Add `finally` blocks to all dialog handlers that reset state
+- Ensure `onOpenChange` handlers explicitly reset ALL related states:
+```typescript
+onOpenChange={(o) => {
+  setEditDialogOpen(o);
+  if (!o) {
+    setIsEditSubmitting(false);
+    setSelectedStaff(null);  // Clear selected staff on close
+  }
+}}
+```
+- Apply same pattern to ALL dialogs (add, edit, reset password, deactivate, delete)
 
-### 6. Add Staff Activity Log as Automation Trigger Source
+### 6. Fix Bulk Action Freeze
 
-**Files to modify:**
+**File:** `src/components/leads/EnhancedLeadTable.tsx`
 
-- `src/constants/automationConstants.ts` - Add `"staff_activity"` to `ENTITY_TYPES` and define `ENTITY_FIELDS` for it (action_type, user_email, entity_type, etc.)
-- `src/types/automation/core.ts` - Add `"staff_activity"` to `EntityType` union
+- Add a progress state for bulk operations
+- Use `Promise.allSettled` with batching instead of sequential for-loop
+- Add loading indicator during bulk operations
+- Wrap in try/catch with proper error counting
+- Add async batching (process 10 at a time)
 
-This allows automations like:
-- "When a staff member logs in, send a notification"
-- "When a staff creates a lead, trigger a follow-up task"
+### 7. Redeploy Reset Password Function
+
+Redeploy `reset-staff-password` edge function. Also fix the error extraction in `useStaffManagement.ts` to properly parse the edge function response:
+
+```typescript
+const { data, error } = await supabase.functions.invoke("reset-staff-password", {
+  body: { user_id: userId, new_password: newPassword },
+});
+if (error) {
+  // Extract detailed error from response body
+  let msg = error.message;
+  try {
+    const body = await (error as any).context?.json();
+    if (body?.error) msg = body.error;
+  } catch {}
+  throw new Error(msg);
+}
+if (data?.error) throw new Error(data.error);
+```
+
+### 8. Implement Global Search
+
+**File:** `src/components/shared/Header.tsx`
+
+Transform the search Input into a functional global search:
+
+- Add search state and debounced query
+- On input, search across leads (name, phone, email), customers (name, phone), professionals (name, phone, firm), tasks (title), quotations (quotation_number, client_name)
+- Show results in a dropdown below the search bar using Popover
+- Each result shows entity type icon, name, and secondary info
+- Clicking a result navigates to the entity's detail page
+- Limit to 5 results per entity type (25 total max)
+- Add keyboard navigation (arrow keys, Enter to select, Escape to close)
+
+### 9. Add Cross-Entity Fields for Automation
+
+**File:** `src/constants/automationConstants.ts`
+
+Add computed/relationship fields to the leads entity:
+```typescript
+{ name: "task_count", label: "Associated Task Count", type: "number", editable: false },
+{ name: "reminder_count", label: "Associated Reminder Count", type: "number", editable: false },
+{ name: "quotation_count", label: "Associated Quotation Count", type: "number", editable: false },
+{ name: "days_without_task", label: "Days Without Any Task", type: "number", editable: false },
+```
+
+This allows triggers like "When task_count equals 0, create a follow-up task."
+
+### 10. Add Staff Selection for Staff Activity Automation
+
+**File:** `src/constants/automationConstants.ts`
+
+The `user_email` field in the `staff_activity` entity needs dynamic options from the database. Since constants can't make DB calls, change the field type and handle it in the TriggerConditionBlock:
+
+**File:** `src/components/automation/TriggerConditionBlock.tsx`
+
+When entity type is `staff_activity` and the selected field is `user_email`, render a staff member dropdown using `useActiveStaff()` hook instead of a text input.
 
 ---
+
+## Database Changes Required
+
+1. Create `is_assigned_to_me(text)` function
+2. Update RLS policies on 5 tables (leads, tasks, customers, professionals, reminders) for SELECT and UPDATE commands to use the new function
+
+## Edge Function Actions
+
+- Redeploy `reset-staff-password`
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useStaffManagement.ts` | Filter out deleted staff (no role + inactive) from list |
-| `src/components/leads/BulkUploadDialog.tsx` | Add explicit max-height to ScrollArea, add more columns (Email, Priority, Assigned To, Materials, etc.) with horizontal scroll |
-| `src/components/ui/dialog.tsx` | Support `overlayClassName` prop to allow z-index override on overlay |
-| `src/components/quotations/AddQuotationDialog.tsx` | Pass overlay z-index alongside content z-index |
-| `src/components/leads/detail-tabs/AddReminderDialog.tsx` | Pass overlay z-index alongside content z-index |
-| `src/components/professionals/ProfessionalDetailView.tsx` | Update dialog calls with overlay z-index |
-| `src/constants/automationConstants.ts` | Add "field_matches" to FIELD_CHANGE_WHEN_OPTIONS; add "staff_activity" entity type with fields |
-| `src/types/automation/triggers.ts` | Add "field_matches" to FieldChangeTriggerConfig when union |
-| `src/types/automation/core.ts` | Add "staff_activity" to EntityType |
-| `src/components/automation/TriggerConditionBlock.tsx` | Add UI for "field_matches" trigger with operator selector |
-
-## Edge Function Actions
-
-- Redeploy `reset-staff-password` edge function
+| `src/components/professionals/ProfessionalDetailView.tsx` | Lift child dialogs out of parent Dialog as siblings |
+| `src/components/leads/BulkUploadDialog.tsx` | Remove hardcoded `created_by`, fix scroll container heights |
+| `src/components/settings/StaffManagementPanel.tsx` | Fix dialog onOpenChange handlers to reset all states |
+| `src/hooks/useStaffManagement.ts` | Fix resetPassword error extraction |
+| `src/components/leads/EnhancedLeadTable.tsx` | Add batching and progress to bulk actions |
+| `src/components/shared/Header.tsx` | Implement global search with multi-entity query and dropdown |
+| `src/constants/automationConstants.ts` | Add cross-entity fields (task_count etc.) and staff options |
+| `src/components/automation/TriggerConditionBlock.tsx` | Add staff dropdown for staff_activity entity |
 
 ## Implementation Order
 
-1. Fix dialog z-index (root cause in dialog.tsx + overlay)
-2. Fix deleted staff visibility in list
-3. Fix bulk upload scrolling + add more columns
-4. Redeploy reset-staff-password
-5. Add "field_matches" trigger type to automation
-6. Add staff_activity as automation entity type
-
+1. **Database:** Create `is_assigned_to_me()` function and update RLS policies (fixes visibility for ALL users)
+2. **Bulk import:** Remove hardcoded `created_by` (fixes 118-error import failure)
+3. **Dialog stacking:** Lift child dialogs out of parent modal
+4. **Staff dialogs:** Fix freeze on cancel/close
+5. **Redeploy** reset-staff-password edge function
+6. **Bulk upload scroll:** Fix container heights
+7. **Bulk actions:** Add batching and progress indicator
+8. **Global search:** Implement multi-entity search in header
+9. **Automation:** Add cross-entity fields and staff dropdown
