@@ -209,11 +209,19 @@ export function useStaffManagement() {
     }
 
     try {
-      const { error } = await supabase.functions.invoke("reset-staff-password", {
+      const { data, error } = await supabase.functions.invoke("reset-staff-password", {
         body: { user_id: userId, new_password: newPassword },
       });
 
-      if (error) throw error;
+      if (error) {
+        let msg = error.message;
+        try {
+          const body = await (error as any).context?.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        throw new Error(msg);
+      }
+      if (data?.error) throw new Error(data.error);
 
       toast({
         title: "Password reset",

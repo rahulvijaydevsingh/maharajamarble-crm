@@ -580,7 +580,7 @@ export function BulkUploadDialog({
           notes: lead.notes || null,
           construction_stage: lead.construction_stage || null,
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
-          created_by: "Bulk Import",
+          // created_by omitted - database default get_current_user_email() handles it for RLS compliance
         })
         .select('id')
         .single();
@@ -1130,8 +1130,8 @@ export function BulkUploadDialog({
                   <Label htmlFor="skipDuplicates">Skip duplicate phone numbers</Label>
                 </div>
 
-                <ScrollArea className="flex-1 border rounded-md max-h-[400px]">
-                  <div className="overflow-x-auto">
+                <div className="flex-1 border rounded-md overflow-auto" style={{ maxHeight: '50vh' }}>
+                  <div style={{ minWidth: '1400px' }}>
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1181,7 +1181,7 @@ export function BulkUploadDialog({
                       </TableBody>
                     </Table>
                   </div>
-                </ScrollArea>
+                </div>
 
                 <div className="flex justify-between mt-4 pt-4 border-t">
                   <Button variant="outline" onClick={() => setStep("upload")}>
