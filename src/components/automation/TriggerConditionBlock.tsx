@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ import {
   THRESHOLD_OPERATORS
 } from "@/constants/automationConstants";
 import { FieldValueSelector } from "./triggers/FieldValueSelector";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
 
 export interface TriggerConditionData {
   id: string;
@@ -54,7 +55,20 @@ export const TriggerConditionBlock = ({
   isExpanded,
   onToggleExpand,
 }: TriggerConditionBlockProps) => {
-  const entityFields = ENTITY_FIELDS[entityType] || [];
+  const { staffMembers } = useActiveStaff();
+  const entityFields = useMemo(() => {
+    const fields = ENTITY_FIELDS[entityType] || [];
+    // Dynamically populate staff_activity user_email field with active staff
+    if (entityType === "staff_activity") {
+      return fields.map(f => {
+        if (f.name === "user_email") {
+          return { ...f, options: staffMembers.map(s => ({ value: s.email || s.name, label: s.name })) };
+        }
+        return f;
+      });
+    }
+    return fields;
+  }, [entityType, staffMembers]);
   const selectedField = entityFields.find(f => f.name === condition.triggerConfig.field);
 
   const getTriggerIcon = (type: TriggerType) => {

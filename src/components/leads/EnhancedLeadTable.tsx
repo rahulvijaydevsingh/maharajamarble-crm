@@ -499,56 +499,64 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     }
   };
 
-  // Bulk actions
+  // Bulk actions - batched with progress
+  const [bulkActionProgress, setBulkActionProgress] = useState<{ current: number; total: number } | null>(null);
+
   const handleBulkAction = async () => {
     if (!bulkActionType || selectedLeads.length === 0) return;
 
+    const total = selectedLeads.length;
+    setBulkActionProgress({ current: 0, total });
+
+    let successCount = 0;
+    let errorCount = 0;
+    const BATCH_SIZE = 10;
+
     try {
-      let successCount = 0;
-      for (const leadId of selectedLeads) {
-        const lead = leads.find(l => l.id === leadId);
-        if (!lead) continue;
-        
-        if (bulkActionType === "convert_customer") {
-          await addCustomer({
-            name: lead.name,
-            phone: lead.phone,
-            alternate_phone: lead.alternate_phone,
-            email: lead.email,
-            company_name: lead.firm_name,
-            address: lead.address || lead.site_location,
-            assigned_to: lead.assigned_to,
-            source: lead.source,
-            lead_id: lead.id,
-            notes: lead.notes,
-            customer_type: "individual",
-            status: "active",
-            priority: lead.priority,
-          });
-          await updateLead(leadId, { status: "won" });
-          successCount++;
-        } else if (bulkActionType === "status") {
-          await updateLead(leadId, { status: bulkActionValue });
-        } else if (bulkActionType === "priority") {
-          await updateLead(leadId, { priority: parseInt(bulkActionValue) });
-        } else if (bulkActionType === "assigned_to") {
-          await updateLead(leadId, { assigned_to: bulkActionValue });
-        } else if (bulkActionType === "delete") {
-          await deleteLead(leadId);
-        }
+      for (let i = 0; i < selectedLeads.length; i += BATCH_SIZE) {
+        const batch = selectedLeads.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (leadId) => {
+            const lead = leads.find(l => l.id === leadId);
+            if (!lead) return;
+
+            if (bulkActionType === "convert_customer") {
+              await addCustomer({
+                name: lead.name, phone: lead.phone, alternate_phone: lead.alternate_phone,
+                email: lead.email, company_name: lead.firm_name, address: lead.address || lead.site_location,
+                assigned_to: lead.assigned_to, source: lead.source, lead_id: lead.id, notes: lead.notes,
+                customer_type: "individual", status: "active", priority: lead.priority,
+              });
+              await updateLead(leadId, { status: "won" });
+            } else if (bulkActionType === "status") {
+              await updateLead(leadId, { status: bulkActionValue });
+            } else if (bulkActionType === "priority") {
+              await updateLead(leadId, { priority: parseInt(bulkActionValue) });
+            } else if (bulkActionType === "assigned_to") {
+              await updateLead(leadId, { assigned_to: bulkActionValue });
+            } else if (bulkActionType === "delete") {
+              await deleteLead(leadId);
+            }
+          })
+        );
+        results.forEach(r => r.status === "fulfilled" ? successCount++ : errorCount++);
+        setBulkActionProgress({ current: Math.min(i + BATCH_SIZE, total), total });
+        // Yield to UI thread
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
-      
-      if (bulkActionType === "convert_customer") {
-        toast({ title: `Converted ${successCount} leads to customers` });
-      } else {
-        toast({ title: `Updated ${selectedLeads.length} leads` });
-      }
+
+      const msg = bulkActionType === "convert_customer"
+        ? `Converted ${successCount} leads to customers`
+        : `Updated ${successCount} of ${total} leads${errorCount > 0 ? ` (${errorCount} errors)` : ''}`;
+      toast({ title: msg });
       setSelectedLeads([]);
       setBulkActionDialogOpen(false);
       setBulkActionType("");
       setBulkActionValue("");
     } catch (error) {
       toast({ title: "Error performing bulk action", variant: "destructive" });
+    } finally {
+      setBulkActionProgress(null);
     }
   };
 

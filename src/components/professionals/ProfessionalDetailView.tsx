@@ -810,6 +810,9 @@ export function ProfessionalDetailView({
   initialTab,
 }: ProfessionalDetailViewProps) {
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
+  const [liftedAddTaskOpen, setLiftedAddTaskOpen] = useState(false);
+  const [liftedAddReminderOpen, setLiftedAddReminderOpen] = useState(false);
+  const [liftedAddQuotationOpen, setLiftedAddQuotationOpen] = useState(false);
   const { professionals } = useProfessionals();
 
   const currentProfessional = professionals.find(p => p.id === professional?.id) || professional;
@@ -826,125 +829,127 @@ export function ProfessionalDetailView({
   const statusConfig = PROFESSIONAL_STATUSES[currentProfessional.status] || { label: currentProfessional.status, className: '' };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
-        <VisuallyHidden>
-          <DialogTitle>Professional Details: {displayName}</DialogTitle>
-        </VisuallyHidden>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
+          <VisuallyHidden>
+            <DialogTitle>Professional Details: {displayName}</DialogTitle>
+          </VisuallyHidden>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b">
-          <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-lg md:text-xl font-semibold truncate">{displayName}</h2>
-            <Badge variant="secondary" className={statusConfig.className}>{statusConfig.label}</Badge>
-            <span className="text-sm text-muted-foreground capitalize hidden md:inline">
-              {currentProfessional.professional_type.replace('_', ' ')}
-            </span>
-          </div>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b">
+            <div className="flex items-center gap-3 min-w-0">
+              <h2 className="text-lg md:text-xl font-semibold truncate">{displayName}</h2>
+              <Badge variant="secondary" className={statusConfig.className}>{statusConfig.label}</Badge>
+              <span className="text-sm text-muted-foreground capitalize hidden md:inline">
+                {currentProfessional.professional_type.replace('_', ' ')}
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2">
-            {onEdit && (
-              <Button variant="outline" size="sm" onClick={() => onEdit(currentProfessional)}>
-                <Edit className="h-4 w-4 mr-1" />
-                <span className="hidden md:inline">Edit</span>
-              </Button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <span className="hidden md:inline">More</span>
-                  <MoreHorizontal className="h-4 w-4 md:ml-1" />
+            <div className="flex items-center gap-2">
+              {onEdit && (
+                <Button variant="outline" size="sm" onClick={() => onEdit(currentProfessional)}>
+                  <Edit className="h-4 w-4 mr-1" />
+                  <span className="hidden md:inline">Edit</span>
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="z-[80]">
-                {onEdit && (
-                  <DropdownMenuItem onClick={() => onEdit(currentProfessional)}>
-                    <Edit className="h-4 w-4 mr-2" />Edit Professional
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                {onDelete && (
-                  <DropdownMenuItem className="text-destructive" onClick={() => onDelete(currentProfessional.id)}>
-                    <Trash2 className="h-4 w-4 mr-2" />Delete Professional
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
 
-            <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <span className="hidden md:inline">More</span>
+                    <MoreHorizontal className="h-4 w-4 md:ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="z-[80]">
+                  {onEdit && (
+                    <DropdownMenuItem onClick={() => onEdit(currentProfessional)}>
+                      <Edit className="h-4 w-4 mr-2" />Edit Professional
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  {onDelete && (
+                    <DropdownMenuItem className="text-destructive" onClick={() => onDelete(currentProfessional.id)}>
+                      <Trash2 className="h-4 w-4 mr-2" />Delete Professional
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b px-4 md:px-6 overflow-x-auto">
-            <TabsList className="h-12 bg-transparent gap-1 md:gap-2">
-              <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
-                <User className="h-4 w-4" /><span className="hidden sm:inline">Profile</span>
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-1.5 data-[state=active]:bg-muted">
-                <CheckSquare className="h-4 w-4" /><span className="hidden sm:inline">Tasks</span>
-              </TabsTrigger>
-              <TabsTrigger value="quotations" className="gap-1.5 data-[state=active]:bg-muted">
-                <FileText className="h-4 w-4" /><span className="hidden sm:inline">Quotations</span>
-              </TabsTrigger>
-              <TabsTrigger value="attachments" className="gap-1.5 data-[state=active]:bg-muted">
-                <Paperclip className="h-4 w-4" /><span className="hidden sm:inline">Attachments</span>
-              </TabsTrigger>
-              <TabsTrigger value="reminders" className="gap-1.5 data-[state=active]:bg-muted">
-                <Bell className="h-4 w-4" /><span className="hidden sm:inline">Reminders</span>
-              </TabsTrigger>
-              <TabsTrigger value="notes" className="gap-1.5 data-[state=active]:bg-muted">
-                <StickyNote className="h-4 w-4" /><span className="hidden sm:inline">Notes</span>
-              </TabsTrigger>
-              <TabsTrigger value="activity" className="gap-1.5 data-[state=active]:bg-muted">
-                <Activity className="h-4 w-4" /><span className="hidden sm:inline">Activity</span>
-              </TabsTrigger>
-              <TabsTrigger value="kit" className="gap-1.5 data-[state=active]:bg-muted">
-                <HeartHandshake className="h-4 w-4" /><span className="hidden sm:inline">KIT</span>
-              </TabsTrigger>
-            </TabsList>
+              <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            <TabsContent value="profile" className="m-0 h-full">
-              <ProfessionalProfileTab professional={currentProfessional} onEdit={() => onEdit?.(currentProfessional)} />
-            </TabsContent>
-            <TabsContent value="tasks" className="m-0 h-full">
-              <ProfessionalTasksTab professional={currentProfessional} />
-            </TabsContent>
-            <TabsContent value="quotations" className="m-0 h-full">
-              <ProfessionalQuotationsTab professional={currentProfessional} />
-            </TabsContent>
-            <TabsContent value="attachments" className="m-0 h-full">
-              <EntityAttachmentsTab entityType="professional" entityId={currentProfessional.id} />
-            </TabsContent>
-            <TabsContent value="reminders" className="m-0 h-full">
-              <ProfessionalRemindersTab professional={currentProfessional} />
-            </TabsContent>
-            <TabsContent value="notes" className="m-0 h-full">
-              <ProfessionalNotesTab professional={currentProfessional} />
-            </TabsContent>
-            <TabsContent value="activity" className="m-0 h-full">
-              <ProfessionalActivityTab professional={currentProfessional} />
-            </TabsContent>
-            <TabsContent value="kit" className="m-0 h-full">
-              <KitProfileTab
-                entityType="professional"
-                entityId={currentProfessional.id}
-                entityName={displayName}
-                defaultAssignee={currentProfessional.assigned_to}
-                entityPhone={currentProfessional.phone || undefined}
-                entityLocation={currentProfessional.site_plus_code || undefined}
-                entityAddress={currentProfessional.address || undefined}
-              />
-            </TabsContent>
-          </div>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+            <div className="border-b px-4 md:px-6 overflow-x-auto">
+              <TabsList className="h-12 bg-transparent gap-1 md:gap-2">
+                <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
+                  <User className="h-4 w-4" /><span className="hidden sm:inline">Profile</span>
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className="gap-1.5 data-[state=active]:bg-muted">
+                  <CheckSquare className="h-4 w-4" /><span className="hidden sm:inline">Tasks</span>
+                </TabsTrigger>
+                <TabsTrigger value="quotations" className="gap-1.5 data-[state=active]:bg-muted">
+                  <FileText className="h-4 w-4" /><span className="hidden sm:inline">Quotations</span>
+                </TabsTrigger>
+                <TabsTrigger value="attachments" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Paperclip className="h-4 w-4" /><span className="hidden sm:inline">Attachments</span>
+                </TabsTrigger>
+                <TabsTrigger value="reminders" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Bell className="h-4 w-4" /><span className="hidden sm:inline">Reminders</span>
+                </TabsTrigger>
+                <TabsTrigger value="notes" className="gap-1.5 data-[state=active]:bg-muted">
+                  <StickyNote className="h-4 w-4" /><span className="hidden sm:inline">Notes</span>
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Activity className="h-4 w-4" /><span className="hidden sm:inline">Activity</span>
+                </TabsTrigger>
+                <TabsTrigger value="kit" className="gap-1.5 data-[state=active]:bg-muted">
+                  <HeartHandshake className="h-4 w-4" /><span className="hidden sm:inline">KIT</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+              <TabsContent value="profile" className="m-0 h-full">
+                <ProfessionalProfileTab professional={currentProfessional} onEdit={() => onEdit?.(currentProfessional)} />
+              </TabsContent>
+              <TabsContent value="tasks" className="m-0 h-full">
+                <ProfessionalTasksTab professional={currentProfessional} />
+              </TabsContent>
+              <TabsContent value="quotations" className="m-0 h-full">
+                <ProfessionalQuotationsTab professional={currentProfessional} />
+              </TabsContent>
+              <TabsContent value="attachments" className="m-0 h-full">
+                <EntityAttachmentsTab entityType="professional" entityId={currentProfessional.id} />
+              </TabsContent>
+              <TabsContent value="reminders" className="m-0 h-full">
+                <ProfessionalRemindersTab professional={currentProfessional} />
+              </TabsContent>
+              <TabsContent value="notes" className="m-0 h-full">
+                <ProfessionalNotesTab professional={currentProfessional} />
+              </TabsContent>
+              <TabsContent value="activity" className="m-0 h-full">
+                <ProfessionalActivityTab professional={currentProfessional} />
+              </TabsContent>
+              <TabsContent value="kit" className="m-0 h-full">
+                <KitProfileTab
+                  entityType="professional"
+                  entityId={currentProfessional.id}
+                  entityName={displayName}
+                  defaultAssignee={currentProfessional.assigned_to}
+                  entityPhone={currentProfessional.phone || undefined}
+                  entityLocation={currentProfessional.site_plus_code || undefined}
+                  entityAddress={currentProfessional.address || undefined}
+                />
+              </TabsContent>
+            </div>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

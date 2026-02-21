@@ -260,6 +260,11 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
       { value: "sanjay.patel", label: "Sanjay Patel" },
       { value: "meera.singh", label: "Meera Singh" },
     ]},
+    // Cross-entity computed fields
+    { name: "task_count", label: "Associated Task Count", type: "number", editable: false },
+    { name: "reminder_count", label: "Associated Reminder Count", type: "number", editable: false },
+    { name: "quotation_count", label: "Associated Quotation Count", type: "number", editable: false },
+    { name: "days_without_task", label: "Days Without Any Task", type: "number", editable: false },
   ],
   tasks: [
     { name: "title", label: "Title", type: "text", required: true, editable: true },
@@ -482,7 +487,7 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
       { value: "create_reminder", label: "Create Reminder" },
       { value: "transfer_responsibility", label: "Transfer Responsibility" },
     ]},
-    { name: "user_email", label: "Staff Email", type: "text", editable: false },
+    { name: "user_email", label: "Staff Member", type: "select", editable: false, options: [] },
     { name: "entity_type", label: "Related Entity Type", type: "select", editable: false, options: [
       { value: "lead", label: "Lead" },
       { value: "task", label: "Task" },

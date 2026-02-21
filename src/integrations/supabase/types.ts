@@ -2367,6 +2367,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_assigned_to_me: {
+        Args: { assigned_to_value: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:
