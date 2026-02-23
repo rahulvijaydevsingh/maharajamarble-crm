@@ -47,6 +47,16 @@ export function AddTouchDialog({
   onAdd,
   isLoading = false,
 }: AddTouchDialogProps) {
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen);
+    if (!newOpen) {
+      setTimeout(() => {
+        document.body.style.pointerEvents = "";
+        document.body.style.overflow = "";
+      }, 100);
+    }
+  };
+
   const [method, setMethod] = useState<KitTouchMethod>('call');
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(addDays(new Date(), 1));
   const [scheduledTime, setScheduledTime] = useState<string>('');
@@ -83,8 +93,8 @@ export function AddTouchDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md z-[100]" hideOverlay>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md z-[501]" overlayClassName="z-[500]">
         <DialogHeader>
           <DialogTitle>Add Touch to Cycle</DialogTitle>
         </DialogHeader>
