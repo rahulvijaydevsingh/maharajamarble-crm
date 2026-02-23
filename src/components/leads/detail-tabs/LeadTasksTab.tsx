@@ -47,6 +47,7 @@ import { getStaffDisplayName } from '@/lib/kitHelpers';
 interface LeadTasksTabProps {
   lead: Lead;
   highlightTaskId?: string | null;
+  onOpenAddTask?: () => void;
 }
 
 const priorityStyles: Record<string, { label: string; className: string }> = {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -12,18 +12,16 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, FileText, Download, Share2, Edit, Loader2 } from 'lucide-react';
 import { Lead } from '@/hooks/useLeads';
 import { useQuotations } from '@/hooks/useQuotations';
-import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
-import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
+import { QUOTATION_STATUSES } from '@/types/quotation';
 import { format } from 'date-fns';
 
 interface LeadQuotationsTabProps {
   lead: Lead;
+  onOpenAddQuotation?: () => void;
 }
 
-export function LeadQuotationsTab({ lead }: LeadQuotationsTabProps) {
+export function LeadQuotationsTab({ lead, onOpenAddQuotation }: LeadQuotationsTabProps) {
   const { quotations, loading } = useQuotations();
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [editQuotation, setEditQuotation] = useState<Quotation | null>(null);
 
   // Filter quotations for this lead
   const leadQuotations = quotations.filter(q => q.client_id === lead.id);
@@ -51,10 +49,7 @@ export function LeadQuotationsTab({ lead }: LeadQuotationsTabProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Quotations</h3>
-        <Button onClick={() => {
-          setEditQuotation(null);
-          setAddDialogOpen(true);
-        }}>
+        <Button onClick={() => onOpenAddQuotation?.()}>
           <Plus className="h-4 w-4 mr-2" />
           Add Quotation
         </Button>
@@ -121,19 +116,6 @@ export function LeadQuotationsTab({ lead }: LeadQuotationsTabProps) {
         </div>
       )}
 
-      <AddQuotationDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        editQuotation={editQuotation}
-        prefillData={{
-          client_name: lead.name,
-          client_phone: lead.phone,
-          client_email: lead.email || '',
-          client_address: lead.address || lead.site_location || '',
-          client_id: lead.id,
-          client_type: 'lead',
-        }}
-      />
     </div>
   );
 }
