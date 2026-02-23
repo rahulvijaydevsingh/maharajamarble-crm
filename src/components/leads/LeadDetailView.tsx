@@ -3,6 +3,9 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogOverlay,
+  DialogHeader,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
@@ -54,16 +57,6 @@ import { KitTouchCompleteDialog } from '@/components/kit/KitTouchCompleteDialog'
 import { KitCycleCompleteDialog } from '@/components/kit/KitCycleCompleteDialog';
 import { AddTouchDialog } from '@/components/kit/AddTouchDialog';
 import { EditTouchDialog } from '@/components/kit/EditTouchDialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useKitSubscriptions } from '@/hooks/useKitSubscriptions';
 import { useKitTouches } from '@/hooks/useKitTouches';
 import { useKitActivityLog } from '@/hooks/useKitActivityLog';
