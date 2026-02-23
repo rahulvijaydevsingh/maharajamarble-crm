@@ -1,243 +1,192 @@
 
-# Fix Plan: Critical Bugs - Dialogs, RLS, Bulk Operations, Global Search, and Automation
+# Comprehensive Fix Plan: Dialog Freezes, Scrolling, Password, and Automation
 
-## Issues Identified
+## Root Cause Analysis
 
-| # | Issue | Root Cause |
-|---|-------|-----------|
-| 1 | Quotation/Reminder dialogs behind profile window | Nested Radix Dialog modals cause focus-trap conflicts. Even with z-index fixes, the parent modal intercepts pointer events. Child dialogs must be rendered as siblings, not nested inside the parent. |
-| 2 | Reset password still errors | Edge function has zero logs -- it was never actually invoked. The `reset-staff-password` function needs redeployment and the error handling in `useStaffManagement.ts` needs to extract the real error from the response body. |
-| 3 | Bulk upload list not scrollable | The `ScrollArea` has `max-h-[400px]` but the parent `DialogContent` constrains it further. The entire validation step needs explicit height management. |
-| 4 | Bulk lead import: 0 Created, 118 Errors | **Root cause found:** `created_by` is hardcoded to `"Bulk Import"` (line 583). The RLS INSERT policy requires `created_by = get_current_user_email()`. Since `"Bulk Import"` does not equal the user's email, non-admin users are blocked by RLS. |
-| 5 | Field agent can't see leads assigned by admin via bulk update | **Root cause found:** `assigned_to` stores staff display NAMES (e.g., "Mandeep singh") but RLS uses `get_current_user_email()` which returns the EMAIL. The comparison `assigned_to = get_current_user_email()` always fails because name != email. This affects ALL entity visibility. |
-| 6 | Edit staff dialog cancel freezes page | Dialog `onOpenChange` doesn't reliably reset internal states. Multiple dialogs share the `selectedStaff` state without proper cleanup. |
-| 7 | Bulk action (delete/reassign) freezes system | `handleBulkAction` runs sequential async operations in a for-loop with no progress indicator, no error boundaries, and no batching. Large selections block the UI thread. |
-| 8 | Global search bar non-functional | The search Input in the Header is a static element with no logic attached. |
-| 9 | Automation: Can't trigger based on "task count = 0" for leads | The leads entity fields don't include cross-entity relationship fields like task count. |
-| 10 | Automation: Can't select staff member in staff_activity entity | The `user_email` field in staff_activity has no dropdown options populated from the database. |
+### The Global Dialog Freeze Problem
+The page-freeze issue has a single root cause affecting the entire CRM: **Radix UI's Dialog component leaves `pointer-events: none` on `document.body` when dialogs unmount in certain sequences.**
+
+When a dialog closes:
+1. Radix sets `document.body.style.pointerEvents = 'none'` during close animation
+2. If the dialog component unmounts before the animation completes (e.g., `{selectedLead && <Dialog>}` becomes false), the cleanup never fires
+3. The body remains stuck with `pointer-events: none`, making the entire page unresponsive
+
+This affects: LeadDetailView, BulkActionDialog, StaffManagement dialogs, and any dialog conditionally rendered with `{condition && <Dialog>}`.
+
+### Other Issues
+- **Double scrollbar**: `DialogContent` has default overflow + inner scroll div both scrolling
+- **Password reset**: Supabase Auth rejects common/weak passwords beyond our validation. No client-side feedback shown.
+- **Automation entity_type error**: DB CHECK constraint allows only 5 entity types but TypeScript defines 7 (added `kit` and `staff_activity`)
+- **Nested dialogs behind profile**: `AddQuotationDialog`/`AddReminderDialog` rendered inside `LeadDetailView` Dialog causes Radix focus-trap conflicts
 
 ---
 
-## CRITICAL FIX: assigned_to Name vs Email Mismatch (Issue #5)
+## Implementation Plan
 
-This is the highest-priority fix because it affects ALL RLS policies across leads, tasks, customers, professionals, and reminders. The `assigned_to` column stores display names but RLS compares against `get_current_user_email()`.
+### Step 1: Fix the Global Dialog Freeze (Root Cause Fix in dialog.tsx)
 
-**Fix approach:** Do NOT change the `assigned_to` column data (it's used for display everywhere). Instead, modify RLS policies to compare using a helper function that resolves names to emails via the profiles table.
+**File: `src/components/ui/dialog.tsx`**
 
-Create a database function `is_assigned_to_me(assigned_to_value text)` that checks if the given name or email matches the current user by looking up the profiles table:
+Add a safety cleanup to `DialogContent` via `onCloseAutoFocus` and `onOpenAutoFocus` callbacks. Also add a global `useEffect` cleanup that ensures `document.body.style` is reset when any Dialog unmounts:
 
-```sql
-CREATE OR REPLACE FUNCTION public.is_assigned_to_me(assigned_to_value text)
-RETURNS boolean AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid()
-    AND (
-      full_name = assigned_to_value
-      OR email = assigned_to_value
-    )
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+```tsx
+// Add onCloseAutoFocus to DialogContent to guarantee body cleanup
+onCloseAutoFocus={(e) => {
+  document.body.style.pointerEvents = '';
+  props.onCloseAutoFocus?.(e);
+}}
 ```
 
-Then update RLS policies on leads, tasks, customers, professionals, and reminders to use `is_assigned_to_me(assigned_to)` instead of `assigned_to = get_current_user_email()`.
+Also create a small `useDialogBodyCleanup` hook that runs on unmount to reset body styles. Apply it inside `DialogContent`.
 
-## Implementation Details
+### Step 2: Fix EnhancedLeadTable Dialog Management
 
-### 1. Fix Dialog Stacking (Nested Modal Problem)
+**File: `src/components/leads/EnhancedLeadTable.tsx`**
 
-**File:** `src/components/professionals/ProfessionalDetailView.tsx`
+Key changes:
+- Remove the `{selectedLead && (...)}` conditional wrapper around all dialogs. Instead, always render the dialogs and pass `selectedLead` data only when available
+- Add proper `onOpenChange` handlers that clean up `selectedLead` AFTER the dialog close animation completes (using a small setTimeout)
+- For the `LeadDetailView`, change `onOpenChange` to:
+```tsx
+onOpenChange={(open) => {
+  setDetailViewOpen(open);
+  if (!open) {
+    setTimeout(() => setSelectedLead(null), 200);
+  }
+}}
+```
+- Same pattern for bulk action dialog: reset `bulkActionType`, `bulkActionValue`, and `selectedLeads` in a proper cleanup
 
-The fix is to lift child dialogs (AddQuotationDialog, AddReminderDialog, AddTaskDialog, EditTaskDialog) out of the tab content and render them as siblings AFTER the parent Dialog closes its tag. This avoids nested Radix modal conflicts entirely.
+### Step 3: Fix LeadDetailView - Lift Nested Dialogs Out
 
-- Move dialog open states (`addDialogOpen`, `addReminderOpen`, `addTaskOpen`, etc.) from the tab components up to the `ProfessionalDetailView` component
-- Pass callbacks like `onOpenAddQuotation`, `onOpenAddReminder`, etc. down to tab components
-- Render all child dialogs OUTSIDE the parent `<Dialog>` as siblings:
+**File: `src/components/leads/LeadDetailView.tsx`**
+
+The quotation and reminder dialogs rendered inside tab content (inside the parent Dialog) cause Radix focus-trap conflicts. Fix by:
+- Adding state for `addQuotationOpen`, `addReminderOpen`, `addTaskOpen` at the LeadDetailView level
+- Passing `onOpenQuotation`, `onOpenReminder`, `onOpenTask` callbacks to tab components
+- Rendering child dialogs as siblings AFTER the parent `</Dialog>`, not nested inside it:
 
 ```tsx
 return (
   <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="z-[70]">
-        {/* tabs content - no dialogs inside */}
+        {/* tabs - no dialogs nested inside */}
       </DialogContent>
     </Dialog>
-    
-    {/* Child dialogs rendered as siblings, not nested */}
-    <AddQuotationDialog open={addQuotationOpen} onOpenChange={setAddQuotationOpen} ... />
-    <AddReminderDialog open={addReminderOpen} onOpenChange={setAddReminderOpen} ... />
-    <AddTaskDialog open={addTaskOpen} onOpenChange={setAddTaskOpen} ... />
+    {/* Child dialogs as siblings */}
+    <AddQuotationDialog open={addQuotationOpen} ... />
+    <AddReminderDialog open={addReminderOpen} ... />
+    <AddTaskDialog open={addTaskOpen} ... />
   </>
 );
 ```
 
-### 2. Fix Bulk Lead Import RLS Error
+### Step 4: Fix Tab Components to Use Callbacks Instead of Internal Dialogs
 
-**File:** `src/components/leads/BulkUploadDialog.tsx`
+**Files:**
+- `src/components/leads/detail-tabs/LeadQuotationsTab.tsx`
+- `src/components/leads/detail-tabs/LeadRemindersTab.tsx`  
+- `src/components/leads/detail-tabs/LeadTasksTab.tsx`
 
-Remove the hardcoded `created_by: "Bulk Import"` from the insert call (line 583). Let the database default `get_current_user_email()` handle it. This ensures the RLS INSERT policy check passes for all users.
+Change each tab to accept an `onOpenAddDialog` callback prop instead of managing its own Dialog component internally. Remove the internal `<AddQuotationDialog>`, `<AddReminderDialog>`, `<AddTaskDialog>` from these tabs.
 
-```typescript
-// Before:
-created_by: "Bulk Import",
+### Step 5: Fix Double Scrollbar in Bulk Upload
 
-// After: Remove this line entirely (database default handles it)
-```
+**File: `src/components/leads/BulkUploadDialog.tsx`**
 
-Also add the bulk import source info to the `notes` field instead:
-```typescript
-notes: lead.notes ? `${lead.notes} [Bulk Import]` : '[Bulk Import]',
-```
+The issue: `DialogContent` has `max-h-[90vh] flex flex-col` which creates an outer scroll context, AND the inner validation div has `overflow-auto` with `max-height: 50vh`. Both create scroll regions.
 
-### 3. Fix RLS assigned_to Matching
+Fix:
+- Set the `DialogContent` to `overflow-hidden` (no outer scroll)
+- Keep only the inner validation table div as the single scroll container
+- Set the inner container to `overflow-auto` with a calculated max-height
+
+### Step 6: Fix Password Reset - Add Requirements UI
+
+**File: `src/components/settings/StaffManagementPanel.tsx`**
+
+Add password strength validation and requirements display:
+- Show real-time password requirements checklist below the password input:
+  - Min 8 characters
+  - At least 1 uppercase letter
+  - At least 1 lowercase letter
+  - At least 1 number
+  - Not a commonly guessed password
+- Disable the "Reset Password" button until all requirements are met
+- Catch `AuthWeakPasswordError` specifically and show a user-friendly message
+- Ensure `finally` block always resets `isResetSubmitting`
+- Apply same password requirements UI to the "Add Staff" form
+
+### Step 7: Fix Automation Rules Entity Type Constraint
 
 **Database migration:**
 
-1. Create helper function `is_assigned_to_me(text)` that matches both name and email
-2. Update SELECT/UPDATE RLS policies on: leads, tasks, customers, professionals, reminders
-3. Also update `created_by` comparison to handle the same name/email mismatch
+Update the CHECK constraint on `automation_rules.entity_type` to include the new entity types:
 
-Updated policy example for leads SELECT:
 ```sql
-DROP POLICY "Users can view assigned or created leads" ON public.leads;
-CREATE POLICY "Users can view assigned or created leads" ON public.leads
-  FOR SELECT USING (
-    is_assigned_to_me(assigned_to)
-    OR is_assigned_to_me(created_by)
-    OR is_admin()
-  );
+ALTER TABLE automation_rules 
+  DROP CONSTRAINT automation_rules_entity_type_check;
+ALTER TABLE automation_rules 
+  ADD CONSTRAINT automation_rules_entity_type_check 
+  CHECK (entity_type = ANY (ARRAY[
+    'leads', 'tasks', 'customers', 'professionals', 
+    'quotations', 'kit', 'staff_activity'
+  ]));
 ```
 
-### 4. Fix Bulk Upload Scrollability
+### Step 8: Fix Staff Management Dialog Freezes
 
-**File:** `src/components/leads/BulkUploadDialog.tsx`
+**File: `src/components/settings/StaffManagementPanel.tsx`**
 
-The DialogContent needs explicit height control and the validation table needs proper overflow:
+Apply the same dialog cleanup pattern:
+- For the dropdown-to-dialog pattern, close the dropdown first with a small delay before opening the dialog
+- Ensure all `onOpenChange` handlers reset ALL related states
+- Add body cleanup on dialog unmount
 
-- Change the validation step container to use `min-h-0` and `max-h-[60vh]`
-- Ensure ScrollArea has both vertical and horizontal scroll with `overflow-auto`
-- Wrap the table in `overflow-x-auto` div (already exists but needs min-width on table)
-- Add `min-w-[1200px]` to the Table to force horizontal scroll
+### Step 9: Fix Bulk Action Cancel Freeze
 
-### 5. Fix Staff Dialog Freeze Issues
+**File: `src/components/leads/EnhancedLeadTable.tsx`**
 
-**File:** `src/components/settings/StaffManagementPanel.tsx`
+The bulk action dialog's cancel button sets state but the dialog close may race with Radix cleanup. Fix:
+- Always render the bulk action Dialog (remove conditional)
+- On cancel/close, explicitly reset: `bulkActionType`, `bulkActionValue`, `bulkActionProgress`
+- Do NOT clear `selectedLeads` on cancel (only clear on successful completion)
 
-- Add `finally` blocks to all dialog handlers that reset state
-- Ensure `onOpenChange` handlers explicitly reset ALL related states:
-```typescript
-onOpenChange={(o) => {
-  setEditDialogOpen(o);
-  if (!o) {
-    setIsEditSubmitting(false);
-    setSelectedStaff(null);  // Clear selected staff on close
-  }
-}}
-```
-- Apply same pattern to ALL dialogs (add, edit, reset password, deactivate, delete)
+### Step 10: Global Dialog Safety Net
 
-### 6. Fix Bulk Action Freeze
+**File: `src/components/ui/dialog.tsx`**
 
-**File:** `src/components/leads/EnhancedLeadTable.tsx`
-
-- Add a progress state for bulk operations
-- Use `Promise.allSettled` with batching instead of sequential for-loop
-- Add loading indicator during bulk operations
-- Wrap in try/catch with proper error counting
-- Add async batching (process 10 at a time)
-
-### 7. Redeploy Reset Password Function
-
-Redeploy `reset-staff-password` edge function. Also fix the error extraction in `useStaffManagement.ts` to properly parse the edge function response:
-
-```typescript
-const { data, error } = await supabase.functions.invoke("reset-staff-password", {
-  body: { user_id: userId, new_password: newPassword },
-});
-if (error) {
-  // Extract detailed error from response body
-  let msg = error.message;
-  try {
-    const body = await (error as any).context?.json();
-    if (body?.error) msg = body.error;
-  } catch {}
-  throw new Error(msg);
-}
-if (data?.error) throw new Error(data.error);
-```
-
-### 8. Implement Global Search
-
-**File:** `src/components/shared/Header.tsx`
-
-Transform the search Input into a functional global search:
-
-- Add search state and debounced query
-- On input, search across leads (name, phone, email), customers (name, phone), professionals (name, phone, firm), tasks (title), quotations (quotation_number, client_name)
-- Show results in a dropdown below the search bar using Popover
-- Each result shows entity type icon, name, and secondary info
-- Clicking a result navigates to the entity's detail page
-- Limit to 5 results per entity type (25 total max)
-- Add keyboard navigation (arrow keys, Enter to select, Escape to close)
-
-### 9. Add Cross-Entity Fields for Automation
-
-**File:** `src/constants/automationConstants.ts`
-
-Add computed/relationship fields to the leads entity:
-```typescript
-{ name: "task_count", label: "Associated Task Count", type: "number", editable: false },
-{ name: "reminder_count", label: "Associated Reminder Count", type: "number", editable: false },
-{ name: "quotation_count", label: "Associated Quotation Count", type: "number", editable: false },
-{ name: "days_without_task", label: "Days Without Any Task", type: "number", editable: false },
-```
-
-This allows triggers like "When task_count equals 0, create a follow-up task."
-
-### 10. Add Staff Selection for Staff Activity Automation
-
-**File:** `src/constants/automationConstants.ts`
-
-The `user_email` field in the `staff_activity` entity needs dynamic options from the database. Since constants can't make DB calls, change the field type and handle it in the TriggerConditionBlock:
-
-**File:** `src/components/automation/TriggerConditionBlock.tsx`
-
-When entity type is `staff_activity` and the selected field is `user_email`, render a staff member dropdown using `useActiveStaff()` hook instead of a text input.
+Add a global click listener as a safety net: if `document.body.style.pointerEvents === 'none'` and no open dialog exists in the DOM, auto-reset it. This prevents any edge case from permanently freezing the UI.
 
 ---
 
-## Database Changes Required
+## Technical Details
 
-1. Create `is_assigned_to_me(text)` function
-2. Update RLS policies on 5 tables (leads, tasks, customers, professionals, reminders) for SELECT and UPDATE commands to use the new function
-
-## Edge Function Actions
-
-- Redeploy `reset-staff-password`
-
-## Files to Modify
+### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/professionals/ProfessionalDetailView.tsx` | Lift child dialogs out of parent Dialog as siblings |
-| `src/components/leads/BulkUploadDialog.tsx` | Remove hardcoded `created_by`, fix scroll container heights |
-| `src/components/settings/StaffManagementPanel.tsx` | Fix dialog onOpenChange handlers to reset all states |
-| `src/hooks/useStaffManagement.ts` | Fix resetPassword error extraction |
-| `src/components/leads/EnhancedLeadTable.tsx` | Add batching and progress to bulk actions |
-| `src/components/shared/Header.tsx` | Implement global search with multi-entity query and dropdown |
-| `src/constants/automationConstants.ts` | Add cross-entity fields (task_count etc.) and staff options |
-| `src/components/automation/TriggerConditionBlock.tsx` | Add staff dropdown for staff_activity entity |
+| `src/components/ui/dialog.tsx` | Add `onCloseAutoFocus` body cleanup, unmount safety reset |
+| `src/components/leads/EnhancedLeadTable.tsx` | Remove conditional dialog rendering, fix `onOpenChange` handlers, fix bulk action dialog |
+| `src/components/leads/LeadDetailView.tsx` | Lift child dialogs as siblings, add dialog state management |
+| `src/components/leads/detail-tabs/LeadQuotationsTab.tsx` | Accept callback prop, remove internal dialog |
+| `src/components/leads/detail-tabs/LeadRemindersTab.tsx` | Accept callback prop, remove internal dialog |
+| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Accept callback prop, remove internal dialog |
+| `src/components/leads/BulkUploadDialog.tsx` | Fix double scrollbar - single scroll container |
+| `src/components/settings/StaffManagementPanel.tsx` | Add password requirements UI, fix dialog cleanup |
+| `src/components/customers/CustomerDetailView.tsx` | Same nested dialog fix as LeadDetailView |
+| `src/components/professionals/ProfessionalDetailView.tsx` | Verify sibling dialog pattern is correct |
+| Database migration | Update `automation_rules_entity_type_check` constraint |
 
-## Implementation Order
+### Implementation Order
 
-1. **Database:** Create `is_assigned_to_me()` function and update RLS policies (fixes visibility for ALL users)
-2. **Bulk import:** Remove hardcoded `created_by` (fixes 118-error import failure)
-3. **Dialog stacking:** Lift child dialogs out of parent modal
-4. **Staff dialogs:** Fix freeze on cancel/close
-5. **Redeploy** reset-staff-password edge function
-6. **Bulk upload scroll:** Fix container heights
-7. **Bulk actions:** Add batching and progress indicator
-8. **Global search:** Implement multi-entity search in header
-9. **Automation:** Add cross-entity fields and staff dropdown
+1. Database: Update automation CHECK constraint (unblocks automation rule creation)
+2. `dialog.tsx`: Add global body cleanup safety mechanism
+3. `EnhancedLeadTable.tsx`: Fix conditional rendering and dialog close handlers
+4. `LeadDetailView.tsx`: Lift nested dialogs out as siblings
+5. Tab components: Remove internal dialogs, use callbacks
+6. `BulkUploadDialog.tsx`: Fix double scrollbar
+7. `StaffManagementPanel.tsx`: Add password requirements + dialog cleanup
+8. `CustomerDetailView.tsx`: Same nested dialog fix
+9. Verify `ProfessionalDetailView.tsx` has correct pattern
