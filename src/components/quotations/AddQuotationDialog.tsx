@@ -24,7 +24,6 @@ import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 
 interface AddQuotationDialogProps {
   open: boolean;
@@ -59,16 +58,6 @@ export function AddQuotationDialog({
   contentClassName,
   overlayClassName,
 }: AddQuotationDialogProps) {
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen);
-    if (!newOpen) {
-      setTimeout(() => {
-        document.body.style.pointerEvents = "";
-        document.body.style.overflow = "";
-      }, 100);
-    }
-  };
-
   const { addQuotation, updateQuotation } = useQuotations();
   const { leads } = useLeads();
   const { customers } = useCustomers();
@@ -241,11 +230,8 @@ export function AddQuotationDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className={`max-w-3xl max-h-[90vh] overflow-y-auto z-[501] ${contentClassName || ''}`}
-        overlayClassName={cn("z-[500]", overlayClassName)}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto ${contentClassName || ''}`} overlayClassName={overlayClassName}>
         <DialogHeader>
           <DialogTitle>
             {editQuotation ? 'Edit Quotation' : 'New Quotation'}

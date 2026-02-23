@@ -30,16 +30,6 @@
    onPause,
    isLoading = false,
  }: KitPauseDialogProps) {
-   const handleOpenChange = (newOpen: boolean) => {
-     onOpenChange(newOpen);
-     if (!newOpen) {
-       setTimeout(() => {
-         document.body.style.pointerEvents = "";
-         document.body.style.overflow = "";
-       }, 100);
-     }
-   };
-
    const [reason, setReason] = useState('');
    const [useAutoResume, setUseAutoResume] = useState(false);
    const [resumeDate, setResumeDate] = useState<Date>();
@@ -56,8 +46,8 @@
    };
    
    return (
-       <Dialog open={open} onOpenChange={handleOpenChange}>
-         <DialogContent className="max-w-md z-[501]" overlayClassName="z-[500]">
+       <Dialog open={open} onOpenChange={onOpenChange}>
+         <DialogContent className="max-w-md z-[100]" hideOverlay>
          <DialogHeader>
            <DialogTitle>Pause Keep in Touch</DialogTitle>
            <DialogDescription>
