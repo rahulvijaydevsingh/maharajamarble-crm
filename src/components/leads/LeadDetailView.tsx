@@ -3,9 +3,6 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  DialogOverlay,
-  DialogHeader,
-  DialogDescription,
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
@@ -51,21 +48,6 @@ import { KitProfileTab } from '@/components/kit/KitProfileTab';
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { AddReminderDialog } from './detail-tabs/AddReminderDialog';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
-import { KitActivationDialog } from '@/components/kit/KitActivationDialog';
-import { KitPauseDialog } from '@/components/kit/KitPauseDialog';
-import { KitTouchCompleteDialog } from '@/components/kit/KitTouchCompleteDialog';
-import { KitCycleCompleteDialog } from '@/components/kit/KitCycleCompleteDialog';
-import { AddTouchDialog } from '@/components/kit/AddTouchDialog';
-import { EditTouchDialog } from '@/components/kit/EditTouchDialog';
-import { useKitSubscriptions } from '@/hooks/useKitSubscriptions';
-import { useKitTouches } from '@/hooks/useKitTouches';
-import { useKitActivityLog } from '@/hooks/useKitActivityLog';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import { useReminders } from '@/hooks/useReminders';
-import { useTasks } from '@/hooks/useTasks';
-import { KitTouch, KitTouchSequenceItem, KitTouchMethod } from '@/constants/kitConstants';
-import { cn } from '@/lib/utils';
 
 interface LeadDetailViewProps {
   lead: Lead | null;
@@ -98,82 +80,17 @@ export function LeadDetailView({
   highlightTaskId,
   highlightReminderId,
 }: LeadDetailViewProps) {
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen);
-    if (!newOpen) {
-      setTimeout(() => {
-        document.body.style.pointerEvents = "";
-        document.body.style.overflow = "";
-      }, 100);
-    }
-  };
-
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(false);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(highlightTaskId || null);
   const [focusReminderId, setFocusReminderId] = useState<string | null>(highlightReminderId || null);
   const { leads, updateLead, refetch } = useLeads();
   const { logActivity } = useLogActivity();
-  const { user } = useAuth();
-  const { addTask } = useTasks();
-  const { addReminder } = useReminders();
   
   // Lifted dialog states - rendered as siblings to avoid focus-trap conflicts
   const [addQuotationOpen, setAddQuotationOpen] = useState(false);
   const [addReminderOpen, setAddReminderOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
-
-  // KIT Lifted Dialog States
-  const [kitActivationOpen, setKitActivationOpen] = useState(false);
-  const [kitPauseOpen, setKitPauseOpen] = useState(false);
-  const [kitCancelConfirmOpen, setKitCancelConfirmOpen] = useState(false);
-  const [kitCompleteTouch, setKitCompleteTouch] = useState<KitTouch | null>(null);
-  const [kitCycleCompleteOpen, setKitCycleCompleteOpen] = useState(false);
-  const [kitAddTouchOpen, setKitAddTouchOpen] = useState(false);
-  const [kitEditingTouch, setKitEditingTouch] = useState<KitTouch | null>(null);
-
-  // KIT Hooks for lifted logic
-  const {
-    subscription,
-    activateKit,
-    pauseSubscription,
-    cancelSubscription,
-    createNextCycle,
-    completeSubscription,
-    isActivating,
-    isPausing,
-    isResuming,
-    isCancelling,
-    isCreatingCycle,
-    isCompleting: isKitCompleting,
-  } = useKitSubscriptions('lead', lead?.id || '');
-
-  const {
-    completeTouch,
-    snoozeTouch,
-    rescheduleTouch,
-    addTouch,
-    updateTouch,
-    isCompleting: isTouchCompleting,
-    isSnoozing,
-    isRescheduling,
-    isAdding: isTouchAdding,
-    isUpdating: isTouchUpdating,
-  } = useKitTouches(subscription?.id);
-
-  const {
-    logKitActivated,
-    logTouchCompleted,
-    logTouchSnoozed,
-    logTouchRescheduled,
-    logKitPaused,
-    logKitCancelled,
-    logCycleCompleted,
-    logTouchAdded,
-    logTouchEdited,
-    logTaskCreatedFromKit,
-    logReminderCreatedFromKit,
-  } = useKitActivityLog();
   
   // Get the fresh lead data from the leads array (to ensure we have latest after refetch)
   const currentLead = leads.find(l => l.id === lead?.id) || lead;
@@ -186,7 +103,7 @@ export function LeadDetailView({
       setFocusTaskId(highlightTaskId || null);
       setFocusReminderId(highlightReminderId || null);
     }
-  }, [lead, lead?.id, initialTab, highlightTaskId, highlightReminderId]);
+  }, [lead?.id, initialTab, highlightTaskId, highlightReminderId]);
 
   // Listen for edit trigger from parent
   useEffect(() => {
@@ -270,148 +187,11 @@ export function LeadDetailView({
 
   const statusConfig = statusStyles[currentLead.status] || { label: currentLead.status, className: 'bg-gray-100 text-gray-700' };
 
-  // KIT Logic Handlers
-  const handleKitActivate = async (
-    presetId: string | null,
-    assignedTo: string,
-    maxCycles?: number,
-    customSequence?: KitTouchSequenceItem[],
-    skipWeekends?: boolean,
-    createTask?: boolean,
-    taskTitle?: string,
-    createReminder?: boolean
-  ) => {
-    const result = await activateKit({ entityType: 'lead', entityId: currentLead.id, presetId, assignedTo, maxCycles, customSequence, skipWeekends });
-    await logKitActivated({
-      entityType: 'lead',
-      entityId: currentLead.id,
-      entityName: currentLead.name,
-      presetName: presetId || 'Custom Sequence',
-      assignedTo,
-    });
-
-    if (createTask && result) {
-      try {
-        const subId = typeof result === 'string' ? result : (result as any)?.id;
-        if (!subId) return;
-
-        const { data: newTouches } = await supabase
-          .from('kit_touches')
-          .select('*')
-          .eq('subscription_id', subId);
-
-        if (newTouches) {
-          for (const touch of newTouches) {
-            const createdTask = await addTask({
-              title: taskTitle || `KIT Touch: ${touch.method}`,
-              due_date: touch.scheduled_date,
-              assigned_to: touch.assigned_to,
-              related_entity_type: 'lead',
-              related_entity_id: currentLead.id,
-            });
-            if (createReminder && createdTask) {
-              await addReminder({
-                title: taskTitle || `KIT Reminder: ${touch.method}`,
-                reminder_datetime: new Date(touch.scheduled_date).toISOString(),
-                assigned_to: touch.assigned_to,
-              });
-            }
-          }
-        }
-      } catch (e) { console.error(e); }
-    }
-  };
-
-  const handleKitPause = async (pauseUntil?: string, pauseReason?: string) => {
-    if (!subscription) return;
-    await pauseSubscription({ subscriptionId: subscription.id, pauseUntil, pauseReason });
-    await logKitPaused({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, pauseReason, pauseUntil });
-  };
-
-  const handleKitCancel = async () => {
-    if (!subscription) return;
-    await cancelSubscription(subscription.id);
-    await logKitCancelled({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name });
-    setKitCancelConfirmOpen(false);
-  };
-
-  const handleKitCompleteTouch = async (outcome: string, notes?: string) => {
-    if (!kitCompleteTouch) return;
-    const result = await completeTouch({ touchId: kitCompleteTouch.id, outcome, outcomeNotes: notes });
-    await logTouchCompleted({
-      entityType: 'lead',
-      entityId: currentLead.id,
-      entityName: currentLead.name,
-      method: kitCompleteTouch.method as any,
-      outcome,
-      outcomeNotes: notes,
-    });
-    setKitCompleteTouch(null);
-    if (result.cycleComplete && result.behavior === 'user_defined') setKitCycleCompleteOpen(true);
-  };
-
-  const handleKitSnoozeTouch = async (snoozeUntil: string) => {
-    if (!kitCompleteTouch) return;
-    await snoozeTouch({ touchId: kitCompleteTouch.id, snoozeUntil });
-    await logTouchSnoozed({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, method: kitCompleteTouch.method as any, snoozeUntil });
-    setKitCompleteTouch(null);
-  };
-
-  const handleKitRescheduleTouch = async (newDate: string) => {
-    if (!kitCompleteTouch) return;
-    await rescheduleTouch({ touchId: kitCompleteTouch.id, newDate });
-    await logTouchRescheduled({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, method: kitCompleteTouch.method as any, newDate });
-    setKitCompleteTouch(null);
-  };
-
-  const handleKitAddTouch = async (data: {
-    method: KitTouchMethod;
-    scheduledDate: string;
-    assignedTo: string;
-  }) => {
-    if (!subscription) return;
-    await addTouch({
-      subscriptionId: subscription.id,
-      method: data.method,
-      scheduledDate: data.scheduledDate,
-      assignedTo: data.assignedTo,
-    });
-    await logTouchAdded({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, method: data.method, scheduledDate: data.scheduledDate });
-  };
-
-  const handleKitEditTouch = async (data: {
-    method: KitTouchMethod;
-    scheduledDate: string;
-    assignedTo: string;
-  }) => {
-    if (!kitEditingTouch) return;
-    await updateTouch({
-      touchId: kitEditingTouch.id,
-      updates: { method: data.method, scheduled_date: data.scheduledDate, assigned_to: data.assignedTo },
-    });
-    await logTouchEdited({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, method: data.method, changes: 'Manual edit' });
-  };
-
-  const handleKitRepeatCycle = async () => {
-    if (!subscription) return;
-    await createNextCycle(subscription.id);
-    await logCycleCompleted({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, cycleNumber: subscription.cycle_count, action: 'repeated' });
-    setKitCycleCompleteOpen(false);
-  };
-
-  const handleKitStopSubscription = async () => {
-    if (!subscription) return;
-    await completeSubscription(subscription.id);
-    await logCycleCompleted({ entityType: 'lead', entityId: currentLead.id, entityName: currentLead.name, cycleNumber: subscription.cycle_count, action: 'stopped' });
-    setKitCycleCompleteOpen(false);
-  };
-
   // Show edit form when editing
   if (isEditing) {
     return (
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogOverlay className="z-[400]" />
-        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[401]">
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[70]">
           <VisuallyHidden>
             <DialogTitle>Edit Lead: {currentLead.name}</DialogTitle>
           </VisuallyHidden>
@@ -429,9 +209,8 @@ export function LeadDetailView({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogOverlay className="z-[400]" />
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[401]">
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
           <VisuallyHidden>
             <DialogTitle>Lead Details: {currentLead.name}</DialogTitle>
           </VisuallyHidden>
@@ -475,7 +254,7 @@ export function LeadDetailView({
                     <MoreHorizontal className="h-4 w-4 ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[410]">
+                <DropdownMenuContent align="end" className="z-[80]">
                   <DropdownMenuItem onClick={handleEditClick}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Lead
@@ -602,14 +381,6 @@ export function LeadDetailView({
                    entityPhone={currentLead.phone || undefined}
                    entityLocation={currentLead.site_plus_code || undefined}
                    entityAddress={currentLead.address || undefined}
-                   onOpenActivation={() => setKitActivationOpen(true)}
-                   onOpenPause={() => setKitPauseOpen(true)}
-                   onOpenCancelConfirm={() => setKitCancelConfirmOpen(true)}
-                   onOpenCompleteTouch={setKitCompleteTouch}
-                   onOpenAddTouch={() => setKitAddTouchOpen(true)}
-                   onOpenEditTouch={setKitEditingTouch}
-                   cycleCompleteOpen={kitCycleCompleteOpen}
-                   onCycleCompleteChange={setKitCycleCompleteOpen}
                  />
                </TabsContent>
             </div>
@@ -629,8 +400,8 @@ export function LeadDetailView({
           client_id: currentLead.id,
           client_type: 'lead',
         }}
-        contentClassName="z-[501]"
-        overlayClassName="z-[500]"
+        contentClassName="z-[80]"
+        overlayClassName="z-[80]"
       />
 
       <AddReminderDialog
@@ -641,8 +412,8 @@ export function LeadDetailView({
           setAddReminderOpen(false);
         }}
         entityName={currentLead.name}
-        contentClassName="z-[501]"
-        overlayClassName="z-[500]"
+        contentClassName="z-[80]"
+        overlayClassName="z-[80]"
       />
 
       <AddTaskDialog
@@ -660,87 +431,6 @@ export function LeadDetailView({
           },
         }}
       />
-
-      {/* KIT Lifted Dialogs */}
-      <KitActivationDialog
-        open={kitActivationOpen}
-        onOpenChange={setKitActivationOpen}
-        entityType="lead"
-        entityId={currentLead.id}
-        entityName={currentLead.name}
-        defaultAssignee={currentLead.assigned_to}
-        onActivate={handleKitActivate}
-        isLoading={isActivating}
-      />
-
-      <KitPauseDialog
-        open={kitPauseOpen}
-        onOpenChange={setKitPauseOpen}
-        onPause={handleKitPause}
-        isLoading={isPausing}
-      />
-
-      <KitTouchCompleteDialog
-        open={!!kitCompleteTouch}
-        onOpenChange={(open) => !open && setKitCompleteTouch(null)}
-        touch={kitCompleteTouch}
-        entityName={currentLead.name}
-        onComplete={handleKitCompleteTouch}
-        onSnooze={handleKitSnoozeTouch}
-        onReschedule={handleKitRescheduleTouch}
-        isLoading={isTouchCompleting || isSnoozing || isRescheduling}
-      />
-
-      <KitCycleCompleteDialog
-        open={kitCycleCompleteOpen}
-        onOpenChange={setKitCycleCompleteOpen}
-        cycleNumber={subscription?.cycle_count || 1}
-        entityName={currentLead.name}
-        presetName={subscription?.preset?.name || 'Custom Sequence'}
-        onRepeat={handleKitRepeatCycle}
-        onStop={handleKitStopSubscription}
-        isLoading={isCreatingCycle || isKitCompleting}
-      />
-
-      <AddTouchDialog
-        open={kitAddTouchOpen}
-        onOpenChange={setKitAddTouchOpen}
-        subscriptionId={subscription?.id || ''}
-        entityName={currentLead.name}
-        defaultAssignee={currentLead.assigned_to}
-        onAdd={handleKitAddTouch}
-        isLoading={isTouchAdding}
-      />
-
-      <EditTouchDialog
-        open={!!kitEditingTouch}
-        onOpenChange={(open) => !open && setKitEditingTouch(null)}
-        touch={kitEditingTouch}
-        onSave={handleKitEditTouch}
-        isLoading={isTouchUpdating}
-      />
-
-      <Dialog open={kitCancelConfirmOpen} onOpenChange={setKitCancelConfirmOpen}>
-        <DialogContent className="z-[501]" overlayClassName="z-[500]">
-          <DialogHeader>
-            <DialogTitle>Cancel Keep in Touch?</DialogTitle>
-            <DialogDescription>
-              This will stop all scheduled touches for {currentLead.name}. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setKitCancelConfirmOpen(false)}>
-              Keep Active
-            </Button>
-            <Button
-              onClick={handleKitCancel}
-              variant="destructive"
-            >
-              {isCancelling ? 'Cancelling...' : 'Yes, Cancel'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

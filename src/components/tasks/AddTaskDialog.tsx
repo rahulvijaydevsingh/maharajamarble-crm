@@ -75,16 +75,6 @@ interface AddTaskDialogProps {
 }
 
 export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData }: AddTaskDialogProps) {
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen);
-    if (!newOpen) {
-      setTimeout(() => {
-        document.body.style.pointerEvents = "";
-        document.body.style.overflow = "";
-      }, 100);
-    }
-  };
-
   const { toast } = useToast();
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
@@ -362,8 +352,8 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[501]" overlayClassName="z-[500]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Add New Task

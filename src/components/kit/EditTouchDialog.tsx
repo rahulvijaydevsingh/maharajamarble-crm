@@ -39,16 +39,6 @@ export function EditTouchDialog({
   onSave,
   isLoading = false,
 }: EditTouchDialogProps) {
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen);
-    if (!newOpen) {
-      setTimeout(() => {
-        document.body.style.pointerEvents = "";
-        document.body.style.overflow = "";
-      }, 100);
-    }
-  };
-
   const [method, setMethod] = useState<KitTouchMethod>('call');
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>();
   const [scheduledTime, setScheduledTime] = useState<string>('');
@@ -83,8 +73,8 @@ export function EditTouchDialog({
   if (!touch) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md z-[501]" overlayClassName="z-[500]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle>Edit Touch</DialogTitle>
         </DialogHeader>
