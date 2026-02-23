@@ -23,7 +23,6 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useKitPresets } from '@/hooks/useKitPresets';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { buildStaffGroups } from '@/lib/staffSelect';
@@ -61,16 +60,6 @@ export function KitActivationDialog({
   onActivate,
   isLoading = false,
 }: KitActivationDialogProps) {
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen);
-    if (!newOpen) {
-      setTimeout(() => {
-        document.body.style.pointerEvents = "";
-        document.body.style.overflow = "";
-      }, 100);
-    }
-  };
-
   const { presets, loading: presetsLoading } = useKitPresets();
   const { staffMembers } = useActiveStaff();
   const staffGroups = buildStaffGroups(staffMembers);
@@ -119,8 +108,8 @@ export function KitActivationDialog({
     (mode === 'custom' && customSequence.length > 0 && assignedTo);
   
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[501]" overlayClassName="z-[500]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle>Enable Keep in Touch</DialogTitle>
           <DialogDescription>
