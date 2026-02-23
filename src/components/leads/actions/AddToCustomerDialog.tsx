@@ -55,6 +55,16 @@ interface AddToCustomerDialogProps {
 type ConversionOption = 'convert_and_remove' | 'convert_and_keep';
 
 export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCustomerDialogProps) {
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen);
+    if (!newOpen) {
+      setTimeout(() => {
+        document.body.style.pointerEvents = "";
+        document.body.style.overflow = "";
+      }, 100);
+    }
+  };
+
   const { staffMembers } = useActiveStaff();
   const [step, setStep] = useState(1); // 1: Conversion Options, 2: Feedback Reminder Setup
   const [conversionOption, setConversionOption] = useState<ConversionOption>('convert_and_remove');
@@ -318,8 +328,8 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[550px] z-[501]" overlayClassName="z-[500]">
         {step === 1 ? (
           <>
             <DialogHeader>
