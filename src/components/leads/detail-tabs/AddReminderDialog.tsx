@@ -60,6 +60,16 @@ export function AddReminderDialog({
   contentClassName,
   overlayClassName,
 }: AddReminderDialogProps) {
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen);
+    if (!newOpen) {
+      setTimeout(() => {
+        document.body.style.pointerEvents = "";
+        document.body.style.overflow = "";
+      }, 100);
+    }
+  };
+
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -155,8 +165,11 @@ export function AddReminderDialog({
   ];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`sm:max-w-[550px] max-h-[90vh] overflow-y-auto ${contentClassName || ''}`} overlayClassName={overlayClassName}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className={`sm:max-w-[550px] max-h-[90vh] overflow-y-auto z-[501] ${contentClassName || ''}`}
+        overlayClassName={cn("z-[500]", overlayClassName)}
+      >
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Add Reminder</DialogTitle>

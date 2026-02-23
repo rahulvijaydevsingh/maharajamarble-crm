@@ -3,18 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { HeartHandshake, Pause, Play, X, Calendar, Loader2, Plus, Pencil } from 'lucide-react';
+import { HeartHandshake, Pause, Play, X, Calendar, Loader2, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useKitSubscriptions } from '@/hooks/useKitSubscriptions';
 import { useKitTouches } from '@/hooks/useKitTouches';
@@ -22,14 +12,8 @@ import { useKitActivityLog } from '@/hooks/useKitActivityLog';
 import { useTasks } from '@/hooks/useTasks';
 import { useReminders } from '@/hooks/useReminders';
 import { useAuth } from '@/contexts/AuthContext';
-import { KitActivationDialog } from './KitActivationDialog';
 import { KitTouchCard } from './KitTouchCard';
-import { KitTouchCompleteDialog } from './KitTouchCompleteDialog';
-import { KitPauseDialog } from './KitPauseDialog';
 import { KitProgressIndicator } from './KitProgressIndicator';
-import { KitCycleCompleteDialog } from './KitCycleCompleteDialog';
-import { AddTouchDialog } from './AddTouchDialog';
-import { EditTouchDialog } from './EditTouchDialog';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
 import type { KitEntityType, KitTouch, KitTouchSequenceItem, KitTouchMethod } from '@/constants/kitConstants';
@@ -46,6 +30,16 @@ interface KitProfileTabProps {
   entityPhone?: string;
   entityLocation?: string;
   entityAddress?: string;
+  // Callbacks for lifted dialogs
+  onOpenActivation?: () => void;
+  onOpenPause?: () => void;
+  onOpenCancelConfirm?: () => void;
+  onOpenCompleteTouch?: (touch: KitTouch) => void;
+  onOpenAddTouch?: () => void;
+  onOpenEditTouch?: (touch: KitTouch) => void;
+  // Cycle complete is usually triggered by completeTouch/skipTouch
+  cycleCompleteOpen?: boolean;
+  onCycleCompleteChange?: (open: boolean) => void;
 }
 
 export function KitProfileTab({
@@ -56,15 +50,15 @@ export function KitProfileTab({
   entityPhone,
   entityLocation,
   entityAddress,
+  onOpenActivation,
+  onOpenPause,
+  onOpenCancelConfirm,
+  onOpenCompleteTouch,
+  onOpenAddTouch,
+  onOpenEditTouch,
+  cycleCompleteOpen,
+  onCycleCompleteChange,
 }: KitProfileTabProps) {
-  const [activationOpen, setActivationOpen] = useState(false);
-  const [pauseOpen, setPauseOpen] = useState(false);
-  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
-  const [completeDialogTouch, setCompleteDialogTouch] = useState<KitTouch | null>(null);
-  const [cycleCompleteOpen, setCycleCompleteOpen] = useState(false);
-  const [addTouchOpen, setAddTouchOpen] = useState(false);
-  const [editingTouch, setEditingTouch] = useState<KitTouch | null>(null);
-  
   const { user } = useAuth();
   const { staffMembers } = useActiveStaff();
   const { addTask } = useTasks();
@@ -150,144 +144,30 @@ export function KitProfileTab({
     return map[method] || 'Call';
   };
 
-  const handleActivate = async (
-    presetId: string | null,
-    assignedTo: string,
-    maxCycles?: number,
-    customSequence?: KitTouchSequenceItem[],
-    skipWeekends?: boolean,
-    createTask?: boolean,
-    taskTitle?: string,
-    createReminder?: boolean
-  ) => {
-    const result = await activateKit({ entityType, entityId, presetId: presetId || null, assignedTo, maxCycles, customSequence, skipWeekends });
-    await logKitActivated({
-      entityType,
-      entityId,
-      entityName,
-      presetName: subscription?.preset?.name || 'Custom Sequence',
-      assignedTo,
-    });
-
-    // Create task & reminder PER TOUCH if requested
-    if (createTask && result) {
-      try {
-        // Query newly created touches for this subscription
-        const subId = typeof result === 'string' ? result : (result as any)?.id;
-        if (!subId) throw new Error('No subscription ID returned');
-        
-        const { data: newTouches } = await supabase
-          .from('kit_touches')
-          .select('*')
-          .eq('subscription_id', subId)
-          .order('sequence_index', { ascending: true });
-
-        if (newTouches && newTouches.length > 0) {
-          for (const touch of newTouches) {
-            const touchTaskTitle = `KIT for - ${entityName} - ${getMethodLabel(touch.method)}`;
-
-            try {
-              const createdTask = await addTask({
-                title: touchTaskTitle,
-                description: `KIT touch follow-up for ${entityName}`,
-                type: getKitTaskType(touch.method),
-                priority: 'Medium',
-                status: 'Pending',
-                assigned_to: touch.assigned_to || assignedTo,
-                due_date: touch.scheduled_date,
-                due_time: touch.scheduled_time || null,
-                lead_id: entityType === 'lead' ? entityId : null,
-                related_entity_type: entityType,
-                related_entity_id: entityId,
-              });
-
-              let createdReminderId: string | null = null;
-
-              if (createReminder) {
-                const reminder = await addReminder({
-                  title: touchTaskTitle,
-                  description: `Reminder for KIT touch with ${entityName}`,
-                  reminder_datetime: new Date(`${touch.scheduled_date}T${touch.scheduled_time || '09:00'}`).toISOString(),
-                  entity_type: entityType,
-                  entity_id: entityId,
-                  assigned_to: touch.assigned_to || assignedTo,
-                  created_by: user?.email || 'System',
-                });
-                createdReminderId = reminder?.id || null;
-              }
-
-              // Link task and reminder to touch
-              const touchUpdates: Record<string, any> = {};
-              if (createdTask?.id) touchUpdates.linked_task_id = createdTask.id;
-              if (createdReminderId) touchUpdates.linked_reminder_id = createdReminderId;
-
-              if (Object.keys(touchUpdates).length > 0) {
-                await supabase
-                  .from('kit_touches')
-                  .update(touchUpdates)
-                  .eq('id', touch.id);
-              }
-
-              await logTaskCreatedFromKit({
-                entityType, entityId, entityName,
-                taskTitle: touchTaskTitle,
-                taskId: createdTask?.id,
-              });
-
-              if (createReminder) {
-                await logReminderCreatedFromKit({
-                  entityType, entityId, entityName,
-                  reminderTitle: touchTaskTitle,
-                  linkedTaskId: createdTask?.id,
-                });
-              }
-            } catch (touchErr) {
-              console.error(`Failed to create task/reminder for touch ${touch.id}:`, touchErr);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to create per-touch tasks:', err);
-      }
-    }
-  };
-  
-  const handlePause = async (pauseUntil?: string, pauseReason?: string) => {
-    if (!subscription) return;
-    await pauseSubscription({ subscriptionId: subscription.id, pauseUntil, pauseReason });
-    await logKitPaused({ entityType, entityId, entityName, pauseReason, pauseUntil });
-  };
   
   const handleResume = async () => {
     if (!subscription) return;
     await resumeSubscription(subscription.id);
     await logKitResumed({ entityType, entityId, entityName });
   };
-  
-  const handleCancel = async () => {
-    if (!subscription) return;
-    await cancelSubscription(subscription.id);
-    await logKitCancelled({ entityType, entityId, entityName });
-    setCancelConfirmOpen(false);
-  };
-  
-  const handleCompleteTouch = async (outcome: string, notes?: string) => {
-    if (!completeDialogTouch) return;
-    const result = await completeTouch({ touchId: completeDialogTouch.id, outcome, outcomeNotes: notes });
+
+  const handleCompleteTouch = async (outcome: string, notes?: string, touchToComplete?: KitTouch | null) => {
+    const targetTouch = touchToComplete;
+    if (!targetTouch) return;
+    const result = await completeTouch({ touchId: targetTouch.id, outcome, outcomeNotes: notes });
     await logTouchCompleted({
       entityType,
       entityId,
       entityName,
-      method: completeDialogTouch.method,
+      method: targetTouch.method,
       outcome,
       outcomeNotes: notes,
-      linkedTaskId: completeDialogTouch.linked_task_id || undefined,
+      linkedTaskId: targetTouch.linked_task_id || undefined,
     });
-    setCompleteDialogTouch(null);
     
     // Check if cycle is complete with user_defined behavior
     if (result.cycleComplete && result.behavior === 'user_defined') {
-      setCycleCompleteOpen(true);
+      onCycleCompleteChange?.(true);
     }
   };
   
@@ -350,7 +230,7 @@ export function KitProfileTab({
     
     // Check if cycle is complete with user_defined behavior
     if (result.cycleComplete && result.behavior === 'user_defined') {
-      setCycleCompleteOpen(true);
+      onCycleCompleteChange?.(true);
     }
   };
 
@@ -599,21 +479,10 @@ export function KitProfileTab({
             Enable Keep in Touch to maintain regular contact with {entityName} through scheduled calls, messages, and visits.
           </p>
         </div>
-        <Button onClick={() => setActivationOpen(true)}>
+        <Button onClick={onOpenActivation}>
           <HeartHandshake className="h-4 w-4 mr-2" />
           Enable Keep in Touch
         </Button>
-        
-        <KitActivationDialog
-          open={activationOpen}
-          onOpenChange={setActivationOpen}
-          entityType={entityType}
-          entityId={entityId}
-          entityName={entityName}
-          defaultAssignee={defaultAssignee}
-          onActivate={handleActivate}
-          isLoading={isActivating}
-        />
       </div>
     );
   }
@@ -641,7 +510,7 @@ export function KitProfileTab({
                 {subscription.status === 'active' && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm" onClick={() => setPauseOpen(true)}>
+                      <Button variant="outline" size="sm" onClick={onOpenPause}>
                         <Pause className="h-4 w-4 mr-1" />
                         Pause
                       </Button>
@@ -669,7 +538,7 @@ export function KitProfileTab({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setCancelConfirmOpen(true)}
+                      onClick={onOpenCancelConfirm}
                       className="text-destructive hover:text-destructive"
                     >
                       <X className="h-4 w-4" />
@@ -723,12 +592,12 @@ export function KitProfileTab({
           <h4 className="font-semibold text-sm uppercase text-muted-foreground">Upcoming Touch</h4>
           <KitTouchCard
             touch={nextTouch}
-            onComplete={() => setCompleteDialogTouch(nextTouch)}
+            onComplete={() => onOpenCompleteTouch?.(nextTouch)}
             onSnooze={(snoozeUntil) => handleDirectSnooze(nextTouch, snoozeUntil)}
             onReschedule={(newDate) => handleDirectReschedule(nextTouch, newDate)}
             onSkip={() => handleSkipTouch(nextTouch)}
             onReassign={(newAssignee) => handleReassignTouch(nextTouch, newAssignee)}
-            onEdit={() => setEditingTouch(nextTouch)}
+            onEdit={() => onOpenEditTouch?.(nextTouch)}
             disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
             entityPhone={entityPhone}
             entityLocation={entityLocation}
@@ -760,7 +629,7 @@ export function KitProfileTab({
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setAddTouchOpen(true)}>
+                <Button variant="outline" size="sm" onClick={onOpenAddTouch}>
                   <Plus className="h-4 w-4 mr-1" />
                   Add Touch
                 </Button>
@@ -782,12 +651,12 @@ export function KitProfileTab({
               <KitTouchCard
                 key={touch.id}
                 touch={touch}
-                onComplete={() => setCompleteDialogTouch(touch)}
+                onComplete={() => onOpenCompleteTouch?.(touch)}
                 onSnooze={(snoozeUntil) => handleDirectSnooze(touch, snoozeUntil)}
                 onReschedule={(newDate) => handleDirectReschedule(touch, newDate)}
                 onSkip={() => handleSkipTouch(touch)}
                 onReassign={(newAssignee) => handleReassignTouch(touch, newAssignee)}
-                onEdit={() => setEditingTouch(touch)}
+                onEdit={() => onOpenEditTouch?.(touch)}
                 disabled={isTouchCompleting || isSnoozing || isRescheduling || isSkipping}
                 entityPhone={entityPhone}
                 entityLocation={entityLocation}
@@ -797,76 +666,6 @@ export function KitProfileTab({
           </div>
         </div>
       )}
-      
-      {/* Add Touch Dialog */}
-      <AddTouchDialog
-        open={addTouchOpen}
-        onOpenChange={setAddTouchOpen}
-        subscriptionId={subscription.id}
-        entityName={entityName}
-        defaultAssignee={defaultAssignee}
-        onAdd={handleAddTouch}
-        isLoading={isAdding}
-      />
-
-      {/* Edit Touch Dialog */}
-      <EditTouchDialog
-        open={!!editingTouch}
-        onOpenChange={(open) => !open && setEditingTouch(null)}
-        touch={editingTouch}
-        onSave={handleEditTouch}
-        isLoading={isUpdating}
-      />
-      
-      {/* Dialogs */}
-      <KitTouchCompleteDialog
-        open={!!completeDialogTouch}
-        onOpenChange={(open) => !open && setCompleteDialogTouch(null)}
-        touch={completeDialogTouch}
-        entityName={entityName}
-        onComplete={handleCompleteTouch}
-        onSnooze={handleSnoozeTouch}
-        onReschedule={handleRescheduleTouch}
-        isLoading={isTouchCompleting || isSnoozing || isRescheduling}
-      />
-      
-      <KitPauseDialog
-        open={pauseOpen}
-        onOpenChange={setPauseOpen}
-        onPause={handlePause}
-        isLoading={isPausing}
-      />
-
-      <KitCycleCompleteDialog
-        open={cycleCompleteOpen}
-        onOpenChange={setCycleCompleteOpen}
-        cycleNumber={subscription.cycle_count || 1}
-        entityName={entityName}
-        presetName={preset?.name || 'Custom Sequence'}
-        onRepeat={handleRepeatCycle}
-        onStop={handleStopSubscription}
-        isLoading={isCreatingCycle || isCompleting}
-      />
-      
-      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
-        <AlertDialogContent className="z-[100]">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Keep in Touch?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will stop all scheduled touches for {entityName}. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep Active</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleCancel}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isCancelling ? 'Cancelling...' : 'Yes, Cancel'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

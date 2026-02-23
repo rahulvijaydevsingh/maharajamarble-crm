@@ -55,6 +55,16 @@
    onReschedule,
    isLoading = false,
  }: KitTouchCompleteDialogProps) {
+   const handleOpenChange = (newOpen: boolean) => {
+     onOpenChange(newOpen);
+     if (!newOpen) {
+       setTimeout(() => {
+         document.body.style.pointerEvents = "";
+         document.body.style.overflow = "";
+       }, 100);
+     }
+   };
+
    const [outcome, setOutcome] = useState<string>('');
    const [notes, setNotes] = useState('');
    const [followupAction, setFollowupAction] = useState<'none' | 'snooze' | 'reschedule'>('none');
@@ -89,8 +99,8 @@
    };
    
    return (
-       <Dialog open={open} onOpenChange={onOpenChange}>
-         <DialogContent className="max-w-md z-[100]" hideOverlay>
+       <Dialog open={open} onOpenChange={handleOpenChange}>
+         <DialogContent className="max-w-md z-[501]" overlayClassName="z-[500]">
          <DialogHeader>
            <DialogTitle>Log Touch Outcome</DialogTitle>
          </DialogHeader>
