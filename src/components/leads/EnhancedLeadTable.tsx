@@ -1082,7 +1082,12 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setBulkActionDialogOpen(false); setBulkActionType(""); setBulkActionValue(""); }}>
+            <Button variant="outline" onClick={() => { 
+              setBulkActionDialogOpen(false); 
+              setBulkActionType(""); 
+              setBulkActionValue(""); 
+              setBulkActionProgress(null);
+            }}>
               Cancel
             </Button>
             <Button 
@@ -1096,81 +1101,89 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Components */}
-      {selectedLead && (
-        <>
-          {/* New Task Dialog - replaces old AddFollowUpDialog */}
-          <AddTaskDialog
-            open={followUpDialogOpen}
-            onOpenChange={setFollowUpDialogOpen}
-            onTaskCreate={(taskData) => {
-              console.log("Task created:", taskData);
-              refetch();
-            }}
-            prefilledData={{
-              relatedTo: {
-                id: selectedLead.id,
-                name: selectedLead.name,
-                phone: selectedLead.phone,
-                type: "lead"
-              }
-            }}
-          />
+      {/* Dialog Components - always rendered, not conditional on selectedLead */}
+      <AddTaskDialog
+        open={followUpDialogOpen}
+        onOpenChange={(open) => {
+          setFollowUpDialogOpen(open);
+          if (!open) setTimeout(() => { if (!detailViewOpen && !quotationDialogOpen && !customerDialogOpen) setSelectedLead(null); }, 200);
+        }}
+        onTaskCreate={(taskData) => {
+          console.log("Task created:", taskData);
+          refetch();
+        }}
+        prefilledData={selectedLead ? {
+          relatedTo: {
+            id: selectedLead.id,
+            name: selectedLead.name,
+            phone: selectedLead.phone,
+            type: "lead"
+          }
+        } : undefined}
+      />
 
-          {/* View History now opens Lead details on Activity Log tab */}
+      <AddQuotationDialog
+        open={quotationDialogOpen}
+        onOpenChange={(open) => {
+          setQuotationDialogOpen(open);
+          if (!open) setTimeout(() => { if (!detailViewOpen && !followUpDialogOpen && !customerDialogOpen) setSelectedLead(null); }, 200);
+        }}
+        prefillData={selectedLead ? {
+          client_name: selectedLead.name,
+          client_phone: selectedLead.phone,
+          client_email: selectedLead.email || undefined,
+          client_address: selectedLead.address || selectedLead.site_location || undefined,
+          client_id: selectedLead.id,
+          client_type: 'lead'
+        } : undefined}
+      />
 
-          {/* New Quotation Dialog - replaces old CreateQuotationDialog */}
-          <AddQuotationDialog
-            open={quotationDialogOpen}
-            onOpenChange={setQuotationDialogOpen}
-            prefillData={{
-              client_name: selectedLead.name,
-              client_phone: selectedLead.phone,
-              client_email: selectedLead.email || undefined,
-              client_address: selectedLead.address || selectedLead.site_location || undefined,
-              client_id: selectedLead.id,
-              client_type: 'lead'
-            }}
-          />
+      <AddToCustomerDialog
+        open={customerDialogOpen}
+        onOpenChange={(open) => {
+          setCustomerDialogOpen(open);
+          if (!open) setTimeout(() => { if (!detailViewOpen && !followUpDialogOpen && !quotationDialogOpen) setSelectedLead(null); }, 200);
+        }}
+        leadData={selectedLead ? { 
+          id: selectedLead.id, 
+          name: selectedLead.name,
+          phone: selectedLead.phone,
+          alternate_phone: selectedLead.alternate_phone || undefined,
+          email: selectedLead.email || undefined,
+          address: selectedLead.address || selectedLead.site_location || undefined,
+          assigned_to: selectedLead.assigned_to,
+          source: selectedLead.source,
+          notes: selectedLead.notes || undefined,
+          site_plus_code: selectedLead.site_plus_code || undefined,
+        } : { id: '', name: '', phone: '', assigned_to: '', source: '' }}
+        onConvert={(data) => console.log("Converting to customer:", data)}
+      />
 
-          <AddToCustomerDialog
-            open={customerDialogOpen}
-            onOpenChange={setCustomerDialogOpen}
-            leadData={{ 
-              id: selectedLead.id, 
-              name: selectedLead.name,
-              phone: selectedLead.phone,
-              alternate_phone: selectedLead.alternate_phone || undefined,
-              email: selectedLead.email || undefined,
-              address: selectedLead.address || selectedLead.site_location || undefined,
-              assigned_to: selectedLead.assigned_to,
-              source: selectedLead.source,
-              notes: selectedLead.notes || undefined,
-              site_plus_code: selectedLead.site_plus_code || undefined,
-            }}
-            onConvert={(data) => console.log("Converting to customer:", data)}
-          />
-
-          <LeadDetailView
-            lead={selectedLead}
-            open={detailViewOpen}
-            onOpenChange={setDetailViewOpen}
-            initialTab={detailInitialTab}
-            onEdit={(lead) => {
-              setDetailViewOpen(false);
-              handleEditLeadClick(lead);
-            }}
-            onConvertToCustomer={(lead) => {
-              setDetailViewOpen(false);
-              handleAddToCustomer(lead);
-            }}
-            onDelete={(id) => {
-              setDetailViewOpen(false);
-              deleteLead(id);
-            }}
-          />
-        </>
-      )}
+      <LeadDetailView
+        lead={selectedLead}
+        open={detailViewOpen}
+        onOpenChange={(open) => {
+          setDetailViewOpen(open);
+          if (!open) {
+            setTimeout(() => {
+              if (!followUpDialogOpen && !quotationDialogOpen && !customerDialogOpen) setSelectedLead(null);
+            }, 200);
+          }
+        }}
+        initialTab={detailInitialTab}
+        onEdit={(lead) => {
+          setDetailViewOpen(false);
+          handleEditLeadClick(lead);
+        }}
+        onConvertToCustomer={(lead) => {
+          setDetailViewOpen(false);
+          handleAddToCustomer(lead);
+        }}
+        onDelete={(id) => {
+          setDetailViewOpen(false);
+          deleteLead(id);
+        }}
+      />
       
       <ColumnManagerDialog
         open={columnManagerOpen}

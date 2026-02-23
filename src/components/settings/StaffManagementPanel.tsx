@@ -74,6 +74,46 @@ import { useToast } from "@/hooks/use-toast";
 
 type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewer" | "field_agent";
 
+// Password validation helpers
+const PASSWORD_REQUIREMENTS = [
+  { label: 'At least 8 characters', test: (p: string) => p.length >= 8 },
+  { label: 'At least 1 uppercase letter', test: (p: string) => /[A-Z]/.test(p) },
+  { label: 'At least 1 lowercase letter', test: (p: string) => /[a-z]/.test(p) },
+  { label: 'At least 1 number', test: (p: string) => /\d/.test(p) },
+  { label: 'At least 1 special character (!@#$%^&*)', test: (p: string) => /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p) },
+];
+
+const COMMON_PASSWORDS = ['password', '12345678', 'qwerty123', 'password1', 'admin123', 'letmein', 'welcome1', 'abc12345'];
+
+function isPasswordValid(password: string): boolean {
+  if (!password) return false;
+  return PASSWORD_REQUIREMENTS.every(r => r.test(password)) && !COMMON_PASSWORDS.includes(password.toLowerCase());
+}
+
+function PasswordRequirements({ password }: { password: string }) {
+  if (!password) return <p className="text-xs text-muted-foreground">Min 8 chars, uppercase, lowercase, number, special character</p>;
+  
+  const isCommon = COMMON_PASSWORDS.includes(password.toLowerCase());
+  
+  return (
+    <div className="space-y-1 mt-1">
+      {PASSWORD_REQUIREMENTS.map((req, i) => {
+        const met = req.test(password);
+        return (
+          <div key={i} className={`flex items-center gap-1.5 text-xs ${met ? 'text-green-600' : 'text-muted-foreground'}`}>
+            <span>{met ? '✅' : '⬜'}</span>
+            <span>{req.label}</span>
+          </div>
+        );
+      })}
+      <div className={`flex items-center gap-1.5 text-xs ${!isCommon ? 'text-green-600' : 'text-destructive'}`}>
+        <span>{!isCommon ? '✅' : '❌'}</span>
+        <span>{isCommon ? 'This password is too common' : 'Not a commonly used password'}</span>
+      </div>
+    </div>
+  );
+}
+
 interface RoleOption {
   value: AppRole;
   label: string;
@@ -515,13 +555,13 @@ export function StaffManagementPanel() {
               <div className="space-y-2">
                 <Label htmlFor="add-password">Password *</Label>
                 <Input id="add-password" type="password" value={addForm.password} onChange={(e) => setAddForm((prev) => ({ ...prev, password: e.target.value }))} placeholder="••••••••" />
-                <p className="text-xs text-muted-foreground">Minimum 6 characters</p>
+                <PasswordRequirements password={addForm.password} />
               </div>
             </div>
           </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddStaff} disabled={isAddSubmitting || !addForm.email || !addForm.password || !addForm.full_name}>
+            <Button onClick={handleAddStaff} disabled={isAddSubmitting || !addForm.email || !isPasswordValid(addForm.password) || !addForm.full_name}>
               {isAddSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Staff
             </Button>
           </DialogFooter>
@@ -590,12 +630,12 @@ export function StaffManagementPanel() {
             <div className="space-y-2">
               <Label htmlFor="new-password">New Password *</Label>
               <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" />
-              <p className="text-xs text-muted-foreground">Minimum 6 characters</p>
+              <PasswordRequirements password={newPassword} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleResetPassword} disabled={isResetSubmitting || !newPassword}>
+            <Button onClick={handleResetPassword} disabled={isResetSubmitting || !isPasswordValid(newPassword)}>
               {isResetSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Reset Password
             </Button>
           </DialogFooter>

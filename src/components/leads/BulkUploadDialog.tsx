@@ -816,7 +816,7 @@ export function BulkUploadDialog({
         assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
         notes: lead.initialNote ? `${lead.initialNote}${lead.referredBy ? ` | Referred by: ${lead.referredBy}` : ''}` : (lead.referredBy ? `Referred by: ${lead.referredBy}` : null),
         next_follow_up: `${format(lead.nextActionDate, "yyyy-MM-dd")}T${lead.nextActionTime || '10:00'}:00`,
-        created_by: "Photo Upload",
+        // created_by omitted - database default get_current_user_email() handles it for RLS compliance
         })
         .select("id")
         .single();
@@ -950,7 +950,7 @@ export function BulkUploadDialog({
         onOpenChange(isOpen);
       }}
     >
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
@@ -1130,7 +1130,7 @@ export function BulkUploadDialog({
                   <Label htmlFor="skipDuplicates">Skip duplicate phone numbers</Label>
                 </div>
 
-                <div className="flex-1 border rounded-md overflow-auto" style={{ maxHeight: '50vh' }}>
+                <div className="flex-1 min-h-0 border rounded-md overflow-auto" style={{ maxHeight: 'calc(90vh - 280px)' }}>
                   <div style={{ minWidth: '1400px' }}>
                     <Table>
                       <TableHeader>

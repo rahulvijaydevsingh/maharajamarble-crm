@@ -19,9 +19,10 @@ import { format, isPast, isToday, isTomorrow, addHours, addDays } from 'date-fns
 interface LeadRemindersTabProps {
   lead: Lead;
   highlightReminderId?: string | null;
+  onOpenAddReminder?: () => void;
 }
 
-export function LeadRemindersTab({ lead, highlightReminderId }: LeadRemindersTabProps) {
+export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder }: LeadRemindersTabProps) {
   const { reminders, loading, addReminder, dismissReminder, snoozeReminder, deleteReminder } = useReminders('lead', lead.id);
   const { tasks } = useTasks();
   const { openTask } = useTaskDetailModal();
