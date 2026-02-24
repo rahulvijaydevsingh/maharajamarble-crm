@@ -1,192 +1,140 @@
 
-# Comprehensive Fix Plan: Dialog Freezes, Scrolling, Password, and Automation
 
-## Root Cause Analysis
+# Fix Plan: Reminders Dialog, Password Reset, and Security
 
-### The Global Dialog Freeze Problem
-The page-freeze issue has a single root cause affecting the entire CRM: **Radix UI's Dialog component leaves `pointer-events: none` on `document.body` when dialogs unmount in certain sequences.**
+## Issues Found
 
-When a dialog closes:
-1. Radix sets `document.body.style.pointerEvents = 'none'` during close animation
-2. If the dialog component unmounts before the animation completes (e.g., `{selectedLead && <Dialog>}` becomes false), the cleanup never fires
-3. The body remains stuck with `pointer-events: none`, making the entire page unresponsive
+### 1. Reminders Dialog Behind Profile Window
+**Root cause**: `LeadRemindersTab` (line 201) uses its own internal `setAddDialogOpen(true)` and renders its own `AddReminderDialog` (line 331-336) INSIDE the parent Dialog. The `onOpenAddReminder` callback prop exists but is ignored -- the "Add Reminder" button never calls it.
 
-This affects: LeadDetailView, BulkActionDialog, StaffManagement dialogs, and any dialog conditionally rendered with `{condition && <Dialog>}`.
+The same pattern was correctly fixed for Quotations (the tab calls `onOpenAddQuotation` and has no internal dialog), but Reminders was missed.
 
-### Other Issues
-- **Double scrollbar**: `DialogContent` has default overflow + inner scroll div both scrolling
-- **Password reset**: Supabase Auth rejects common/weak passwords beyond our validation. No client-side feedback shown.
-- **Automation entity_type error**: DB CHECK constraint allows only 5 entity types but TypeScript defines 7 (added `kit` and `staff_activity`)
-- **Nested dialogs behind profile**: `AddQuotationDialog`/`AddReminderDialog` rendered inside `LeadDetailView` Dialog causes Radix focus-trap conflicts
+Additionally, `CustomerDetailView` was never updated to use the sibling dialog pattern at all -- Reminders, Quotations, and Tasks tabs still render their own internal dialogs nested inside the parent Dialog.
+
+### 2. Password Reset Error
+**Root cause**: The `reset-staff-password` edge function has **zero logs** -- it was never successfully deployed/invoked. The error "password is known to be weak and easy to guess" comes from Supabase Auth's HIBP (Have I Been Pwned) check, which rejects passwords found in data breaches, even if they pass complexity rules.
+
+The edge function needs redeployment. The client-side validation should also warn users about the HIBP check.
+
+### 3. Security Findings
+From the security scan:
+- **Profiles table**: All authenticated users can see all profiles (emails, phones). Should restrict to own profile + admins (but need a safe way for staff dropdowns to still work).
+- **KIT tables**: `kit_subscriptions` and `kit_touches` have `USING (true)` on all operations -- fully open to all authenticated users.
+- **RLS always-true warnings**: Multiple tables have permissive INSERT/UPDATE/DELETE policies.
 
 ---
 
-## Implementation Plan
+## Implementation Steps
 
-### Step 1: Fix the Global Dialog Freeze (Root Cause Fix in dialog.tsx)
+### Step 1: Fix LeadRemindersTab -- Use Callback Instead of Internal Dialog
 
-**File: `src/components/ui/dialog.tsx`**
+**File: `src/components/leads/detail-tabs/LeadRemindersTab.tsx`**
 
-Add a safety cleanup to `DialogContent` via `onCloseAutoFocus` and `onOpenAutoFocus` callbacks. Also add a global `useEffect` cleanup that ensures `document.body.style` is reset when any Dialog unmounts:
+- Change the "Add Reminder" button (line 201) to call `onOpenAddReminder?.()` if available, falling back to internal dialog
+- Remove the internal `AddReminderDialog` render (lines 331-336) when `onOpenAddReminder` is provided
+- This makes the sibling dialog in `LeadDetailView` the one that actually opens (at z-[80])
 
-```tsx
-// Add onCloseAutoFocus to DialogContent to guarantee body cleanup
-onCloseAutoFocus={(e) => {
-  document.body.style.pointerEvents = '';
-  props.onCloseAutoFocus?.(e);
-}}
-```
+### Step 2: Fix CustomerDetailView -- Apply Sibling Dialog Pattern
 
-Also create a small `useDialogBodyCleanup` hook that runs on unmount to reset body styles. Apply it inside `DialogContent`.
+**File: `src/components/customers/CustomerDetailView.tsx`**
 
-### Step 2: Fix EnhancedLeadTable Dialog Management
+Apply the same pattern already done for `LeadDetailView`:
+- Add lifted dialog states: `addQuotationOpen`, `addReminderOpen`, `addTaskOpen`
+- Pass `onOpenAddQuotation`, `onOpenAddReminder`, `onOpenAddTask` callbacks to tab components
+- Render `AddQuotationDialog`, `AddReminderDialog`, `AddTaskDialog` as siblings AFTER the parent Dialog with `z-[80]` and `hideOverlay` props
 
-**File: `src/components/leads/EnhancedLeadTable.tsx`**
+**Files: Customer tab components**
+- `CustomerQuotationsTab.tsx`: Accept `onOpenAddQuotation` callback, use it for the "Create Quotation" button
+- `CustomerRemindersTab.tsx`: Accept `onOpenAddReminder` callback, use it for the "Add Reminder" button, remove internal `AddReminderDialog`
+- `CustomerTasksTab.tsx`: Accept `onOpenAddTask` callback if applicable
 
-Key changes:
-- Remove the `{selectedLead && (...)}` conditional wrapper around all dialogs. Instead, always render the dialogs and pass `selectedLead` data only when available
-- Add proper `onOpenChange` handlers that clean up `selectedLead` AFTER the dialog close animation completes (using a small setTimeout)
-- For the `LeadDetailView`, change `onOpenChange` to:
-```tsx
-onOpenChange={(open) => {
-  setDetailViewOpen(open);
-  if (!open) {
-    setTimeout(() => setSelectedLead(null), 200);
-  }
-}}
-```
-- Same pattern for bulk action dialog: reset `bulkActionType`, `bulkActionValue`, and `selectedLeads` in a proper cleanup
+### Step 3: Redeploy Password Reset Edge Function
 
-### Step 3: Fix LeadDetailView - Lift Nested Dialogs Out
+Redeploy `reset-staff-password` to ensure it's actually running.
 
-**File: `src/components/leads/LeadDetailView.tsx`**
-
-The quotation and reminder dialogs rendered inside tab content (inside the parent Dialog) cause Radix focus-trap conflicts. Fix by:
-- Adding state for `addQuotationOpen`, `addReminderOpen`, `addTaskOpen` at the LeadDetailView level
-- Passing `onOpenQuotation`, `onOpenReminder`, `onOpenTask` callbacks to tab components
-- Rendering child dialogs as siblings AFTER the parent `</Dialog>`, not nested inside it:
-
-```tsx
-return (
-  <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="z-[70]">
-        {/* tabs - no dialogs nested inside */}
-      </DialogContent>
-    </Dialog>
-    {/* Child dialogs as siblings */}
-    <AddQuotationDialog open={addQuotationOpen} ... />
-    <AddReminderDialog open={addReminderOpen} ... />
-    <AddTaskDialog open={addTaskOpen} ... />
-  </>
-);
-```
-
-### Step 4: Fix Tab Components to Use Callbacks Instead of Internal Dialogs
-
-**Files:**
-- `src/components/leads/detail-tabs/LeadQuotationsTab.tsx`
-- `src/components/leads/detail-tabs/LeadRemindersTab.tsx`  
-- `src/components/leads/detail-tabs/LeadTasksTab.tsx`
-
-Change each tab to accept an `onOpenAddDialog` callback prop instead of managing its own Dialog component internally. Remove the internal `<AddQuotationDialog>`, `<AddReminderDialog>`, `<AddTaskDialog>` from these tabs.
-
-### Step 5: Fix Double Scrollbar in Bulk Upload
-
-**File: `src/components/leads/BulkUploadDialog.tsx`**
-
-The issue: `DialogContent` has `max-h-[90vh] flex flex-col` which creates an outer scroll context, AND the inner validation div has `overflow-auto` with `max-height: 50vh`. Both create scroll regions.
-
-Fix:
-- Set the `DialogContent` to `overflow-hidden` (no outer scroll)
-- Keep only the inner validation table div as the single scroll container
-- Set the inner container to `overflow-auto` with a calculated max-height
-
-### Step 6: Fix Password Reset - Add Requirements UI
+### Step 4: Improve Password Reset UX
 
 **File: `src/components/settings/StaffManagementPanel.tsx`**
 
-Add password strength validation and requirements display:
-- Show real-time password requirements checklist below the password input:
-  - Min 8 characters
-  - At least 1 uppercase letter
-  - At least 1 lowercase letter
-  - At least 1 number
-  - Not a commonly guessed password
-- Disable the "Reset Password" button until all requirements are met
-- Catch `AuthWeakPasswordError` specifically and show a user-friendly message
-- Ensure `finally` block always resets `isResetSubmitting`
-- Apply same password requirements UI to the "Add Staff" form
+- Add a note to the password requirements UI warning about the HIBP check: "Must not appear in known data breach databases"
+- Add more common passwords to the blocklist
+- Improve the error message when the backend rejects a password to explain HIBP clearly
 
-### Step 7: Fix Automation Rules Entity Type Constraint
+### Step 5: Fix Security -- Profiles Table RLS
 
 **Database migration:**
 
-Update the CHECK constraint on `automation_rules.entity_type` to include the new entity types:
+Create a minimal-fields view for staff lookups and restrict the profiles table:
 
 ```sql
-ALTER TABLE automation_rules 
-  DROP CONSTRAINT automation_rules_entity_type_check;
-ALTER TABLE automation_rules 
-  ADD CONSTRAINT automation_rules_entity_type_check 
-  CHECK (entity_type = ANY (ARRAY[
-    'leads', 'tasks', 'customers', 'professionals', 
-    'quotations', 'kit', 'staff_activity'
-  ]));
+-- Create a safe view for staff dropdowns (id + full_name only)
+CREATE OR REPLACE VIEW public.staff_directory
+WITH (security_invoker = on) AS
+SELECT id, full_name FROM public.profiles WHERE is_active = true;
+
+-- Restrict profiles to own profile + admins
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON public.profiles;
+CREATE POLICY "Users can view own profile or admins view all"
+ON public.profiles FOR SELECT TO authenticated
+USING (auth.uid() = id OR is_admin());
 ```
 
-### Step 8: Fix Staff Management Dialog Freezes
+Note: The `is_assigned_to_me()` function uses `SECURITY DEFINER`, so it bypasses RLS and will continue working even with restricted profiles SELECT. Staff dropdowns (`useActiveStaff`) query profiles directly, so they need updating to use the `staff_directory` view OR the query needs to be done via an RPC. Since `useActiveStaff` is used widely, the safest approach is to keep profiles readable but only expose id/full_name/is_active via a view, and restrict direct table access.
 
-**File: `src/components/settings/StaffManagementPanel.tsx`**
+However, restricting profiles would break `useActiveStaff` and many other features. The pragmatic fix: keep profiles readable by authenticated users (it's a CRM where staff need to see each other's names for assignment), but mark the finding as an accepted risk with justification.
 
-Apply the same dialog cleanup pattern:
-- For the dropdown-to-dialog pattern, close the dropdown first with a small delay before opening the dialog
-- Ensure all `onOpenChange` handlers reset ALL related states
-- Add body cleanup on dialog unmount
+### Step 6: Fix Security -- KIT Tables RLS
 
-### Step 9: Fix Bulk Action Cancel Freeze
+**Database migration:**
 
-**File: `src/components/leads/EnhancedLeadTable.tsx`**
+Replace the overly permissive `USING (true)` policies on `kit_subscriptions` and `kit_touches` with assignment-based policies using `is_assigned_to_me()`:
 
-The bulk action dialog's cancel button sets state but the dialog close may race with Radix cleanup. Fix:
-- Always render the bulk action Dialog (remove conditional)
-- On cancel/close, explicitly reset: `bulkActionType`, `bulkActionValue`, `bulkActionProgress`
-- Do NOT clear `selectedLeads` on cancel (only clear on successful completion)
+```sql
+-- kit_subscriptions
+DROP POLICY IF EXISTS "Users can view all subscriptions" ON public.kit_subscriptions;
+DROP POLICY IF EXISTS "Users can update subscriptions" ON public.kit_subscriptions;
+DROP POLICY IF EXISTS "Users can delete subscriptions" ON public.kit_subscriptions;
 
-### Step 10: Global Dialog Safety Net
+CREATE POLICY "Users can view accessible subscriptions"
+ON public.kit_subscriptions FOR SELECT USING (
+  is_assigned_to_me(assigned_to) OR is_assigned_to_me(created_by) OR is_admin()
+);
 
-**File: `src/components/ui/dialog.tsx`**
+CREATE POLICY "Users can update accessible subscriptions"
+ON public.kit_subscriptions FOR UPDATE USING (
+  is_assigned_to_me(assigned_to) OR is_assigned_to_me(created_by) OR is_admin()
+);
 
-Add a global click listener as a safety net: if `document.body.style.pointerEvents === 'none'` and no open dialog exists in the DOM, auto-reset it. This prevents any edge case from permanently freezing the UI.
+CREATE POLICY "Admins can delete subscriptions"
+ON public.kit_subscriptions FOR DELETE USING (is_admin());
+
+-- kit_touches: similar pattern
+```
+
+### Step 7: Update Security Scan Findings
+
+Mark findings with appropriate status after fixes are applied.
 
 ---
 
-## Technical Details
-
-### Files to Modify
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/ui/dialog.tsx` | Add `onCloseAutoFocus` body cleanup, unmount safety reset |
-| `src/components/leads/EnhancedLeadTable.tsx` | Remove conditional dialog rendering, fix `onOpenChange` handlers, fix bulk action dialog |
-| `src/components/leads/LeadDetailView.tsx` | Lift child dialogs as siblings, add dialog state management |
-| `src/components/leads/detail-tabs/LeadQuotationsTab.tsx` | Accept callback prop, remove internal dialog |
-| `src/components/leads/detail-tabs/LeadRemindersTab.tsx` | Accept callback prop, remove internal dialog |
-| `src/components/leads/detail-tabs/LeadTasksTab.tsx` | Accept callback prop, remove internal dialog |
-| `src/components/leads/BulkUploadDialog.tsx` | Fix double scrollbar - single scroll container |
-| `src/components/settings/StaffManagementPanel.tsx` | Add password requirements UI, fix dialog cleanup |
-| `src/components/customers/CustomerDetailView.tsx` | Same nested dialog fix as LeadDetailView |
-| `src/components/professionals/ProfessionalDetailView.tsx` | Verify sibling dialog pattern is correct |
-| Database migration | Update `automation_rules_entity_type_check` constraint |
+| `src/components/leads/detail-tabs/LeadRemindersTab.tsx` | Use `onOpenAddReminder` callback, remove internal dialog |
+| `src/components/customers/CustomerDetailView.tsx` | Lift child dialogs as siblings with z-[80] |
+| `src/components/customers/detail-tabs/CustomerRemindersTab.tsx` | Accept callback, remove internal dialog |
+| `src/components/customers/detail-tabs/CustomerQuotationsTab.tsx` | Accept callback, remove internal dialog |
+| `src/components/settings/StaffManagementPanel.tsx` | Add HIBP warning to password requirements |
+| Database migration | Fix KIT tables RLS policies |
 
-### Implementation Order
+## Implementation Order
 
-1. Database: Update automation CHECK constraint (unblocks automation rule creation)
-2. `dialog.tsx`: Add global body cleanup safety mechanism
-3. `EnhancedLeadTable.tsx`: Fix conditional rendering and dialog close handlers
-4. `LeadDetailView.tsx`: Lift nested dialogs out as siblings
-5. Tab components: Remove internal dialogs, use callbacks
-6. `BulkUploadDialog.tsx`: Fix double scrollbar
-7. `StaffManagementPanel.tsx`: Add password requirements + dialog cleanup
-8. `CustomerDetailView.tsx`: Same nested dialog fix
-9. Verify `ProfessionalDetailView.tsx` has correct pattern
+1. Database: Fix KIT tables RLS (security)
+2. Redeploy `reset-staff-password` edge function
+3. Fix `LeadRemindersTab` to use callback
+4. Fix `CustomerDetailView` with sibling dialog pattern
+5. Fix customer tab components
+6. Improve password reset UX with HIBP warning
+7. Update security findings
+
