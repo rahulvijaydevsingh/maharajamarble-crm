@@ -110,6 +110,10 @@ function PasswordRequirements({ password }: { password: string }) {
         <span>{!isCommon ? '✅' : '❌'}</span>
         <span>{isCommon ? 'This password is too common' : 'Not a commonly used password'}</span>
       </div>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
+        <span>ℹ️</span>
+        <span>Password must not appear in known data breach databases (HIBP check)</span>
+      </div>
     </div>
   );
 }

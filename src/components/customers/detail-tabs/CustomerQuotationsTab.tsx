@@ -9,9 +9,10 @@ import { format } from 'date-fns';
 
 interface CustomerQuotationsTabProps {
   customer: Customer;
+  onOpenAddQuotation?: () => void;
 }
 
-export function CustomerQuotationsTab({ customer }: CustomerQuotationsTabProps) {
+export function CustomerQuotationsTab({ customer, onOpenAddQuotation }: CustomerQuotationsTabProps) {
   const { quotations } = useQuotations();
   
   const customerQuotations = quotations.filter(
@@ -30,7 +31,7 @@ export function CustomerQuotationsTab({ customer }: CustomerQuotationsTabProps) 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Quotations ({customerQuotations.length})</h3>
-        <Button size="sm">
+        <Button size="sm" onClick={() => onOpenAddQuotation?.()}>
           <Plus className="h-4 w-4 mr-1" />
           Create Quotation
         </Button>
@@ -41,7 +42,7 @@ export function CustomerQuotationsTab({ customer }: CustomerQuotationsTabProps) 
           <CardContent className="py-12 text-center">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">No quotations found for this customer</p>
-            <Button variant="outline" className="mt-4">
+            <Button variant="outline" className="mt-4" onClick={() => onOpenAddQuotation?.()}>
               <Plus className="h-4 w-4 mr-1" />
               Create First Quotation
             </Button>

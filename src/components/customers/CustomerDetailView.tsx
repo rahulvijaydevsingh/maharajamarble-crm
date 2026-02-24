@@ -47,8 +47,12 @@ import { CustomerNotesTab } from './detail-tabs/CustomerNotesTab';
 import { CustomerActivityTab } from './detail-tabs/CustomerActivityTab';
 import { EditSmartCustomerForm } from './EditSmartCustomerForm';
  import { KitProfileTab } from '@/components/kit/KitProfileTab';
+import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
+import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDialog';
+import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { CUSTOMER_STATUSES } from '@/constants/customerConstants';
 import { useToast } from '@/hooks/use-toast';
+import { useReminders } from '@/hooks/useReminders';
 
 interface CustomerDetailViewProps {
   customer: Customer | null;
@@ -77,6 +81,47 @@ export function CustomerDetailView({
   const { updateCustomer, refetch } = useCustomers();
   const { addLead } = useLeads();
   const { toast } = useToast();
+
+  // Lifted sibling dialog states
+  const [addQuotationOpen, setAddQuotationOpen] = useState(false);
+  const [addReminderOpen, setAddReminderOpen] = useState(false);
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
+
+  // Reminder save handler for sibling dialog
+  const { addReminder } = useReminders('customer', customer?.id || '');
+  const [savingReminder, setSavingReminder] = useState(false);
+
+  const handleAddReminderSave = async (data: {
+    title: string;
+    description: string;
+    reminder_datetime: string;
+    is_recurring: boolean;
+    recurrence_pattern: string | null;
+    recurrence_end_date: string | null;
+    assigned_to: string;
+  }) => {
+    if (!customer || savingReminder) return;
+    setSavingReminder(true);
+    try {
+      await addReminder({
+        title: data.title,
+        description: data.description,
+        reminder_datetime: data.reminder_datetime,
+        is_recurring: data.is_recurring,
+        recurrence_pattern: data.recurrence_pattern as "daily" | "weekly" | "monthly" | "yearly" | null,
+        recurrence_end_date: data.recurrence_end_date,
+        entity_type: 'customer',
+        entity_id: customer.id,
+        created_by: 'Current User',
+        assigned_to: data.assigned_to,
+      });
+      setAddReminderOpen(false);
+    } catch {
+      // Error handled in addReminder
+    } finally {
+      setSavingReminder(false);
+    }
+  };
 
   // Reset tab when customer changes
   useEffect(() => {
@@ -282,176 +327,217 @@ export function CustomerDetailView({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
-        <VisuallyHidden>
-          <DialogTitle>Customer Details: {customer.name}</DialogTitle>
-        </VisuallyHidden>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold">
-              #{customer.id.slice(0, 8)} - {customer.name}
-            </h2>
-            <Badge variant="secondary" className={statusConfig.className}>
-              {statusConfig.label}
-            </Badge>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleEditClick}>
-              <Edit className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
+          <VisuallyHidden>
+            <DialogTitle>Customer Details: {customer.name}</DialogTitle>
+          </VisuallyHidden>
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold">
+                #{customer.id.slice(0, 8)} - {customer.name}
+              </h2>
+              <Badge variant="secondary" className={statusConfig.className}>
+                {statusConfig.label}
+              </Badge>
+            </div>
             
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-1" />
-              Print
-            </Button>
-            
-            <Button 
-              size="sm" 
-              onClick={handleConvertToLead}
-              disabled={convertingToLead}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {convertingToLead ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <UserPlus className="h-4 w-4 mr-1" />
-              )}
-              Convert to Lead
-            </Button>
-            
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  More
-                  <MoreHorizontal className="h-4 w-4 ml-1" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="z-[80]">
-                <DropdownMenuItem onClick={handleEditClick}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Customer
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Mail className="h-4 w-4 mr-2" />
-                  Send Email
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {onDelete && (
-                  <DropdownMenuItem 
-                    className="text-destructive"
-                    onClick={() => onDelete(customer.id)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Customer
-                  </DropdownMenuItem>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleEditClick}>
+                <Edit className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+              
+              <Button variant="outline" size="sm" onClick={() => window.print()}>
+                <Printer className="h-4 w-4 mr-1" />
+                Print
+              </Button>
+              
+              <Button 
+                size="sm" 
+                onClick={handleConvertToLead}
+                disabled={convertingToLead}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {convertingToLead ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <UserPlus className="h-4 w-4 mr-1" />
                 )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b px-6">
-            <TabsList className="h-12 bg-transparent gap-2">
-              <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
-                <User className="h-4 w-4" />
-                Profile
-              </TabsTrigger>
-              <TabsTrigger value="quotations" className="gap-1.5 data-[state=active]:bg-muted">
-                <FileText className="h-4 w-4" />
-                Quotations
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-1.5 data-[state=active]:bg-muted">
-                <CheckSquare className="h-4 w-4" />
-                Tasks
-              </TabsTrigger>
-              <TabsTrigger value="attachments" className="gap-1.5 data-[state=active]:bg-muted">
-                <Paperclip className="h-4 w-4" />
-                Attachments
-              </TabsTrigger>
-              <TabsTrigger value="reminders" className="gap-1.5 data-[state=active]:bg-muted">
-                <Bell className="h-4 w-4" />
-                Reminders
-              </TabsTrigger>
-              <TabsTrigger value="notes" className="gap-1.5 data-[state=active]:bg-muted">
-                <StickyNote className="h-4 w-4" />
-                Notes
-              </TabsTrigger>
-              <TabsTrigger value="activity" className="gap-1.5 data-[state=active]:bg-muted">
-                <Activity className="h-4 w-4" />
-                Activity Log
-              </TabsTrigger>
-               <TabsTrigger value="kit" className="gap-1.5 data-[state=active]:bg-muted">
-                 <HeartHandshake className="h-4 w-4" />
-                 Keep in Touch
-               </TabsTrigger>
-            </TabsList>
+                Convert to Lead
+              </Button>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    More
+                    <MoreHorizontal className="h-4 w-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="z-[80]">
+                  <DropdownMenuItem onClick={handleEditClick}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Customer
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send Email
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {onDelete && (
+                    <DropdownMenuItem 
+                      className="text-destructive"
+                      onClick={() => onDelete(customer.id)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Customer
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            <TabsContent value="profile" className="m-0 h-full">
-              <CustomerProfileTab 
-                customer={customer} 
-                onEdit={handleEditClick} 
-                onViewActivityLog={() => setActiveTab('activity')}
-              />
-            </TabsContent>
-            
-            <TabsContent value="quotations" className="m-0 h-full">
-              <CustomerQuotationsTab customer={customer} />
-            </TabsContent>
-            
-            <TabsContent value="tasks" className="m-0 h-full">
-              <CustomerTasksTab customer={customer} />
-            </TabsContent>
-            
-            <TabsContent value="attachments" className="m-0 h-full">
-              <CustomerAttachmentsTab customer={customer} />
-            </TabsContent>
-            
-            <TabsContent value="reminders" className="m-0 h-full">
-              <CustomerRemindersTab customer={customer} />
-            </TabsContent>
-            
-            <TabsContent value="notes" className="m-0 h-full">
-              <CustomerNotesTab customer={customer} />
-            </TabsContent>
-            
-            <TabsContent value="activity" className="m-0 h-full">
-              <CustomerActivityTab customer={customer} />
-            </TabsContent>
-             
-             <TabsContent value="kit" className="m-0 h-full">
-               <KitProfileTab
-                 entityType="customer"
-                 entityId={customer.id}
-                 entityName={customer.name}
-                 defaultAssignee={customer.assigned_to}
-                 entityPhone={customer.phone || undefined}
-                 entityLocation={customer.site_plus_code || undefined}
-                 entityAddress={customer.address || undefined}
-               />
-             </TabsContent>
-          </div>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+            <div className="border-b px-6">
+              <TabsList className="h-12 bg-transparent gap-2">
+                <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
+                  <User className="h-4 w-4" />
+                  Profile
+                </TabsTrigger>
+                <TabsTrigger value="quotations" className="gap-1.5 data-[state=active]:bg-muted">
+                  <FileText className="h-4 w-4" />
+                  Quotations
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className="gap-1.5 data-[state=active]:bg-muted">
+                  <CheckSquare className="h-4 w-4" />
+                  Tasks
+                </TabsTrigger>
+                <TabsTrigger value="attachments" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Paperclip className="h-4 w-4" />
+                  Attachments
+                </TabsTrigger>
+                <TabsTrigger value="reminders" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Bell className="h-4 w-4" />
+                  Reminders
+                </TabsTrigger>
+                <TabsTrigger value="notes" className="gap-1.5 data-[state=active]:bg-muted">
+                  <StickyNote className="h-4 w-4" />
+                  Notes
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Activity className="h-4 w-4" />
+                  Activity Log
+                </TabsTrigger>
+                 <TabsTrigger value="kit" className="gap-1.5 data-[state=active]:bg-muted">
+                   <HeartHandshake className="h-4 w-4" />
+                   Keep in Touch
+                 </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <TabsContent value="profile" className="m-0 h-full">
+                <CustomerProfileTab 
+                  customer={customer} 
+                  onEdit={handleEditClick} 
+                  onViewActivityLog={() => setActiveTab('activity')}
+                />
+              </TabsContent>
+              
+              <TabsContent value="quotations" className="m-0 h-full">
+                <CustomerQuotationsTab customer={customer} onOpenAddQuotation={() => setAddQuotationOpen(true)} />
+              </TabsContent>
+              
+              <TabsContent value="tasks" className="m-0 h-full">
+                <CustomerTasksTab customer={customer} onOpenAddTask={() => setAddTaskOpen(true)} />
+              </TabsContent>
+              
+              <TabsContent value="attachments" className="m-0 h-full">
+                <CustomerAttachmentsTab customer={customer} />
+              </TabsContent>
+              
+              <TabsContent value="reminders" className="m-0 h-full">
+                <CustomerRemindersTab customer={customer} onOpenAddReminder={() => setAddReminderOpen(true)} />
+              </TabsContent>
+              
+              <TabsContent value="notes" className="m-0 h-full">
+                <CustomerNotesTab customer={customer} />
+              </TabsContent>
+              
+              <TabsContent value="activity" className="m-0 h-full">
+                <CustomerActivityTab customer={customer} />
+              </TabsContent>
+               
+               <TabsContent value="kit" className="m-0 h-full">
+                 <KitProfileTab
+                   entityType="customer"
+                   entityId={customer.id}
+                   entityName={customer.name}
+                   defaultAssignee={customer.assigned_to}
+                   entityPhone={customer.phone || undefined}
+                   entityLocation={customer.site_plus_code || undefined}
+                   entityAddress={customer.address || undefined}
+                 />
+               </TabsContent>
+            </div>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sibling dialogs rendered OUTSIDE parent Dialog to avoid z-index/focus-trap conflicts */}
+      <AddQuotationDialog
+        open={addQuotationOpen}
+        onOpenChange={setAddQuotationOpen}
+        prefillData={{
+          client_id: customer.id,
+          client_name: customer.name,
+          client_phone: customer.phone,
+          client_email: customer.email || undefined,
+          client_address: customer.address || undefined,
+          client_type: 'customer' as const,
+        }}
+        contentClassName="z-[80]"
+        overlayClassName="z-[79] bg-transparent"
+      />
+
+      <AddReminderDialog
+        open={addReminderOpen}
+        onOpenChange={setAddReminderOpen}
+        onSave={handleAddReminderSave}
+        entityName={customer.name}
+        contentClassName="z-[80]"
+        overlayClassName="z-[79] bg-transparent"
+      />
+
+      <AddTaskDialog
+        open={addTaskOpen}
+        onOpenChange={setAddTaskOpen}
+        onTaskCreate={() => setAddTaskOpen(false)}
+        prefilledData={{
+          relatedTo: {
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone,
+            type: 'customer' as const,
+          },
+        }}
+      />
+    </>
   );
 }

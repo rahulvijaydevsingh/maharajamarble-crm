@@ -46,6 +46,7 @@ import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 
 interface CustomerTasksTabProps {
   customer: Customer;
+  onOpenAddTask?: () => void;
 }
 
 const priorityStyles: Record<string, { label: string; className: string }> = {
@@ -61,7 +62,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'Overdue': { label: 'Overdue', className: 'bg-red-100 text-red-700' },
 };
 
-export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
+export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabProps) {
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
@@ -180,7 +181,7 @@ export function CustomerTasksTab({ customer }: CustomerTasksTabProps) {
             <ExternalLink className="h-4 w-4 mr-2" />
             View All
           </Button>
-          <Button onClick={() => setAddDialogOpen(true)}>
+          <Button onClick={() => onOpenAddTask ? onOpenAddTask() : setAddDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Task
           </Button>
