@@ -198,7 +198,7 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Reminders</h3>
-        <Button onClick={() => setAddDialogOpen(true)} disabled={savingReminder}>
+        <Button onClick={() => onOpenAddReminder ? onOpenAddReminder() : setAddDialogOpen(true)} disabled={savingReminder}>
           <Plus className="h-4 w-4 mr-2" />
           Add Reminder
         </Button>
@@ -328,12 +328,14 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
         </div>
       )}
 
-      <AddReminderDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        onSave={handleAddReminder}
-        entityName={lead.name}
-      />
+      {!onOpenAddReminder && (
+        <AddReminderDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          onSave={handleAddReminder}
+          entityName={lead.name}
+        />
+      )}
     </div>
   );
 }

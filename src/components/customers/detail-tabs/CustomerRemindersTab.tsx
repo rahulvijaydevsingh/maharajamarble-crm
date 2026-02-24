@@ -17,9 +17,10 @@ import { format, isPast, isToday, isTomorrow, addHours, addDays } from 'date-fns
 
 interface CustomerRemindersTabProps {
   customer: Customer;
+  onOpenAddReminder?: () => void;
 }
 
-export function CustomerRemindersTab({ customer }: CustomerRemindersTabProps) {
+export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRemindersTabProps) {
   const { reminders, loading, addReminder, dismissReminder, snoozeReminder, deleteReminder } = useReminders('customer', customer.id);
   const { logActivity } = useLogActivity();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -171,7 +172,7 @@ export function CustomerRemindersTab({ customer }: CustomerRemindersTabProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Reminders ({activeReminders.length})</h3>
-        <Button size="sm" onClick={() => setAddDialogOpen(true)} disabled={savingReminder}>
+        <Button size="sm" onClick={() => onOpenAddReminder ? onOpenAddReminder() : setAddDialogOpen(true)} disabled={savingReminder}>
           <Plus className="h-4 w-4 mr-1" />
           Add Reminder
         </Button>
@@ -182,7 +183,7 @@ export function CustomerRemindersTab({ customer }: CustomerRemindersTabProps) {
           <CardContent className="py-12 text-center">
             <Bell className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">No active reminders</p>
-            <Button variant="outline" className="mt-4" onClick={() => setAddDialogOpen(true)}>
+            <Button variant="outline" className="mt-4" onClick={() => onOpenAddReminder ? onOpenAddReminder() : setAddDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
               Create Reminder
             </Button>
@@ -297,12 +298,14 @@ export function CustomerRemindersTab({ customer }: CustomerRemindersTabProps) {
         </div>
       )}
 
-      <AddReminderDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        onSave={handleAddReminder}
-        entityName={customer.name}
-      />
+      {!onOpenAddReminder && (
+        <AddReminderDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          onSave={handleAddReminder}
+          entityName={customer.name}
+        />
+      )}
     </div>
   );
 }
