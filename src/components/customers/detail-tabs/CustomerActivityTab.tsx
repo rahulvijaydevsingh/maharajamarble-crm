@@ -1,5 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Activity, 
   Plus,
@@ -22,32 +25,44 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 interface CustomerActivityTabProps {
   customer: Customer;
 }
 
 export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
-  const { activities, loading, hasMore, loadMore, deleteActivity, refetch } = useActivityLog(undefined, customer.id);
+  const { activities, loading, hasMore, loadMore, deleteActivity, updateActivity, refetch } = useActivityLog(undefined, customer.id);
   const { role } = usePermissions();
+  const { toast } = useToast();
   const isAdmin = role === 'admin' || role === 'super_admin';
   
-  // State
   const [searchQuery, setSearchQuery] = useState('');
   const [dateGrouping, setDateGrouping] = useState('all');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState<ActivityLogEntry | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  // Edit dialog state
+  const [activityToEdit, setActivityToEdit] = useState<ActivityLogEntry | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [isEditSaving, setIsEditSaving] = useState(false);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Filter activities
   const filteredActivities = useMemo(() => {
     let filtered = activities;
-
-    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(a => 
@@ -57,74 +72,45 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
         a.activity_type.toLowerCase().includes(query)
       );
     }
-
-    // Category filter
     if (selectedCategories.length > 0) {
       filtered = filtered.filter(a => selectedCategories.includes(a.activity_category));
     }
-
-    // Date grouping filter
     if (dateGrouping !== 'all') {
       filtered = filtered.filter(a => {
         const date = new Date(a.activity_timestamp);
         switch (dateGrouping) {
-          case 'today':
-            return isToday(date);
-          case 'yesterday':
-            return isYesterday(date);
-          case 'this_week':
-            return isThisWeek(date);
-          default:
-            return true;
+          case 'today': return isToday(date);
+          case 'yesterday': return isYesterday(date);
+          case 'this_week': return isThisWeek(date);
+          default: return true;
         }
       });
     }
-
     return filtered;
   }, [activities, searchQuery, selectedCategories, dateGrouping]);
 
-  // Group activities by date
   const groupedActivities = useMemo(() => {
-    if (dateGrouping === 'all') {
-      return { 'All Activities': filteredActivities };
-    }
-
+    if (dateGrouping === 'all') return { 'All Activities': filteredActivities };
     const groups: Record<string, ActivityLogEntry[]> = {};
-    
     filteredActivities.forEach(activity => {
       const date = new Date(activity.activity_timestamp);
       let key: string;
-      
-      if (isToday(date)) {
-        key = 'Today';
-      } else if (isYesterday(date)) {
-        key = 'Yesterday';
-      } else if (isThisWeek(date)) {
-        key = 'This Week';
-      } else {
-        key = format(date, 'MMMM yyyy');
-      }
-      
-      if (!groups[key]) {
-        groups[key] = [];
-      }
+      if (isToday(date)) key = 'Today';
+      else if (isYesterday(date)) key = 'Yesterday';
+      else if (isThisWeek(date)) key = 'This Week';
+      else key = format(date, 'MMMM yyyy');
+      if (!groups[key]) groups[key] = [];
       groups[key].push(activity);
     });
-
     return groups;
   }, [filteredActivities, dateGrouping]);
 
-  // Infinite scroll handler
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-
     setShowBackToTop(container.scrollTop > 300);
-
     const { scrollTop, scrollHeight, clientHeight } = container;
-    if (scrollHeight - scrollTop - clientHeight < 100 && hasMore && !loading) {
-      loadMore();
-    }
+    if (scrollHeight - scrollTop - clientHeight < 100 && hasMore && !loading) loadMore();
   }, [hasMore, loading, loadMore]);
 
   useEffect(() => {
@@ -141,17 +127,41 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
 
   const handleDelete = async () => {
     if (activityToDelete) {
-      await deleteActivity(activityToDelete.id);
-      setActivityToDelete(null);
+      try {
+        await deleteActivity(activityToDelete.id);
+      } finally {
+        setActivityToDelete(null);
+      }
     }
   };
 
-  // Check if user can add manual entries (admin or granted permission)
-  const canAddManualEntry = isAdmin; // Can be extended with role-based settings
+  const handleEditOpen = (activity: ActivityLogEntry) => {
+    setActivityToEdit(activity);
+    setEditTitle(activity.title);
+    setEditDescription(activity.description || '');
+  };
+
+  const handleEditSave = async () => {
+    if (!activityToEdit) return;
+    setIsEditSaving(true);
+    try {
+      await updateActivity(activityToEdit.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+      } as any);
+      setActivityToEdit(null);
+      toast({ title: "Activity updated" });
+    } catch {
+      // Error already handled by hook
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
+
+  const canAddManualEntry = isAdmin;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-medium">Activity Log</h3>
         {canAddManualEntry && (
@@ -162,7 +172,6 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
         )}
       </div>
 
-      {/* Filters */}
       <ActivityLogFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -172,7 +181,6 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
         onCategoriesChange={setSelectedCategories}
       />
 
-      {/* Activity List */}
       <div 
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto mt-4 pr-2"
@@ -192,7 +200,6 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
           </div>
         ) : (
           <div className="relative">
-            {/* Timeline line */}
             <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
 
             {Object.entries(groupedActivities).map(([groupName, groupActivities]) => (
@@ -211,7 +218,7 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
                       key={activity.id}
                       activity={activity}
                       isAdmin={isAdmin}
-                      onEdit={() => {/* TODO: Implement edit dialog */}}
+                      onEdit={() => handleEditOpen(activity)}
                       onDelete={setActivityToDelete}
                     />
                   ))}
@@ -219,7 +226,6 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
               </div>
             ))}
 
-            {/* Load more indicator */}
             {loading && activities.length > 0 && (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
@@ -235,7 +241,6 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
           </div>
         )}
 
-        {/* Back to top button */}
         {showBackToTop && (
           <Button
             variant="outline"
@@ -249,7 +254,6 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
         )}
       </div>
 
-      {/* Add Manual Activity Dialog - uses customerId prop */}
       <AddManualActivityDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
@@ -274,6 +278,44 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Activity Dialog */}
+      <Dialog open={!!activityToEdit} onOpenChange={(open) => { if (!open) setActivityToEdit(null); }}>
+        <DialogContent className="sm:max-w-[425px] z-[80]">
+          <DialogHeader>
+            <DialogTitle>Edit Activity</DialogTitle>
+            <DialogDescription>Update the activity title and description.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Activity title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Activity description"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActivityToEdit(null)}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={isEditSaving || !editTitle.trim()}>
+              {isEditSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

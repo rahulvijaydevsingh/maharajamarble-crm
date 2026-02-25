@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Mail, Lock, HelpCircle } from "lucide-react";
 import { z } from "zod";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
@@ -16,6 +17,7 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user, loading, signIn } = useAuth();
   const { toast } = useToast();
+  const { logStaffAction } = useStaffActivityLog();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -73,6 +75,7 @@ export default function Auth() {
         title: "Welcome back!",
         description: "You have signed in successfully.",
       });
+      logStaffAction('login', `User logged in: ${email}`, 'auth');
       navigate("/");
     }
   };

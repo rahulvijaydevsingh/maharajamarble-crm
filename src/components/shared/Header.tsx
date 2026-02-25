@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { NotificationDropdown } from "./NotificationDropdown";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 import { AddCustomerDialog } from "@/components/customers/AddCustomerDialog";
 import { AddProfessionalDialog } from "@/components/professionals/AddProfessionalDialog";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
@@ -48,6 +49,7 @@ export function Header() {
   const navigate = useNavigate();
   const { profile, signOut } = useAuth();
   const { toast } = useToast();
+  const { logStaffAction } = useStaffActivityLog();
 
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [addProfessionalOpen, setAddProfessionalOpen] = useState(false);
@@ -132,6 +134,7 @@ export function Header() {
 
   const handleLogout = async () => {
     try {
+      await logStaffAction('logout', 'User logged out', 'auth');
       await signOut();
       toast({ title: "Logged out", description: "You have been successfully logged out." });
       navigate("/auth");

@@ -404,6 +404,19 @@ export function BulkUploadDialog({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // File size validation (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 5MB", variant: "destructive" });
+      return;
+    }
+
+    // File extension validation
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!ext || !['xlsx', 'xls', 'csv'].includes(ext)) {
+      toast({ title: "Invalid file type", description: "Only .xlsx, .xls, and .csv files are allowed", variant: "destructive" });
+      return;
+    }
+
     setExcelFile(file);
     setIsValidating(true);
     setStep("validate");

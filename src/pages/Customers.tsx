@@ -4,8 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EnhancedCustomerTable } from "@/components/customers/EnhancedCustomerTable";
 import { SmartCustomerForm } from "@/components/customers/SmartCustomerForm";
 import { Customer } from "@/hooks/useCustomers";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
 const Customers = () => {
+  const { logStaffAction } = useStaffActivityLog();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const handleEdit = (customer: Customer) => {
