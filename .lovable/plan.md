@@ -1,152 +1,223 @@
-# Validated CRM Assessment and Fix Plan
-
-## Validation Results: What the External Review Got Right and Wrong
-
-### FALSE ALARMS (No fix needed)
 
 
-| Concern                                 | Verdict                                                                                                                                                                   |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `overlayClassName` crash risk           | FALSE. It IS a valid custom prop -- `dialog.tsx` line 71 explicitly types and uses it. Not a crash risk.                                                                  |
-| Field agent gray screen                 | ALREADY FIXED. `alert-dialog.tsx` has full `onCloseAutoFocus`, `onAnimationEnd`, and unmount cleanup (lines 31-66). Plus `dialog.tsx` has a global 500ms safety interval. |
-| Activity log delete freeze              | ALREADY FIXED. AlertDialog cleanup is in place.                                                                                                                           |
-| Activity log edit not working           | ALREADY FIXED. Full edit dialog exists in `LeadActivityTab.tsx` lines 62-66, 162-183, 311-347 with `updateActivity` wired up.                                             |
-| Z-index dropdown vs sub-dialog conflict | NON-ISSUE. Dropdown closes before sub-dialog opens; they never coexist.                                                                                                   |
-| Tab reset on lead change                | BY DESIGN. Intentional UX.                                                                                                                                                |
+# Fix Login Logging + REST API + Lead Capture Webhook
 
+## Part 1: Fix Login Logging (Root Cause)
 
-### CONFIRMED REAL ISSUES (Need fixing)
+### Root Cause Identified
 
-**1. Login activity NOT being logged (CRITICAL for automation)**
+The login logging code in `Auth.tsx` (lines 79-94) inserts directly into `staff_activity_log` right after `signIn()`. The insert uses `(supabase.from("staff_activity_log" as any).insert as any)({...})` but **never checks the return `{ error }`**. If the insert fails (due to RLS timing or the SDK not having propagated the auth header yet), the error is silently discarded because:
 
-Database proof: `staff_activity_log` has 2 logout records and 1 delete_staff record. Zero login records.
+- Supabase client does NOT throw on RLS/insert failures -- it returns `{ error }` in the response
+- The `try/catch` block only catches thrown exceptions, not returned error objects
+- The screenshot confirms: 4 logout entries, 0 login entries -- insert is failing silently
 
-Root cause: In `Auth.tsx` line 78, `logStaffAction('login', ...)` is called right after `signIn()` returns. But `logStaffAction` (line 32 of the hook) has a guard: `if (!user) return;`. At the moment `signIn` resolves, the `useAuth` context hasn't updated `user` yet -- the `onAuthStateChange` callback fires asynchronously. So `user` is still `null` and the log silently drops.
+Meanwhile, logout works because the user has been fully authenticated for the entire session when `logStaffAction` runs.
 
-Logout works because by the time the user clicks "Logout" in the Header, the auth context already has `user` populated.
+### Fix: Move Login Logging to AuthContext
 
-**2. Customer creation not logged**
+Move login logging into `onAuthStateChange` in `AuthContext.tsx` where the SDK has confirmed the session is valid. Use a ref flag to distinguish actual sign-ins from page-load session restores:
 
-`Customers.tsx` imports `useStaffActivityLog` and destructs `logStaffAction` (line 10) but never calls it anywhere. The `SmartCustomerForm` handles creation internally with no logging callback.
+**File: `src/contexts/AuthContext.tsx`**
+- Add a `loginPendingRef = useRef(false)`
+- In `signIn()`, set `loginPendingRef.current = true` before calling `signInWithPassword`
+- In `onAuthStateChange`, when `event === 'SIGNED_IN'` and `loginPendingRef.current === true`:
+  - Clear the flag
+  - Insert login activity via `setTimeout` (500ms delay for full propagation)
+  - Check the `{ error }` return and log it if insertion fails
 
-**3. Task creation, quotation creation, lead updates -- not logged**
+**File: `src/pages/Auth.tsx`**
+- Remove the login logging code block (lines 77-94)
 
-No `logStaffAction` calls exist in `AddTaskDialog`, `AddQuotationDialog`, or `EnhancedLeadTable`.
-
-**4. LeadDetailView reminder save is a no-op**
-
-`LeadDetailView.tsx` lines 410-412: the `onSave` callback just closes the dialog and discards the data. Compare to `CustomerDetailView.tsx` lines 94-124 which properly calls `addReminder` with the entity context. The lead version is broken.
-
-**5. xlsx still at ^0.18.5**
-
-Confirmed in `package.json` line 65. Known CVEs for Prototype Pollution and ReDoS.
-
-**6. No `@media print` CSS**
-
-Search confirms zero print styles. `window.print()` on line 234 prints the entire page including sidebar.
-
-**7. No ErrorBoundary**
-
-Search confirms zero ErrorBoundary components. Any runtime error crashes the entire app to white screen.
+This approach is reliable because:
+- The SDK is telling us the session is valid (via the event)
+- The ref flag prevents logging session restores on page refresh
+- The setTimeout ensures the client's auth headers are fully propagated
 
 ---
 
-## Implementation Plan
+## Part 2: Lead Capture Webhook
 
-### Step 1: Fix Login Logging (Root Cause Fix)
+### New Edge Function: `supabase/functions/webhook-lead-capture/index.ts`
 
-**File: `src/pages/Auth.tsx**`
+A public endpoint that accepts POST requests from website contact forms and inserts leads directly.
 
-The current `logStaffAction` call fails because `user` is null at call time. Fix by using `supabase` directly with the session data that `signIn` just established, bypassing the hook's `user` guard:
+**Security:**
+- Validates a `webhook_secret` in the request body against a stored secret
+- Sanitizes all input (strips HTML, limits string lengths)
+- Only allows specific CORS origins (configurable)
+- No JWT required (public endpoint)
+
+**Flow:**
+1. Receive POST with `name`, `phone`, optional `email`, `message`, `service`, `location`
+2. Validate `webhook_secret` against `WEBHOOK_LEAD_SECRET` env variable
+3. Validate required fields (name, phone)
+4. Sanitize inputs
+5. Insert into `leads` table using service role client with:
+   - `source = 'website'`
+   - `status = 'new'`
+   - `assigned_to` based on round-robin from active staff
+   - `notes` = message content
+6. Log activity in `activity_log`
+7. Return `{ success: true, lead_id }`
+
+**Config:** Add `verify_jwt = false` for this function in `supabase/config.toml`
+
+**Secret needed:** `WEBHOOK_LEAD_SECRET` -- user will need to set this
+
+---
+
+## Part 3: REST API System
+
+### 3.1 Database: `api_keys` Table
 
 ```text
-After successful signIn:
-- Get session via supabase.auth.getSession()
-- Insert directly into staff_activity_log using the session user data
-- This avoids the race condition with useAuth context
+CREATE TABLE api_keys (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  key_hash TEXT NOT NULL UNIQUE,
+  key_prefix TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT 'Default Key',
+  last_used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+RLS Policies:
+- SELECT: auth.uid() = user_id OR is_admin()
+- INSERT: auth.uid() = user_id
+- UPDATE: auth.uid() = user_id OR is_admin()
+- DELETE: auth.uid() = user_id OR is_admin()
 ```
 
-### Step 2: Fix LeadDetailView Reminder Save
+### 3.2 Edge Function: `supabase/functions/api/index.ts`
 
-**File: `src/components/leads/LeadDetailView.tsx**`
+A single edge function that handles all API routes. It will:
 
-Copy the pattern from `CustomerDetailView.tsx` lines 91-124:
+1. **Auth:** Extract Bearer token, SHA-256 hash it, look up in `api_keys`, verify active
+2. **Rate limiting:** Track requests per key per hour using an in-memory counter (persisted via `api_rate_limits` table)
+3. **Routing:** Parse URL path and method to dispatch to handlers
+4. **Response envelope:** `{ success, data, meta }` or `{ success: false, error, code }`
 
-- Import and call `useReminders('lead', currentLead?.id)`
-- Create `handleAddReminderSave` that calls `addReminder` with lead context
-- Replace the no-op `onSave` with the real save function
+**Endpoints:**
 
-### Step 3: Add Missing Staff Activity Logging
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /v1/leads | List leads (paginated, filterable) |
+| GET | /v1/leads/:id | Get single lead |
+| POST | /v1/leads | Create lead |
+| PUT | /v1/leads/:id | Update lead |
+| DELETE | /v1/leads/:id | Delete lead |
+| PATCH | /v1/leads/:id/status | Update lead status |
+| GET | /v1/tasks | List tasks |
+| POST | /v1/tasks | Create task |
+| PUT | /v1/tasks/:id | Update task |
+| DELETE | /v1/tasks/:id | Delete task |
+| PATCH | /v1/tasks/:id/complete | Complete task |
+| GET | /v1/reminders | List reminders |
+| POST | /v1/reminders | Create reminder |
+| PUT | /v1/reminders/:id | Update reminder |
+| DELETE | /v1/reminders/:id | Delete reminder |
+| GET | /v1/quotations | List quotations |
+| GET | /v1/quotations/:id | Get quotation |
+| POST | /v1/quotations | Create quotation |
+| GET | /v1/activity | List activity log |
+| POST | /v1/activity | Create activity entry |
+| GET | /v1/staff | List active staff |
+| GET | /v1/search | Search across entities |
+| GET | /v1/stats | Dashboard summary |
 
-Add `logStaffAction` calls to:
+**Rate limiting headers on every response:**
+- `X-RateLimit-Limit: 200`
+- `X-RateLimit-Remaining: N`
+- `X-RateLimit-Reset: timestamp`
 
-`**src/components/customers/SmartCustomerForm.tsx**` (or wire a callback from `Customers.tsx`):
+### 3.3 Database: `api_rate_limits` Table
 
-- After successful customer creation: `logStaffAction('create_customer', ...)`
+```text
+CREATE TABLE api_rate_limits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key_id UUID NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  window_start TIMESTAMPTZ NOT NULL,
+  request_count INTEGER DEFAULT 0,
+  UNIQUE(key_id, window_start)
+);
+```
 
-`**src/components/tasks/AddTaskDialog.tsx**`:
+### 3.4 Settings Page: "API Access" Tab
 
-- After successful task creation: `logStaffAction('create_task', ...)`
+**File: `src/pages/Settings.tsx`**
+- Add new tab trigger: "API Access"
 
-`**src/components/quotations/AddQuotationDialog.tsx**`:
+**New component: `src/components/settings/ApiAccessPanel.tsx`**
+- Shows existing API keys (prefix, name, created date, last used)
+- "Generate New Key" button:
+  - Generates `mmcrm_` + 32 random alphanumeric chars
+  - SHA-256 hashes it and stores hash in `api_keys`
+  - Shows full key ONCE with copy button and warning
+- "Revoke" button per key (sets `is_active = false`)
+- Copy base URL button
+- Link to /api-docs
+- Security warning about keeping keys secret
 
-- After successful quotation creation: `logStaffAction('create_quotation', ...)`
+**New hook: `src/hooks/useApiKeys.ts`**
+- CRUD operations for `api_keys` table
+- Key generation logic (client-side SHA-256 via Web Crypto API)
 
-`**src/components/leads/EnhancedLeadTable.tsx**`:
+### 3.5 API Documentation Page
 
-- After successful lead update: `logStaffAction('update_lead', ...)`
-
-### Step 4: Update xlsx Package
-
-**File: `package.json**`
-
-- Change `"xlsx": "^0.18.5"` to `"xlsx": "^0.20.3"`
-
-**Files: `BulkUploadDialog.tsx`, `BulkProfessionalUploadDialog.tsx**`
-
-- Add 5MB file size limit check before XLSX.read()
-- Add file extension validation (.xlsx, .xls only)
-
-### Step 5: Add Print Styles
-
-**File: `src/index.css**`
-
-Add `@media print` rules:
-
-- Hide sidebar, header, navigation
-- Make dialog content fill the page
-- Remove shadows, borders, and fixed positioning
-
-### Step 6: Add ErrorBoundary
-
-**New file: `src/components/shared/ErrorBoundary.tsx**`
-
-Create a class component that catches runtime errors and shows a "Something went wrong" message with a "Reload" button instead of a white screen.
-
-**File: `src/App.tsx**`
-
-- Wrap routes with the ErrorBoundary component
+**New page: `src/pages/ApiDocs.tsx`**
+- Route: `/api-docs` (admin-only)
+- Beautiful interactive documentation showing:
+  - Authentication section (how to use Bearer token)
+  - Each endpoint with method, URL, parameters table, example curl, example response
+  - User's actual API base URL
+  - "Quick Start" section for pasting into AI tools
+  - Natural language to API mapping examples
 
 ---
 
-## Regarding the REST API Request
+## Part 4: Implementation Sequence
 
-The REST API with API key management, rate limiting, and documentation page is a significant feature that should be planned and implemented as a separate project. It involves:
+### Phase 1 -- Login Fix (immediate)
+1. Fix `AuthContext.tsx` with ref-based login logging
+2. Remove duplicate login code from `Auth.tsx`
 
-- New database tables (api_keys, api_rate_limits)
-- A large edge function with routing for 20+ endpoints
-- An API documentation page
-- Security considerations (key hashing, rate limiting)
+### Phase 2 -- Database Setup
+3. Create migration for `api_keys` and `api_rate_limits` tables with RLS
 
-This should be addressed after the current bug fixes are complete, as a dedicated feature build.
+### Phase 3 -- Lead Capture Webhook
+4. Create `webhook-lead-capture` edge function
+5. Request `WEBHOOK_LEAD_SECRET` from user
+
+### Phase 4 -- REST API Core
+6. Create `api` edge function with auth, rate limiting, and routing
+7. Implement all endpoint handlers
+
+### Phase 5 -- Settings UI
+8. Create `ApiAccessPanel` component
+9. Create `useApiKeys` hook
+10. Add "API Access" tab to Settings page
+
+### Phase 6 -- Documentation
+11. Create `ApiDocs` page
+12. Add route to `App.tsx`
 
 ---
 
-## Priority Order
+## Files to Create/Modify
 
-1. Fix login logging (unblocks automation workflows). and check if anyother events are being missed from the log. 
-2. Fix LeadDetailView reminder save (data loss bug)
-3. Add missing activity logging (customer/task/quotation creation)
-4. Update xlsx (security)
-5. Add print styles (usability)
-6. Add ErrorBoundary (stability)
+| File | Action | Description |
+|------|--------|-------------|
+| `src/contexts/AuthContext.tsx` | Modify | Add login logging via onAuthStateChange with ref flag |
+| `src/pages/Auth.tsx` | Modify | Remove redundant login logging code |
+| `supabase/functions/webhook-lead-capture/index.ts` | Create | Public lead capture endpoint |
+| `supabase/functions/api/index.ts` | Create | Main REST API router with 20+ endpoints |
+| `supabase/config.toml` | Modify | Add function configs with verify_jwt = false |
+| `src/components/settings/ApiAccessPanel.tsx` | Create | API key management UI |
+| `src/hooks/useApiKeys.ts` | Create | API key CRUD hook |
+| `src/pages/Settings.tsx` | Modify | Add "API Access" tab |
+| `src/pages/ApiDocs.tsx` | Create | Interactive API documentation |
+| `src/App.tsx` | Modify | Add /api-docs route |
+| Migration SQL | Create | api_keys, api_rate_limits tables with RLS |
+
