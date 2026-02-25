@@ -230,9 +230,13 @@ export function useStaffManagement() {
       return { success: true };
     } catch (error: any) {
       console.error("Error resetting password:", error);
-      const message = error.message || "Failed to reset password";
+      let message = error.message || "Failed to reset password";
+      // Detect HIBP / weak password rejections from Supabase Auth
+      if (message.includes("weak") || message.includes("known") || message.includes("breach") || message.includes("pwned")) {
+        message = "This password has appeared in a known data breach and is not allowed by the system. Please choose a completely unique password that hasn't been compromised.";
+      }
       toast({
-        title: "Error",
+        title: "Password Reset Failed",
         description: message,
         variant: "destructive",
       });

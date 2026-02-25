@@ -19,6 +19,7 @@ import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { format } from "date-fns";
 import { usePermissions } from "@/hooks/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
 const Leads = () => {
   const [addLeadDialogOpen, setAddLeadDialogOpen] = useState(false);
@@ -28,6 +29,7 @@ const Leads = () => {
   const { toast } = useToast();
   const { canCreate } = usePermissions();
   const { staffMembers } = useActiveStaff();
+  const { logStaffAction } = useStaffActivityLog();
 
   const handleAddLead = async (formData: any, generatedTask: any) => {
     try {
@@ -73,6 +75,9 @@ const Leads = () => {
       };
 
       const newLead = await addLead(leadData);
+      if (newLead) {
+        logStaffAction('create_lead', `Created lead: ${formData.fullName}`, 'leads', newLead.id);
+      }
 
       // Auto-create Professionals for professional-designation contacts.
       // If a phone already exists in Professionals, we skip creating the Professional (but keep the Lead).
