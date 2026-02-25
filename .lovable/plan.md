@@ -1,145 +1,152 @@
+# Validated CRM Assessment and Fix Plan
+
+## Validation Results: What the External Review Got Right and Wrong
+
+### FALSE ALARMS (No fix needed)
 
 
-# Fix Plan: Activity Log Freeze, Field Agent Gray Screen, Staff Activity Logging, and Security
+| Concern                                 | Verdict                                                                                                                                                                   |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overlayClassName` crash risk           | FALSE. It IS a valid custom prop -- `dialog.tsx` line 71 explicitly types and uses it. Not a crash risk.                                                                  |
+| Field agent gray screen                 | ALREADY FIXED. `alert-dialog.tsx` has full `onCloseAutoFocus`, `onAnimationEnd`, and unmount cleanup (lines 31-66). Plus `dialog.tsx` has a global 500ms safety interval. |
+| Activity log delete freeze              | ALREADY FIXED. AlertDialog cleanup is in place.                                                                                                                           |
+| Activity log edit not working           | ALREADY FIXED. Full edit dialog exists in `LeadActivityTab.tsx` lines 62-66, 162-183, 311-347 with `updateActivity` wired up.                                             |
+| Z-index dropdown vs sub-dialog conflict | NON-ISSUE. Dropdown closes before sub-dialog opens; they never coexist.                                                                                                   |
+| Tab reset on lead change                | BY DESIGN. Intentional UX.                                                                                                                                                |
 
-## Issues Identified
 
-### 1. Activity Log Delete Freezes Page
-**Root cause**: The `AlertDialog` component (`alert-dialog.tsx`) does NOT have the same `onCloseAutoFocus` body cleanup that was added to the `Dialog` component. When the delete confirmation AlertDialog closes, `document.body.style.pointerEvents` stays as `'none'`, freezing the page. The global safety net interval only catches this if the AlertDialog fully unmounts, which may not happen fast enough.
+### CONFIRMED REAL ISSUES (Need fixing)
 
-**Additionally**: The `onEdit` handler in `LeadActivityTab.tsx` line 219 is a no-op: `onEdit={() => {/* TODO: Implement edit dialog */}}`. Editing does nothing.
+**1. Login activity NOT being logged (CRITICAL for automation)**
 
-### 2. Field Agent Gray Screen
-**Root cause**: After investigating, the field agent role (`field_agent`) IS properly recognized in the `AuthContext` role hierarchy and `ProtectedRoute`. The gray screen is almost certainly the same `pointer-events: none` stuck on `document.body` from a previous dialog interaction that persists across navigation. The console logs show `Failed to fetch` errors on `_refreshAccessToken`, indicating the field agent's auth token refresh is failing (possibly network-related), but the gray screen is the stuck pointer-events from Radix.
+Database proof: `staff_activity_log` has 2 logout records and 1 delete_staff record. Zero login records.
 
-The fix: The `AlertDialog` component needs the same safety cleanup as the `Dialog` component. This is the missing piece causing freezes everywhere, including for field agents who trigger any alert dialog before their session.
+Root cause: In `Auth.tsx` line 78, `logStaffAction('login', ...)` is called right after `signIn()` returns. But `logStaffAction` (line 32 of the hook) has a guard: `if (!user) return;`. At the moment `signIn` resolves, the `useAuth` context hasn't updated `user` yet -- the `onAuthStateChange` callback fires asynchronously. So `user` is still `null` and the log silently drops.
 
-### 3. Staff Activity Log Not Capturing Activities
-**Root cause**: The `logStaffAction` function is defined in `useStaffActivityLog.ts` but is **never called anywhere** in the entire codebase. Zero components import or invoke it. The `staff_activity_log` table has only 1 record. No automatic logging happens for login, lead creation, task updates, etc.
+Logout works because by the time the user clicks "Logout" in the Header, the auth context already has `user` populated.
 
-### 4. Password Reset Error
-The edge function `reset-staff-password` looks correct. The error "password is known to be weak" comes from Supabase Auth's HIBP (Have I Been Pwned) check which rejects passwords found in data breaches -- even if they pass complexity rules. The edge function returns the error message but the client-side doesn't clearly explain the HIBP rejection.
+**2. Customer creation not logged**
 
-### 5. Security: xlsx Vulnerability
-The `xlsx` package at `^0.18.5` has known CVEs (Prototype Pollution, ReDoS). Should be updated and file upload validation added.
+`Customers.tsx` imports `useStaffActivityLog` and destructs `logStaffAction` (line 10) but never calls it anywhere. The `SmartCustomerForm` handles creation internally with no logging callback.
 
----
+**3. Task creation, quotation creation, lead updates -- not logged**
 
-## Implementation Steps
+No `logStaffAction` calls exist in `AddTaskDialog`, `AddQuotationDialog`, or `EnhancedLeadTable`.
 
-### Step 1: Fix AlertDialog Body Cleanup (Fixes Delete Freeze + Field Agent Gray Screen)
+**4. LeadDetailView reminder save is a no-op**
 
-**File: `src/components/ui/alert-dialog.tsx`**
+`LeadDetailView.tsx` lines 410-412: the `onSave` callback just closes the dialog and discards the data. Compare to `CustomerDetailView.tsx` lines 94-124 which properly calls `addReminder` with the entity context. The lead version is broken.
 
-Add the same `onCloseAutoFocus` and unmount cleanup to `AlertDialogContent` that was added to `DialogContent`. This is the root fix for:
-- Activity log delete freeze
-- Field agent gray screen (from any AlertDialog that was previously opened)
-- All other AlertDialog-triggered freezes
+**5. xlsx still at ^0.18.5**
 
-Changes:
-- Add `useDialogBodyCleanup` hook (or create an `useAlertDialogBodyCleanup`) to `AlertDialogContent`
-- Add `onCloseAutoFocus` handler that resets `document.body.style.pointerEvents` and `overflow`
-- Add `onAnimationEnd` handler as additional safety
+Confirmed in `package.json` line 65. Known CVEs for Prototype Pollution and ReDoS.
 
-### Step 2: Add Edit Activity Dialog to LeadActivityTab
+**6. No `@media print` CSS**
 
-**File: `src/components/leads/detail-tabs/LeadActivityTab.tsx`**
+Search confirms zero print styles. `window.print()` on line 234 prints the entire page including sidebar.
 
-- Add state for `activityToEdit` and `editDialogOpen`
-- Wire the `onEdit` callback to set the selected activity and open the edit dialog
-- Create a simple inline edit dialog with pre-filled title and description
-- Use the existing `updateActivity` function from `useActivityLog` hook (it already exists at line 147 of useActivityLog.ts)
-- Add proper body cleanup to the edit dialog's `onOpenChange`
+**7. No ErrorBoundary**
 
-### Step 3: Integrate Staff Activity Logging Across Key Components
-
-The `useStaffActivityLog` hook has `logStaffAction` but it's never called. Add calls in these critical locations:
-
-**File: `src/pages/Auth.tsx`**
-- After successful login, call `logStaffAction('login', 'User logged in')`
-
-**File: `src/components/shared/Header.tsx`**
-- After successful logout, call `logStaffAction('logout', 'User logged out')`
-
-**File: `src/pages/Leads.tsx`**
-- After creating a lead, call `logStaffAction('create_lead', 'Created lead: [name]', 'leads', leadId)`
-
-**File: `src/components/leads/EnhancedLeadTable.tsx`**
-- After editing a lead, call `logStaffAction('update_lead', 'Updated lead: [name]', 'leads', leadId)`
-
-**File: `src/pages/Customers.tsx`**  
-- After creating a customer, call `logStaffAction('create_customer', ...)`
-
-**File: `src/components/tasks/AddTaskDialog.tsx`**
-- After creating a task, call `logStaffAction('create_task', ...)`
-
-**File: `src/components/quotations/AddQuotationDialog.tsx`**
-- After creating a quotation, call `logStaffAction('create_quotation', ...)`
-
-Since `logStaffAction` requires auth context and the hook uses `useCallback`, it can only be called from within React components. The approach is to import `useStaffActivityLog` in each component and call `logStaffAction` after the successful Supabase operation.
-
-### Step 4: Improve Password Reset Error Handling
-
-**File: `src/components/settings/StaffManagementPanel.tsx`**
-
-- In `handleResetPassword`, catch the specific HIBP error message and show a clear user-friendly toast: "This password has appeared in a data breach and is not allowed. Please choose a completely unique password."
-- The password requirements UI already has the HIBP warning from the previous fix
-- Add additional common passwords to the blocklist
-
-**File: `src/hooks/useStaffManagement.ts`**
-
-- In `resetPassword`, parse the error message from the edge function and return a more descriptive error when it's a HIBP rejection
-
-### Step 5: Update xlsx Package and Add File Validation
-
-**File: `package.json`**
-
-- Update `xlsx` from `^0.18.5` to `^0.20.3` (patched version)
-
-**Files: `src/components/leads/BulkUploadDialog.tsx` and `src/components/professionals/BulkProfessionalUploadDialog.tsx`**
-
-- Add file size check (max 5MB) before `XLSX.read()`
-- Add file extension validation (only `.xlsx`, `.xls`, `.csv`)
-
-### Step 6: Fix CustomerActivityTab Delete AlertDialog (Same Pattern)
-
-**File: `src/components/customers/detail-tabs/CustomerActivityTab.tsx`**
-
-The customer activity tab has the same delete AlertDialog pattern. The global AlertDialog fix from Step 1 covers this, but also add explicit body cleanup in the delete handler's `finally` block.
-
-### Step 7: Update Security Findings
-
-After all fixes are applied, update the security scan findings to reflect the xlsx fix and mark the profiles finding with appropriate context.
+Search confirms zero ErrorBoundary components. Any runtime error crashes the entire app to white screen.
 
 ---
 
-## Technical Details
+## Implementation Plan
 
-### Files to Modify
+### Step 1: Fix Login Logging (Root Cause Fix)
 
-| File | Changes |
-|------|---------|
-| `src/components/ui/alert-dialog.tsx` | Add `onCloseAutoFocus` body cleanup + unmount safety hook (CRITICAL) |
-| `src/components/leads/detail-tabs/LeadActivityTab.tsx` | Add edit dialog, wire edit handler, add body cleanup to delete handler |
-| `src/pages/Auth.tsx` | Log login event to staff_activity_log |
-| `src/components/shared/Header.tsx` | Log logout event |
-| `src/pages/Leads.tsx` | Log lead creation |
-| `src/components/leads/EnhancedLeadTable.tsx` | Log lead updates |
-| `src/pages/Customers.tsx` | Log customer creation |
-| `src/components/tasks/AddTaskDialog.tsx` | Log task creation |
-| `src/components/quotations/AddQuotationDialog.tsx` | Log quotation creation |
-| `src/components/settings/StaffManagementPanel.tsx` | Better HIBP error message |
-| `src/hooks/useStaffManagement.ts` | Parse HIBP-specific errors |
-| `package.json` | Update xlsx to ^0.20.3 |
-| `src/components/leads/BulkUploadDialog.tsx` | Add file size/type validation |
-| `src/components/professionals/BulkProfessionalUploadDialog.tsx` | Add file size/type validation |
+**File: `src/pages/Auth.tsx**`
 
-### Implementation Priority
+The current `logStaffAction` call fails because `user` is null at call time. Fix by using `supabase` directly with the session data that `signIn` just established, bypassing the hook's `user` guard:
 
-1. AlertDialog body cleanup (fixes delete freeze + field agent gray screen)
-2. Activity log edit dialog
-3. Staff activity logging integration
-4. Password reset error handling improvement
-5. xlsx update + file validation
-6. Security findings update
+```text
+After successful signIn:
+- Get session via supabase.auth.getSession()
+- Insert directly into staff_activity_log using the session user data
+- This avoids the race condition with useAuth context
+```
 
+### Step 2: Fix LeadDetailView Reminder Save
+
+**File: `src/components/leads/LeadDetailView.tsx**`
+
+Copy the pattern from `CustomerDetailView.tsx` lines 91-124:
+
+- Import and call `useReminders('lead', currentLead?.id)`
+- Create `handleAddReminderSave` that calls `addReminder` with lead context
+- Replace the no-op `onSave` with the real save function
+
+### Step 3: Add Missing Staff Activity Logging
+
+Add `logStaffAction` calls to:
+
+`**src/components/customers/SmartCustomerForm.tsx**` (or wire a callback from `Customers.tsx`):
+
+- After successful customer creation: `logStaffAction('create_customer', ...)`
+
+`**src/components/tasks/AddTaskDialog.tsx**`:
+
+- After successful task creation: `logStaffAction('create_task', ...)`
+
+`**src/components/quotations/AddQuotationDialog.tsx**`:
+
+- After successful quotation creation: `logStaffAction('create_quotation', ...)`
+
+`**src/components/leads/EnhancedLeadTable.tsx**`:
+
+- After successful lead update: `logStaffAction('update_lead', ...)`
+
+### Step 4: Update xlsx Package
+
+**File: `package.json**`
+
+- Change `"xlsx": "^0.18.5"` to `"xlsx": "^0.20.3"`
+
+**Files: `BulkUploadDialog.tsx`, `BulkProfessionalUploadDialog.tsx**`
+
+- Add 5MB file size limit check before XLSX.read()
+- Add file extension validation (.xlsx, .xls only)
+
+### Step 5: Add Print Styles
+
+**File: `src/index.css**`
+
+Add `@media print` rules:
+
+- Hide sidebar, header, navigation
+- Make dialog content fill the page
+- Remove shadows, borders, and fixed positioning
+
+### Step 6: Add ErrorBoundary
+
+**New file: `src/components/shared/ErrorBoundary.tsx**`
+
+Create a class component that catches runtime errors and shows a "Something went wrong" message with a "Reload" button instead of a white screen.
+
+**File: `src/App.tsx**`
+
+- Wrap routes with the ErrorBoundary component
+
+---
+
+## Regarding the REST API Request
+
+The REST API with API key management, rate limiting, and documentation page is a significant feature that should be planned and implemented as a separate project. It involves:
+
+- New database tables (api_keys, api_rate_limits)
+- A large edge function with routing for 20+ endpoints
+- An API documentation page
+- Security considerations (key hashing, rate limiting)
+
+This should be addressed after the current bug fixes are complete, as a dedicated feature build.
+
+---
+
+## Priority Order
+
+1. Fix login logging (unblocks automation workflows). and check if anyother events are being missed from the log. 
+2. Fix LeadDetailView reminder save (data loss bug)
+3. Add missing activity logging (customer/task/quotation creation)
+4. Update xlsx (security)
+5. Add print styles (usability)
+6. Add ErrorBoundary (stability)
