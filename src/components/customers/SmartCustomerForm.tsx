@@ -29,6 +29,7 @@ import {
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCustomers, CustomerInsert } from "@/hooks/useCustomers";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
 interface SmartCustomerFormProps {
   open: boolean;
@@ -40,6 +41,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
   const { addCustomer } = useCustomers();
   const { user } = useAuth();
   const { staffMembers } = useActiveStaff();
+  const { logStaffAction } = useStaffActivityLog();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateResults, setDuplicateResults] = useState<{ [key: string]: DuplicateCheckResult }>({});
 
@@ -184,6 +186,8 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
       };
 
       await addCustomer(customerData);
+
+      logStaffAction('create_customer', `Created customer: ${primaryContact.name}`, 'customer');
 
       toast({
         title: "Customer Created Successfully",

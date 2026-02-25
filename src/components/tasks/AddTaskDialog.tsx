@@ -35,6 +35,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useTasks } from "@/hooks/useTasks";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 import { SubtasksSection } from "./form/SubtasksSection";
 import { RecurrenceSection } from "./form/RecurrenceSection";
 import { RelatedEntitySection } from "./form/RelatedEntitySection";
@@ -79,6 +80,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
+  const { logStaffAction } = useStaffActivityLog();
 
   // Use control panel options, fallback to constants
   const TASK_TYPES = useMemo(() => {
@@ -286,6 +288,8 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
       }
       
       onTaskCreate(taskData);
+
+      logStaffAction('create_task', `Created task: ${formData.title}`, 'task');
       
       toast({
         title: "Task Created Successfully",

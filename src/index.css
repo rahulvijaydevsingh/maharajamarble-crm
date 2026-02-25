@@ -126,3 +126,42 @@
     background: hsl(var(--muted-foreground) / 0.6);
   }
 }
+
+/* Print styles — hide chrome, show only content */
+@media print {
+  nav,
+  aside,
+  header,
+  .sidebar,
+  [data-print="hide"],
+  .no-print,
+  [data-radix-popper-content-wrapper] {
+    display: none !important;
+  }
+
+  body {
+    overflow: visible !important;
+  }
+
+  [role="dialog"] {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  [data-radix-dialog-overlay] {
+    display: none !important;
+  }
+
+  /* Ensure tab content is visible */
+  [role="tabpanel"] {
+    overflow: visible !important;
+  }
+}

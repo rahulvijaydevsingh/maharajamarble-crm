@@ -36,6 +36,8 @@ import {
  import { HeartHandshake } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
 import { useLogActivity } from '@/hooks/useActivityLog';
+import { useReminders } from '@/hooks/useReminders';
+import { useToast } from '@/hooks/use-toast';
 import { LeadProfileTab } from './detail-tabs/LeadProfileTab';
 import { LeadQuotationsTab } from './detail-tabs/LeadQuotationsTab';
 import { LeadTasksTab } from './detail-tabs/LeadTasksTab';
@@ -86,6 +88,44 @@ export function LeadDetailView({
   const [focusReminderId, setFocusReminderId] = useState<string | null>(highlightReminderId || null);
   const { leads, updateLead, refetch } = useLeads();
   const { logActivity } = useLogActivity();
+  const { toast } = useToast();
+
+  // Reminder save handler for sibling dialog
+  const { addReminder } = useReminders('lead', lead?.id || '');
+  const [savingReminder, setSavingReminder] = useState(false);
+
+  const handleAddReminderSave = async (data: {
+    title: string;
+    description: string;
+    reminder_datetime: string;
+    is_recurring: boolean;
+    recurrence_pattern: string | null;
+    recurrence_end_date: string | null;
+    assigned_to: string;
+  }) => {
+    if (!currentLead || savingReminder) return;
+    setSavingReminder(true);
+    try {
+      await addReminder({
+        title: data.title,
+        description: data.description,
+        reminder_datetime: data.reminder_datetime,
+        is_recurring: data.is_recurring,
+        recurrence_pattern: data.recurrence_pattern as "daily" | "weekly" | "monthly" | "yearly" | null,
+        recurrence_end_date: data.recurrence_end_date,
+        entity_type: 'lead',
+        entity_id: currentLead.id,
+        created_by: 'Current User',
+        assigned_to: data.assigned_to,
+      });
+      setAddReminderOpen(false);
+      toast({ title: "Reminder Created", description: `Reminder "${data.title}" saved for ${currentLead.name}` });
+    } catch {
+      // Error handled in addReminder
+    } finally {
+      setSavingReminder(false);
+    }
+  };
   
   // Lifted dialog states - rendered as siblings to avoid focus-trap conflicts
   const [addQuotationOpen, setAddQuotationOpen] = useState(false);
@@ -407,10 +447,7 @@ export function LeadDetailView({
       <AddReminderDialog
         open={addReminderOpen}
         onOpenChange={setAddReminderOpen}
-        onSave={async (data) => {
-          // The reminder tab handles saving internally - just close
-          setAddReminderOpen(false);
-        }}
+        onSave={handleAddReminderSave}
         entityName={currentLead.name}
         contentClassName="z-[80]"
         overlayClassName="z-[80]"
