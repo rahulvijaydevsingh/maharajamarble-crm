@@ -23,6 +23,7 @@ import { useQuotations } from '@/hooks/useQuotations';
 import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useAuth } from '@/contexts/AuthContext';
+import { useStaffActivityLog } from '@/hooks/useStaffActivityLog';
 import { format } from 'date-fns';
 
 interface AddQuotationDialogProps {
@@ -62,6 +63,7 @@ export function AddQuotationDialog({
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { profile } = useAuth();
+  const { logStaffAction } = useStaffActivityLog();
   
   const [formData, setFormData] = useState({
     client_name: '',
@@ -219,6 +221,7 @@ export function AddQuotationDialog({
         await updateQuotation(editQuotation.id, quotationData, itemsData);
       } else {
         await addQuotation(quotationData, itemsData);
+        logStaffAction('create_quotation', `Created quotation for ${formData.client_name}`, 'quotation');
       }
 
       onOpenChange(false);
