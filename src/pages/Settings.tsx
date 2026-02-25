@@ -36,6 +36,7 @@ import {
   CheckCircle,
   HeartHandshake,
   Activity,
+  Globe,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ControlPanel } from "@/components/settings/ControlPanel";
@@ -43,6 +44,7 @@ import { RoleManagementPanel } from "@/components/settings/RoleManagementPanel";
 import { StaffManagementPanel } from "@/components/settings/StaffManagementPanel";
 import { BackupRestorePanel } from "@/components/settings/BackupRestorePanel";
 import { StaffActivityPanel } from "@/components/settings/StaffActivityPanel";
+import { ApiAccessPanel } from "@/components/settings/ApiAccessPanel";
 import { KitPresetList } from "@/components/kit/presets/KitPresetList";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useProfileSettings } from "@/hooks/useProfileSettings";
@@ -80,7 +82,7 @@ const Settings = () => {
         </div>
 
           <Tabs defaultValue="profile" className="w-full">
-          	<TabsList className="grid grid-cols-10 md:w-[1300px]">
+          	<TabsList className="grid grid-cols-11 md:w-[1400px]">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -95,6 +97,10 @@ const Settings = () => {
             <TabsTrigger value="staff-activity">
               <Activity className="h-4 w-4 mr-1" />
               Activity
+            </TabsTrigger>
+            <TabsTrigger value="api-access">
+              <Globe className="h-4 w-4 mr-1" />
+              API
             </TabsTrigger>
 	            <TabsTrigger value="backup-restore">Backup</TabsTrigger>
           </TabsList>
@@ -578,6 +584,10 @@ const Settings = () => {
 
           <TabsContent value="backup-restore" className="space-y-4 mt-4">
             <BackupRestorePanel />
+          </TabsContent>
+
+          <TabsContent value="api-access" className="space-y-4 mt-4">
+            <ApiAccessPanel />
           </TabsContent>
         </Tabs>
       </div>
