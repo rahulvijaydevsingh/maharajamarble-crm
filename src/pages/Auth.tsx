@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Mail, Lock, HelpCircle } from "lucide-react";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+// supabase import removed - login logging moved to AuthContext
 
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
@@ -74,24 +74,6 @@ export default function Auth() {
         title: "Welcome back!",
         description: "You have signed in successfully.",
       });
-      // Log login directly via supabase to bypass the useStaffActivityLog hook's
-      // `if (!user) return` guard — at this point the auth context hasn't updated yet.
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const profileRes = await supabase.from('profiles').select('email, full_name').eq('id', session.user.id).single();
-          await (supabase.from("staff_activity_log" as any).insert as any)({
-            user_id: session.user.id,
-            user_email: profileRes.data?.email || session.user.email || email,
-            action_type: 'login',
-            action_description: `User logged in: ${email}`,
-            entity_type: 'auth',
-            metadata: { user_agent: navigator.userAgent },
-          });
-        }
-      } catch (err) {
-        console.error("Failed to log login activity:", err);
-      }
       navigate("/");
     }
   };
