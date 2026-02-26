@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Json } from "@/integrations/supabase/types";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Lead {
   id: string;
@@ -108,6 +109,7 @@ export function useLeads() {
 
   const updateLead = async (id: string, updates: Partial<LeadInsert>) => {
     try {
+      const prevLead = leads.find((l) => l.id === id);
       const { data, error } = await supabase
         .from("leads")
         .update(updates)
@@ -117,6 +119,27 @@ export function useLeads() {
 
       if (error) throw error;
       setLeads((prev) => prev.map((lead) => (lead.id === id ? data : lead)));
+
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          const changedFields = Object.keys(updates).filter(
+            (k) => prevLead && String((prevLead as any)[k]) !== String((updates as any)[k])
+          );
+          await logToStaffActivity(
+            updates.status && prevLead?.status !== updates.status ? "update_lead_status" : "update_lead",
+            u.email || "",
+            u.id,
+            `Updated lead: ${data.name}${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
+            "lead",
+            id,
+            { changed_fields: changedFields, old_status: prevLead?.status, new_status: updates.status }
+          );
+        }
+      } catch (_) {}
+
       return data;
     } catch (error: any) {
       toast({
@@ -130,9 +153,19 @@ export function useLeads() {
 
   const deleteLead = async (id: string) => {
     try {
+      const leadToDelete = leads.find((l) => l.id === id);
       const { error } = await supabase.from("leads").delete().eq("id", id);
       if (error) throw error;
       setLeads((prev) => prev.filter((lead) => lead.id !== id));
+
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          await logToStaffActivity("delete_lead", u.email || "", u.id, `Deleted lead: ${leadToDelete?.name || id}`, "lead", id);
+        }
+      } catch (_) {}
     } catch (error: any) {
       toast({
         title: "Error deleting lead",

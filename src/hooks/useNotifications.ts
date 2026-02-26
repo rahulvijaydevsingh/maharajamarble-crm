@@ -5,7 +5,7 @@ import { Notification } from "@/types/automation";
 import { useEffect } from "react";
 
 // Fetch notifications for a user
-export const useNotifications = (userId: string, unreadOnly = false) => {
+export const useNotifications = (userId: string, unreadOnly = false, userEmail?: string) => {
   const queryClient = useQueryClient();
   
   // Set up real-time subscription
@@ -20,7 +20,7 @@ export const useNotifications = (userId: string, unreadOnly = false) => {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${userId}`,
+          filter: userEmail ? `user_id=eq.${userEmail}` : `user_id=eq.${userId}`,
         },
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ["notifications", userId] });
@@ -46,15 +46,17 @@ export const useNotifications = (userId: string, unreadOnly = false) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, queryClient]);
+  }, [userId, userEmail, queryClient]);
   
   return useQuery({
-    queryKey: ["notifications", userId, unreadOnly],
+    queryKey: ["notifications", userId, userEmail, unreadOnly],
     queryFn: async () => {
+      // Query by email if available (notifications store email as user_id), fallback to UUID
+      const queryId = userEmail || userId;
       let query = supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", userId)
+        .eq("user_id", queryId)
         .eq("is_dismissed", false)
         .order("created_at", { ascending: false })
         .limit(50);
@@ -74,14 +76,15 @@ export const useNotifications = (userId: string, unreadOnly = false) => {
 };
 
 // Get unread count
-export const useUnreadNotificationCount = (userId: string) => {
+export const useUnreadNotificationCount = (userId: string, userEmail?: string) => {
+  const queryId = userEmail || userId;
   return useQuery({
-    queryKey: ["notifications-unread-count", userId],
+    queryKey: ["notifications-unread-count", queryId],
     queryFn: async () => {
       const { count, error } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId)
+        .eq("user_id", queryId)
         .eq("is_read", false)
         .eq("is_dismissed", false);
       

@@ -33,9 +33,10 @@ export function NotificationDropdown() {
   const { reminders, dismissReminder, snoozeReminder } = useReminders();
   const activeReminders = reminders.filter(r => !r.is_dismissed).slice(0, 10);
   
-  // Notifications
-  const { data: notifications = [] } = useNotifications(user?.id || "", false);
-  const { data: unreadCount = 0 } = useUnreadNotificationCount(user?.id || "");
+  // Notifications - query by email since automation engine stores email as user_id
+  const userEmail = user?.email || "";
+  const { data: notifications = [] } = useNotifications(user?.id || "", false, userEmail);
+  const { data: unreadCount = 0 } = useUnreadNotificationCount(user?.id || "", userEmail);
   const markAsRead = useMarkNotificationRead();
   const markAllAsRead = useMarkAllNotificationsRead();
   const dismissNotification = useDismissNotification();
@@ -87,7 +88,9 @@ export function NotificationDropdown() {
   };
 
   const handleMarkAllRead = () => {
-    if (user?.id) {
+    if (user?.email) {
+      markAllAsRead.mutate(user.email);
+    } else if (user?.id) {
       markAllAsRead.mutate(user.id);
     }
   };

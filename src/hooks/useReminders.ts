@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Reminder {
   id: string;
@@ -80,6 +81,14 @@ export function useReminders(entityType?: string, entityId?: string) {
         (a, b) => new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
       ));
       toast({ title: "Reminder created" });
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          await logToStaffActivity("create_reminder", u.email || "", u.id, `Created reminder: ${reminder.title}`, reminder.entity_type, reminder.entity_id);
+        }
+      } catch (_) {}
       return data;
     } catch (error: any) {
       toast({
@@ -117,9 +126,18 @@ export function useReminders(entityType?: string, entityId?: string) {
 
   const dismissReminder = async (id: string) => {
     try {
+      const reminderToDismiss = reminders.find(r => r.id === id);
       await updateReminder(id, { is_dismissed: true });
       setReminders((prev) => prev.filter((r) => r.id !== id));
       toast({ title: "Reminder dismissed" });
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          await logToStaffActivity("dismiss_reminder", u.email || "", u.id, `Dismissed reminder: ${reminderToDismiss?.title || id}`, reminderToDismiss?.entity_type, reminderToDismiss?.entity_id);
+        }
+      } catch (_) {}
     } catch (error) {
       // Error already handled in updateReminder
     }
