@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -34,7 +34,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
-  const loginPendingRef = useRef(false);
 
   const fetchUserData = async (userId: string) => {
     try {
@@ -82,37 +81,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => {
             fetchUserData(session.user.id);
           }, 0);
-
-          // Log login activity only for actual sign-ins (not session restores)
-          if (event === "SIGNED_IN" && loginPendingRef.current) {
-            loginPendingRef.current = false;
-            setTimeout(async () => {
-              try {
-                const profileRes = await (supabase
-                  .from("profiles" as any)
-                  .select("email, full_name")
-                  .eq("id", session.user.id)
-                  .single() as any);
-
-                const { error } = await (supabase
-                  .from("staff_activity_log" as any)
-                  .insert as any)({
-                    user_id: session.user.id,
-                    user_email: profileRes.data?.email || session.user.email || "",
-                    action_type: "login",
-                    action_description: `User logged in: ${session.user.email}`,
-                    entity_type: "auth",
-                    metadata: { user_agent: navigator.userAgent },
-                  });
-
-                if (error) {
-                  console.error("Login activity log insert failed:", error);
-                }
-              } catch (err) {
-                console.error("Login activity logging error:", err);
-              }
-            }, 500);
-          }
         } else {
           setProfile(null);
           setRole(null);
@@ -141,14 +109,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    loginPendingRef.current = true;
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) {
-      loginPendingRef.current = false;
+
+    if (!error && data.session) {
+      // Log login IMMEDIATELY — session is confirmed valid, JWT is set
+      try {
+        const { error: logError } = await supabase
+          .from("staff_activity_log")
+          .insert([{
+            user_id: data.session.user.id,
+            user_email: data.session.user.email || email,
+            action_type: "login",
+            action_description: `User logged in: ${email}`,
+            entity_type: "auth",
+            metadata: { user_agent: navigator.userAgent } as any,
+            user_agent: navigator.userAgent,
+          }]);
+
+        if (logError) {
+          console.error("Login log insert failed:", logError);
+        }
+      } catch (e) {
+        console.error("Login logging error:", e);
+      }
     }
+
     return { error };
   };
 

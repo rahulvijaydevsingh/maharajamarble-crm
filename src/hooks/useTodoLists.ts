@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface TodoList {
   id: string;
@@ -37,6 +38,7 @@ export function useTodoLists() {
   const [lists, setLists] = useState<TodoList[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const fetchLists = async () => {
     try {
@@ -51,6 +53,12 @@ export function useTodoLists() {
       if (error) throw error;
       setLists(data || []);
     } catch (error: any) {
+      // Suppress transient auth/RLS errors during session restore
+      const msg = (error.message || "").toLowerCase();
+      if (msg.includes("jwt") || msg.includes("row-level security") || msg.includes("rls")) {
+        console.warn("Transient auth error fetching todo lists, will retry once session is ready");
+        return;
+      }
       toast({
         title: "Error fetching to-do lists",
         description: error.message,
@@ -198,6 +206,12 @@ export function useTodoLists() {
   };
 
   useEffect(() => {
+    if (!user) {
+      setLists([]);
+      setLoading(false);
+      return;
+    }
+
     fetchLists();
 
     const channel = supabase
@@ -214,7 +228,7 @@ export function useTodoLists() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user]);
 
   return {
     lists,
