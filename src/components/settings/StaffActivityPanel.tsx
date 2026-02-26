@@ -34,12 +34,22 @@ const ACTION_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   logout: { label: "Logout", color: "bg-gray-100 text-gray-700" },
   create_lead: { label: "Lead Created", color: "bg-blue-100 text-blue-700" },
   update_lead: { label: "Lead Updated", color: "bg-blue-100 text-blue-700" },
+  update_lead_status: { label: "Lead Status Changed", color: "bg-indigo-100 text-indigo-700" },
+  delete_lead: { label: "Lead Deleted", color: "bg-red-100 text-red-700" },
   create_task: { label: "Task Created", color: "bg-purple-100 text-purple-700" },
   update_task: { label: "Task Updated", color: "bg-purple-100 text-purple-700" },
+  task_completed: { label: "Task Completed", color: "bg-green-100 text-green-700" },
+  task_deleted: { label: "Task Deleted", color: "bg-red-100 text-red-700" },
+  task_snoozed: { label: "Task Snoozed", color: "bg-amber-100 text-amber-700" },
   create_customer: { label: "Customer Created", color: "bg-orange-100 text-orange-700" },
   update_customer: { label: "Customer Updated", color: "bg-orange-100 text-orange-700" },
   create_professional: { label: "Professional Created", color: "bg-teal-100 text-teal-700" },
   create_quotation: { label: "Quotation Created", color: "bg-yellow-100 text-yellow-700" },
+  create_reminder: { label: "Reminder Created", color: "bg-cyan-100 text-cyan-700" },
+  dismiss_reminder: { label: "Reminder Dismissed", color: "bg-gray-100 text-gray-700" },
+  add_note: { label: "Note Added", color: "bg-emerald-100 text-emerald-700" },
+  activate_kit: { label: "KIT Activated", color: "bg-pink-100 text-pink-700" },
+  view_profile: { label: "Profile Viewed", color: "bg-slate-100 text-slate-700" },
   delete_staff: { label: "Staff Deleted", color: "bg-red-100 text-red-700" },
 };
 
@@ -49,13 +59,26 @@ export function StaffActivityPanel() {
   const [userFilter, setUserFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateRange, setDateRange] = useState("all");
 
   useEffect(() => {
     const filters: any = {};
     if (userFilter !== "all") filters.userId = userFilter;
     if (actionFilter !== "all") filters.actionType = actionFilter;
+    if (dateRange !== "all") {
+      const now = new Date();
+      if (dateRange === "today") {
+        filters.startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      } else if (dateRange === "7days") {
+        const d = new Date(); d.setDate(d.getDate() - 7);
+        filters.startDate = d.toISOString();
+      } else if (dateRange === "30days") {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        filters.startDate = d.toISOString();
+      }
+    }
     fetchActivities(filters);
-  }, [userFilter, actionFilter]);
+  }, [userFilter, actionFilter, dateRange]);
 
   const filteredActivities = searchQuery
     ? activities.filter(
@@ -67,7 +90,7 @@ export function StaffActivityPanel() {
     : activities;
 
   const uniqueActionTypes = [...new Set(activities.map((a) => a.action_type))];
-  const hasFilters = userFilter !== "all" || actionFilter !== "all" || searchQuery;
+  const hasFilters = userFilter !== "all" || actionFilter !== "all" || searchQuery || dateRange !== "all";
 
   const getActionLabel = (type: string) => ACTION_TYPE_LABELS[type] || { label: type, color: "bg-gray-100 text-gray-700" };
   const getStaffName = (email: string) => {
@@ -134,6 +157,18 @@ export function StaffActivityPanel() {
               </SelectContent>
             </Select>
 
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue placeholder="Date Range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="7days">Last 7 Days</SelectItem>
+                <SelectItem value="30days">Last 30 Days</SelectItem>
+              </SelectContent>
+            </Select>
+
             {hasFilters && (
               <Button
                 variant="ghost"
@@ -142,6 +177,7 @@ export function StaffActivityPanel() {
                   setUserFilter("all");
                   setActionFilter("all");
                   setSearchQuery("");
+                  setDateRange("all");
                 }}
                 className="h-9"
               >

@@ -173,8 +173,7 @@ async function executeAction(
               .select("id")
               .eq("email", email)
               .maybeSingle();
-            if (profile) userIds.push(profile.id);
-            if (profile) userIds.push(profile.id);
+            if (profile) userIds.push(email);
           }
         }
 
@@ -184,7 +183,7 @@ async function executeAction(
             .select("id")
             .eq("email", String(newRow.assigned_to))
             .maybeSingle();
-          if (profile) userIds.push(profile.id);
+          if (profile) userIds.push(String(newRow.assigned_to));
         }
 
         if (recipients?.includes("trigger.created_by") && newRow.created_by) {
@@ -193,7 +192,7 @@ async function executeAction(
             .select("id")
             .eq("email", String(newRow.created_by))
             .maybeSingle();
-          if (profile) userIds.push(profile.id);
+          if (profile) userIds.push(String(newRow.created_by));
         }
 
         userIds = [...new Set(userIds)];

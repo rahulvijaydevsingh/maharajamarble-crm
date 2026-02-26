@@ -5,6 +5,7 @@ import { addDays, addWeeks, addMonths, addYears } from "date-fns";
 import { calculateTaskStatus, TaskStatus } from "@/lib/taskStatusService";
 import { useLogActivity } from "@/hooks/useActivityLog";
 import { useAuth } from "@/contexts/AuthContext";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Task {
   id: string;
@@ -223,9 +224,15 @@ export function useTasks() {
           related_entity_id: data.related_entity_id || undefined,
         });
       } catch (e) {
-        // Never block task creation if activity log fails
         console.warn("Failed to log task_created activity", e);
       }
+
+      // Log to staff_activity_log
+      try {
+        if (user) {
+          await logToStaffActivity("create_task", user.email || "", user.id, `Created task: ${data.title}`, "task", data.id);
+        }
+      } catch (_) {}
 
       return data;
     } catch (error: any) {
@@ -296,6 +303,14 @@ export function useTasks() {
       } catch (e) {
         console.warn("Failed to log task update activity", e);
       }
+
+      // Log to staff_activity_log
+      try {
+        if (user) {
+          const actType = updates.status === "Completed" ? "task_completed" : "update_task";
+          await logToStaffActivity(actType, user.email || "", user.id, `${actType === "task_completed" ? "Completed" : "Updated"} task: ${data.title}`, "task", data.id);
+        }
+      } catch (_) {}
 
       return data;
     } catch (error: any) {
@@ -469,6 +484,13 @@ export function useTasks() {
       } catch (e) {
         console.warn("Failed to log task_deleted activity", e);
       }
+
+      // Log to staff_activity_log
+      try {
+        if (user) {
+          await logToStaffActivity("task_deleted", user.email || "", user.id, `Deleted task: ${taskToDelete?.title || id}`, "task", id);
+        }
+      } catch (_) {}
     } catch (error: any) {
       toast({
         title: "Error deleting task",
