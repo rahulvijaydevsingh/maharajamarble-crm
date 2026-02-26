@@ -160,7 +160,7 @@ async function executeAction(
         const title = String(config.title || "Automation Notification");
         const message = String(config.message || "");
 
-        console.log(`[Automation] send_notification config:`, JSON.stringify({ recipients, specificUsers, title }));
+        
 
         // Find user IDs to notify
         let userIds: string[] = [];
@@ -173,7 +173,7 @@ async function executeAction(
               .select("id")
               .eq("email", email)
               .maybeSingle();
-            console.log(`[Automation] Profile lookup for ${email}:`, profile?.id, profileErr?.message);
+            if (profile) userIds.push(profile.id);
             if (profile) userIds.push(profile.id);
           }
         }
@@ -197,7 +197,7 @@ async function executeAction(
         }
 
         userIds = [...new Set(userIds)];
-        console.log(`[Automation] Resolved userIds:`, userIds);
+        
 
         if (userIds.length === 0) {
           return { status: "failed", error: "No valid recipients found" };
@@ -214,9 +214,7 @@ async function executeAction(
           related_automation_rule_id: ruleId,
         }));
 
-        console.log(`[Automation] Inserting notifications:`, JSON.stringify(notifications));
         const { data: insertedData, error } = await supabase.from("notifications").insert(notifications).select();
-        console.log(`[Automation] Insert result:`, JSON.stringify(insertedData), error?.message);
         if (error) return { status: "failed", error: error.message };
         return { status: "success", details: `Notified ${userIds.length} user(s)` };
       }
