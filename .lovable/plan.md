@@ -1,104 +1,123 @@
-# Fix Plan: Login Logging, Task Dropdowns, KIT RLS Error  
-other events by the staff are also not being logged. Mandeep created a KIT for a lead and it was not logged as well. 
 
-## Issue 1: Login Activity Still Not Logging (4th Attempt - Bulletproof Fix)
 
-### Root Cause
+# Fix Plan: Task Form Dropdown, Login Visibility, and Automation Engine
 
-After extensive debugging across 4 attempts, the Supabase JS client insert after `signInWithPassword` never reaches the database (confirmed via postgres logs showing zero queries to `staff_activity_log` during login). Despite the code looking correct, some internal client SDK timing issue prevents the authenticated insert from executing properly right after sign-in.
+## Issue 1: Related To Dropdown Not Working in Task Form
 
-### Solution: Dedicated Edge Function with Service Role
+**Root Cause:** The `RelatedEntitySection` component uses `z-[80]` on its `SelectContent` (line 159) and `PopoverContent` (line 190), but the parent `AddTaskDialog` renders at `z-[100]`. The dropdowns appear behind the dialog.
 
-Bypass the client-side Supabase SDK entirely. Create a small edge function `log-login` that:
+**Fix:** Change `z-[80]` to `z-[200]` on both elements in `src/components/tasks/form/RelatedEntitySection.tsx`.
 
-- Accepts user info (user_id, email, user_agent)
-- Uses the SERVICE_ROLE key to insert directly (no RLS dependency)
-- Is called via `supabase.functions.invoke('log-login', { body: {...} })` from the `signIn()` function
-- The function validates the JWT to confirm the caller is authenticated
-
-This approach is 100% reliable because:
-
-- No dependency on client SDK auth header timing
-- Service role bypasses all RLS
-- Edge functions work independently of component lifecycle
-- `functions.invoke` uses the current session token automatically
-
-**Files:**
-
-- Create `supabase/functions/log-login/index.ts`
-- Modify `src/contexts/AuthContext.tsx` -- replace the direct `supabase.from().insert()` with `supabase.functions.invoke('log-login', ...)`
+**File:** `src/components/tasks/form/RelatedEntitySection.tsx` (2 line changes)
 
 ---
 
-## Issue 2: Task Entry Form Dropdowns Not Visible (Z-Index)
+## Issue 2: Login Activity Not Visible to User
 
-### Root Cause
+**Root Cause:** Login IS being logged successfully -- confirmed 2 entries in the database for mandeep@maharajamarble.com. However, the `staff_activity_log` table's SELECT RLS policy only allows `is_admin()`. Mandeep has the `field_agent` role, so they cannot see any activity log entries.
 
-`AddTaskDialog` uses `DialogContent` with `z-[100]` and `hideOverlay`. The `SelectContent` dropdowns inside don't have an explicit z-index, so they render behind or at the same level as the dialog, making them invisible or see-through.
+**Fix Options:**
+- A: Add a policy so users can view their own activity: `user_id = auth.uid()` (recommended -- lets each user see their own login history)
+- B: Inform the user this is admin-only by design
 
-### Solution
+**Recommended:** Add a new SELECT policy so users can see their own entries. This way field agents can verify their own login was recorded, while only admins see everyone's activity.
 
-Add `className="z-[200]"` to every `<SelectContent>` inside `AddTaskDialog.tsx`. There are 4 Select dropdowns (Templates, Task Type, Priority, Assign To) plus the date Popover that all need z-index fixes.
-
-**File:** `src/components/tasks/AddTaskDialog.tsx`
-
-- Line 386: `<SelectContent>` -> `<SelectContent className="z-[200]">`
-- Line 419: `<SelectContent>` -> `<SelectContent className="z-[200]">`
-- Line 442: `<SelectContent>` -> `<SelectContent className="z-[200]">`
-- Line 460: `<SelectContent>` -> `<SelectContent className="z-[200]">`
-- Line 496: `<PopoverContent>` -> add `className` with `z-[200]`
+**Migration:** Add RLS policy `Users can view own activity` with `user_id = auth.uid()` for SELECT.
 
 ---
 
-## Issue 3: KIT Activation Creates Tasks That Violate RLS
+## Issue 3: Workflow Automation Not Triggering (Critical)
 
-### Root Cause (Confirmed via postgres logs)
+**Root Cause:** The automation system has NO execution engine. The entire codebase only contains:
+- UI for creating/editing automation rules
+- Database tables for storing rules and execution logs
+- But ZERO runtime code that evaluates triggers or executes actions
 
-Error: `"new row violates row-level security policy for table 'tasks'"`
+No database trigger, no edge function, and no frontend listener watches for data changes to match against automation rules. The rules are inert configurations.
 
-The tasks INSERT RLS policy requires: `is_admin() OR is_assigned_to_me(created_by)`
+### Solution: Build an Automation Engine Edge Function
 
-The function `is_assigned_to_me(value)` checks if the current user's `full_name` or `email` in the `profiles` table matches the provided value.
+Create a `run-automations` edge function that:
+1. Is triggered by database changes via a Postgres trigger (on INSERT/UPDATE to `staff_activity_log`, `leads`, `tasks`, `customers`, `professionals`, `quotations`)
+2. Fetches active automation rules matching the entity type
+3. Evaluates trigger conditions against the new/changed row
+4. Executes matching actions (create task, send notification, etc.)
+5. Logs execution results to `automation_executions`
 
-In `src/hooks/useTasks.ts` line 183:
+### Architecture
 
+```text
+Data Change (INSERT/UPDATE)
+        |
+        v
+  DB Trigger Function
+  (notify_automation_engine)
+        |
+        v
+  pg_net HTTP call to
+  run-automations edge function
+        |
+        v
+  Edge Function:
+  1. Fetch active rules for entity_type
+  2. Evaluate trigger conditions
+  3. Execute actions (insert tasks, notifications, etc.)
+  4. Log execution to automation_executions
 ```
-created_by: task.created_by || "Current User"
-```
 
-When KIT creates tasks (in `KitProfileTab.tsx` lines 190-202), it calls `addTask({...})` without setting `created_by`. So `useTasks.ts` defaults it to the string `"Current User"`. 
+### Implementation Details
 
-For a field agent, `is_assigned_to_me("Current User")` returns false (no user has that name), and `is_admin()` also returns false. Result: RLS blocks the insert.
+**Database Migration:**
+- Create a `notify_automation_engine()` Postgres function that uses `pg_net` (already available in Supabase) to call the edge function
+- Create triggers on key tables: `staff_activity_log`, `leads`, `tasks`, `customers`, `professionals`
+- The trigger fires AFTER INSERT OR UPDATE and passes the new row data
 
-Admins never hit this because `is_admin()` passes regardless.
+**Edge Function (`supabase/functions/run-automations/index.ts`):**
+- Receives: `{ entity_type, entity_id, operation, new_row, old_row }`
+- Uses SERVICE_ROLE to bypass RLS for reading rules and executing actions
+- Condition evaluation logic:
+  - `field_change` trigger: checks if field matches value, changed to value, etc.
+  - `field_matches` trigger: checks current field state against condition
+  - Supports AND/OR condition logic
+- Action execution:
+  - `send_notification`: inserts into `notifications` table
+  - `create_task`: inserts into `tasks` table
+  - `create_reminder`: inserts into `reminders` table
+  - `update_field`: updates the source entity record
+- Logs all results to `automation_executions`
 
-### Solution
+**Supported trigger types for initial release:**
+- `field_change` with operators: `equals`, `not_equals`, `contains`, `changes_to`
+- Multi-condition support with AND/OR logic
 
-Fix `useTasks.ts` to use the actual user email instead of "Current User". Import `useAuth` and use `user.email` as the default `created_by`.
+**Supported actions for initial release:**
+- `send_notification` (in-app)
+- `create_task`
+- `create_reminder`
+- `update_field`
 
-Also fix the same issue in `KitProfileTab.tsx` -- pass the actual user email when calling `addTask`.
-
-Additionally, fix `addReminder` calls from KIT to ensure `created_by` is set to the actual user email.
-
-**Files:**
-
-- `src/hooks/useTasks.ts` -- get user email from auth context, use as default `created_by`
-- `src/components/kit/KitProfileTab.tsx` -- no changes needed if useTasks is fixed
+### Specific Rule Test Case
+The existing rule "mandeep login alert" will work because:
+- Entity type: `staff_activity` maps to `staff_activity_log` table
+- Trigger: field_change where `user_email equals mandeep@maharajamarble.com` AND `action_type changes_to login`
+- Action: send_notification to `superadmin@demo.com`
+- When Mandeep logs in, the `log-login` edge function inserts into `staff_activity_log`, the DB trigger fires, calls `run-automations`, which evaluates the rule and creates a notification
 
 ---
-
-## Implementation Order
-
-1. Create `log-login` edge function and update AuthContext (login logging)
-2. Fix `useTasks.ts` created_by default (KIT RLS error)
-3. Add z-index to AddTaskDialog SelectContent elements (dropdown visibility)
 
 ## Files Summary
 
+| File | Action | Change |
+|------|--------|--------|
+| `src/components/tasks/form/RelatedEntitySection.tsx` | Modify | Change `z-[80]` to `z-[200]` on SelectContent and PopoverContent |
+| `supabase/functions/run-automations/index.ts` | Create | Automation execution engine edge function |
+| Database migration | Create | Add `notify_automation_engine()` function and triggers on key tables; add user self-view RLS policy on `staff_activity_log` |
 
-| File                                     | Action | Change                                                     |
-| ---------------------------------------- | ------ | ---------------------------------------------------------- |
-| `supabase/functions/log-login/index.ts`  | Create | Edge function to log login with service role               |
-| `src/contexts/AuthContext.tsx`           | Modify | Replace direct insert with `functions.invoke('log-login')` |
-| `src/hooks/useTasks.ts`                  | Modify | Default `created_by` to actual user email from auth        |
-| `src/components/tasks/AddTaskDialog.tsx` | Modify | Add `z-[200]` to all `SelectContent` and `PopoverContent`  |
+## Implementation Order
+
+1. Fix RelatedEntitySection z-index (quick fix)
+2. Add staff_activity_log self-view RLS policy
+3. Create the `run-automations` edge function
+4. Add database triggers to invoke the engine
+5. Test with the existing "mandeep login alert" rule
+
