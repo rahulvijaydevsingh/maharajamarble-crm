@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addDays, addWeeks, addMonths, addYears } from "date-fns";
 import { calculateTaskStatus, TaskStatus } from "@/lib/taskStatusService";
 import { useLogActivity } from "@/hooks/useActivityLog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Task {
   id: string;
@@ -138,6 +139,7 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
+  const { user } = useAuth();
 
   const getActivityContext = (task: Partial<TaskInsert> & { lead_id?: string | null; related_entity_type?: string | null; related_entity_id?: string | null }) => {
     const leadId = task.lead_id || null;
@@ -180,7 +182,7 @@ export function useTasks() {
     try {
       const taskData = {
         ...task,
-        created_by: task.created_by || "Current User",
+        created_by: task.created_by || user?.email || "Current User",
         original_due_date: task.original_due_date || task.due_date,
       };
 

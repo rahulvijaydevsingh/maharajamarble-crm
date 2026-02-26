@@ -383,7 +383,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
               <SelectTrigger>
                 <SelectValue placeholder="Select a template to auto-fill" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {TASK_TEMPLATES.map((template) => (
                   <SelectItem key={template.name} value={template.name}>
                     {template.name} {template.isRecurring && "🔄"}
@@ -416,7 +416,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
                 <SelectTrigger className={errors.type ? "border-destructive" : ""}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   <SelectGroup>
                     <SelectLabel>Standard Tasks</SelectLabel>
                     {TASK_TYPES.map((type) => (
@@ -439,7 +439,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   {TASK_PRIORITIES.map((p) => (
                     <SelectItem key={p.value} value={p.value}>
                       <span className={p.color}>{p.label}</span>
@@ -457,7 +457,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
               <SelectTrigger>
                 <SelectValue placeholder={staffLoading ? "Loading..." : "Select team member"} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {staffMembers.map((member) => (
                   <SelectItem key={member.id} value={member.email || member.id}>
                     {(member as any)._display || member.name}
@@ -493,7 +493,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
                     {formData.dueDate ? format(formData.dueDate, "PPP") : "Pick a date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0 z-[200]" align="start">
                   <Calendar
                     mode="single"
                     selected={formData.dueDate}

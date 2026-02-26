@@ -115,22 +115,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (!error && data.session) {
-      // Log login IMMEDIATELY — session is confirmed valid, JWT is set
+      // Log login via edge function (bypasses RLS, no SDK timing issues)
       try {
-        const { error: logError } = await supabase
-          .from("staff_activity_log")
-          .insert([{
+        const { error: fnError } = await supabase.functions.invoke("log-login", {
+          body: {
             user_id: data.session.user.id,
             user_email: data.session.user.email || email,
-            action_type: "login",
-            action_description: `User logged in: ${email}`,
-            entity_type: "auth",
-            metadata: { user_agent: navigator.userAgent } as any,
             user_agent: navigator.userAgent,
-          }]);
+          },
+        });
 
-        if (logError) {
-          console.error("Login log insert failed:", logError);
+        if (fnError) {
+          console.error("Login log edge function failed:", fnError);
         }
       } catch (e) {
         console.error("Login logging error:", e);
