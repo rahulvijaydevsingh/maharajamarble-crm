@@ -1,120 +1,104 @@
-# Fix Plan: Todo List Error, Referred By Mock Data, and Login Logging
+# Fix Plan: Login Logging, Task Dropdowns, KIT RLS Error  
+other events by the staff are also not being logged. Mandeep created a KIT for a lead and it was not logged as well. 
 
-## Issue 1: Todo Lists Error on Refresh
+## Issue 1: Login Activity Still Not Logging (4th Attempt - Bulletproof Fix)
 
-**Root Cause:** The `useTodoLists` hook fires `fetchLists()` immediately on mount via `useEffect([], [])`. On page refresh, the auth session hasn't been restored yet when this query runs. The RLS policy on `todo_lists` requires `get_current_user_email()` (which depends on `auth.uid()`). If the JWT isn't ready, the query fails with an RLS error. The error is intermittent because sometimes the session restores fast enough.
+### Root Cause
 
-**Fix:** Add an auth gate — only fetch todo lists when `supabase.auth.getSession()` confirms a valid session. Also suppress the error toast for transient auth-related failures.
+After extensive debugging across 4 attempts, the Supabase JS client insert after `signInWithPassword` never reaches the database (confirmed via postgres logs showing zero queries to `staff_activity_log` during login). Despite the code looking correct, some internal client SDK timing issue prevents the authenticated insert from executing properly right after sign-in.
 
-**File:** `src/hooks/useTodoLists.ts`
+### Solution: Dedicated Edge Function with Service Role
 
-- Import `useAuth` from AuthContext
-- Gate `fetchLists()` on `user` being non-null
-- Add `user` to the useEffect dependency array so it re-fetches once auth is ready
-- Check for "JWT" or "row-level security" in error messages and skip showing destructive toasts for those
+Bypass the client-side Supabase SDK entirely. Create a small edge function `log-login` that:
 
----
+- Accepts user info (user_id, email, user_agent)
+- Uses the SERVICE_ROLE key to insert directly (no RLS dependency)
+- Is called via `supabase.functions.invoke('log-login', { body: {...} })` from the `signIn()` function
+- The function validates the JWT to confirm the caller is authenticated
 
-## Issue 2: Referred By Shows Fake Professionals
+This approach is 100% reliable because:
 
-**Root Cause:** `src/components/leads/smart-form/SourceRelationshipSection.tsx` imports and uses `MOCK_PROFESSIONALS` from `src/constants/leadConstants.ts` — a hardcoded list of fake professionals like "Architect Ramesh Kumar" that don't exist in the database. The real professionals are in the `professionals` table.
+- No dependency on client SDK auth header timing
+- Service role bypasses all RLS
+- Edge functions work independently of component lifecycle
+- `functions.invoke` uses the current session token automatically
 
-**Fix:** Replace `MOCK_PROFESSIONALS` with live data from the `useProfessionals` hook.
+**Files:**
 
-**File:** `src/components/leads/smart-form/SourceRelationshipSection.tsx`
-
-- Remove the `MOCK_PROFESSIONALS` import
-- Import `useProfessionals` from `@/hooks/useProfessionals`
-- Call the hook and use `professionals` array
-- Map the database professional fields (`name`, `firm_name`, `professional_type`, `phone`, `email`, `id`) to the format expected by the search UI
-- Update the `filteredProfessionals` memo to filter from real data instead of mock data
-- Handle loading state (show "Loading professionals..." in the search)  
-keeping the UI of the drop down list same as the mock data for he original data.
-
-Also used in `src/components/leads/bulk-upload/PhotoLeadForm.tsx` — same fix needed there if it references `MOCK_PROFESSIONALS`.
+- Create `supabase/functions/log-login/index.ts`
+- Modify `src/contexts/AuthContext.tsx` -- replace the direct `supabase.from().insert()` with `supabase.functions.invoke('log-login', ...)`
 
 ---
 
-## Issue 3: Login Activity Still Not Logging (Root Cause Analysis)
+## Issue 2: Task Entry Form Dropdowns Not Visible (Z-Index)
 
-**Root Cause — Deep Analysis:**
+### Root Cause
 
-This is the 3rd attempt. Previous approaches:
+`AddTaskDialog` uses `DialogContent` with `z-[100]` and `hideOverlay`. The `SelectContent` dropdowns inside don't have an explicit z-index, so they render behind or at the same level as the dialog, making them invisible or see-through.
 
-1. Attempt 1: Direct insert in `Auth.tsx` after `signIn()` — failed because `useStaffActivityLog` hook's `user` guard was null
-2. Attempt 2: Direct Supabase insert in `Auth.tsx` — failed due to navigating away before async insert completed
-3. Attempt 3 (current): Insert via `onAuthStateChange` in `AuthContext.tsx` with `loginPendingRef` and `setTimeout(500)` — still failing
+### Solution
 
-**Why it keeps failing:** The `onAuthStateChange` callback with `setTimeout` is unreliable because:
+Add `className="z-[200]"` to every `<SelectContent>` inside `AddTaskDialog.tsx`. There are 4 Select dropdowns (Templates, Task Type, Priority, Assign To) plus the date Popover that all need z-index fixes.
 
-- The `SIGNED_IN` event may fire at a point where the supabase client's internal state is transitional
-- The `setTimeout` callback runs in a different microtask context where the authenticated request may not propagate correctly
-- There are potential double-fire scenarios where `loginPendingRef` gets cleared prematurely
+**File:** `src/components/tasks/AddTaskDialog.tsx`
 
-**The bulletproof fix:** Move login logging directly INTO the `signIn()` function, AFTER `signInWithPassword` resolves with a valid session. At that point:
+- Line 386: `<SelectContent>` -> `<SelectContent className="z-[200]">`
+- Line 419: `<SelectContent>` -> `<SelectContent className="z-[200]">`
+- Line 442: `<SelectContent>` -> `<SelectContent className="z-[200]">`
+- Line 460: `<SelectContent>` -> `<SelectContent className="z-[200]">`
+- Line 496: `<PopoverContent>` -> add `className` with `z-[200]`
 
-- `data.session` is confirmed valid (returned by the function)
-- The supabase client has already stored the JWT internally
-- `auth.uid()` on the database side will match `data.session.user.id`
-- No setTimeout, no ref flags, no timing dependencies
+---
 
-Since `staff_activity_log` IS in the generated TypeScript types (confirmed at line 1817 of types.ts), we can drop ALL `as any` casts and use properly typed calls.
+## Issue 3: KIT Activation Creates Tasks That Violate RLS
 
-**File:** `src/contexts/AuthContext.tsx`
+### Root Cause (Confirmed via postgres logs)
 
-Changes to `signIn()`:
+Error: `"new row violates row-level security policy for table 'tasks'"`
 
-```text
-const signIn = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  
-  if (!error && data.session) {
-    // Log login IMMEDIATELY — session is confirmed valid
-    try {
-      const { error: logError } = await supabase
-        .from("staff_activity_log")
-        .insert([{
-          user_id: data.session.user.id,
-          user_email: data.session.user.email || email,
-          action_type: "login",
-          action_description: `User logged in: ${email}`,
-          entity_type: "auth",
-          metadata: { user_agent: navigator.userAgent },
-          user_agent: navigator.userAgent,
-        }]);
-      
-      if (logError) {
-        console.error("Login log insert failed:", logError);
-      }
-    } catch (e) {
-      console.error("Login logging error:", e);
-    }
-  }
-  
-  return { error };
-};
+The tasks INSERT RLS policy requires: `is_admin() OR is_assigned_to_me(created_by)`
+
+The function `is_assigned_to_me(value)` checks if the current user's `full_name` or `email` in the `profiles` table matches the provided value.
+
+In `src/hooks/useTasks.ts` line 183:
+
+```
+created_by: task.created_by || "Current User"
 ```
 
-Also:
+When KIT creates tasks (in `KitProfileTab.tsx` lines 190-202), it calls `addTask({...})` without setting `created_by`. So `useTasks.ts` defaults it to the string `"Current User"`. 
 
-- Remove the `loginPendingRef` ref entirely
-- Remove the `SIGNED_IN` login logging block from `onAuthStateChange`
-- Keep the rest of `onAuthStateChange` unchanged (it still handles `fetchUserData`, etc.)
+For a field agent, `is_assigned_to_me("Current User")` returns false (no user has that name), and `is_admin()` also returns false. Result: RLS blocks the insert.
+
+Admins never hit this because `is_admin()` passes regardless.
+
+### Solution
+
+Fix `useTasks.ts` to use the actual user email instead of "Current User". Import `useAuth` and use `user.email` as the default `created_by`.
+
+Also fix the same issue in `KitProfileTab.tsx` -- pass the actual user email when calling `addTask`.
+
+Additionally, fix `addReminder` calls from KIT to ensure `created_by` is set to the actual user email.
+
+**Files:**
+
+- `src/hooks/useTasks.ts` -- get user email from auth context, use as default `created_by`
+- `src/components/kit/KitProfileTab.tsx` -- no changes needed if useTasks is fixed
 
 ---
-
-## Files to Modify
-
-
-| File                                                            | Change                                                                                                                                                      |
-| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/contexts/AuthContext.tsx`                                  | Move login logging into `signIn()` after `signInWithPassword` resolves; remove `loginPendingRef` and the `SIGNED_IN` logging block from `onAuthStateChange` |
-| `src/hooks/useTodoLists.ts`                                     | Gate fetch on auth state being ready; suppress transient RLS error toasts                                                                                   |
-| `src/components/leads/smart-form/SourceRelationshipSection.tsx` | Replace `MOCK_PROFESSIONALS` with live `useProfessionals` data                                                                                              |
-
 
 ## Implementation Order
 
-1. Login logging fix (most critical, third attempt)
-2. Referred By mock data replacement
-3. Todo list refresh error suppression
+1. Create `log-login` edge function and update AuthContext (login logging)
+2. Fix `useTasks.ts` created_by default (KIT RLS error)
+3. Add z-index to AddTaskDialog SelectContent elements (dropdown visibility)
+
+## Files Summary
+
+
+| File                                     | Action | Change                                                     |
+| ---------------------------------------- | ------ | ---------------------------------------------------------- |
+| `supabase/functions/log-login/index.ts`  | Create | Edge function to log login with service role               |
+| `src/contexts/AuthContext.tsx`           | Modify | Replace direct insert with `functions.invoke('log-login')` |
+| `src/hooks/useTasks.ts`                  | Modify | Default `created_by` to actual user email from auth        |
+| `src/components/tasks/AddTaskDialog.tsx` | Modify | Add `z-[200]` to all `SelectContent` and `PopoverContent`  |
