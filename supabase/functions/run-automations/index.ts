@@ -160,18 +160,20 @@ async function executeAction(
         const title = String(config.title || "Automation Notification");
         const message = String(config.message || "");
 
+        console.log(`[Automation] send_notification config:`, JSON.stringify({ recipients, specificUsers, title }));
+
         // Find user IDs to notify
         let userIds: string[] = [];
 
         if (specificUsers) {
-          // Look up user ID by email
           const emails = specificUsers.split(",").map((e: string) => e.trim());
           for (const email of emails) {
-            const { data: profile } = await supabase
+            const { data: profile, error: profileErr } = await supabase
               .from("profiles")
               .select("id")
               .eq("email", email)
               .maybeSingle();
+            console.log(`[Automation] Profile lookup for ${email}:`, profile?.id, profileErr?.message);
             if (profile) userIds.push(profile.id);
           }
         }
@@ -194,14 +196,13 @@ async function executeAction(
           if (profile) userIds.push(profile.id);
         }
 
-        // Deduplicate
         userIds = [...new Set(userIds)];
+        console.log(`[Automation] Resolved userIds:`, userIds);
 
         if (userIds.length === 0) {
           return { status: "failed", error: "No valid recipients found" };
         }
 
-        // Insert notifications
         const notifications = userIds.map((uid) => ({
           user_id: uid,
           title,
@@ -213,7 +214,9 @@ async function executeAction(
           related_automation_rule_id: ruleId,
         }));
 
-        const { error } = await supabase.from("notifications").insert(notifications);
+        console.log(`[Automation] Inserting notifications:`, JSON.stringify(notifications));
+        const { data: insertedData, error } = await supabase.from("notifications").insert(notifications).select();
+        console.log(`[Automation] Insert result:`, JSON.stringify(insertedData), error?.message);
         if (error) return { status: "failed", error: error.message };
         return { status: "success", details: `Notified ${userIds.length} user(s)` };
       }
@@ -402,9 +405,13 @@ Deno.serve(async (req) => {
 
       // Check active days
       if (rule.active_days && rule.active_days.length > 0) {
-        const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-        const today = dayNames[new Date().getDay()];
-        if (!rule.active_days.includes(today)) {
+        const dayAbbrevs = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+        const dayFull = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+        const dayIdx = new Date().getDay();
+        const today = dayAbbrevs[dayIdx];
+        const todayFull = dayFull[dayIdx];
+        // Support both abbreviated (mon, tue) and full (monday, tuesday) formats
+        if (!rule.active_days.includes(today) && !rule.active_days.includes(todayFull)) {
           console.log(`[Automation] Rule "${rule.rule_name}" skipped: not active on ${today}`);
           results.push({ rule_id: rule.id, rule_name: rule.rule_name, matched: false, actions_run: 0 });
           continue;
