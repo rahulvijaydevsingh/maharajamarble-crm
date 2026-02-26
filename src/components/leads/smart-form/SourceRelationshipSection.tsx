@@ -29,10 +29,11 @@ import { Badge } from "@/components/ui/badge";
 import { Link2, Users, Search, X, Phone, Mail, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LeadSource, ProfessionalRef } from "@/types/lead";
-import { LEAD_SOURCES as FALLBACK_LEAD_SOURCES, MOCK_PROFESSIONALS } from "@/constants/leadConstants";
+import { LEAD_SOURCES as FALLBACK_LEAD_SOURCES } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useProfessionals } from "@/hooks/useProfessionals";
 
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
@@ -57,6 +58,19 @@ export function SourceRelationshipSection({
   const [searchQuery, setSearchQuery] = useState("");
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
+  const { professionals, loading: profLoading } = useProfessionals();
+
+  // Map DB professionals to the format used by the UI
+  const mappedProfessionals = useMemo(() => {
+    return professionals.map(p => ({
+      id: p.id,
+      name: p.name,
+      firmName: p.firm_name || "",
+      type: p.professional_type || "contractor",
+      phone: p.phone || undefined,
+      email: p.email || undefined,
+    }));
+  }, [professionals]);
 
   // Use control panel options, fallback to constants
   const LEAD_SOURCES = useMemo(() => {
@@ -73,11 +87,11 @@ export function SourceRelationshipSection({
   const showReferredBy = leadSource === "professional_referral" || leadSource === "walk_in";
   const referralRequired = leadSource === "professional_referral";
 
-  // Filter professionals based on search query - search by name, phone, firm name, designation, email
+  // Filter professionals based on search query
   const filteredProfessionals = useMemo(() => {
-    if (!searchQuery) return MOCK_PROFESSIONALS;
+    if (!searchQuery) return mappedProfessionals;
     const query = searchQuery.toLowerCase();
-    return MOCK_PROFESSIONALS.filter(
+    return mappedProfessionals.filter(
       prof => 
         prof.name.toLowerCase().includes(query) || 
         prof.firmName.toLowerCase().includes(query) ||
@@ -85,7 +99,7 @@ export function SourceRelationshipSection({
         prof.email?.toLowerCase().includes(query) ||
         prof.type.toLowerCase().includes(query)
     );
-  }, [searchQuery]);
+  }, [searchQuery, mappedProfessionals]);
 
   const getProfessionalTypeLabel = (type: string) => {
     switch (type) {
@@ -231,7 +245,7 @@ export function SourceRelationshipSection({
                       onValueChange={setSearchQuery}
                     />
                     <CommandList>
-                      <CommandEmpty>No professional found.</CommandEmpty>
+                      <CommandEmpty>{profLoading ? "Loading professionals..." : "No professional found."}</CommandEmpty>
                       <CommandGroup heading="Professionals">
                         {filteredProfessionals.map((prof) => (
                           <CommandItem
@@ -242,7 +256,7 @@ export function SourceRelationshipSection({
                                 id: prof.id,
                                 name: prof.name,
                                 firmName: prof.firmName,
-                                type: prof.type,
+                                type: prof.type as "architect" | "builder" | "contractor" | "interior_designer",
                                 phone: prof.phone,
                                 email: prof.email,
                               });
