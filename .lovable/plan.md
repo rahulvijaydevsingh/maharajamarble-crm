@@ -1,123 +1,106 @@
 
 
-# Fix Plan: Task Form Dropdown, Login Visibility, and Automation Engine
+# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
 
-## Issue 1: Related To Dropdown Not Working in Task Form
+## Root Cause Analysis
 
-**Root Cause:** The `RelatedEntitySection` component uses `z-[80]` on its `SelectContent` (line 159) and `PopoverContent` (line 190), but the parent `AddTaskDialog` renders at `z-[100]`. The dropdowns appear behind the dialog.
+### Problem 1: Staff Activity Log Only Shows Login/Logout
+**Two causes found:**
+- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
+- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
 
-**Fix:** Change `z-[80]` to `z-[200]` on both elements in `src/components/tasks/form/RelatedEntitySection.tsx`.
+### Problem 2: Automation Engine Never Fires (Critical Bug)
+**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
 
-**File:** `src/components/tasks/form/RelatedEntitySection.tsx` (2 line changes)
+### Problem 3: Notifications Invisible Even If Created
+**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
+- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
+- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
+- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
+- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
 
----
-
-## Issue 2: Login Activity Not Visible to User
-
-**Root Cause:** Login IS being logged successfully -- confirmed 2 entries in the database for mandeep@maharajamarble.com. However, the `staff_activity_log` table's SELECT RLS policy only allows `is_admin()`. Mandeep has the `field_agent` role, so they cannot see any activity log entries.
-
-**Fix Options:**
-- A: Add a policy so users can view their own activity: `user_id = auth.uid()` (recommended -- lets each user see their own login history)
-- B: Inform the user this is admin-only by design
-
-**Recommended:** Add a new SELECT policy so users can see their own entries. This way field agents can verify their own login was recorded, while only admins see everyone's activity.
-
-**Migration:** Add RLS policy `Users can view own activity` with `user_id = auth.uid()` for SELECT.
+Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
 
 ---
 
-## Issue 3: Workflow Automation Not Triggering (Critical)
+## Fix Plan
 
-**Root Cause:** The automation system has NO execution engine. The entire codebase only contains:
-- UI for creating/editing automation rules
-- Database tables for storing rules and execution logs
-- But ZERO runtime code that evaluates triggers or executes actions
+### Fix 1: Repair the Automation Trigger Function (Database Migration)
+Update the `notify_automation_engine()` function to:
+- Use `net.http_post()` instead of `extensions.http_post()`
+- Pass `body` as `jsonb` instead of `text`
 
-No database trigger, no edge function, and no frontend listener watches for data changes to match against automation rules. The rules are inert configurations.
-
-### Solution: Build an Automation Engine Edge Function
-
-Create a `run-automations` edge function that:
-1. Is triggered by database changes via a Postgres trigger (on INSERT/UPDATE to `staff_activity_log`, `leads`, `tasks`, `customers`, `professionals`, `quotations`)
-2. Fetches active automation rules matching the entity type
-3. Evaluates trigger conditions against the new/changed row
-4. Executes matching actions (create task, send notification, etc.)
-5. Logs execution results to `automation_executions`
-
-### Architecture
-
-```text
-Data Change (INSERT/UPDATE)
-        |
-        v
-  DB Trigger Function
-  (notify_automation_engine)
-        |
-        v
-  pg_net HTTP call to
-  run-automations edge function
-        |
-        v
-  Edge Function:
-  1. Fetch active rules for entity_type
-  2. Evaluate trigger conditions
-  3. Execute actions (insert tasks, notifications, etc.)
-  4. Log execution to automation_executions
+```sql
+CREATE OR REPLACE FUNCTION public.notify_automation_engine()
+RETURNS trigger ...
+AS $$
+  ...
+  PERFORM net.http_post(
+    url := edge_url || '/functions/v1/run-automations',
+    body := payload,  -- jsonb, not text
+    headers := jsonb_build_object(...)
+  );
+  ...
+$$;
 ```
 
-### Implementation Details
+### Fix 2: Fix Notification user_id Storage in Edge Function
+In `supabase/functions/run-automations/index.ts`:
+- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
+- Remove the duplicate `userIds.push(profile.id)` on line 176-177
+- Change the notification insert to use email instead of profile.id
 
-**Database Migration:**
-- Create a `notify_automation_engine()` Postgres function that uses `pg_net` (already available in Supabase) to call the edge function
-- Create triggers on key tables: `staff_activity_log`, `leads`, `tasks`, `customers`, `professionals`
-- The trigger fires AFTER INSERT OR UPDATE and passes the new row data
+### Fix 3: Fix Notification Querying in Client
+In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
+- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
+- Update the realtime subscription filter accordingly
 
-**Edge Function (`supabase/functions/run-automations/index.ts`):**
-- Receives: `{ entity_type, entity_id, operation, new_row, old_row }`
-- Uses SERVICE_ROLE to bypass RLS for reading rules and executing actions
-- Condition evaluation logic:
-  - `field_change` trigger: checks if field matches value, changed to value, etc.
-  - `field_matches` trigger: checks current field state against condition
-  - Supports AND/OR condition logic
-- Action execution:
-  - `send_notification`: inserts into `notifications` table
-  - `create_task`: inserts into `tasks` table
-  - `create_reminder`: inserts into `reminders` table
-  - `update_field`: updates the source entity record
-- Logs all results to `automation_executions`
+### Fix 4: Add Comprehensive Staff Activity Logging
+Add `logStaffAction()` calls to these operations that currently lack them:
 
-**Supported trigger types for initial release:**
-- `field_change` with operators: `equals`, `not_equals`, `contains`, `changes_to`
-- Multi-condition support with AND/OR logic
+| Operation | File | Action Type |
+|-----------|------|-------------|
+| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
+| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
+| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
+| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
+| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
+| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
+| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
+| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
+| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
+| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
 
-**Supported actions for initial release:**
-- `send_notification` (in-app)
-- `create_task`
-- `create_reminder`
-- `update_field`
+Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
 
-### Specific Rule Test Case
-The existing rule "mandeep login alert" will work because:
-- Entity type: `staff_activity` maps to `staff_activity_log` table
-- Trigger: field_change where `user_email equals mandeep@maharajamarble.com` AND `action_type changes_to login`
-- Action: send_notification to `superadmin@demo.com`
-- When Mandeep logs in, the `log-login` edge function inserts into `staff_activity_log`, the DB trigger fires, calls `run-automations`, which evaluates the rule and creates a notification
+### Fix 5: Expand StaffActivityPanel Display
+Update `src/components/settings/StaffActivityPanel.tsx` to:
+- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
+- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
 
 ---
 
-## Files Summary
+## Files to Modify
 
-| File | Action | Change |
-|------|--------|--------|
-| `src/components/tasks/form/RelatedEntitySection.tsx` | Modify | Change `z-[80]` to `z-[200]` on SelectContent and PopoverContent |
-| `supabase/functions/run-automations/index.ts` | Create | Automation execution engine edge function |
-| Database migration | Create | Add `notify_automation_engine()` function and triggers on key tables; add user self-view RLS policy on `staff_activity_log` |
+| File | Change |
+|------|--------|
+| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
+| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
+| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
+| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
+| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
+| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
+| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
+| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
+| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
+| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
+| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
+| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
 
 ## Implementation Order
-
-1. Fix RelatedEntitySection z-index (quick fix)
-2. Add staff_activity_log self-view RLS policy
-3. Create the `run-automations` edge function
-4. Add database triggers to invoke the engine
-5. Test with the existing "mandeep login alert" rule
+1. Fix DB trigger function (migration) -- unblocks all automation
+2. Fix edge function notification user_id + duplicate push
+3. Fix notification client queries (email-based)
+4. Add comprehensive activity logging across all hooks
+5. Update StaffActivityPanel with new types and date filter
 
