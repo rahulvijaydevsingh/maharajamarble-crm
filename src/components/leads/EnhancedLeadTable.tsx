@@ -1110,7 +1110,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
               }
             </DialogDescription>
           </DialogHeader>
-          {bulkActionType !== "delete" && bulkActionType !== "convert_customer" && (
+          {bulkActionType !== "delete" && bulkActionType !== "convert_customer" && bulkActionType !== "create_task" && (
             <div className="py-4">
               {bulkActionType === "status" && (
                 <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
@@ -1150,6 +1150,69 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
               )}
             </div>
           )}
+          {bulkActionType === "create_task" && (
+            <div className="py-2 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Task Type</Label>
+                  <Select value={bulkTaskFormData.type} onValueChange={(v) => setBulkTaskFormData(prev => ({ ...prev, type: v, title: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TASK_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Priority</Label>
+                  <Select value={bulkTaskFormData.priority} onValueChange={(v) => setBulkTaskFormData(prev => ({ ...prev, priority: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TASK_PRIORITIES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input value={bulkTaskFormData.title} onChange={(e) => setBulkTaskFormData(prev => ({ ...prev, title: e.target.value }))} placeholder="Task title" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Due Date *</Label>
+                  <Input type="date" value={bulkTaskFormData.dueDate} onChange={(e) => setBulkTaskFormData(prev => ({ ...prev, dueDate: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Due Time</Label>
+                  <Input type="time" value={bulkTaskFormData.dueTime} onChange={(e) => setBulkTaskFormData(prev => ({ ...prev, dueTime: e.target.value }))} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Assign To (optional, defaults to lead's assignee)</Label>
+                <Select value={bulkTaskFormData.assignedTo} onValueChange={(v) => setBulkTaskFormData(prev => ({ ...prev, assignedTo: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Use lead's assignee" /></SelectTrigger>
+                  <SelectContent>
+                    {staffMembers.map((staff) => (
+                      <SelectItem key={staff.id} value={staff.name}>{staff.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Description (optional)</Label>
+                <Textarea value={bulkTaskFormData.description} onChange={(e) => setBulkTaskFormData(prev => ({ ...prev, description: e.target.value }))} placeholder="Task description..." rows={3} />
+              </div>
+            </div>
+          )}
+          {bulkActionProgress && (
+            <div className="py-2">
+              <div className="text-sm text-muted-foreground mb-1">
+                Processing {bulkActionProgress.current} of {bulkActionProgress.total}...
+              </div>
+              <div className="w-full bg-secondary rounded-full h-2">
+                <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${(bulkActionProgress.current / bulkActionProgress.total) * 100}%` }} />
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => { 
               setBulkActionDialogOpen(false); 
@@ -1162,9 +1225,18 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             <Button 
               variant={bulkActionType === "delete" ? "destructive" : "default"}
               onClick={handleBulkAction}
-              disabled={bulkActionType !== "delete" && bulkActionType !== "convert_customer" && !bulkActionValue}
+              disabled={
+                bulkActionProgress !== null ||
+                (bulkActionType === "create_task" && (!bulkTaskFormData.title || !bulkTaskFormData.dueDate)) ||
+                (bulkActionType !== "delete" && bulkActionType !== "convert_customer" && bulkActionType !== "create_task" && !bulkActionValue)
+              }
             >
-              {bulkActionType === "delete" ? "Delete" : bulkActionType === "convert_customer" ? "Convert" : "Update"}
+              {bulkActionProgress ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>
+              ) : bulkActionType === "delete" ? "Delete" 
+                : bulkActionType === "convert_customer" ? "Convert" 
+                : bulkActionType === "create_task" ? `Create ${selectedLeads.length} Tasks`
+                : "Update"}
             </Button>
           </DialogFooter>
         </DialogContent>
