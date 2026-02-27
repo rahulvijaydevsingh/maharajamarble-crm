@@ -1,106 +1,39 @@
 
 
-# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
+## Plan: Add Bulk Task Creation for Selected Leads
 
-## Root Cause Analysis
+### Overview
+Add a "Create Task" option to the Bulk Actions dropdown in the Leads table. When selected, it opens a dialog where the user fills in task details (type, title, priority, assignee, due date/time, description). On confirmation, a task is created for each selected lead, linked via `lead_id` and `related_entity_id`, using the existing batched `Promise.allSettled` pattern.
 
-### Problem 1: Staff Activity Log Only Shows Login/Logout
-**Two causes found:**
-- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
-- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
+### Changes
 
-### Problem 2: Automation Engine Never Fires (Critical Bug)
-**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
+**File: `src/components/leads/EnhancedLeadTable.tsx`**
 
-### Problem 3: Notifications Invisible Even If Created
-**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
-- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
-- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
-- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
-- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
+1. **Add new state for bulk task form data:**
+   - `bulkTaskFormData` with fields: `title`, `type`, `priority`, `assignedTo`, `dueDate`, `dueTime`, `description`
 
-Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
+2. **Add "Create Task" menu item** in the Bulk Actions dropdown (under the `canEdit("leads")` section), with a `ClipboardList` icon. Clicking sets `bulkActionType` to `"create_task"` and opens the dialog.
 
----
+3. **Extend the `handleBulkAction` function** to handle `bulkActionType === "create_task"`:
+   - For each selected lead, call `addTask()` with the form data plus `lead_id: leadId`, `related_entity_type: "lead"`, `related_entity_id: leadId`
+   - Use the same batch-of-10 pattern with progress indicator
 
-## Fix Plan
+4. **Extend the Bulk Action Dialog UI** to render a task creation form when `bulkActionType === "create_task"`:
+   - Task Type select (from control panel options or fallback constants)
+   - Title input (pre-filled based on type, e.g., "Follow-up Call - {type}")
+   - Priority select (High/Medium/Low)
+   - Assigned To select (from `staffMembers`)
+   - Due Date picker + Due Time input
+   - Description textarea (optional)
+   - Update dialog title/description to reflect "Create Tasks for X leads"
+   - Update submit button disabled logic and label
 
-### Fix 1: Repair the Automation Trigger Function (Database Migration)
-Update the `notify_automation_engine()` function to:
-- Use `net.http_post()` instead of `extensions.http_post()`
-- Pass `body` as `jsonb` instead of `text`
+5. **Import `useTasks`** hook (for `addTask`) and add the `ClipboardList` icon import from lucide-react.
 
-```sql
-CREATE OR REPLACE FUNCTION public.notify_automation_engine()
-RETURNS trigger ...
-AS $$
-  ...
-  PERFORM net.http_post(
-    url := edge_url || '/functions/v1/run-automations',
-    body := payload,  -- jsonb, not text
-    headers := jsonb_build_object(...)
-  );
-  ...
-$$;
-```
+### Technical Details
 
-### Fix 2: Fix Notification user_id Storage in Edge Function
-In `supabase/functions/run-automations/index.ts`:
-- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
-- Remove the duplicate `userIds.push(profile.id)` on line 176-177
-- Change the notification insert to use email instead of profile.id
-
-### Fix 3: Fix Notification Querying in Client
-In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
-- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
-- Update the realtime subscription filter accordingly
-
-### Fix 4: Add Comprehensive Staff Activity Logging
-Add `logStaffAction()` calls to these operations that currently lack them:
-
-| Operation | File | Action Type |
-|-----------|------|-------------|
-| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
-| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
-| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
-| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
-| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
-| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
-| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
-| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
-| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
-| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
-
-Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
-
-### Fix 5: Expand StaffActivityPanel Display
-Update `src/components/settings/StaffActivityPanel.tsx` to:
-- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
-- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
-| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
-| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
-| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
-| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
-| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
-| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
-| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
-| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
-| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
-| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
-| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
-
-## Implementation Order
-1. Fix DB trigger function (migration) -- unblocks all automation
-2. Fix edge function notification user_id + duplicate push
-3. Fix notification client queries (email-based)
-4. Add comprehensive activity logging across all hooks
-5. Update StaffActivityPanel with new types and date filter
+- Tasks are created using the existing `addTask()` from `useTasks()` hook, ensuring activity logging and staff activity logging happen automatically
+- Each task is linked to its lead via both `lead_id` and `related_entity_id` + `related_entity_type: "lead"` for full visibility in lead profile tabs
+- The same batched processing pattern (batch size 10, `Promise.allSettled`, progress indicator) is used for consistency and performance
+- No database changes are needed since the `tasks` table already supports all required fields
 
