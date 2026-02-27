@@ -362,8 +362,16 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     // Apply sorting
     if (sortField && sortDirection) {
       result = [...result].sort((a, b) => {
-        let aVal: any = a[sortField];
-        let bVal: any = b[sortField];
+        let aVal: any;
+        let bVal: any;
+        
+        if (sortField === "tasks") {
+          aVal = getLeadTasks(a.id).total;
+          bVal = getLeadTasks(b.id).total;
+        } else {
+          aVal = a[sortField];
+          bVal = b[sortField];
+        }
         
         if (aVal === null || aVal === undefined) aVal = "";
         if (bVal === null || bVal === undefined) bVal = "";
