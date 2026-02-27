@@ -123,6 +123,8 @@ export function LeadsTableContainer({
   MultiSelectFilter,
   DateRangeFilter,
   PendingTasksBadge,
+  tasksFilter,
+  setTasksFilter,
   canEdit,
   hasPermission,
   handleAddFollowUp,
