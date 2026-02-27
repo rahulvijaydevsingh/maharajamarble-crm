@@ -77,6 +77,8 @@ interface LeadsTableContainerProps {
   MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string }>;
   DateRangeFilter: React.FC<{ dateRange: DateRange; onDateRangeChange: (range: DateRange) => void }>;
   PendingTasksBadge: React.FC<{ leadId: string; leadName: string }>;
+  tasksFilter: string[];
+  setTasksFilter: (values: string[]) => void;
   canEdit: (resource: string) => boolean;
   hasPermission: (permission: string) => boolean;
   handleAddFollowUp: (lead: Lead) => void;
