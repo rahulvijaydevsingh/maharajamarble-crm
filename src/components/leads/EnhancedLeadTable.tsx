@@ -606,6 +606,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
       const msg = bulkActionType === "convert_customer"
         ? `Converted ${successCount} leads to customers`
+        : bulkActionType === "create_task"
+        ? `Created tasks for ${successCount} of ${total} leads${errorCount > 0 ? ` (${errorCount} errors)` : ''}`
         : `Updated ${successCount} of ${total} leads${errorCount > 0 ? ` (${errorCount} errors)` : ''}`;
       toast({ title: msg });
       setSelectedLeads([]);
