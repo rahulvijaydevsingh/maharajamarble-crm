@@ -203,6 +203,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [lastFollowUpRange, setLastFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [nextFollowUpRange, setNextFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
+  const [tasksFilter, setTasksFilter] = useState<string[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
