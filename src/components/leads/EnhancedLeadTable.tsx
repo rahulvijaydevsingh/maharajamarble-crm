@@ -72,7 +72,8 @@ import {
   X,
   SlidersHorizontal,
   Eye,
-  RotateCcw
+  RotateCcw,
+  ClipboardList
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
