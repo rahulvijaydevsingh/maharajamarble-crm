@@ -192,6 +192,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { staffMembers } = useActiveStaff();
+  const { addTask } = useTasks();
   
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
     return (sessionStorage.getItem("leadViewMode") as "list" | "kanban") || "list";
