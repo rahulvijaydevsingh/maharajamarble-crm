@@ -1096,13 +1096,16 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           <DialogHeader>
             <DialogTitle>
               {bulkActionType === "delete" ? "Delete Leads" : 
-               bulkActionType === "convert_customer" ? "Convert to Customers" : "Bulk Update"}
+               bulkActionType === "convert_customer" ? "Convert to Customers" :
+               bulkActionType === "create_task" ? `Create Tasks for ${selectedLeads.length} Leads` : "Bulk Update"}
             </DialogTitle>
             <DialogDescription>
               {bulkActionType === "delete" 
                 ? `Are you sure you want to delete ${selectedLeads.length} leads? This action cannot be undone.`
                 : bulkActionType === "convert_customer"
                 ? `Convert ${selectedLeads.length} selected leads to customers. Their status will be set to "Won".`
+                : bulkActionType === "create_task"
+                ? `A task will be created and linked to each of the ${selectedLeads.length} selected leads.`
                 : `Update ${selectedLeads.length} selected leads.`
               }
             </DialogDescription>
