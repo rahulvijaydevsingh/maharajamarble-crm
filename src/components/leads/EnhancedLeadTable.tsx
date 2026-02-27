@@ -922,8 +922,11 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
                     <DropdownMenuItem onClick={() => { setBulkActionType("status"); setBulkActionDialogOpen(true); }}>
                       <Tag className="mr-2 h-4 w-4" />Change Status
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setBulkActionType("priority"); setBulkActionDialogOpen(true); }}>
+                     <DropdownMenuItem onClick={() => { setBulkActionType("priority"); setBulkActionDialogOpen(true); }}>
                       <ArrowUpDown className="mr-2 h-4 w-4" />Change Priority
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setBulkActionType("create_task"); setBulkActionDialogOpen(true); }}>
+                      <ClipboardList className="mr-2 h-4 w-4" />Create Task
                     </DropdownMenuItem>
                   </>
                 )}
