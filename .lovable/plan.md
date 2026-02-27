@@ -1,71 +1,106 @@
 
 
-## Plan: Fix Tasks Column Sort/Filter, Date Range Filtering, and Bulk Actions for Field Agent
+# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
 
-### Issue 1: Tasks Column Missing Sort and Filter
+## Root Cause Analysis
 
-**Problem:** The "Tasks" column in the Leads table only renders a plain label with no sort or filter capabilities, unlike other columns.
+### Problem 1: Staff Activity Log Only Shows Login/Logout
+**Two causes found:**
+- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
+- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
 
-**Solution:** 
-- Add a new sort field type `"tasks"` to the `SortField` type
-- Add a `MultiSelectFilter` to the Tasks column header with options like "Has Tasks", "Has Overdue", "No Tasks"
-- In the sorting logic, sort by task count from `getLeadTasks()`
-- In the filtering logic, add a `tasksFilter` state and filter leads based on their pending task status
-- Pass the new filter and task-related data through to `LeadsTableContainer`
+### Problem 2: Automation Engine Never Fires (Critical Bug)
+**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
 
-**Files to modify:**
-- `src/components/leads/EnhancedLeadTable.tsx` — add `tasksFilter` state, update `SortField` type, update `filteredLeads` to filter by task count, pass new props
-- `src/components/leads/LeadsTableContainer.tsx` — update `SortField` type, add `tasksFilter` props, update `renderTableHeader` for the `tasks` case to include sort + filter UI
+### Problem 3: Notifications Invisible Even If Created
+**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
+- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
+- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
+- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
+- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
 
----
-
-### Issue 2: Date Range Filter Requires Both Dates
-
-**Problem:** The date range filter only applies when BOTH start and end dates are selected. Selecting only one date (e.g., end date = Feb 19) does nothing, still showing leads with dates beyond the selection. Additionally, end-date comparison doesn't include the full day (e.g., selecting Feb 19 as end date should include all of Feb 19).
-
-**Solution:**
-- Change the filtering logic from `!from || !to || (condition)` to support single-date filtering:
-  - If only `from` is set: show records on or after that date
-  - If only `to` is set: show records on or before that date
-  - If both are set: show records in the range (and auto-swap if from > to)
-- Normalize the `to` date to end-of-day (23:59:59) for inclusive comparison
-- Apply this fix to all three date range filters: `createdDateRange`, `lastFollowUpRange`, and `nextFollowUpRange`
-
-**File to modify:**
-- `src/components/leads/EnhancedLeadTable.tsx` — rewrite the date filter conditions in the `filteredLeads` useMemo (lines 326-333)
+Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
 
 ---
 
-### Issue 3: Bulk Actions Not Showing for Field Agent
+## Fix Plan
 
-**Problem:** Field agent has `leads.bulk_actions` in the database `custom_role_permissions` table, but the bulk action button doesn't appear when leads are selected.
+### Fix 1: Repair the Automation Trigger Function (Database Migration)
+Update the `notify_automation_engine()` function to:
+- Use `net.http_post()` instead of `extensions.http_post()`
+- Pass `body` as `jsonb` instead of `text`
 
-**Root Cause:** The `usePermissions` hook has a subtle issue. When `customPermissions` is being fetched (async), the `getPermissionsForRole` function falls back to `defaultRolePermissions["field_agent"]`, which does NOT include `leads.bulk_actions`. Even after fetch completes, the issue may persist if the component doesn't properly re-evaluate. More critically, if the RPC `get_user_role` or the custom_role_permissions fetch fails or returns empty, the default hardcoded permissions are used, which don't include bulk actions for field_agent.
-
-**Solution:**
-- Update `defaultRolePermissions` for `field_agent` in `usePermissions.ts` to include `leads.bulk_actions` (matching what the admin configured in the DB)
-- Ensure `canBulkAction` checks work correctly by making sure custom permissions from DB are properly merged/used
-- Verify the same for other roles (manager, sales_user) by cross-referencing their DB permissions with the hardcoded defaults
-
-**File to modify:**
-- `src/hooks/usePermissions.ts` — update `defaultRolePermissions.field_agent` to include `"leads.bulk_actions"` as a default
-
----
-
-### Technical Details
-
-**Date range fix (pseudo-code):**
-```text
-For each date filter (created, lastFollowUp, nextFollowUp):
-  - Normalize from/to: if from > to, swap them
-  - Set toEnd = to date at 23:59:59.999
-  - If only from: date >= from
-  - If only to: date <= toEnd  
-  - If both: from <= date <= toEnd
+```sql
+CREATE OR REPLACE FUNCTION public.notify_automation_engine()
+RETURNS trigger ...
+AS $$
+  ...
+  PERFORM net.http_post(
+    url := edge_url || '/functions/v1/run-automations',
+    body := payload,  -- jsonb, not text
+    headers := jsonb_build_object(...)
+  );
+  ...
+$$;
 ```
 
-**Tasks sort/filter additions:**
-- New state: `tasksFilter: string[]` with options `["has_tasks", "has_overdue", "no_tasks"]`
-- Sort by `getLeadTasks(lead.id).total` when sort field is `"tasks"`
-- Filter: if `has_tasks` selected, only show leads where total > 0; if `has_overdue`, only leads with overdue > 0; if `no_tasks`, only leads with total === 0
+### Fix 2: Fix Notification user_id Storage in Edge Function
+In `supabase/functions/run-automations/index.ts`:
+- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
+- Remove the duplicate `userIds.push(profile.id)` on line 176-177
+- Change the notification insert to use email instead of profile.id
+
+### Fix 3: Fix Notification Querying in Client
+In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
+- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
+- Update the realtime subscription filter accordingly
+
+### Fix 4: Add Comprehensive Staff Activity Logging
+Add `logStaffAction()` calls to these operations that currently lack them:
+
+| Operation | File | Action Type |
+|-----------|------|-------------|
+| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
+| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
+| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
+| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
+| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
+| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
+| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
+| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
+| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
+| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
+
+Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
+
+### Fix 5: Expand StaffActivityPanel Display
+Update `src/components/settings/StaffActivityPanel.tsx` to:
+- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
+- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
+| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
+| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
+| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
+| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
+| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
+| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
+| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
+| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
+| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
+| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
+| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
+
+## Implementation Order
+1. Fix DB trigger function (migration) -- unblocks all automation
+2. Fix edge function notification user_id + duplicate push
+3. Fix notification client queries (email-based)
+4. Add comprehensive activity logging across all hooks
+5. Update StaffActivityPanel with new types and date filter
 

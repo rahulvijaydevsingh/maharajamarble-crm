@@ -39,7 +39,7 @@ interface DateRange {
   to: Date | undefined;
 }
 
-type SortField = "name" | "phone" | "email" | "status" | "priority" | "assigned_to" | "created_at" | "next_follow_up" | "last_follow_up" | "created_by" | null;
+type SortField = "name" | "phone" | "email" | "status" | "priority" | "assigned_to" | "created_at" | "next_follow_up" | "last_follow_up" | "created_by" | "tasks" | null;
 
 interface LeadsTableContainerProps {
   filteredLeads: Lead[];
@@ -77,6 +77,8 @@ interface LeadsTableContainerProps {
   MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string }>;
   DateRangeFilter: React.FC<{ dateRange: DateRange; onDateRangeChange: (range: DateRange) => void }>;
   PendingTasksBadge: React.FC<{ leadId: string; leadName: string }>;
+  tasksFilter: string[];
+  setTasksFilter: (values: string[]) => void;
   canEdit: (resource: string) => boolean;
   hasPermission: (permission: string) => boolean;
   handleAddFollowUp: (lead: Lead) => void;
@@ -121,6 +123,8 @@ export function LeadsTableContainer({
   MultiSelectFilter,
   DateRangeFilter,
   PendingTasksBadge,
+  tasksFilter,
+  setTasksFilter,
   canEdit,
   hasPermission,
   handleAddFollowUp,
@@ -171,7 +175,17 @@ export function LeadsTableContainer({
           </div>
         );
       case "tasks":
-        return columnLabel;
+        return (
+          <div className="flex items-center justify-between">
+            <SortableHeader field="tasks">{columnLabel}</SortableHeader>
+            <MultiSelectFilter 
+              options={["has_tasks", "has_overdue", "no_tasks"]} 
+              selected={tasksFilter} 
+              onSelectionChange={setTasksFilter} 
+              placeholder="Filter by Tasks" 
+            />
+          </div>
+        );
       case "nextFollowUp":
         return (
           <div className="flex items-center justify-between">

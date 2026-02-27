@@ -146,7 +146,7 @@ interface DateRange {
 }
 
 type SortDirection = "asc" | "desc" | null;
-type SortField = "name" | "phone" | "email" | "status" | "priority" | "assigned_to" | "created_at" | "next_follow_up" | "last_follow_up" | "created_by" | null;
+type SortField = "name" | "phone" | "email" | "status" | "priority" | "assigned_to" | "created_at" | "next_follow_up" | "last_follow_up" | "created_by" | "tasks" | null;
 
 // Constants for statuses and priorities
 const statuses: Record<string, { label: string; className: string }> = {
@@ -203,6 +203,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [lastFollowUpRange, setLastFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [nextFollowUpRange, setNextFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
+  const [tasksFilter, setTasksFilter] = useState<string[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -323,24 +324,54 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
       const createdByMatch = createdByFilter.length === 0 || createdByFilter.includes(lead.created_by);
 
-      const createdDateMatch = !createdDateRange.from || !createdDateRange.to || 
-        (new Date(lead.created_at) >= createdDateRange.from && new Date(lead.created_at) <= createdDateRange.to);
+      // Date range helper: supports single-date selection, inclusive end-of-day, auto-swap
+      const dateInRange = (dateStr: string | null, range: DateRange): boolean => {
+        if (!range.from && !range.to) return true;
+        if (!dateStr) return !range.from && !range.to; // if no date on lead, only pass if no filter set
+        const date = new Date(dateStr);
+        let from = range.from;
+        let to = range.to;
+        // Auto-swap if from > to
+        if (from && to && from > to) { [from, to] = [to, from]; }
+        const toEnd = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999) : undefined;
+        if (from && toEnd) return date >= from && date <= toEnd;
+        if (from) return date >= from;
+        if (toEnd) return date <= toEnd;
+        return true;
+      };
 
-      const lastFollowUpMatch = !lastFollowUpRange.from || !lastFollowUpRange.to || !lead.last_follow_up ||
-        (new Date(lead.last_follow_up) >= lastFollowUpRange.from && new Date(lead.last_follow_up) <= lastFollowUpRange.to);
+      const createdDateMatch = dateInRange(lead.created_at, createdDateRange);
+      const lastFollowUpMatch = !lead.last_follow_up ? (!lastFollowUpRange.from && !lastFollowUpRange.to) || true : dateInRange(lead.last_follow_up, lastFollowUpRange);
+      const nextFollowUpMatch = !lead.next_follow_up ? (!nextFollowUpRange.from && !nextFollowUpRange.to) || true : dateInRange(lead.next_follow_up, nextFollowUpRange);
 
-      const nextFollowUpMatch = !nextFollowUpRange.from || !nextFollowUpRange.to || !lead.next_follow_up ||
-        (new Date(lead.next_follow_up) >= nextFollowUpRange.from && new Date(lead.next_follow_up) <= nextFollowUpRange.to);
+      // Tasks filter
+      const tasksMatch = tasksFilter.length === 0 || (() => {
+        const taskInfo = getLeadTasks(lead.id);
+        return tasksFilter.some(f => {
+          if (f === "has_tasks") return taskInfo.total > 0;
+          if (f === "has_overdue") return taskInfo.overdue > 0;
+          if (f === "no_tasks") return taskInfo.total === 0;
+          return true;
+        });
+      })();
 
       return searchMatch && statusMatch && assignedMatch && sourceMatch && priorityMatch && 
-             materialsMatch && createdByMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch;
+             materialsMatch && createdByMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch;
     });
 
     // Apply sorting
     if (sortField && sortDirection) {
       result = [...result].sort((a, b) => {
-        let aVal: any = a[sortField];
-        let bVal: any = b[sortField];
+        let aVal: any;
+        let bVal: any;
+        
+        if (sortField === "tasks") {
+          aVal = getLeadTasks(a.id).total;
+          bVal = getLeadTasks(b.id).total;
+        } else {
+          aVal = a[sortField];
+          bVal = b[sortField];
+        }
         
         if (aVal === null || aVal === undefined) aVal = "";
         if (bVal === null || bVal === undefined) bVal = "";
@@ -356,7 +387,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     return result;
   }, [leads, searchTerm, statusFilter, assignedToFilter, sourceFilter, priorityFilter, 
-      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, sortField, sortDirection]);
+      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks]);
 
   // Filter counts for saved filters
   const getFilterCount = (filter: SavedFilter): number => {
@@ -484,6 +515,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setCreatedDateRange({ from: undefined, to: undefined });
     setLastFollowUpRange({ from: undefined, to: undefined });
     setNextFollowUpRange({ from: undefined, to: undefined });
+    setTasksFilter([]);
     setActiveFilterId(null);
   };
 
@@ -991,6 +1023,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           MultiSelectFilter={MultiSelectFilter}
           DateRangeFilter={DateRangeFilter}
           PendingTasksBadge={PendingTasksBadge}
+          tasksFilter={tasksFilter}
+          setTasksFilter={setTasksFilter}
           canEdit={canEdit}
           hasPermission={hasPermission}
           handleAddFollowUp={handleAddFollowUp}
