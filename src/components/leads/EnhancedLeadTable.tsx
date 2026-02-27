@@ -515,6 +515,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setCreatedDateRange({ from: undefined, to: undefined });
     setLastFollowUpRange({ from: undefined, to: undefined });
     setNextFollowUpRange({ from: undefined, to: undefined });
+    setTasksFilter([]);
     setActiveFilterId(null);
   };
 
