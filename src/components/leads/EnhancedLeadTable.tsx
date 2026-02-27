@@ -387,7 +387,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     return result;
   }, [leads, searchTerm, statusFilter, assignedToFilter, sourceFilter, priorityFilter, 
-      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, sortField, sortDirection]);
+      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks]);
 
   // Filter counts for saved filters
   const getFilterCount = (filter: SavedFilter): number => {
