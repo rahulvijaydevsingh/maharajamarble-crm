@@ -39,7 +39,7 @@ interface DateRange {
   to: Date | undefined;
 }
 
-type SortField = "name" | "phone" | "email" | "status" | "priority" | "assigned_to" | "created_at" | "next_follow_up" | "last_follow_up" | "created_by" | null;
+type SortField = "name" | "phone" | "email" | "status" | "priority" | "assigned_to" | "created_at" | "next_follow_up" | "last_follow_up" | "created_by" | "tasks" | null;
 
 interface LeadsTableContainerProps {
   filteredLeads: Lead[];
