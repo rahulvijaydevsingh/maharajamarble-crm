@@ -81,7 +81,7 @@ const defaultRolePermissions: Record<AppRole, Permission[]> = {
     "quotations.create", "quotations.edit",
   ],
   field_agent: [
-    "leads.create", "leads.edit",
+    "leads.create", "leads.edit", "leads.bulk_actions",
     "tasks.create", "tasks.edit",
   ],
   sales_viewer: [

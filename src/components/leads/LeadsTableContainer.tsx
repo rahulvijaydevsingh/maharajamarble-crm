@@ -175,7 +175,17 @@ export function LeadsTableContainer({
           </div>
         );
       case "tasks":
-        return columnLabel;
+        return (
+          <div className="flex items-center justify-between">
+            <SortableHeader field="tasks">{columnLabel}</SortableHeader>
+            <MultiSelectFilter 
+              options={["has_tasks", "has_overdue", "no_tasks"]} 
+              selected={tasksFilter} 
+              onSelectionChange={setTasksFilter} 
+              placeholder="Filter by Tasks" 
+            />
+          </div>
+        );
       case "nextFollowUp":
         return (
           <div className="flex items-center justify-between">

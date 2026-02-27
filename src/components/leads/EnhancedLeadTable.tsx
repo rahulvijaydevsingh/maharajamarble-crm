@@ -1023,6 +1023,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           MultiSelectFilter={MultiSelectFilter}
           DateRangeFilter={DateRangeFilter}
           PendingTasksBadge={PendingTasksBadge}
+          tasksFilter={tasksFilter}
+          setTasksFilter={setTasksFilter}
           canEdit={canEdit}
           hasPermission={hasPermission}
           handleAddFollowUp={handleAddFollowUp}
