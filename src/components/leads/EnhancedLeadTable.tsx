@@ -229,6 +229,15 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<string>("");
   const [bulkActionValue, setBulkActionValue] = useState("");
+  const [bulkTaskFormData, setBulkTaskFormData] = useState({
+    title: "Follow-up Call",
+    type: "Follow-up Call",
+    priority: "Medium",
+    assignedTo: "",
+    dueDate: "",
+    dueTime: "",
+    description: "",
+  });
   
   // Pending tasks popover
   const [tasksPopoverLeadId, setTasksPopoverLeadId] = useState<string | null>(null);
