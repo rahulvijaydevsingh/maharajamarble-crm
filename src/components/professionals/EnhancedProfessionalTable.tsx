@@ -410,6 +410,11 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                       <SortableHeader field={column.key === "professionalType" ? "professional_type" : column.key as SortField}>
                         {column.label}
                       </SortableHeader>
+                    ) : column.key === "createdAt" ? (
+                      <>
+                        <SortableHeader field="created_at">{column.label}</SortableHeader>
+                        <DateRangeFilter dateRange={createdDateRange} onDateRangeChange={setCreatedDateRange} />
+                      </>
                     ) : (
                       column.label
                     )}
