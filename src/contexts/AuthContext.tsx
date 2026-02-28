@@ -149,25 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
     });
 
-    if (!error && data.session) {
-      // Log login via edge function (bypasses RLS, no SDK timing issues)
-      try {
-        const { error: fnError } = await supabase.functions.invoke("log-login", {
-          body: {
-            user_id: data.session.user.id,
-            user_email: data.session.user.email || email,
-            user_agent: navigator.userAgent,
-          },
-        });
-
-        if (fnError) {
-          console.error("Login log edge function failed:", fnError);
-        }
-      } catch (e) {
-        console.error("Login logging error:", e);
-      }
-    }
-
+    // Daily login will be handled by onAuthStateChange SIGNED_IN event
     return { error };
   };
 
