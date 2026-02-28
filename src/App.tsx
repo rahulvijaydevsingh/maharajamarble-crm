@@ -58,6 +58,7 @@ const App = () => (
             </TaskDetailModalProvider>
           </BrowserRouter>
         </TooltipProvider>
+        </HRModuleProvider>
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>

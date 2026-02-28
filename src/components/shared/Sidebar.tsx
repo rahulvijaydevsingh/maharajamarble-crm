@@ -165,7 +165,7 @@ export function SidebarNav() {
   }, [currentPath]);
 
   const navigationWithCounts = useMemo(() => {
-    return mainNavigation.map((item) => {
+    const items = mainNavigation.map((item) => {
       if (item.name === "Leads") {
         return { ...item, count: leadCount ?? undefined };
       }
@@ -174,7 +174,14 @@ export function SidebarNav() {
       }
       return item;
     });
-  }, [leadCount, taskCount]);
+
+    // Conditionally add HR nav item
+    if (hrEnabled && role !== "sales_viewer") {
+      items.push({ name: "HR", icon: Briefcase, path: "/hr" });
+    }
+
+    return items;
+  }, [leadCount, taskCount, hrEnabled, role]);
   
   return (
     <Sidebar className="border-r border-gray-200">
