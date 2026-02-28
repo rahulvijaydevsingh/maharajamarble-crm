@@ -73,6 +73,9 @@ interface AddTaskDialogProps {
   prefilledData?: {
     relatedTo?: RelatedEntity;
   };
+  bulkMode?: boolean;
+  bulkLeadCount?: number;
+  onBulkTaskSubmit?: (taskData: any, subtasks: Subtask[]) => void;
 }
 
 export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData }: AddTaskDialogProps) {
