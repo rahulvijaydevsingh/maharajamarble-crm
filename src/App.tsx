@@ -30,6 +30,7 @@ const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <HRModuleProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
