@@ -472,13 +472,15 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
             </Select>
           </div>
 
-          {/* Related Entity */}
-          <RelatedEntitySection
-            entityType={relatedEntityType}
-            selectedEntity={selectedEntity}
-            onEntityTypeChange={setRelatedEntityType}
-            onEntitySelect={setSelectedEntity}
-          />
+          {/* Related Entity - hidden in bulk mode */}
+          {!bulkMode && (
+            <RelatedEntitySection
+              entityType={relatedEntityType}
+              selectedEntity={selectedEntity}
+              onEntityTypeChange={setRelatedEntityType}
+              onEntitySelect={setSelectedEntity}
+            />
+          )}
 
           {/* Due Date, Time & Reminder */}
           <div className="grid grid-cols-3 gap-4">
