@@ -175,7 +175,7 @@ function EndpointCard({ ep }: { ep: Endpoint }) {
 
         <div>
           <h4 className="text-sm font-semibold mb-1">Example Response</h4>
-          <pre className="bg-muted p-3 rounded text-xs overflow-x-auto font-mono">{JSON.stringify(JSON.parse(ep.exampleResponse), null, 2)}</pre>
+          <pre className="bg-muted p-3 rounded text-xs overflow-x-auto font-mono">{(() => { try { return JSON.stringify(JSON.parse(ep.exampleResponse), null, 2); } catch { return ep.exampleResponse; } })()}</pre>
         </div>
       </CollapsibleContent>
     </Collapsible>
