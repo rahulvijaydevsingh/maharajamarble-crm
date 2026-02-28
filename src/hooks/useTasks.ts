@@ -183,7 +183,7 @@ export function useTasks() {
     try {
       const taskData = {
         ...task,
-        created_by: task.created_by || user?.email || "Current User",
+        created_by: (task.created_by && task.created_by !== "Current User") ? task.created_by : (user?.email || "unknown"),
         original_due_date: task.original_due_date || task.due_date,
       };
 

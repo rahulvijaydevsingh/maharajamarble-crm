@@ -273,7 +273,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
         recurrence_end_type: recurrenceData.endType,
         recurrence_end_date: recurrenceData.endDate ? format(recurrenceData.endDate, 'yyyy-MM-dd') : null,
         recurrence_occurrences_limit: recurrenceData.occurrencesLimit,
-        created_by: "Current User",
+        // created_by is set by the addTask hook from the authenticated user's email
       };
 
       // Bulk mode: return data to parent instead of creating directly
