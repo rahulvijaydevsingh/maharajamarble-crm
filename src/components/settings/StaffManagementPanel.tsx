@@ -72,6 +72,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useHRModule } from "@/contexts/HRModuleContext";
+import { StaffHRSettingsPanel } from "./StaffHRSettingsPanel";
 
 type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewer" | "field_agent";
 
