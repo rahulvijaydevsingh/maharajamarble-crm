@@ -22,11 +22,11 @@ export function FirstLoginClockInPrompt() {
 
   useEffect(() => {
     const shouldPrompt = sessionStorage.getItem("should_prompt_clock_in");
-    if (shouldPrompt === "true" && isHREnabled && role !== "sales_viewer") {
+    if (shouldPrompt === "true" && hrEnabled && role !== "sales_viewer") {
       setOpen(true);
       sessionStorage.removeItem("should_prompt_clock_in");
     }
-  }, [isHREnabled, role]);
+  }, [hrEnabled, role]);
 
   const handleClockIn = () => {
     setOpen(false);
