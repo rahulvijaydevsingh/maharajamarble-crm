@@ -88,8 +88,6 @@ import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { Lead, useLeads } from "@/hooks/useLeads";
 import { useTasks } from "@/hooks/useTasks";
-import { Textarea } from "@/components/ui/textarea";
-import { TASK_TYPES, TASK_PRIORITIES } from "@/constants/taskConstants";
 import { usePendingTasksByLead, LeadPendingTasks } from "@/hooks/usePendingTasksByLead";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
 import { useTablePreferences } from "@/hooks/useTablePreferences";
