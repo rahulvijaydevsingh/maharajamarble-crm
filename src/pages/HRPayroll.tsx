@@ -56,7 +56,7 @@ const months = ["January","February","March","April","May","June","July","August
 export default function HRPayroll() {
   const { toast } = useToast();
   const { profile } = useAuth();
-  const { settings: companySettings } = useCompanySettings();
+  const { companyData: companySettings } = useCompanySettings();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
