@@ -275,6 +275,14 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
         recurrence_occurrences_limit: recurrenceData.occurrencesLimit,
         created_by: "Current User",
       };
+
+      // Bulk mode: return data to parent instead of creating directly
+      if (bulkMode && onBulkTaskSubmit) {
+        onBulkTaskSubmit(taskData, subtasks);
+        onOpenChange(false);
+        resetForm();
+        return;
+      }
       
       const createdTask = await addTask(taskData);
       
