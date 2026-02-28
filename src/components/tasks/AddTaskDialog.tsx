@@ -363,7 +363,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Add New Task
+            {bulkMode ? `Create Tasks for ${bulkLeadCount} Leads` : "Add New Task"}
             <Button
               variant="ghost"
               size="sm"
@@ -374,7 +374,9 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
             </Button>
           </DialogTitle>
           <DialogDescription>
-            Create a new task and assign it to a team member
+            {bulkMode
+              ? "A task will be created and linked to each selected lead"
+              : "Create a new task and assign it to a team member"}
           </DialogDescription>
         </DialogHeader>
 
