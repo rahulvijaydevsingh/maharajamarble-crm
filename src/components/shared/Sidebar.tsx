@@ -13,7 +13,10 @@ import {
   Shield,
   Zap,
   MessageSquare,
-  Briefcase
+  Briefcase,
+  Clock,
+  CalendarDays,
+  CheckSquare
 } from "lucide-react";
 import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
@@ -175,9 +178,13 @@ export function SidebarNav() {
       return item;
     });
 
-    // Conditionally add HR nav item
+    // Conditionally add HR nav items
     if (hrEnabled && role !== "sales_viewer") {
-      items.push({ name: "HR", icon: Briefcase, path: "/hr/attendance" });
+      items.push({ name: "Attendance", icon: Clock, path: "/hr/attendance" });
+      items.push({ name: "My Leave", icon: CalendarDays, path: "/hr/leave" });
+      if (showAdminNav) {
+        items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
+      }
     }
 
     return items;

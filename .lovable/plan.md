@@ -1,164 +1,106 @@
 
 
-## Plan: Complete Leave Management Flow
+# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
 
-### Overview
-Build staff leave request submission, admin approval/rejection workflow, balance deduction, attendance marking, and delegation prompts. Two new pages, one edge function, and a DB migration for missing columns.
+## Root Cause Analysis
+
+### Problem 1: Staff Activity Log Only Shows Login/Logout
+**Two causes found:**
+- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
+- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
+
+### Problem 2: Automation Engine Never Fires (Critical Bug)
+**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
+
+### Problem 3: Notifications Invisible Even If Created
+**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
+- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
+- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
+- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
+- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
+
+Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
 
 ---
 
-### PART 1 -- Database Migration
+## Fix Plan
 
-Add missing columns to `leave_requests`:
+### Fix 1: Repair the Automation Trigger Function (Database Migration)
+Update the `notify_automation_engine()` function to:
+- Use `net.http_post()` instead of `extensions.http_post()`
+- Pass `body` as `jsonb` instead of `text`
 
 ```sql
-ALTER TABLE leave_requests
-  ADD COLUMN admin_comment TEXT,
-  ADD COLUMN half_day_type TEXT,
-  ADD COLUMN document_url TEXT;
+CREATE OR REPLACE FUNCTION public.notify_automation_engine()
+RETURNS trigger ...
+AS $$
+  ...
+  PERFORM net.http_post(
+    url := edge_url || '/functions/v1/run-automations',
+    body := payload,  -- jsonb, not text
+    headers := jsonb_build_object(...)
+  );
+  ...
+$$;
 ```
 
-- `half_day_type`: 'morning' or 'afternoon' (null for full-day leaves)
-- `document_url`: optional file path in crm-attachments bucket
-- `admin_comment`: admin's comment on approve/reject
+### Fix 2: Fix Notification user_id Storage in Edge Function
+In `supabase/functions/run-automations/index.ts`:
+- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
+- Remove the duplicate `userIds.push(profile.id)` on line 176-177
+- Change the notification insert to use email instead of profile.id
 
-Also add a DELETE policy for staff to cancel their own pending requests:
+### Fix 3: Fix Notification Querying in Client
+In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
+- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
+- Update the realtime subscription filter accordingly
 
-```sql
-CREATE POLICY "Staff can delete own pending leave requests"
-ON leave_requests FOR DELETE TO authenticated
-USING (auth.uid() = staff_id AND status = 'pending');
-```
+### Fix 4: Add Comprehensive Staff Activity Logging
+Add `logStaffAction()` calls to these operations that currently lack them:
 
----
+| Operation | File | Action Type |
+|-----------|------|-------------|
+| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
+| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
+| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
+| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
+| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
+| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
+| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
+| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
+| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
+| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
 
-### PART 2 -- Edge Function: `hr-leave-request`
+Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
 
-**File: `supabase/functions/hr-leave-request/index.ts`**
-
-Handles leave request submission with server-side validation:
-
-1. Verify JWT, extract staff_id
-2. Validate inputs: leave_type, start_date, end_date, reason (min 10 chars), half_day_type
-3. Calculate working days (exclude weekends using staff's work_days from staff_hr_settings)
-4. Check leave_balances: if type is sick/casual/earned, verify remaining >= calculated days. LWP and half_day skip balance check.
-5. Insert into leave_requests with status='pending'
-6. Query tasks and reminders that fall within the leave date range for this staff
-7. Create an in-app notification for all admin users: "Leave request from [staff_name] for [dates]"
-8. Return: `{ success: true, request_id, working_days, affected_tasks_count }`
-
-Config:
-```toml
-[functions.hr-leave-request]
-verify_jwt = false
-```
-
----
-
-### PART 3 -- New Page: `src/pages/HRLeave.tsx` (Staff View)
-
-**Route: `/hr/leave`**
-
-Uses DashboardLayout. Three sections:
-
-**A. Leave Balance Cards (top)**
-- Fetch leave_balances for current user + current year
-- Three cards: Sick, Casual, Earned
-- Each shows: Used / Total with a Progress bar
-- Color logic: green if remaining > 5, orange if 2-5, red if < 2
-
-**B. "Request Leave" Button + Modal**
-- Leave Type selector: Sick / Casual / Earned / Half Day / LWP
-- Start Date + End Date pickers (or Morning/Afternoon selector for Half Day)
-- Auto-calculated working days shown below dates
-- Balance warning if insufficient
-- Reason textarea (required, min 10 chars)
-- Document upload (optional, uses crm-attachments bucket)
-- Submit calls the hr-leave-request edge function
-- On success: refresh data, show toast
-
-**C. My Leave History Table**
-- Fetch all leave_requests for current user, ordered by created_at desc
-- Columns: Date Range | Type | Days | Status | Admin Comment
-- Status badges: yellow=pending, green=approved, red=rejected
-- "Cancel" button on pending rows: deletes the leave_request row
+### Fix 5: Expand StaffActivityPanel Display
+Update `src/components/settings/StaffActivityPanel.tsx` to:
+- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
+- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
 
 ---
 
-### PART 4 -- New Page: `src/pages/HRLeaveApprovals.tsx` (Admin Only)
+## Files to Modify
 
-**Route: `/hr/leave-approvals`**
+| File | Change |
+|------|--------|
+| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
+| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
+| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
+| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
+| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
+| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
+| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
+| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
+| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
+| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
+| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
+| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
 
-Uses DashboardLayout. Two sections:
-
-**A. Pending Approvals**
-- Fetch leave_requests where status='pending', join with profiles for staff name
-- For each pending request, show a card with:
-  - Staff name + leave dates + type + days + reason
-  - Balance before/after calculation
-  - Warning banner if staff has open tasks during the leave period (query tasks table)
-  - "Approve" (green) and "Reject" (red) buttons
-  - Both open a comment dialog (required for reject, optional for approve)
-
-**On Approve:**
-1. Update leave_requests: status='approved', approved_by, approved_at, admin_comment
-2. Deduct from leave_balances: used += total_days, remaining -= total_days
-3. Insert attendance_records with status='on_leave' for each date in range
-4. Check for open tasks/reminders during period; if any exist, show a delegation prompt dialog ("This affects N tasks. Delegate now or later?")
-   - "Delegate Now" placeholder (links to staff's task list filtered by date range -- full delegation UI is Part 5 of the HR module)
-   - "Later" dismisses
-5. Create notification for staff: "Your leave request was approved"
-
-**On Reject:**
-1. Update leave_requests: status='rejected', approved_by, approved_at, admin_comment (with rejection reason)
-2. Notify staff: "Your leave request was rejected: [reason]"
-
-**B. Leave History Table**
-- All reviewed requests with filters: staff name, month, leave type, status
-- Columns: Staff | Dates | Type | Days | Status | Admin Comment
-
----
-
-### PART 5 -- Route and Navigation Integration
-
-**Modify: `src/App.tsx`**
-- Import HRLeave and HRLeaveApprovals pages
-- Add routes:
-  - `/hr/leave` -- ProtectedRoute (any authenticated user)
-  - `/hr/leave-approvals` -- ProtectedRoute with requiredRole="admin"
-
-**Modify: `src/components/shared/Sidebar.tsx`**
-- Update the HR nav section: instead of a single "HR" link, add sub-items when HR is enabled:
-  - "Attendance" -> `/hr/attendance`
-  - "My Leave" -> `/hr/leave`
-  - "Leave Approvals" -> `/hr/leave-approvals` (admin only)
-
-  Implementation: keep the single "HR" item but change path to `/hr/attendance`. Add two more items below it conditionally. Alternatively, make the HR section a collapsible group with sub-items.
-
----
-
-### PART 6 -- Supabase Types Update
-
-The types file will auto-update after migration. Use `as any` casts for the new columns (`admin_comment`, `half_day_type`, `document_url`) until types regenerate.
-
----
-
-### File Summary
-
-| Action | File |
-|--------|------|
-| Migration | Add `admin_comment`, `half_day_type`, `document_url` to `leave_requests` + delete policy |
-| Create | `supabase/functions/hr-leave-request/index.ts` |
-| Create | `src/pages/HRLeave.tsx` |
-| Create | `src/pages/HRLeaveApprovals.tsx` |
-| Modify | `src/App.tsx` (add 2 new routes) |
-| Modify | `src/components/shared/Sidebar.tsx` (add HR sub-navigation) |
-| Modify | `supabase/config.toml` (add hr-leave-request verify_jwt=false) |
-
-### Implementation Order
-1. Database migration (add columns + policy)
-2. Edge function (hr-leave-request)
-3. HRLeave.tsx (staff view)
-4. HRLeaveApprovals.tsx (admin view)
-5. App.tsx routes + Sidebar navigation
+## Implementation Order
+1. Fix DB trigger function (migration) -- unblocks all automation
+2. Fix edge function notification user_id + duplicate push
+3. Fix notification client queries (email-based)
+4. Add comprehensive activity logging across all hooks
+5. Update StaffActivityPanel with new types and date filter
 

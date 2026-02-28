@@ -23,6 +23,8 @@ import AutomationRules from "./pages/AutomationRules";
 import Messages from "./pages/Messages";
 import ApiDocs from "./pages/ApiDocs";
 import HRAttendance from "./pages/HRAttendance";
+import HRLeave from "./pages/HRLeave";
+import HRLeaveApprovals from "./pages/HRLeaveApprovals";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +56,8 @@ const App = () => (
                 <Route path="/automation/:entityType" element={<ProtectedRoute requiredRole="admin"><AutomationRules /></ProtectedRoute>} />
                 <Route path="/api-docs" element={<ProtectedRoute requiredRole="admin"><ApiDocs /></ProtectedRoute>} />
                 <Route path="/hr/attendance" element={<ProtectedRoute><HRAttendance /></ProtectedRoute>} />
+                <Route path="/hr/leave" element={<ProtectedRoute><HRLeave /></ProtectedRoute>} />
+                <Route path="/hr/leave-approvals" element={<ProtectedRoute requiredRole="admin"><HRLeaveApprovals /></ProtectedRoute>} />
                 <Route path="/hr" element={<ProtectedRoute><HRAttendance /></ProtectedRoute>} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

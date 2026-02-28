@@ -2,3 +2,6 @@ project_id = "ehuxwzbdnpyelmtckoac"
 
 [functions.log-login]
 verify_jwt = false
+
+[functions.hr-leave-request]
+verify_jwt = false
