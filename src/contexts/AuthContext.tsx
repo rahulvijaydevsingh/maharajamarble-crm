@@ -69,6 +69,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Daily login logging helper
+  const logDailyLogin = async (sess: Session) => {
+    const todayKey = `login_logged_${sess.user.id}_${new Date().toISOString().split("T")[0]}`;
+    if (sessionStorage.getItem(todayKey)) return;
+    sessionStorage.setItem(todayKey, "1");
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("log-login", {
+        body: {
+          user_id: sess.user.id,
+          user_email: sess.user.email || "",
+          user_agent: navigator.userAgent,
+        },
+      });
+
+      if (fnError) {
+        console.error("Daily login log failed:", fnError);
+        return;
+      }
+
+      // Set clock-in prompt flag if applicable
+      if (data?.first_login_today && data?.should_prompt_clock_in) {
+        sessionStorage.setItem("should_prompt_clock_in", "true");
+      }
+    } catch (e) {
+      console.error("Daily login logging error:", e);
+    }
+  };
+
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -81,6 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => {
             fetchUserData(session.user.id);
           }, 0);
+          // Log daily login for session restores too
+          if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+            setTimeout(() => logDailyLogin(session), 100);
+          }
         } else {
           setProfile(null);
           setRole(null);
@@ -100,6 +133,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (session?.user) {
         fetchUserData(session.user.id);
+        // Also trigger daily login for persisted sessions
+        setTimeout(() => logDailyLogin(session), 100);
       }
       
       setLoading(false);
