@@ -128,7 +128,7 @@ export function ApiAccessPanel() {
           </div>
 
           {/* Link to docs */}
-          <Button variant="link" className="p-0" onClick={() => window.open("/api-docs", "_blank")}>
+          <Button variant="link" className="p-0" onClick={() => navigate("/api-docs")}>
             <ExternalLink className="h-4 w-4 mr-1" />
             View API Documentation
           </Button>

@@ -234,6 +234,31 @@ export function SidebarNav() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {hrNavigation.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>HR</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {hrNavigation.map((item) => (
+                  <SidebarMenuItem key={item.name}>
+                    <SidebarMenuButton 
+                      asChild
+                      className={cn(
+                        activeItem === item.name && "bg-sidebar-accent text-sidebar-accent-foreground"
+                      )}
+                      onClick={() => setActiveItem(item.name)}
+                    >
+                      <Link to={item.path}>
+                        <item.icon className="mr-3 h-5 w-5" />
+                        <span>{item.name}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         {showAdminNav && (
           <SidebarGroup>
             <SidebarGroupLabel>Admin</SidebarGroupLabel>
