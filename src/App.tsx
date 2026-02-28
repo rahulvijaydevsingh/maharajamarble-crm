@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { HRModuleProvider } from "@/contexts/HRModuleContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { TaskDetailModalProvider } from "@/contexts/TaskDetailModalContext";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
