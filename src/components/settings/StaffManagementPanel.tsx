@@ -490,6 +490,11 @@ export function StaffManagementPanel() {
                             <DropdownMenuItem onClick={() => openResetPasswordDialog(staff)}>
                               <Key className="mr-2 h-4 w-4" />Reset Password
                             </DropdownMenuItem>
+                            {hrEnabled && (
+                              <DropdownMenuItem onClick={() => { setHrSettingsStaff(staff); setHrSettingsDialogOpen(true); }}>
+                                <Briefcase className="mr-2 h-4 w-4" />HR Settings
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             {staff.id !== user?.id && (
                               <>
