@@ -12,8 +12,10 @@ import {
   LogOut,
   Shield,
   Zap,
-  MessageSquare
+  MessageSquare,
+  Briefcase
 } from "lucide-react";
+import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
