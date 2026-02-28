@@ -30,6 +30,11 @@ import { ScrollableTableContainer } from "@/components/shared/ScrollableTableCon
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 
+interface DateRange {
+  from: Date | undefined;
+  to: Date | undefined;
+}
+
 type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | null;
 type SortDirection = "asc" | "desc" | null;
 
