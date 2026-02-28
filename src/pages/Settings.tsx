@@ -45,6 +45,7 @@ import { StaffManagementPanel } from "@/components/settings/StaffManagementPanel
 import { BackupRestorePanel } from "@/components/settings/BackupRestorePanel";
 import { StaffActivityPanel } from "@/components/settings/StaffActivityPanel";
 import { ApiAccessPanel } from "@/components/settings/ApiAccessPanel";
+import { HRModuleToggle } from "@/components/settings/HRModuleToggle";
 import { KitPresetList } from "@/components/kit/presets/KitPresetList";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useProfileSettings } from "@/hooks/useProfileSettings";
@@ -572,6 +573,7 @@ const Settings = () => {
           
           <TabsContent value="control-panel" className="space-y-4 mt-4">
             <ControlPanel />
+            <HRModuleToggle />
           </TabsContent>
 
           <TabsContent value="kit" className="space-y-4 mt-4">

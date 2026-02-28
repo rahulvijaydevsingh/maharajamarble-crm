@@ -240,6 +240,71 @@ export type Database = {
           },
         ]
       }
+      attendance_records: {
+        Row: {
+          clock_in: string | null
+          clock_in_latitude: number | null
+          clock_in_longitude: number | null
+          clock_out: string | null
+          clock_out_latitude: number | null
+          clock_out_longitude: number | null
+          created_at: string
+          created_by: string | null
+          date: string
+          id: string
+          notes: string | null
+          overtime_hours: number | null
+          staff_id: string
+          status: string
+          total_hours: number | null
+          updated_at: string
+        }
+        Insert: {
+          clock_in?: string | null
+          clock_in_latitude?: number | null
+          clock_in_longitude?: number | null
+          clock_out?: string | null
+          clock_out_latitude?: number | null
+          clock_out_longitude?: number | null
+          created_at?: string
+          created_by?: string | null
+          date: string
+          id?: string
+          notes?: string | null
+          overtime_hours?: number | null
+          staff_id: string
+          status?: string
+          total_hours?: number | null
+          updated_at?: string
+        }
+        Update: {
+          clock_in?: string | null
+          clock_in_latitude?: number | null
+          clock_in_longitude?: number | null
+          clock_out?: string | null
+          clock_out_latitude?: number | null
+          clock_out_longitude?: number | null
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          id?: string
+          notes?: string | null
+          overtime_hours?: number | null
+          staff_id?: string
+          status?: string
+          total_hours?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_executions: {
         Row: {
           actions_attempted: number | null
@@ -1261,6 +1326,116 @@ export type Database = {
           },
         ]
       }
+      leave_balances: {
+        Row: {
+          carry_forward: number
+          created_at: string
+          id: string
+          leave_type: string
+          remaining: number
+          staff_id: string
+          total_allowed: number
+          updated_at: string
+          used: number
+          year: number
+        }
+        Insert: {
+          carry_forward?: number
+          created_at?: string
+          id?: string
+          leave_type?: string
+          remaining?: number
+          staff_id: string
+          total_allowed?: number
+          updated_at?: string
+          used?: number
+          year: number
+        }
+        Update: {
+          carry_forward?: number
+          created_at?: string
+          id?: string
+          leave_type?: string
+          remaining?: number
+          staff_id?: string
+          total_allowed?: number
+          updated_at?: string
+          used?: number
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_balances_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leave_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          end_date: string
+          id: string
+          leave_type: string
+          reason: string | null
+          rejection_reason: string | null
+          staff_id: string
+          start_date: string
+          status: string
+          total_days: number
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          end_date: string
+          id?: string
+          leave_type?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          staff_id: string
+          start_date: string
+          status?: string
+          total_days?: number
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          end_date?: string
+          id?: string
+          leave_type?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          staff_id?: string
+          start_date?: string
+          status?: string
+          total_days?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_requests_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
@@ -1514,6 +1689,33 @@ export type Database = {
         }
         Relationships: []
       }
+      public_holidays: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          is_optional: boolean | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          is_optional?: boolean | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          is_optional?: boolean | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       quotation_attachments: {
         Row: {
           created_at: string
@@ -1731,6 +1933,87 @@ export type Database = {
         }
         Relationships: []
       }
+      salary_records: {
+        Row: {
+          base_salary: number | null
+          bonuses: number | null
+          created_at: string
+          days_absent: number | null
+          days_leave: number | null
+          days_present: number | null
+          deductions: number | null
+          generated_at: string | null
+          generated_by: string | null
+          id: string
+          month: number
+          net_salary: number | null
+          notes: string | null
+          overtime_pay: number | null
+          staff_id: string
+          status: string
+          total_working_days: number | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          base_salary?: number | null
+          bonuses?: number | null
+          created_at?: string
+          days_absent?: number | null
+          days_leave?: number | null
+          days_present?: number | null
+          deductions?: number | null
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          month: number
+          net_salary?: number | null
+          notes?: string | null
+          overtime_pay?: number | null
+          staff_id: string
+          status?: string
+          total_working_days?: number | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          base_salary?: number | null
+          bonuses?: number | null
+          created_at?: string
+          days_absent?: number | null
+          days_leave?: number | null
+          days_present?: number | null
+          deductions?: number | null
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          month?: number
+          net_salary?: number | null
+          notes?: string | null
+          overtime_pay?: number | null
+          staff_id?: string
+          status?: string
+          total_working_days?: number | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_records_generated_by_fkey"
+            columns: ["generated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_filter_monitoring: {
         Row: {
           count_trend: string | null
@@ -1855,6 +2138,100 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      staff_hr_settings: {
+        Row: {
+          base_salary: number | null
+          created_at: string
+          gps_radius_meters: number | null
+          gps_required: boolean | null
+          id: string
+          office_latitude: number | null
+          office_longitude: number | null
+          overtime_rate: number | null
+          salary_type: string
+          shift_end: string | null
+          shift_start: string | null
+          staff_id: string
+          updated_at: string
+          work_days: string[] | null
+        }
+        Insert: {
+          base_salary?: number | null
+          created_at?: string
+          gps_radius_meters?: number | null
+          gps_required?: boolean | null
+          id?: string
+          office_latitude?: number | null
+          office_longitude?: number | null
+          overtime_rate?: number | null
+          salary_type?: string
+          shift_end?: string | null
+          shift_start?: string | null
+          staff_id: string
+          updated_at?: string
+          work_days?: string[] | null
+        }
+        Update: {
+          base_salary?: number | null
+          created_at?: string
+          gps_radius_meters?: number | null
+          gps_required?: boolean | null
+          id?: string
+          office_latitude?: number | null
+          office_longitude?: number | null
+          overtime_rate?: number | null
+          salary_type?: string
+          shift_end?: string | null
+          shift_start?: string | null
+          staff_id?: string
+          updated_at?: string
+          work_days?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_hr_settings_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_settings: {
+        Row: {
+          created_at: string
+          hr_module_enabled: boolean
+          hr_module_toggled_at: string | null
+          hr_module_toggled_by: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hr_module_enabled?: boolean
+          hr_module_toggled_at?: string | null
+          hr_module_toggled_by?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hr_module_enabled?: boolean
+          hr_module_toggled_at?: string | null
+          hr_module_toggled_by?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_settings_hr_module_toggled_by_fkey"
+            columns: ["hr_module_toggled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       task_activity_log: {
         Row: {
@@ -2410,6 +2787,60 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      work_delegations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          delegatee_id: string
+          delegator_id: string
+          end_date: string
+          id: string
+          reason: string | null
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          delegatee_id: string
+          delegator_id: string
+          end_date: string
+          id?: string
+          reason?: string | null
+          start_date: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          delegatee_id?: string
+          delegator_id?: string
+          end_date?: string
+          id?: string
+          reason?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_delegations_delegatee_id_fkey"
+            columns: ["delegatee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_delegations_delegator_id_fkey"
+            columns: ["delegator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

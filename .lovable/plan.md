@@ -1,114 +1,106 @@
 
 
-## Plan: HR Module Foundation (Tables, Toggle, Context)
+# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
 
-### Overview
-Build the HR module foundation: database tables with RLS, a system settings table for the module toggle, a Settings UI toggle for admins, and a React context that conditionally shows/hides HR in the sidebar. No attendance UI is built yet.
+## Root Cause Analysis
+
+### Problem 1: Staff Activity Log Only Shows Login/Logout
+**Two causes found:**
+- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
+- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
+
+### Problem 2: Automation Engine Never Fires (Critical Bug)
+**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
+
+### Problem 3: Notifications Invisible Even If Created
+**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
+- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
+- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
+- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
+- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
+
+Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
 
 ---
 
-### PART A -- Database Migration: `system_settings` table
+## Fix Plan
 
-Create a new `system_settings` table to store app-wide feature flags:
+### Fix 1: Repair the Automation Trigger Function (Database Migration)
+Update the `notify_automation_engine()` function to:
+- Use `net.http_post()` instead of `extensions.http_post()`
+- Pass `body` as `jsonb` instead of `text`
 
-```text
-system_settings
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  hr_module_enabled    BOOLEAN DEFAULT FALSE
-  hr_module_toggled_by UUID REFERENCES profiles(id)
-  hr_module_toggled_at TIMESTAMPTZ
-  created_at      TIMESTAMPTZ DEFAULT now()
-  updated_at      TIMESTAMPTZ DEFAULT now()
+```sql
+CREATE OR REPLACE FUNCTION public.notify_automation_engine()
+RETURNS trigger ...
+AS $$
+  ...
+  PERFORM net.http_post(
+    url := edge_url || '/functions/v1/run-automations',
+    body := payload,  -- jsonb, not text
+    headers := jsonb_build_object(...)
+  );
+  ...
+$$;
 ```
 
-RLS:
-- SELECT: all authenticated users
-- INSERT/UPDATE: admin only (`is_admin()`)
-- DELETE: none
+### Fix 2: Fix Notification user_id Storage in Edge Function
+In `supabase/functions/run-automations/index.ts`:
+- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
+- Remove the duplicate `userIds.push(profile.id)` on line 176-177
+- Change the notification insert to use email instead of profile.id
 
-Seed one default row so the setting always exists.
+### Fix 3: Fix Notification Querying in Client
+In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
+- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
+- Update the realtime subscription filter accordingly
 
----
+### Fix 4: Add Comprehensive Staff Activity Logging
+Add `logStaffAction()` calls to these operations that currently lack them:
 
-### PART B -- Database Migration: HR tables
+| Operation | File | Action Type |
+|-----------|------|-------------|
+| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
+| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
+| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
+| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
+| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
+| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
+| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
+| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
+| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
+| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
 
-All 7 tables created in a single migration:
+Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
 
-**1. `staff_hr_settings`** -- per-staff salary/shift/GPS config
-- Columns: `id`, `staff_id` (UUID, references profiles), `base_salary`, `salary_type` (monthly/daily), `shift_start`, `shift_end`, `work_days` (text[]), `gps_required` (bool), `office_latitude`, `office_longitude`, `gps_radius_meters`, `overtime_rate`, `created_at`, `updated_at`
-- RLS: SELECT own row (`auth.uid() = staff_id`) OR admin. UPDATE/INSERT/DELETE admin only.
-
-**2. `attendance_records`** -- daily clock-in/out
-- Columns: `id`, `staff_id`, `date`, `clock_in`, `clock_out`, `clock_in_latitude`, `clock_in_longitude`, `clock_out_latitude`, `clock_out_longitude`, `status` (present/absent/half_day/late/on_leave), `total_hours`, `overtime_hours`, `notes`, `created_by`, `created_at`, `updated_at`
-- RLS: SELECT own rows OR admin. INSERT admin only (edge function). UPDATE admin only.
-
-**3. `leave_requests`** -- staff leave submissions
-- Columns: `id`, `staff_id`, `leave_type` (casual/sick/earned/unpaid), `start_date`, `end_date`, `total_days`, `reason`, `status` (pending/approved/rejected), `approved_by`, `approved_at`, `rejection_reason`, `created_at`, `updated_at`
-- RLS: SELECT own OR admin. INSERT own. UPDATE admin only.
-
-**4. `leave_balances`** -- running balances per type per year
-- Columns: `id`, `staff_id`, `year`, `leave_type`, `total_allowed`, `used`, `remaining`, `carry_forward`, `created_at`, `updated_at`
-- RLS: SELECT own OR admin. INSERT/UPDATE/DELETE admin only.
-
-**5. `work_delegations`** -- delegation audit trail
-- Columns: `id`, `delegator_id`, `delegatee_id`, `start_date`, `end_date`, `reason`, `status` (active/completed/cancelled), `created_by`, `created_at`, `updated_at`
-- RLS: SELECT own rows (as delegator or delegatee) OR admin. INSERT admin only.
-
-**6. `salary_records`** -- monthly payroll snapshots
-- Columns: `id`, `staff_id`, `month`, `year`, `base_salary`, `overtime_pay`, `deductions`, `bonuses`, `net_salary`, `total_working_days`, `days_present`, `days_absent`, `days_leave`, `status` (draft/finalized/paid), `notes`, `generated_by`, `generated_at`, `created_at`, `updated_at`
-- RLS: SELECT own row (limited) OR admin (full). INSERT/UPDATE admin only.
-
-**7. `public_holidays`** -- company holiday calendar
-- Columns: `id`, `name`, `date`, `is_optional`, `created_at`, `updated_at`
-- RLS: SELECT all authenticated. INSERT/UPDATE/DELETE admin only.
+### Fix 5: Expand StaffActivityPanel Display
+Update `src/components/settings/StaffActivityPanel.tsx` to:
+- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
+- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
 
 ---
 
-### PART C -- Settings Page: HR Module Toggle
+## Files to Modify
 
-**New file: `src/components/settings/HRModuleToggle.tsx`**
+| File | Change |
+|------|--------|
+| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
+| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
+| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
+| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
+| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
+| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
+| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
+| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
+| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
+| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
+| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
+| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
 
-A card component rendered inside the existing "Control Panel" tab in `src/pages/Settings.tsx`:
-- Fetches `system_settings` to get `hr_module_enabled`
-- Renders title "HR Module -- Attendance, Leave & Payroll"
-- Renders description text
-- Large Switch toggle (only for super_admin/admin via `useAuth().role`)
-- When OFF: grey Badge "Module Disabled"
-- When ON: green Badge "Module Active" + date enabled
-- On toggle: updates `system_settings`, logs to `activity_log` via `useLogActivity`
-
-**Modified file: `src/pages/Settings.tsx`**
-- Import and render `<HRModuleToggle />` below the existing `<ControlPanel />` inside the `control-panel` tab.
-
----
-
-### PART D -- HRModuleContext + Conditional Sidebar
-
-**New file: `src/contexts/HRModuleContext.tsx`**
-- Creates `HRModuleContext` with `{ hrEnabled: boolean; loading: boolean }`
-- Provider fetches `system_settings.hr_module_enabled` on mount
-- Subscribes to realtime changes so toggle reflects instantly for all users
-- Exports `useHRModule()` hook
-
-**Modified file: `src/App.tsx`**
-- Wrap app with `<HRModuleProvider>` inside `<AuthProvider>`
-
-**Modified file: `src/components/shared/Sidebar.tsx`**
-- Import `useHRModule()` and `useAuth()`
-- If `hrEnabled` is true AND role is not `sales_viewer`, add an "HR" item to `mainNavigation` (using `Briefcase` icon, path `/hr`)
-- No route/page created yet -- just the nav item
-
----
-
-### File Summary
-
-| Action | File |
-|--------|------|
-| Migration | `system_settings` table + seed row |
-| Migration | 7 HR tables with full RLS |
-| Create | `src/components/settings/HRModuleToggle.tsx` |
-| Create | `src/contexts/HRModuleContext.tsx` |
-| Modify | `src/pages/Settings.tsx` (add HRModuleToggle to control-panel tab) |
-| Modify | `src/App.tsx` (wrap with HRModuleProvider) |
-| Modify | `src/components/shared/Sidebar.tsx` (conditional HR nav item) |
+## Implementation Order
+1. Fix DB trigger function (migration) -- unblocks all automation
+2. Fix edge function notification user_id + duplicate push
+3. Fix notification client queries (email-based)
+4. Add comprehensive activity logging across all hooks
+5. Update StaffActivityPanel with new types and date filter
 

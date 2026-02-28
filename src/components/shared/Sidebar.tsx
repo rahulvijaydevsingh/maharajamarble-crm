@@ -12,8 +12,10 @@ import {
   LogOut,
   Shield,
   Zap,
-  MessageSquare
+  MessageSquare,
+  Briefcase
 } from "lucide-react";
+import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +68,7 @@ export function SidebarNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, role, signOut, isAdmin } = useAuth();
+  const { hrEnabled } = useHRModule();
   const currentPath = location.pathname;
 
   const [leadCount, setLeadCount] = useState<number | null>(null);
@@ -162,7 +165,7 @@ export function SidebarNav() {
   }, [currentPath]);
 
   const navigationWithCounts = useMemo(() => {
-    return mainNavigation.map((item) => {
+    const items = mainNavigation.map((item) => {
       if (item.name === "Leads") {
         return { ...item, count: leadCount ?? undefined };
       }
@@ -171,7 +174,14 @@ export function SidebarNav() {
       }
       return item;
     });
-  }, [leadCount, taskCount]);
+
+    // Conditionally add HR nav item
+    if (hrEnabled && role !== "sales_viewer") {
+      items.push({ name: "HR", icon: Briefcase, path: "/hr" });
+    }
+
+    return items;
+  }, [leadCount, taskCount, hrEnabled, role]);
   
   return (
     <Sidebar className="border-r border-gray-200">
