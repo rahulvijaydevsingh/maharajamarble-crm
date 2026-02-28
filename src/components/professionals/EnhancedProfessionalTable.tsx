@@ -247,7 +247,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     </Popover>
   );
 
-
+  const handleSort = (field: SortField) => {
     if (sortField === field) {
       if (sortDirection === "asc") setSortDirection("desc");
       else if (sortDirection === "desc") { setSortField(null); setSortDirection(null); }
