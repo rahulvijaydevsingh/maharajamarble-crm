@@ -68,6 +68,7 @@ export function SidebarNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, role, signOut, isAdmin } = useAuth();
+  const { hrEnabled } = useHRModule();
   const currentPath = location.pathname;
 
   const [leadCount, setLeadCount] = useState<number | null>(null);
