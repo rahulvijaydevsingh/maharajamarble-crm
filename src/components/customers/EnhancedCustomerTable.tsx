@@ -317,8 +317,18 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         }
       }
 
-      const createdDateMatch = !createdDateRange.from || !createdDateRange.to ||
-        (new Date(c.created_at) >= createdDateRange.from && new Date(c.created_at) <= createdDateRange.to);
+      // Date range filter with single-date support, inclusive end-of-day, auto-swap
+      let createdDateMatch = true;
+      if (createdDateRange.from || createdDateRange.to) {
+        const date = new Date(c.created_at);
+        let from = createdDateRange.from;
+        let to = createdDateRange.to;
+        if (from && to && from > to) { [from, to] = [to, from]; }
+        const toEnd = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999) : undefined;
+        if (from && toEnd) createdDateMatch = date >= from && date <= toEnd;
+        else if (from) createdDateMatch = date >= from;
+        else if (toEnd) createdDateMatch = date <= toEnd;
+      }
 
       return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch;
     });
