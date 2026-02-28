@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export function FirstLoginClockInPrompt() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { isHREnabled } = useHRModule();
+  const { hrEnabled } = useHRModule();
   const { role } = useAuth();
 
   useEffect(() => {
