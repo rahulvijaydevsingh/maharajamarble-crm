@@ -65,12 +65,15 @@ import {
   X,
   Info,
   Trash2,
+  Briefcase,
 } from "lucide-react";
 import { useStaffManagement, StaffMember, CreateStaffData } from "@/hooks/useStaffManagement";
 import { useAuth } from "@/contexts/AuthContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useHRModule } from "@/contexts/HRModuleContext";
+import { StaffHRSettingsPanel } from "./StaffHRSettingsPanel";
 
 type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewer" | "field_agent";
 
@@ -143,6 +146,7 @@ const STATUS_OPTIONS = [
 export function StaffManagementPanel() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { hrEnabled } = useHRModule();
   const {
     staffMembers,
     loading,
@@ -163,6 +167,8 @@ export function StaffManagementPanel() {
   const [deactivateConfirmOpen, setDeactivateConfirmOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [hrSettingsDialogOpen, setHrSettingsDialogOpen] = useState(false);
+  const [hrSettingsStaff, setHrSettingsStaff] = useState<StaffMember | null>(null);
 
   // Separate submitting states per dialog
   const [isAddSubmitting, setIsAddSubmitting] = useState(false);
@@ -484,6 +490,11 @@ export function StaffManagementPanel() {
                             <DropdownMenuItem onClick={() => openResetPasswordDialog(staff)}>
                               <Key className="mr-2 h-4 w-4" />Reset Password
                             </DropdownMenuItem>
+                            {hrEnabled && (
+                              <DropdownMenuItem onClick={() => { setHrSettingsStaff(staff); setHrSettingsDialogOpen(true); }}>
+                                <Briefcase className="mr-2 h-4 w-4" />HR Settings
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             {staff.id !== user?.id && (
                               <>
@@ -753,6 +764,28 @@ export function StaffManagementPanel() {
                 </Button>
               </DialogFooter>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* HR Settings Dialog */}
+      <Dialog open={hrSettingsDialogOpen} onOpenChange={(o) => { setHrSettingsDialogOpen(o); if (!o) setHrSettingsStaff(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              HR Settings — {hrSettingsStaff?.full_name || hrSettingsStaff?.email}
+            </DialogTitle>
+            <DialogDescription>
+              Configure salary, schedule, attendance, and leave allocation
+            </DialogDescription>
+          </DialogHeader>
+          {hrSettingsStaff && (
+            <StaffHRSettingsPanel
+              staffId={hrSettingsStaff.id}
+              staffRole={hrSettingsStaff.role}
+              staffName={hrSettingsStaff.full_name || hrSettingsStaff.email || ""}
+            />
           )}
         </DialogContent>
       </Dialog>
