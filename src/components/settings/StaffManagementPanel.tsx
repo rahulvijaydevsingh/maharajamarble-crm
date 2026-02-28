@@ -65,6 +65,7 @@ import {
   X,
   Info,
   Trash2,
+  Briefcase,
 } from "lucide-react";
 import { useStaffManagement, StaffMember, CreateStaffData } from "@/hooks/useStaffManagement";
 import { useAuth } from "@/contexts/AuthContext";
