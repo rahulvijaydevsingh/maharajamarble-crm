@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.hr-leave-request]
 verify_jwt = false
+
+[functions.hr-generate-salary]
+verify_jwt = false
