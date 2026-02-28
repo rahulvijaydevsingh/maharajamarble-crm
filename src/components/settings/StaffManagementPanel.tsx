@@ -146,6 +146,7 @@ const STATUS_OPTIONS = [
 export function StaffManagementPanel() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { hrEnabled } = useHRModule();
   const {
     staffMembers,
     loading,
