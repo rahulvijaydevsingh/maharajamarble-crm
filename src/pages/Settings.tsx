@@ -572,6 +572,7 @@ const Settings = () => {
           
           <TabsContent value="control-panel" className="space-y-4 mt-4">
             <ControlPanel />
+            <HRModuleToggle />
           </TabsContent>
 
           <TabsContent value="kit" className="space-y-4 mt-4">
