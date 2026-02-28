@@ -579,7 +579,12 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       case "source":
         return columnLabel;
       case "createdAt":
-        return <SortableHeader field="created_at">{columnLabel}</SortableHeader>;
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="created_at">{columnLabel}</SortableHeader>
+            <DateRangeFilter dateRange={createdDateRange} onDateRangeChange={setCreatedDateRange} />
+          </div>
+        );
       case "actions":
         return columnLabel;
       default:
