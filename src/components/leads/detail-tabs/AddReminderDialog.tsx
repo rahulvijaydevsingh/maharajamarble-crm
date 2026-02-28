@@ -259,7 +259,7 @@ export function AddReminderDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={staffLoading ? "Loading..." : "Select team member"} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[220]">
                   {staffMembers.map((member) => (
                     <SelectItem key={member.id} value={member.name}>
                       {member.name}
