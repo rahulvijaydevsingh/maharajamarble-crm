@@ -16,7 +16,8 @@ import {
   Briefcase,
   Clock,
   CalendarDays,
-  CheckSquare
+  CheckSquare,
+  Wallet
 } from "lucide-react";
 import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
