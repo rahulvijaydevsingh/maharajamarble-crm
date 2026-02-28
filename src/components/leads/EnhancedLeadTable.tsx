@@ -572,19 +572,6 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
               await updateLead(leadId, { assigned_to: bulkActionValue });
             } else if (bulkActionType === "delete") {
               await deleteLead(leadId);
-            } else if (bulkActionType === "create_task") {
-              await addTask({
-                title: bulkTaskFormData.title,
-                type: bulkTaskFormData.type,
-                priority: bulkTaskFormData.priority,
-                assigned_to: bulkTaskFormData.assignedTo || lead.assigned_to,
-                due_date: bulkTaskFormData.dueDate,
-                due_time: bulkTaskFormData.dueTime || null,
-                description: bulkTaskFormData.description || null,
-                lead_id: leadId,
-                related_entity_type: "lead",
-                related_entity_id: leadId,
-              });
             }
           })
         );
