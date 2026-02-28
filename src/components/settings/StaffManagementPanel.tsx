@@ -167,6 +167,8 @@ export function StaffManagementPanel() {
   const [deactivateConfirmOpen, setDeactivateConfirmOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [hrSettingsDialogOpen, setHrSettingsDialogOpen] = useState(false);
+  const [hrSettingsStaff, setHrSettingsStaff] = useState<StaffMember | null>(null);
 
   // Separate submitting states per dialog
   const [isAddSubmitting, setIsAddSubmitting] = useState(false);
