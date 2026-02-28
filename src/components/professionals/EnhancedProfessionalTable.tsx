@@ -175,8 +175,79 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       </DropdownMenuContent>
     </DropdownMenu>
   );
+  const DateRangeFilter = ({ 
+    dateRange, 
+    onDateRangeChange 
+  }: { 
+    dateRange: DateRange; 
+    onDateRangeChange: (range: DateRange) => void; 
+  }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-6 px-2">
+          <CalendarIcon className="h-3 w-3" />
+          {(dateRange.from || dateRange.to) && (
+            <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">1</span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="p-3 space-y-2">
+          <div className="text-sm font-medium">Date Range</div>
+          <div className="flex space-x-2">
+            <div>
+              <label className="text-xs text-muted-foreground">From</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                    {dateRange.from ? format(dateRange.from, "MMM dd") : "Start date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.from}
+                    onSelect={(date) => onDateRangeChange({ ...dateRange, from: date })}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">To</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                    {dateRange.to ? format(dateRange.to, "MMM dd") : "End date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.to}
+                    onSelect={(date) => onDateRangeChange({ ...dateRange, to: date })}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          {(dateRange.from || dateRange.to) && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => onDateRangeChange({ from: undefined, to: undefined })}
+              className="w-full"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 
-  const handleSort = (field: SortField) => {
+
     if (sortField === field) {
       if (sortDirection === "asc") setSortDirection("desc");
       else if (sortDirection === "desc") { setSortField(null); setSortDirection(null); }
