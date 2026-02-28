@@ -177,7 +177,7 @@ export function SidebarNav() {
 
     // Conditionally add HR nav item
     if (hrEnabled && role !== "sales_viewer") {
-      items.push({ name: "HR", icon: Briefcase, path: "/hr" });
+      items.push({ name: "HR", icon: Briefcase, path: "/hr/attendance" });
     }
 
     return items;
