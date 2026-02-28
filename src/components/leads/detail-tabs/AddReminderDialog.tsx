@@ -364,7 +364,7 @@ export function AddReminderDialog({
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-[220]">
                           {RECURRENCE_END_TYPES.map((type) => (
                             <SelectItem key={type.value} value={type.value}>
                               {type.label}
