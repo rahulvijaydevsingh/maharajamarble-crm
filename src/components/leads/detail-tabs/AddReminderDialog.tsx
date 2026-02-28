@@ -284,7 +284,7 @@ export function AddReminderDialog({
                     <SelectTrigger className="h-9">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {RECURRENCE_FREQUENCIES.map((freq) => (
                         <SelectItem key={freq.value} value={freq.value}>
                           {freq.label}
