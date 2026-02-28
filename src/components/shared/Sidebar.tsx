@@ -13,7 +13,10 @@ import {
   Shield,
   Zap,
   MessageSquare,
-  Briefcase
+  Briefcase,
+  Clock,
+  CalendarDays,
+  CheckSquare
 } from "lucide-react";
 import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
