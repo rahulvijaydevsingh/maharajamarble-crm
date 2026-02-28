@@ -78,7 +78,7 @@ interface AddTaskDialogProps {
   onBulkTaskSubmit?: (taskData: any, subtasks: Subtask[]) => void;
 }
 
-export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData }: AddTaskDialogProps) {
+export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData, bulkMode, bulkLeadCount, onBulkTaskSubmit }: AddTaskDialogProps) {
   const { toast } = useToast();
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
