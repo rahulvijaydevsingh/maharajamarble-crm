@@ -77,7 +77,7 @@ export function RecurrenceSection({ data, onChange, disabled = false }: Recurren
             <SelectTrigger className="h-9">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[80]">
+            <SelectContent className="z-[220]">
               {RECURRENCE_FREQUENCIES.map((freq) => (
                 <SelectItem key={freq.value} value={freq.value}>
                   {freq.label}
