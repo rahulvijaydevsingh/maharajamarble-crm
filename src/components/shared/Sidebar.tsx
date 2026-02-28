@@ -16,7 +16,8 @@ import {
   Briefcase,
   Clock,
   CalendarDays,
-  CheckSquare
+  CheckSquare,
+  Wallet
 } from "lucide-react";
 import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
@@ -178,17 +179,21 @@ export function SidebarNav() {
       return item;
     });
 
-    // Conditionally add HR nav items
-    if (hrEnabled && role !== "sales_viewer") {
-      items.push({ name: "Attendance", icon: Clock, path: "/hr/attendance" });
-      items.push({ name: "My Leave", icon: CalendarDays, path: "/hr/leave" });
-      if (showAdminNav) {
-        items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
-      }
-    }
-
     return items;
-  }, [leadCount, taskCount, hrEnabled, role]);
+  }, [leadCount, taskCount]);
+
+  const hrNavigation = useMemo(() => {
+    if (!hrEnabled || role === "sales_viewer") return [];
+    const items: NavigationItem[] = [
+      { name: "Attendance", icon: Clock, path: "/hr/attendance" },
+      { name: "My Leave", icon: CalendarDays, path: "/hr/leave" },
+    ];
+    if (showAdminNav) {
+      items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
+      items.push({ name: "Payroll", icon: Wallet, path: "/hr/payroll" });
+    }
+    return items;
+  }, [hrEnabled, role, showAdminNav]);
   
   return (
     <Sidebar className="border-r border-gray-200">
@@ -229,6 +234,31 @@ export function SidebarNav() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {hrNavigation.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>HR</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {hrNavigation.map((item) => (
+                  <SidebarMenuItem key={item.name}>
+                    <SidebarMenuButton 
+                      asChild
+                      className={cn(
+                        activeItem === item.name && "bg-sidebar-accent text-sidebar-accent-foreground"
+                      )}
+                      onClick={() => setActiveItem(item.name)}
+                    >
+                      <Link to={item.path}>
+                        <item.icon className="mr-3 h-5 w-5" />
+                        <span>{item.name}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         {showAdminNav && (
           <SidebarGroup>
             <SidebarGroupLabel>Admin</SidebarGroupLabel>

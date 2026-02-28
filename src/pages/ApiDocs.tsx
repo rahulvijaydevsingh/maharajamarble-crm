@@ -84,6 +84,25 @@ const endpoints: Record<string, Endpoint[]> = {
       { name: "activity_type", type: "string", required: true, description: "Type: call, meeting, note, etc." },
     ], exampleResponse: '{"success":true,"data":{"id":"..."}}' },
   ],
+  HR: [
+    { method: "POST", path: "/hr-clock-in", description: "Clock in for attendance (edge function)", bodyFields: [
+      { name: "latitude", type: "number", required: false, description: "GPS latitude" },
+      { name: "longitude", type: "number", required: false, description: "GPS longitude" },
+    ], exampleResponse: '{"success":true,"record":{"id":"...","status":"present"}}' },
+    { method: "POST", path: "/hr-clock-out", description: "Clock out for attendance (edge function)", bodyFields: [
+      { name: "latitude", type: "number", required: false, description: "GPS latitude" },
+    ], exampleResponse: '{"success":true,"record":{"id":"..."}}' },
+    { method: "POST", path: "/hr-leave-request", description: "Submit a leave request (edge function)", bodyFields: [
+      { name: "leave_type", type: "string", required: true, description: "sick, casual, earned, lwp" },
+      { name: "start_date", type: "date", required: true, description: "Start date" },
+      { name: "end_date", type: "date", required: true, description: "End date" },
+      { name: "reason", type: "string", required: false, description: "Reason for leave" },
+    ], exampleResponse: '{"success":true,"leave_request":{"id":"...","status":"pending"}}' },
+    { method: "POST", path: "/hr-generate-salary", description: "Generate payroll for a month (admin only)", bodyFields: [
+      { name: "month", type: "number", required: true, description: "Month number (1-12)" },
+      { name: "year", type: "number", required: true, description: "Year" },
+    ], exampleResponse: '{"success":true,"total_payroll":250000,"staff_count":5}' },
+  ],
   Utility: [
     { method: "GET", path: "/v1/staff", description: "List active staff members", exampleResponse: '{"success":true,"data":[{"full_name":"Admin","email":"..."}]}' },
     { method: "GET", path: "/v1/search?q=term", description: "Search leads by name/phone/email", exampleResponse: '{"success":true,"data":[...]}' },

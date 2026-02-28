@@ -8,12 +8,14 @@ import { useApiKeys } from "@/hooks/useApiKeys";
 import { useToast } from "@/hooks/use-toast";
 import { Key, Copy, Trash2, Plus, ExternalLink, Eye, EyeOff, AlertTriangle, Shield } from "lucide-react";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function ApiAccessPanel() {
   const { keys, loading, generateKey, revokeKey, deleteKey } = useApiKeys();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [newKeyName, setNewKeyName] = useState("Default Key");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showGenDialog, setShowGenDialog] = useState(false);
@@ -126,7 +128,7 @@ export function ApiAccessPanel() {
           </div>
 
           {/* Link to docs */}
-          <Button variant="link" className="p-0" onClick={() => window.open("/api-docs", "_blank")}>
+          <Button variant="link" className="p-0" onClick={() => navigate("/api-docs")}>
             <ExternalLink className="h-4 w-4 mr-1" />
             View API Documentation
           </Button>

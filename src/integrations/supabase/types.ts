@@ -1967,11 +1967,16 @@ export type Database = {
           created_at: string
           days_absent: number | null
           days_leave: number | null
+          days_lwp: number | null
           days_present: number | null
           deductions: number | null
+          finalized_at: string | null
+          finalized_by: string | null
           generated_at: string | null
           generated_by: string | null
           id: string
+          manual_additions: Json | null
+          manual_deductions: Json | null
           month: number
           net_salary: number | null
           notes: string | null
@@ -1988,11 +1993,16 @@ export type Database = {
           created_at?: string
           days_absent?: number | null
           days_leave?: number | null
+          days_lwp?: number | null
           days_present?: number | null
           deductions?: number | null
+          finalized_at?: string | null
+          finalized_by?: string | null
           generated_at?: string | null
           generated_by?: string | null
           id?: string
+          manual_additions?: Json | null
+          manual_deductions?: Json | null
           month: number
           net_salary?: number | null
           notes?: string | null
@@ -2009,11 +2019,16 @@ export type Database = {
           created_at?: string
           days_absent?: number | null
           days_leave?: number | null
+          days_lwp?: number | null
           days_present?: number | null
           deductions?: number | null
+          finalized_at?: string | null
+          finalized_by?: string | null
           generated_at?: string | null
           generated_by?: string | null
           id?: string
+          manual_additions?: Json | null
+          manual_deductions?: Json | null
           month?: number
           net_salary?: number | null
           notes?: string | null
