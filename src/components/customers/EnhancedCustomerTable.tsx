@@ -317,8 +317,18 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         }
       }
 
-      const createdDateMatch = !createdDateRange.from || !createdDateRange.to ||
-        (new Date(c.created_at) >= createdDateRange.from && new Date(c.created_at) <= createdDateRange.to);
+      // Date range filter with single-date support, inclusive end-of-day, auto-swap
+      let createdDateMatch = true;
+      if (createdDateRange.from || createdDateRange.to) {
+        const date = new Date(c.created_at);
+        let from = createdDateRange.from;
+        let to = createdDateRange.to;
+        if (from && to && from > to) { [from, to] = [to, from]; }
+        const toEnd = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999) : undefined;
+        if (from && toEnd) createdDateMatch = date >= from && date <= toEnd;
+        else if (from) createdDateMatch = date >= from;
+        else if (toEnd) createdDateMatch = date <= toEnd;
+      }
 
       return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch;
     });
@@ -483,6 +493,78 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     </DropdownMenu>
   );
 
+  const DateRangeFilter = ({ 
+    dateRange, 
+    onDateRangeChange 
+  }: { 
+    dateRange: DateRange; 
+    onDateRangeChange: (range: DateRange) => void; 
+  }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-6 px-2">
+          <CalendarIcon className="h-3 w-3" />
+          {(dateRange.from || dateRange.to) && (
+            <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">1</span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="p-3 space-y-2">
+          <div className="text-sm font-medium">Date Range</div>
+          <div className="flex space-x-2">
+            <div>
+              <label className="text-xs text-muted-foreground">From</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                    {dateRange.from ? format(dateRange.from, "MMM dd") : "Start date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.from}
+                    onSelect={(date) => onDateRangeChange({ ...dateRange, from: date })}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">To</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                    {dateRange.to ? format(dateRange.to, "MMM dd") : "End date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.to}
+                    onSelect={(date) => onDateRangeChange({ ...dateRange, to: date })}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          {(dateRange.from || dateRange.to) && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => onDateRangeChange({ from: undefined, to: undefined })}
+              className="w-full"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+
   // Render table header for a column
   const renderTableHeader = (columnKey: string, columnLabel: string) => {
     switch (columnKey) {
@@ -579,7 +661,12 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       case "source":
         return columnLabel;
       case "createdAt":
-        return <SortableHeader field="created_at">{columnLabel}</SortableHeader>;
+        return (
+          <div className="flex items-center gap-1">
+            <SortableHeader field="created_at">{columnLabel}</SortableHeader>
+            <DateRangeFilter dateRange={createdDateRange} onDateRangeChange={setCreatedDateRange} />
+          </div>
+        );
       case "actions":
         return columnLabel;
       default:

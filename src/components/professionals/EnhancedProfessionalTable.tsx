@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
-import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings, Upload } from "lucide-react";
+import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings, Upload, Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Professional, useProfessionals } from "@/hooks/useProfessionals";
@@ -27,6 +29,11 @@ import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
+
+interface DateRange {
+  from: Date | undefined;
+  to: Date | undefined;
+}
 
 type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | null;
 type SortDirection = "asc" | "desc" | null;
@@ -67,6 +74,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [cityFilter, setCityFilter] = useState<string[]>([]);
   const [assignedToFilter, setAssignedToFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
+  const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
 
   const uniqueAssignedTo = useMemo(() => Array.from(new Set(professionals.map(p => p.assigned_to))), [professionals]);
   const uniqueCities = useMemo(() => Array.from(new Set(professionals.map(p => p.city).filter(Boolean) as string[])), [professionals]);
@@ -87,7 +95,20 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(p.assigned_to);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(p.priority.toString());
       
-      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch;
+      // Date range filter
+      let createdDateMatch = true;
+      if (createdDateRange.from || createdDateRange.to) {
+        const date = new Date(p.created_at);
+        let from = createdDateRange.from;
+        let to = createdDateRange.to;
+        if (from && to && from > to) { [from, to] = [to, from]; }
+        const toEnd = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999) : undefined;
+        if (from && toEnd) createdDateMatch = date >= from && date <= toEnd;
+        else if (from) createdDateMatch = date >= from;
+        else if (toEnd) createdDateMatch = date <= toEnd;
+      }
+      
+      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch && createdDateMatch;
     });
 
     if (sortField && sortDirection) {
@@ -104,7 +125,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       });
     }
     return result;
-  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter]);
+  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter, createdDateRange]);
   
   // MultiSelectFilter component for inline column filters
   const MultiSelectFilter = ({
@@ -153,6 +174,77 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+  const DateRangeFilter = ({ 
+    dateRange, 
+    onDateRangeChange 
+  }: { 
+    dateRange: DateRange; 
+    onDateRangeChange: (range: DateRange) => void; 
+  }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-6 px-2">
+          <CalendarIcon className="h-3 w-3" />
+          {(dateRange.from || dateRange.to) && (
+            <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">1</span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="p-3 space-y-2">
+          <div className="text-sm font-medium">Date Range</div>
+          <div className="flex space-x-2">
+            <div>
+              <label className="text-xs text-muted-foreground">From</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                    {dateRange.from ? format(dateRange.from, "MMM dd") : "Start date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.from}
+                    onSelect={(date) => onDateRangeChange({ ...dateRange, from: date })}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">To</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                    {dateRange.to ? format(dateRange.to, "MMM dd") : "End date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.to}
+                    onSelect={(date) => onDateRangeChange({ ...dateRange, to: date })}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          {(dateRange.from || dateRange.to) && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => onDateRangeChange({ from: undefined, to: undefined })}
+              className="w-full"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 
   const handleSort = (field: SortField) => {
@@ -318,6 +410,11 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                       <SortableHeader field={column.key === "professionalType" ? "professional_type" : column.key as SortField}>
                         {column.label}
                       </SortableHeader>
+                    ) : column.key === "createdAt" ? (
+                      <>
+                        <SortableHeader field="created_at">{column.label}</SortableHeader>
+                        <DateRangeFilter dateRange={createdDateRange} onDateRangeChange={setCreatedDateRange} />
+                      </>
                     ) : (
                       column.label
                     )}
