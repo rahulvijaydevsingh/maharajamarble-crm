@@ -243,11 +243,17 @@ export type Database = {
       attendance_records: {
         Row: {
           clock_in: string | null
+          clock_in_flag: string | null
           clock_in_latitude: number | null
           clock_in_longitude: number | null
+          clock_in_photo_url: string | null
+          clock_in_verified: boolean | null
           clock_out: string | null
+          clock_out_flag: string | null
           clock_out_latitude: number | null
           clock_out_longitude: number | null
+          clock_out_photo_url: string | null
+          clock_out_verified: boolean | null
           created_at: string
           created_by: string | null
           date: string
@@ -261,11 +267,17 @@ export type Database = {
         }
         Insert: {
           clock_in?: string | null
+          clock_in_flag?: string | null
           clock_in_latitude?: number | null
           clock_in_longitude?: number | null
+          clock_in_photo_url?: string | null
+          clock_in_verified?: boolean | null
           clock_out?: string | null
+          clock_out_flag?: string | null
           clock_out_latitude?: number | null
           clock_out_longitude?: number | null
+          clock_out_photo_url?: string | null
+          clock_out_verified?: boolean | null
           created_at?: string
           created_by?: string | null
           date: string
@@ -279,11 +291,17 @@ export type Database = {
         }
         Update: {
           clock_in?: string | null
+          clock_in_flag?: string | null
           clock_in_latitude?: number | null
           clock_in_longitude?: number | null
+          clock_in_photo_url?: string | null
+          clock_in_verified?: boolean | null
           clock_out?: string | null
+          clock_out_flag?: string | null
           clock_out_latitude?: number | null
           clock_out_longitude?: number | null
+          clock_out_photo_url?: string | null
+          clock_out_verified?: boolean | null
           created_at?: string
           created_by?: string | null
           date?: string
