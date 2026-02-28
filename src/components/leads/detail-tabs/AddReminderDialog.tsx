@@ -227,7 +227,7 @@ export function AddReminderDialog({
                       {date ? format(date, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-auto p-0 z-[220]" align="start">
                     <Calendar
                       mode="single"
                       selected={date}
@@ -259,7 +259,7 @@ export function AddReminderDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={staffLoading ? "Loading..." : "Select team member"} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[220]">
                   {staffMembers.map((member) => (
                     <SelectItem key={member.id} value={member.name}>
                       {member.name}
@@ -284,7 +284,7 @@ export function AddReminderDialog({
                     <SelectTrigger className="h-9">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {RECURRENCE_FREQUENCIES.map((freq) => (
                         <SelectItem key={freq.value} value={freq.value}>
                           {freq.label}
@@ -364,7 +364,7 @@ export function AddReminderDialog({
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-[220]">
                           {RECURRENCE_END_TYPES.map((type) => (
                             <SelectItem key={type.value} value={type.value}>
                               {type.label}
@@ -407,7 +407,7 @@ export function AddReminderDialog({
                               {endDate ? format(endDate, "PPP") : "Pick a date"}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
+                          <PopoverContent className="w-auto p-0 z-[220]" align="start">
                             <Calendar
                               mode="single"
                               selected={endDate}

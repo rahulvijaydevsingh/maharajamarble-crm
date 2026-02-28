@@ -3,6 +3,7 @@ import React from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/shared/Sidebar";
 import { Header } from "@/components/shared/Header";
+import { FirstLoginClockInPrompt } from "@/components/hr/FirstLoginClockInPrompt";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </main>
         </div>
       </div>
+      <FirstLoginClockInPrompt />
     </SidebarProvider>
   );
 }
