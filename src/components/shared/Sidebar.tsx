@@ -179,17 +179,21 @@ export function SidebarNav() {
       return item;
     });
 
-    // Conditionally add HR nav items
-    if (hrEnabled && role !== "sales_viewer") {
-      items.push({ name: "Attendance", icon: Clock, path: "/hr/attendance" });
-      items.push({ name: "My Leave", icon: CalendarDays, path: "/hr/leave" });
-      if (showAdminNav) {
-        items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
-      }
-    }
-
     return items;
-  }, [leadCount, taskCount, hrEnabled, role]);
+  }, [leadCount, taskCount]);
+
+  const hrNavigation = useMemo(() => {
+    if (!hrEnabled || role === "sales_viewer") return [];
+    const items: NavigationItem[] = [
+      { name: "Attendance", icon: Clock, path: "/hr/attendance" },
+      { name: "My Leave", icon: CalendarDays, path: "/hr/leave" },
+    ];
+    if (showAdminNav) {
+      items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
+      items.push({ name: "Payroll", icon: Wallet, path: "/hr/payroll" });
+    }
+    return items;
+  }, [hrEnabled, role, showAdminNav]);
   
   return (
     <Sidebar className="border-r border-gray-200">
