@@ -2142,13 +2142,17 @@ export type Database = {
       staff_hr_settings: {
         Row: {
           base_salary: number | null
+          camera_required: boolean | null
           created_at: string
+          gps_mode: string
           gps_radius_meters: number | null
           gps_required: boolean | null
           id: string
           office_latitude: number | null
           office_longitude: number | null
           overtime_rate: number | null
+          pf_applicable: boolean | null
+          salary_effective_from: string | null
           salary_type: string
           shift_end: string | null
           shift_start: string | null
@@ -2158,13 +2162,17 @@ export type Database = {
         }
         Insert: {
           base_salary?: number | null
+          camera_required?: boolean | null
           created_at?: string
+          gps_mode?: string
           gps_radius_meters?: number | null
           gps_required?: boolean | null
           id?: string
           office_latitude?: number | null
           office_longitude?: number | null
           overtime_rate?: number | null
+          pf_applicable?: boolean | null
+          salary_effective_from?: string | null
           salary_type?: string
           shift_end?: string | null
           shift_start?: string | null
@@ -2174,13 +2182,17 @@ export type Database = {
         }
         Update: {
           base_salary?: number | null
+          camera_required?: boolean | null
           created_at?: string
+          gps_mode?: string
           gps_radius_meters?: number | null
           gps_required?: boolean | null
           id?: string
           office_latitude?: number | null
           office_longitude?: number | null
           overtime_rate?: number | null
+          pf_applicable?: boolean | null
+          salary_effective_from?: string | null
           salary_type?: string
           shift_end?: string | null
           shift_start?: string | null
