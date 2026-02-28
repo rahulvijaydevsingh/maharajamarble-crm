@@ -767,6 +767,28 @@ export function StaffManagementPanel() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* HR Settings Dialog */}
+      <Dialog open={hrSettingsDialogOpen} onOpenChange={(o) => { setHrSettingsDialogOpen(o); if (!o) setHrSettingsStaff(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              HR Settings — {hrSettingsStaff?.full_name || hrSettingsStaff?.email}
+            </DialogTitle>
+            <DialogDescription>
+              Configure salary, schedule, attendance, and leave allocation
+            </DialogDescription>
+          </DialogHeader>
+          {hrSettingsStaff && (
+            <StaffHRSettingsPanel
+              staffId={hrSettingsStaff.id}
+              staffRole={hrSettingsStaff.role}
+              staffName={hrSettingsStaff.full_name || hrSettingsStaff.email || ""}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
