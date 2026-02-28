@@ -605,13 +605,15 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={() => handleSubmit(true)} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save & Add Another
-          </Button>
+          {!bulkMode && (
+            <Button variant="outline" onClick={() => handleSubmit(true)} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save & Add Another
+            </Button>
+          )}
           <Button onClick={() => handleSubmit()} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save
+            {bulkMode ? `Create for ${bulkLeadCount} Leads` : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
