@@ -73,9 +73,12 @@ interface AddTaskDialogProps {
   prefilledData?: {
     relatedTo?: RelatedEntity;
   };
+  bulkMode?: boolean;
+  bulkLeadCount?: number;
+  onBulkTaskSubmit?: (taskData: any, subtasks: Subtask[]) => void;
 }
 
-export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData }: AddTaskDialogProps) {
+export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData, bulkMode, bulkLeadCount, onBulkTaskSubmit }: AddTaskDialogProps) {
   const { toast } = useToast();
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
@@ -272,6 +275,14 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
         recurrence_occurrences_limit: recurrenceData.occurrencesLimit,
         created_by: "Current User",
       };
+
+      // Bulk mode: return data to parent instead of creating directly
+      if (bulkMode && onBulkTaskSubmit) {
+        onBulkTaskSubmit(taskData, subtasks);
+        onOpenChange(false);
+        resetForm();
+        return;
+      }
       
       const createdTask = await addTask(taskData);
       
@@ -360,7 +371,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Add New Task
+            {bulkMode ? `Create Tasks for ${bulkLeadCount} Leads` : "Add New Task"}
             <Button
               variant="ghost"
               size="sm"
@@ -371,7 +382,9 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
             </Button>
           </DialogTitle>
           <DialogDescription>
-            Create a new task and assign it to a team member
+            {bulkMode
+              ? "A task will be created and linked to each selected lead"
+              : "Create a new task and assign it to a team member"}
           </DialogDescription>
         </DialogHeader>
 
@@ -467,13 +480,15 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
             </Select>
           </div>
 
-          {/* Related Entity */}
-          <RelatedEntitySection
-            entityType={relatedEntityType}
-            selectedEntity={selectedEntity}
-            onEntityTypeChange={setRelatedEntityType}
-            onEntitySelect={setSelectedEntity}
-          />
+          {/* Related Entity - hidden in bulk mode */}
+          {!bulkMode && (
+            <RelatedEntitySection
+              entityType={relatedEntityType}
+              selectedEntity={selectedEntity}
+              onEntityTypeChange={setRelatedEntityType}
+              onEntitySelect={setSelectedEntity}
+            />
+          )}
 
           {/* Due Date, Time & Reminder */}
           <div className="grid grid-cols-3 gap-4">
@@ -590,13 +605,15 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData 
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={() => handleSubmit(true)} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save & Add Another
-          </Button>
+          {!bulkMode && (
+            <Button variant="outline" onClick={() => handleSubmit(true)} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save & Add Another
+            </Button>
+          )}
           <Button onClick={() => handleSubmit()} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save
+            {bulkMode ? `Create for ${bulkLeadCount} Leads` : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

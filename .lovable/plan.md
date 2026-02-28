@@ -1,61 +1,106 @@
 
 
-## Plan: Replace Bulk Task Form with Full AddTaskDialog (minus Related Entity)
+# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
 
-### Overview
-Replace the simplified inline bulk task creation form in `EnhancedLeadTable.tsx` with a new mode of the existing `AddTaskDialog` component. This avoids duplicating form UI and gives bulk task creation all the same features: templates, star/priority, reminders, recurrence, and subtasks.
+## Root Cause Analysis
 
-### Approach: Add a "bulk" mode to AddTaskDialog
+### Problem 1: Staff Activity Log Only Shows Login/Logout
+**Two causes found:**
+- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
+- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
 
-Rather than maintaining two separate forms, we will add a `bulkMode` prop to `AddTaskDialog`. When in bulk mode:
-- The "Related Entity" section is hidden (since leads are auto-linked)
-- The "Save & Add Another" button is hidden
-- The dialog title/description changes to reflect bulk creation (e.g., "Create Tasks for 15 Leads")
-- On submit, instead of creating a single task, it returns the task data + subtasks to the parent for batched creation
+### Problem 2: Automation Engine Never Fires (Critical Bug)
+**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
 
-### Changes
+### Problem 3: Notifications Invisible Even If Created
+**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
+- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
+- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
+- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
+- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
 
-**File: `src/components/tasks/AddTaskDialog.tsx`**
+Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
 
-1. Add new optional props to `AddTaskDialogProps`:
-   - `bulkMode?: boolean` -- enables bulk mode
-   - `bulkLeadCount?: number` -- number of selected leads (for display)
-   - `onBulkTaskSubmit?: (taskData: any, subtasks: Subtask[]) => void` -- callback that returns the form data instead of creating a task directly
+---
 
-2. When `bulkMode` is true:
-   - Hide the `RelatedEntitySection` component
-   - Change dialog title to "Create Tasks for {bulkLeadCount} Leads"
-   - Change dialog description to "A task will be created and linked to each selected lead"
-   - Hide the "Save & Add Another" button
-   - On submit: call `onBulkTaskSubmit(taskData, subtasks)` instead of calling `addTask()` directly, then close the dialog
+## Fix Plan
 
-**File: `src/components/leads/EnhancedLeadTable.tsx`**
+### Fix 1: Repair the Automation Trigger Function (Database Migration)
+Update the `notify_automation_engine()` function to:
+- Use `net.http_post()` instead of `extensions.http_post()`
+- Pass `body` as `jsonb` instead of `text`
 
-1. Remove the `bulkTaskFormData` state and its inline form UI (the entire `{bulkActionType === "create_task" && (...)}` block inside the bulk action dialog)
+```sql
+CREATE OR REPLACE FUNCTION public.notify_automation_engine()
+RETURNS trigger ...
+AS $$
+  ...
+  PERFORM net.http_post(
+    url := edge_url || '/functions/v1/run-automations',
+    body := payload,  -- jsonb, not text
+    headers := jsonb_build_object(...)
+  );
+  ...
+$$;
+```
 
-2. Add a new state: `bulkTaskDialogOpen` (boolean)
+### Fix 2: Fix Notification user_id Storage in Edge Function
+In `supabase/functions/run-automations/index.ts`:
+- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
+- Remove the duplicate `userIds.push(profile.id)` on line 176-177
+- Change the notification insert to use email instead of profile.id
 
-3. Change the "Create Task" dropdown menu item to open this new dialog instead of the bulk action dialog:
-   - `setBulkTaskDialogOpen(true)` instead of `setBulkActionType("create_task"); setBulkActionDialogOpen(true);`
+### Fix 3: Fix Notification Querying in Client
+In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
+- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
+- Update the realtime subscription filter accordingly
 
-4. Add `<AddTaskDialog>` instance with `bulkMode={true}` and `bulkLeadCount={selectedLeads.length}`
+### Fix 4: Add Comprehensive Staff Activity Logging
+Add `logStaffAction()` calls to these operations that currently lack them:
 
-5. Implement `onBulkTaskSubmit` handler:
-   - Receives `taskData` and `subtasks` from the dialog
-   - Uses existing batched processing pattern (batch size 10, `Promise.allSettled`, progress indicator)
-   - For each selected lead: calls `addTask({...taskData, lead_id: leadId, related_entity_type: "lead", related_entity_id: leadId})`
-   - After each task is created, if subtasks exist, inserts them into `task_subtasks`
-   - Shows success/error toast with count
-   - Clears selection on completion
+| Operation | File | Action Type |
+|-----------|------|-------------|
+| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
+| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
+| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
+| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
+| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
+| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
+| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
+| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
+| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
+| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
 
-6. Remove the `create_task` case from the existing bulk action dialog and `handleBulkAction` function (since it now uses its own dialog)
+Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
 
-### Technical Details
+### Fix 5: Expand StaffActivityPanel Display
+Update `src/components/settings/StaffActivityPanel.tsx` to:
+- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
+- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
 
-- The `AddTaskDialog` in bulk mode validates the form the same way (title required, min 5 chars, etc.)
-- Subtasks are created per-task: each lead's task gets its own copy of the subtasks
-- Recurrence settings, reminders, starred status all carry over to each created task
-- The assignee field defaults to staff but can be overridden; if left as-is, each task uses that assignee (not the lead's `assigned_to` like before -- the user explicitly picks)
-- Templates work the same way in bulk mode
-- Progress indicator reuses the existing `bulkProgress` state
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
+| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
+| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
+| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
+| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
+| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
+| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
+| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
+| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
+| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
+| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
+| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
+
+## Implementation Order
+1. Fix DB trigger function (migration) -- unblocks all automation
+2. Fix edge function notification user_id + duplicate push
+3. Fix notification client queries (email-based)
+4. Add comprehensive activity logging across all hooks
+5. Update StaffActivityPanel with new types and date filter
 
