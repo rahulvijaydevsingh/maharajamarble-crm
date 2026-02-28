@@ -125,7 +125,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       });
     }
     return result;
-  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter]);
+  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter, createdDateRange]);
   
   // MultiSelectFilter component for inline column filters
   const MultiSelectFilter = ({
