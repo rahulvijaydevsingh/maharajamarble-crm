@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 export function ApiAccessPanel() {
   const { keys, loading, generateKey, revokeKey, deleteKey } = useApiKeys();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [newKeyName, setNewKeyName] = useState("Default Key");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showGenDialog, setShowGenDialog] = useState(false);
