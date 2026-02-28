@@ -95,7 +95,20 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(p.assigned_to);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(p.priority.toString());
       
-      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch;
+      // Date range filter
+      let createdDateMatch = true;
+      if (createdDateRange.from || createdDateRange.to) {
+        const date = new Date(p.created_at);
+        let from = createdDateRange.from;
+        let to = createdDateRange.to;
+        if (from && to && from > to) { [from, to] = [to, from]; }
+        const toEnd = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999) : undefined;
+        if (from && toEnd) createdDateMatch = date >= from && date <= toEnd;
+        else if (from) createdDateMatch = date >= from;
+        else if (toEnd) createdDateMatch = date <= toEnd;
+      }
+      
+      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch && createdDateMatch;
     });
 
     if (sortField && sortDirection) {
