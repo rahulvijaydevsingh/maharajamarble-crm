@@ -1393,10 +1393,13 @@ export type Database = {
       }
       leave_requests: {
         Row: {
+          admin_comment: string | null
           approved_at: string | null
           approved_by: string | null
           created_at: string
+          document_url: string | null
           end_date: string
+          half_day_type: string | null
           id: string
           leave_type: string
           reason: string | null
@@ -1408,10 +1411,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          admin_comment?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
+          document_url?: string | null
           end_date: string
+          half_day_type?: string | null
           id?: string
           leave_type?: string
           reason?: string | null
@@ -1423,10 +1429,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          admin_comment?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
+          document_url?: string | null
           end_date?: string
+          half_day_type?: string | null
           id?: string
           leave_type?: string
           reason?: string | null
