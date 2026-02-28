@@ -247,7 +247,7 @@ export function RecurrenceSection({ data, onChange, disabled = false }: Recurren
                       {data.endDate ? format(data.endDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[80]" align="start">
+                  <PopoverContent className="w-auto p-0 z-[220]" align="start">
                     <Calendar
                       mode="single"
                       selected={data.endDate}

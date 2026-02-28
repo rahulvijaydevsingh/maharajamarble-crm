@@ -550,7 +550,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
                     <SelectTrigger className="text-xs h-8">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {REMINDER_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
