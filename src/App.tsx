@@ -23,6 +23,8 @@ import AutomationRules from "./pages/AutomationRules";
 import Messages from "./pages/Messages";
 import ApiDocs from "./pages/ApiDocs";
 import HRAttendance from "./pages/HRAttendance";
+import HRLeave from "./pages/HRLeave";
+import HRLeaveApprovals from "./pages/HRLeaveApprovals";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
