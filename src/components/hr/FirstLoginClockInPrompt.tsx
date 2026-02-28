@@ -37,7 +37,7 @@ export function FirstLoginClockInPrompt() {
     setOpen(false);
   };
 
-  if (!isHREnabled || role === "sales_viewer") return null;
+  if (!hrEnabled || role === "sales_viewer") return null;
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
