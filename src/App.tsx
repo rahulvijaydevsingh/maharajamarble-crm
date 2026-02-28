@@ -22,6 +22,7 @@ import Auth from "./pages/Auth";
 import AutomationRules from "./pages/AutomationRules";
 import Messages from "./pages/Messages";
 import ApiDocs from "./pages/ApiDocs";
+import HRAttendance from "./pages/HRAttendance";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
