@@ -74,6 +74,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [cityFilter, setCityFilter] = useState<string[]>([]);
   const [assignedToFilter, setAssignedToFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
+  const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
 
   const uniqueAssignedTo = useMemo(() => Array.from(new Set(professionals.map(p => p.assigned_to))), [professionals]);
   const uniqueCities = useMemo(() => Array.from(new Set(professionals.map(p => p.city).filter(Boolean) as string[])), [professionals]);
