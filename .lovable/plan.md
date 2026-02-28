@@ -1,106 +1,153 @@
 
 
-# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
+## Plan: HR Payroll Module + Fix HR Sidebar Visibility + Fix API Docs Access
 
-## Root Cause Analysis
-
-### Problem 1: Staff Activity Log Only Shows Login/Logout
-**Two causes found:**
-- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
-- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
-
-### Problem 2: Automation Engine Never Fires (Critical Bug)
-**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
-
-### Problem 3: Notifications Invisible Even If Created
-**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
-- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
-- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
-- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
-- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
-
-Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
+### Overview
+This plan covers 5 areas: (1) Fix HR module visibility in sidebar, (2) Fix API docs opening in new window requiring re-login, (3) Build the complete payroll feature (Part 5), (4) Update API docs and backup system for HR endpoints, (5) End-to-end testing.
 
 ---
 
-## Fix Plan
+### Issue 1: HR Module Not Visible in Sidebar
 
-### Fix 1: Repair the Automation Trigger Function (Database Migration)
-Update the `notify_automation_engine()` function to:
-- Use `net.http_post()` instead of `extensions.http_post()`
-- Pass `body` as `jsonb` instead of `text`
+**Root Cause**: The HR nav items (Attendance, My Leave, Leave Approvals) are appended inside the "Main" navigation group but gated by `hrEnabled && role !== "sales_viewer"`. From the screenshot, there is no HR section visible -- the HR module toggle may be OFF, or the items are buried at the bottom of the Main list without a clear section header.
+
+**Fix in `src/components/shared/Sidebar.tsx`**:
+- Move HR nav items out of the `mainNavigation` list into a separate "HR" sidebar group (like the "Admin" group)
+- Add a dedicated `SidebarGroupLabel` for "HR" that only renders when `hrEnabled` is true
+- Add a "Payroll" nav item under the HR group (admin only)
+- Ensure the HR group shows between Main and Admin groups
+
+---
+
+### Issue 2: API Docs Opens in New Window + Requires Login
+
+**Root Cause**: In `ApiAccessPanel.tsx` line 129, the "View API Documentation" button uses `window.open("/api-docs", "_blank")` which opens a new browser tab. The new tab has no auth session in the preview iframe context, causing a redirect to `/auth`.
+
+**Fix in `src/components/settings/ApiAccessPanel.tsx`**:
+- Replace `window.open("/api-docs", "_blank")` with React Router's `useNavigate()` to navigate in-app: `navigate("/api-docs")`
+- This keeps the user in the same authenticated session
+
+---
+
+### Issue 3: Database Migration for Payroll
+
+The `salary_records` table exists but needs additional columns for the payroll feature:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.notify_automation_engine()
-RETURNS trigger ...
-AS $$
-  ...
-  PERFORM net.http_post(
-    url := edge_url || '/functions/v1/run-automations',
-    body := payload,  -- jsonb, not text
-    headers := jsonb_build_object(...)
-  );
-  ...
-$$;
+ALTER TABLE public.salary_records
+  ADD COLUMN IF NOT EXISTS days_lwp integer DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS manual_additions jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS manual_deductions jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS finalized_at timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS finalized_by uuid;
 ```
 
-### Fix 2: Fix Notification user_id Storage in Edge Function
-In `supabase/functions/run-automations/index.ts`:
-- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
-- Remove the duplicate `userIds.push(profile.id)` on line 176-177
-- Change the notification insert to use email instead of profile.id
+- `days_lwp`: LWP days count
+- `manual_additions`: `[{label, amount}]` array for bonuses/allowances
+- `manual_deductions`: `[{label, amount}]` array for deductions/recoveries
+- `finalized_at/finalized_by`: lock tracking
 
-### Fix 3: Fix Notification Querying in Client
-In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
-- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
-- Update the realtime subscription filter accordingly
-
-### Fix 4: Add Comprehensive Staff Activity Logging
-Add `logStaffAction()` calls to these operations that currently lack them:
-
-| Operation | File | Action Type |
-|-----------|------|-------------|
-| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
-| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
-| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
-| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
-| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
-| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
-| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
-| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
-| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
-| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
-
-Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
-
-### Fix 5: Expand StaffActivityPanel Display
-Update `src/components/settings/StaffActivityPanel.tsx` to:
-- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
-- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
+Also add admin DELETE policy for salary_records:
+```sql
+CREATE POLICY "Admins can delete salary records"
+ON public.salary_records FOR DELETE TO authenticated
+USING (public.is_admin());
+```
 
 ---
 
-## Files to Modify
+### Issue 4: Edge Function `hr-generate-salary`
 
-| File | Change |
-|------|--------|
-| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
-| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
-| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
-| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
-| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
-| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
-| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
-| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
-| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
-| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
-| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
-| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
+**File: `supabase/functions/hr-generate-salary/index.ts`**
 
-## Implementation Order
-1. Fix DB trigger function (migration) -- unblocks all automation
-2. Fix edge function notification user_id + duplicate push
-3. Fix notification client queries (email-based)
-4. Add comprehensive activity logging across all hooks
-5. Update StaffActivityPanel with new types and date filter
+For a given month + year:
+1. Verify JWT, check admin role
+2. Fetch all active staff from `profiles` (where `is_active = true`)
+3. For each staff member:
+   - Get `staff_hr_settings` (base_salary, work_days, shift times, overtime_rate)
+   - Count `attendance_records` for the month by status (present, on_leave, absent)
+   - Count LWP days from `leave_requests` (approved, type=lwp)
+   - Calculate: OT hours from `attendance_records.overtime_hours` sum
+   - Calculate: OT pay = OT hours x (base_salary / total_working_days / 8) x overtime_rate
+   - Calculate: net_salary = base_salary - (base_salary / total_working_days x days_absent) + OT pay
+   - Upsert into `salary_records`
+4. Return summary: total payroll, staff count
+
+**Config addition to `supabase/config.toml`**:
+```toml
+[functions.hr-generate-salary]
+verify_jwt = false
+```
+
+---
+
+### Issue 5: Payroll Page `src/pages/HRPayroll.tsx`
+
+**Route: `/hr/payroll`** (admin only)
+
+**Part A - Dashboard**:
+- Month/year selector defaulting to current month
+- "Generate Report" button calling the edge function
+- Summary cards: Total Payroll, Staff Count, Average Salary
+
+**Part B - Payroll Table**:
+- Columns: Staff Name | Days Present | Leave (Paid) | LWP | Absent | OT Hours | Base Salary | OT Pay | Adjustments | Net Salary | Status | Actions
+- Each row expandable to show day-by-day attendance breakdown
+- Inline editing: click any salary figure to edit (with mandatory note)
+- Manual additions/deductions: +/- buttons open small dialog for label + amount
+- Edited values shown with pencil icon
+- Status: Draft (editable) / Finalized (locked)
+- "Finalize Month" button locks all draft records
+
+**Part C - Export**:
+- "Export Excel" button: generates .xlsx using the `xlsx` library (already installed)
+  - Columns: Name, Designation, Days Present, Days Leave, Days LWP, Days Absent, OT Hours, Base, OT Pay, Additions, Deductions, Net Salary
+- "Export PDF Payslips" and individual "Download PDF": generate a simple HTML-based PDF via `window.print()` styled payslip layout
+  - Company header, staff details, month, attendance summary, earnings/deductions, net salary, signature line
+- "Send via WhatsApp" not implemented (WhatsApp module not present) -- button hidden
+
+---
+
+### Issue 6: Update API Docs + Backup System
+
+**API Docs (`src/pages/ApiDocs.tsx`)**:
+- Add an "HR" section documenting the HR endpoints (attendance, leave, payroll)
+- These are internal edge functions (not part of the external REST API), so document them as "Internal HR Endpoints" with their paths and expected payloads
+
+**Backup System**: No changes needed -- backup operates on leads, customers, tasks, etc. HR data (attendance, leave, salary) is separate administrative data not typically included in CRM backups.
+
+---
+
+### Issue 7: Route and Navigation Updates
+
+**`src/App.tsx`**:
+- Add route: `/hr/payroll` with `ProtectedRoute requiredRole="admin"`
+- Import `HRPayroll` page
+
+**`src/components/shared/Sidebar.tsx`**:
+- Restructure HR items into a dedicated sidebar group
+- Add "Payroll" item (admin only, icon: Wallet/Banknote)
+
+---
+
+### File Summary
+
+| Action | File |
+|--------|------|
+| Migration | Add `days_lwp`, `manual_additions`, `manual_deductions`, `finalized_at`, `finalized_by` to `salary_records` + delete policy |
+| Create | `supabase/functions/hr-generate-salary/index.ts` |
+| Create | `src/pages/HRPayroll.tsx` |
+| Modify | `src/components/shared/Sidebar.tsx` (HR group + Payroll item) |
+| Modify | `src/components/settings/ApiAccessPanel.tsx` (fix new window issue) |
+| Modify | `src/App.tsx` (add payroll route) |
+| Modify | `src/pages/ApiDocs.tsx` (add HR endpoints docs) |
+| Modify | `supabase/config.toml` (add hr-generate-salary) |
+
+### Implementation Order
+1. Database migration (add salary_records columns)
+2. Fix sidebar HR visibility + API docs navigation
+3. Edge function (hr-generate-salary)
+4. HRPayroll.tsx page
+5. App.tsx routes + sidebar updates
+6. API docs update
 
