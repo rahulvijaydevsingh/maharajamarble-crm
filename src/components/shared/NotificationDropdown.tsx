@@ -348,8 +348,7 @@ export function NotificationDropdown() {
                           size="icon"
                           className="h-7 w-7"
                           onClick={(e) => {
-                            e.stopPropagation();
-                            handleDismissNotification(notification.id);
+                            handleDismissNotification(notification.id, e);
                           }}
                         >
                           <X className="h-3.5 w-3.5" />
