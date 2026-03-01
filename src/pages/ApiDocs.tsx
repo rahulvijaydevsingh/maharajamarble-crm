@@ -202,9 +202,14 @@ Always confirm actions before destructive operations like delete.`;
             <BookOpen className="h-7 w-7" />
             API Documentation
           </h1>
-          <p className="text-muted-foreground">
-            Complete REST API reference for external AI tool integration
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-muted-foreground">
+              Complete REST API reference for external AI tool integration
+            </p>
+            <Button variant="outline" onClick={() => generateApiDocx(BASE_URL, endpoints)}>
+              <Download className="h-4 w-4 mr-2" /> Download DOCX
+            </Button>
+          </div>
         </div>
 
         {/* Quick Start */}
