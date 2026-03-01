@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, ChevronDown, ChevronRight, BookOpen, Zap, Key } from "lucide-react";
+import { Copy, ChevronDown, ChevronRight, BookOpen, Zap, Key, Download } from "lucide-react";
+import { generateApiDocx } from "@/lib/generateApiDocx";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const BASE_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/api`;
