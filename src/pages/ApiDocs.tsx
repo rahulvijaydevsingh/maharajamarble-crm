@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, ChevronDown, ChevronRight, BookOpen, Zap, Key } from "lucide-react";
+import { Copy, ChevronDown, ChevronRight, BookOpen, Zap, Key, Download } from "lucide-react";
+import { generateApiDocx } from "@/lib/generateApiDocx";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const BASE_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/api`;
@@ -201,9 +202,14 @@ Always confirm actions before destructive operations like delete.`;
             <BookOpen className="h-7 w-7" />
             API Documentation
           </h1>
-          <p className="text-muted-foreground">
-            Complete REST API reference for external AI tool integration
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-muted-foreground">
+              Complete REST API reference for external AI tool integration
+            </p>
+            <Button variant="outline" onClick={() => generateApiDocx(BASE_URL, endpoints)}>
+              <Download className="h-4 w-4 mr-2" /> Download DOCX
+            </Button>
+          </div>
         </div>
 
         {/* Quick Start */}
