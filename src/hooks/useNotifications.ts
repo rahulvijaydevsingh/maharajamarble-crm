@@ -117,7 +117,7 @@ export const useMarkNotificationRead = () => {
   });
 };
 
-// Mark all notifications as read
+// Mark all notifications as read and dismissed
 export const useMarkAllNotificationsRead = () => {
   const queryClient = useQueryClient();
   
@@ -125,9 +125,9 @@ export const useMarkAllNotificationsRead = () => {
     mutationFn: async (userId: string) => {
       const { error } = await supabase
         .from("notifications")
-        .update({ is_read: true })
+        .update({ is_read: true, is_dismissed: true })
         .eq("user_id", userId)
-        .eq("is_read", false);
+        .eq("is_dismissed", false);
       
       if (error) throw error;
     },
@@ -135,8 +135,8 @@ export const useMarkAllNotificationsRead = () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
       toast({
-        title: "All Read",
-        description: "All notifications marked as read.",
+        title: "All Cleared",
+        description: "All notifications have been dismissed.",
       });
     },
   });
