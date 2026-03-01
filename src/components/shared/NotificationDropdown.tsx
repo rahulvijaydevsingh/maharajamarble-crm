@@ -83,7 +83,9 @@ export function NotificationDropdown() {
     markAsRead.mutate(notificationId);
   };
 
-  const handleDismissNotification = (notificationId: string) => {
+  const handleDismissNotification = (notificationId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
     dismissNotification.mutate(notificationId);
   };
 
