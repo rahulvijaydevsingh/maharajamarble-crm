@@ -299,6 +299,7 @@ export interface EntityField {
   options?: { value: string; label: string }[];
   required?: boolean;
   editable?: boolean;
+  dynamicOptions?: "staff";
 }
 
 // Variable for template interpolation
