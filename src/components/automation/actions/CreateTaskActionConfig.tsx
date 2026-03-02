@@ -76,7 +76,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {TASK_TYPES.map((t) => (
               <SelectItem key={t.value} value={t.value}>
                 {t.label}
@@ -96,7 +96,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             <SelectItem value="High">High</SelectItem>
             <SelectItem value="Medium">Medium</SelectItem>
             <SelectItem value="Low">Low</SelectItem>
@@ -114,7 +114,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {ASSIGNEE_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
@@ -123,11 +123,26 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           </SelectContent>
         </Select>
         {config.assigned_to_type === "specific_user" && (
-          <Input
-            className="mt-2"
+          <Select
             value={config.assigned_to || ""}
-            onChange={(e) => handleChange("assigned_to", e.target.value)}
-            placeholder="Enter user name"
+            onValueChange={(v) => handleChange("assigned_to", v)}
+          >
+            <SelectTrigger className="mt-2">
+              <SelectValue placeholder="Select staff member..." />
+            </SelectTrigger>
+            <SelectContent className="z-[220]">
+              {staffGroups.map((group) => (
+                <SelectGroup key={group.label}>
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {group.members.map((member) => (
+                    <SelectItem key={member.id} value={member.name}>
+                      {member._display}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
           />
         )}
       </div>
