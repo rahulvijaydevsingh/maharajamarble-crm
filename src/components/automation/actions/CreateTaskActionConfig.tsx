@@ -159,7 +159,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {DUE_DATE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
@@ -185,7 +185,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[220]">
                 {TIME_OFFSET_UNITS.map((u) => (
                   <SelectItem key={u.value} value={u.value}>
                     {u.label}
@@ -208,7 +208,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[220]">
                 <SelectItem value="current">Current time</SelectItem>
                 <SelectItem value="relative">+ X hours from now</SelectItem>
                 <SelectItem value="specific">Specific time</SelectItem>
@@ -254,7 +254,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {REMINDER_TIMING_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
