@@ -2,13 +2,15 @@ import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import { TASK_TYPES, DUE_DATE_OPTIONS, ASSIGNEE_OPTIONS, REMINDER_TIMING_OPTIONS, TIME_OFFSET_UNITS } from "@/constants/automationConstants";
 import { RecurrenceSection } from "@/components/tasks/form/RecurrenceSection";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 
 interface CreateTaskActionConfigProps {
   config: Record<string, any>;
@@ -18,6 +20,8 @@ interface CreateTaskActionConfigProps {
 
 export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskActionConfigProps) => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const { staffMembers } = useActiveStaff();
+  const staffGroups = buildStaffGroups(staffMembers);
   
   const handleChange = (field: string, value: any) => {
     onConfigChange({ ...config, [field]: value });
