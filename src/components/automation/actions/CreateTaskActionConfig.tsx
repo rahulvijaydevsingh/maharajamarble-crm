@@ -143,7 +143,6 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
               ))}
             </SelectContent>
           </Select>
-          />
         )}
       </div>
 
