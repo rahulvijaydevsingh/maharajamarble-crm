@@ -1,8 +1,10 @@
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { EntityField } from "@/types/automation";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 
 interface FieldValueSelectorProps {
   field: EntityField | undefined;
@@ -12,6 +14,9 @@ interface FieldValueSelectorProps {
 }
 
 export const FieldValueSelector = ({ field, value, onChange, placeholder }: FieldValueSelectorProps) => {
+  const { staffMembers } = useActiveStaff();
+  const staffGroups = buildStaffGroups(staffMembers);
+
   if (!field) {
     return (
       <Input
@@ -22,6 +27,29 @@ export const FieldValueSelector = ({ field, value, onChange, placeholder }: Fiel
     );
   }
 
+  // Dynamic staff selector for assigned_to / created_by fields
+  if (field.dynamicOptions === "staff") {
+    return (
+      <Select value={value || ""} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue placeholder={`Select ${field.label}...`} />
+        </SelectTrigger>
+        <SelectContent className="z-[220]">
+          {staffGroups.map((group) => (
+            <SelectGroup key={group.label}>
+              <SelectLabel>{group.label}</SelectLabel>
+              {group.members.map((member) => (
+                <SelectItem key={member.id} value={member.name}>
+                  {member._display}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   // Select/dropdown fields - show dropdown with options
   if ((field.type === "select" || field.type === "array") && field.options && field.options.length > 0) {
     return (
@@ -29,7 +57,7 @@ export const FieldValueSelector = ({ field, value, onChange, placeholder }: Fiel
         <SelectTrigger>
           <SelectValue placeholder={`Select ${field.label}...`} />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="z-[220]">
           {field.options.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
