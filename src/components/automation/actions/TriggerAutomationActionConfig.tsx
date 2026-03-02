@@ -58,7 +58,7 @@ export const TriggerAutomationActionConfig = ({
             <SelectTrigger>
               <SelectValue placeholder="Select an automation rule..." />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {availableRules.map(rule => (
                 <SelectItem key={rule.id} value={rule.id}>
                   <div className="flex items-center gap-2">

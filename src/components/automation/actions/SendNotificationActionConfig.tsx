@@ -69,7 +69,7 @@ export const SendNotificationActionConfig = ({ config, onConfigChange }: SendNot
               <SelectTrigger>
                 <SelectValue placeholder="Select staff member..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[220]">
                 {staffGroups.map((group) => (
                   <SelectGroup key={group.label}>
                     <SelectLabel>{group.label}</SelectLabel>
@@ -132,7 +132,7 @@ export const SendNotificationActionConfig = ({ config, onConfigChange }: SendNot
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             <SelectItem value="in_app">In-App Only</SelectItem>
             <SelectItem value="email">Email Only</SelectItem>
             <SelectItem value="in_app_email">In-App + Email</SelectItem>
@@ -151,7 +151,7 @@ export const SendNotificationActionConfig = ({ config, onConfigChange }: SendNot
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {NOTIFICATION_PRIORITIES.map((p) => (
               <SelectItem key={p.value} value={p.value}>
                 <div>

@@ -2,13 +2,15 @@ import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import { TASK_TYPES, DUE_DATE_OPTIONS, ASSIGNEE_OPTIONS, REMINDER_TIMING_OPTIONS, TIME_OFFSET_UNITS } from "@/constants/automationConstants";
 import { RecurrenceSection } from "@/components/tasks/form/RecurrenceSection";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 
 interface CreateTaskActionConfigProps {
   config: Record<string, any>;
@@ -18,6 +20,8 @@ interface CreateTaskActionConfigProps {
 
 export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskActionConfigProps) => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const { staffMembers } = useActiveStaff();
+  const staffGroups = buildStaffGroups(staffMembers);
   
   const handleChange = (field: string, value: any) => {
     onConfigChange({ ...config, [field]: value });
@@ -72,7 +76,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {TASK_TYPES.map((t) => (
               <SelectItem key={t.value} value={t.value}>
                 {t.label}
@@ -92,7 +96,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             <SelectItem value="High">High</SelectItem>
             <SelectItem value="Medium">Medium</SelectItem>
             <SelectItem value="Low">Low</SelectItem>
@@ -110,7 +114,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {ASSIGNEE_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
@@ -119,12 +123,26 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
           </SelectContent>
         </Select>
         {config.assigned_to_type === "specific_user" && (
-          <Input
-            className="mt-2"
+          <Select
             value={config.assigned_to || ""}
-            onChange={(e) => handleChange("assigned_to", e.target.value)}
-            placeholder="Enter user name"
-          />
+            onValueChange={(v) => handleChange("assigned_to", v)}
+          >
+            <SelectTrigger className="mt-2">
+              <SelectValue placeholder="Select staff member..." />
+            </SelectTrigger>
+            <SelectContent className="z-[220]">
+              {staffGroups.map((group) => (
+                <SelectGroup key={group.label}>
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {group.members.map((member) => (
+                    <SelectItem key={member.id} value={member.name}>
+                      {member._display}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
@@ -141,7 +159,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {DUE_DATE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
@@ -167,7 +185,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[220]">
                 {TIME_OFFSET_UNITS.map((u) => (
                   <SelectItem key={u.value} value={u.value}>
                     {u.label}
@@ -190,7 +208,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[220]">
                 <SelectItem value="current">Current time</SelectItem>
                 <SelectItem value="relative">+ X hours from now</SelectItem>
                 <SelectItem value="specific">Specific time</SelectItem>
@@ -236,7 +254,7 @@ export const CreateTaskActionConfig = ({ config, onConfigChange }: CreateTaskAct
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {REMINDER_TIMING_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}

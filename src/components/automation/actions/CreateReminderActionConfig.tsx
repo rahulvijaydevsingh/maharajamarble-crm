@@ -67,7 +67,7 @@ export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateRem
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               <SelectItem value="relative">In</SelectItem>
               <SelectItem value="absolute">At specific time</SelectItem>
             </SelectContent>
@@ -89,7 +89,7 @@ export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateRem
                 <SelectTrigger className="w-28">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[220]">
                   {REMINDER_OFFSET_UNITS.map(u => (
                     <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
                   ))}
@@ -118,7 +118,7 @@ export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateRem
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {ASSIGNEE_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
@@ -133,7 +133,7 @@ export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateRem
             <SelectTrigger>
               <SelectValue placeholder="Select user..." />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {groupedStaff.flatMap((group) =>
                 group.members.map((member) => (
                   <SelectItem key={member.id} value={member._display}>
@@ -168,7 +168,7 @@ export const CreateReminderActionConfig = ({ config, onConfigChange }: CreateRem
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               <SelectItem value="daily">Daily</SelectItem>
               <SelectItem value="weekly">Weekly</SelectItem>
               <SelectItem value="monthly">Monthly</SelectItem>

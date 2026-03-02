@@ -358,7 +358,7 @@ export const AddAutomationRuleDialog = ({
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[220]">
                     {ENTITY_TYPES.map(e => (
                       <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                     ))}
@@ -523,7 +523,7 @@ export const AddAutomationRuleDialog = ({
                                         onValueChange={(v) => handleUpdateAction(action.id, { config: { ...action.config, field: v } })}
                                       >
                                         <SelectTrigger><SelectValue placeholder="Select field" /></SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="z-[220]">
                                           {entityFields.filter(f => f.editable).map(f => (
                                             <SelectItem key={f.name} value={f.name}>{f.label}</SelectItem>
                                           ))}
@@ -583,7 +583,7 @@ export const AddAutomationRuleDialog = ({
                                           onValueChange={(v) => handleUpdateAction(action.id, { config: { ...action.config, method: v } })}
                                         >
                                           <SelectTrigger><SelectValue /></SelectTrigger>
-                                          <SelectContent>
+                                          <SelectContent className="z-[220]">
                                             {["GET", "POST", "PUT", "PATCH", "DELETE"].map(m => (
                                               <SelectItem key={m} value={m}>{m}</SelectItem>
                                             ))}
@@ -678,7 +678,7 @@ export const AddAutomationRuleDialog = ({
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[220]">
                         {EXECUTION_LIMIT_OPTIONS.map(o => (
                           <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))}

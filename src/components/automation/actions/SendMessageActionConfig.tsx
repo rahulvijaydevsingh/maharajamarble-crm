@@ -64,7 +64,7 @@ export const SendMessageActionConfig = ({ config, onConfigChange }: SendMessageA
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             {MESSAGE_RECIPIENT_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
@@ -85,7 +85,7 @@ export const SendMessageActionConfig = ({ config, onConfigChange }: SendMessageA
             <SelectTrigger>
               <SelectValue placeholder="Select a user..." />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[220]">
               {loading ? (
                 <SelectItem value="loading" disabled>Loading...</SelectItem>
               ) : (
@@ -213,7 +213,7 @@ export const SendMessageActionConfig = ({ config, onConfigChange }: SendMessageA
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[220]">
             <SelectItem value="normal">Normal</SelectItem>
             <SelectItem value="important">Important - Highlighted in chat</SelectItem>
             <SelectItem value="urgent">Urgent - Sends push notification</SelectItem>
