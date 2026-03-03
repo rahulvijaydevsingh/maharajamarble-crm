@@ -70,7 +70,7 @@ export function PendingLostBanner({
             </p>
           )}
 
-          {isAdmin() && (
+          {isAdminUser && (
             <div className="flex items-center gap-2 mt-3">
               <Button
                 size="sm"
@@ -101,7 +101,7 @@ export function PendingLostBanner({
             </div>
           )}
 
-          {!isAdmin() && (
+          {!isAdminUser && (
             <p className="text-sm text-violet-600 mt-2 italic">
               Your manager will review and approve or reject this request.
             </p>
