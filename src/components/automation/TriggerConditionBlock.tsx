@@ -215,7 +215,7 @@ export const TriggerConditionBlock = ({
                     <SelectTrigger>
                       <SelectValue placeholder="Select when to trigger..." />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {FIELD_CHANGE_WHEN_OPTIONS.map(o => (
                         <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
@@ -235,7 +235,7 @@ export const TriggerConditionBlock = ({
                           <SelectTrigger>
                             <SelectValue placeholder="Select field..." />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[220]">
                             {entityFields.map(f => (
                               <SelectItem key={f.name} value={f.name}>
                                 <div className="flex items-center gap-2">
@@ -260,7 +260,7 @@ export const TriggerConditionBlock = ({
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
+                             <SelectContent className="z-[220]">
                               {[
                                 { value: "equals", label: "Equals" },
                                 { value: "not_equals", label: "Not equals" },
@@ -309,7 +309,7 @@ export const TriggerConditionBlock = ({
                           <SelectTrigger>
                             <SelectValue placeholder="Select field..." />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[220]">
                             {entityFields.map(f => (
                               <SelectItem key={f.name} value={f.name}>{f.label}</SelectItem>
                             ))}
@@ -364,7 +364,7 @@ export const TriggerConditionBlock = ({
                       })}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[220]">
                         {TIME_OFFSET_UNITS.map(u => (
                           <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
                         ))}
@@ -377,7 +377,7 @@ export const TriggerConditionBlock = ({
                       })}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[220]">
                         {TIME_OFFSET_DIRECTIONS.map(d => (
                           <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
                         ))}
@@ -393,7 +393,7 @@ export const TriggerConditionBlock = ({
                     <SelectTrigger>
                       <SelectValue placeholder="Relative to field..." />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {entityFields.filter(f => f.type === "date" || f.type === "datetime").map(f => (
                         <SelectItem key={f.name} value={f.name}>{f.label}</SelectItem>
                       ))}
@@ -414,7 +414,7 @@ export const TriggerConditionBlock = ({
                     <SelectTrigger>
                       <SelectValue placeholder="Condition..." />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {THRESHOLD_OPERATORS.map(o => (
                         <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
@@ -437,7 +437,7 @@ export const TriggerConditionBlock = ({
                     <SelectTrigger>
                       <SelectValue placeholder="Check frequency" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {CHECK_FREQUENCY_OPTIONS.map(o => (
                         <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
@@ -460,7 +460,7 @@ export const TriggerConditionBlock = ({
                       <SelectTrigger>
                         <SelectValue placeholder="Select a saved filter..." />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[220]">
                         {savedFilters.length === 0 ? (
                           <div className="p-2 text-sm text-muted-foreground">
                             No saved filters found for {entityType}
@@ -488,7 +488,7 @@ export const TriggerConditionBlock = ({
                     <SelectTrigger>
                       <SelectValue placeholder="Condition" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {SAVED_FILTER_CONDITIONS.map(c => (
                         <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                       ))}
@@ -515,7 +515,7 @@ export const TriggerConditionBlock = ({
                     <SelectTrigger>
                       <SelectValue placeholder="Check frequency" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[220]">
                       {CHECK_FREQUENCY_OPTIONS.map(o => (
                         <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
