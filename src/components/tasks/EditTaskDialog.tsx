@@ -531,7 +531,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                 <SelectTrigger>
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[220]">
                   <SelectGroup>
                     <SelectLabel>Standard Tasks</SelectLabel>
                     {TASK_TYPES.map((type) => (
@@ -554,7 +554,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                 <SelectTrigger>
                   <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[220]">
                   {TASK_PRIORITIES.map((p) => (
                     <SelectItem key={p.value} value={p.value}>
                       <span className={p.color}>{p.label}</span>
@@ -573,7 +573,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                 <SelectTrigger>
                   <SelectValue placeholder={staffLoading ? "Loading..." : "Select assignee"} />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[220]">
                   {staffMembers.map((member) => (
                     <SelectItem key={member.id} value={member.email || member.id}>
                       {(member as any)._display || member.name}
@@ -589,7 +589,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[220]">
                   {TASK_STATUSES.map((status) => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}
@@ -623,7 +623,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                     {formData.dueDate ? format(formData.dueDate, "PPP") : "Pick a date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[80]" align="start">
+                <PopoverContent className="w-auto p-0 z-[220]" align="start">
                   <Calendar
                     mode="single"
                     selected={formData.dueDate}
@@ -663,7 +663,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
-                    <SelectContent className="z-[80]">
+                    <SelectContent className="z-[220]">
                       {REMINDER_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
