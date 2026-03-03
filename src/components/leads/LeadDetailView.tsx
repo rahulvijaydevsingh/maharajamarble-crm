@@ -232,6 +232,72 @@ export function LeadDetailView({
     setIsEditing(false);
   };
 
+  const handleMarkAsLost = async (reasonKey: string, notes: string) => {
+    if (!currentLead) return;
+    await updateLead(currentLead.id, {
+      status: 'pending_lost',
+      lost_reason: reasonKey,
+      lost_reason_notes: notes || null,
+      previous_status: currentLead.status,
+    } as any);
+    await supabase.from('leads').update({ pending_lost_since: new Date().toISOString() }).eq('id', currentLead.id);
+    await logActivity({
+      lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
+      title: 'Lost Request Submitted',
+      description: `Lead marked as Pending Lost. Reason: ${reasonKey}${notes ? ` — ${notes}` : ''}`,
+      metadata: { old_status: currentLead.status, new_status: 'pending_lost', lost_reason: reasonKey },
+    });
+    await refetch();
+    toast({ title: "Lost Request Submitted", description: "Awaiting manager approval." });
+  };
+
+  const handleApproveLost = async () => {
+    if (!currentLead) return;
+    const { data: reasonData } = await supabase.from('lead_lost_reasons').select('cooling_off_days').eq('reason_key', (currentLead as any).lost_reason || '').single();
+    const coolingDays = reasonData?.cooling_off_days;
+    const coolingDate = coolingDays ? new Date(Date.now() + coolingDays * 86400000).toISOString().split('T')[0] : null;
+    
+    await supabase.from('leads').update({
+      status: 'lost',
+      lost_at: new Date().toISOString(),
+      lost_approved_by: user?.id || null,
+      cooling_off_due_date: coolingDate,
+    }).eq('id', currentLead.id);
+    
+    // Cancel all open tasks on this lead
+    await supabase.from('tasks').update({ status: 'Completed', completion_notes: 'Cancelled — Lead marked Lost' } as any)
+      .eq('lead_id', currentLead.id).not('status', 'eq', 'Completed');
+    
+    await logActivity({
+      lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
+      title: 'Lead Marked Lost — Approved',
+      description: `Lead approved as Lost. Reason: ${(currentLead as any).lost_reason || 'N/A'}`,
+    });
+    await refetch();
+    toast({ title: "Lead Marked as Lost", description: "Lead moved to archive." });
+    onOpenChange(false);
+  };
+
+  const handleRejectLost = async () => {
+    if (!currentLead) return;
+    const prevStatus = (currentLead as any).previous_status || 'in-progress';
+    await supabase.from('leads').update({
+      status: prevStatus,
+      pending_lost_since: null,
+      lost_reason: null,
+      lost_reason_notes: null,
+      previous_status: null,
+    }).eq('id', currentLead.id);
+    
+    await logActivity({
+      lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
+      title: 'Lost Request Rejected',
+      description: `Lost request rejected. Lead returned to ${prevStatus}.`,
+    });
+    await refetch();
+    toast({ title: "Lost Request Rejected", description: `Lead returned to active status.` });
+  };
+
   if (!currentLead) return null;
 
   const statusConfig = statusStyles[currentLead.status] || { label: currentLead.status, className: 'bg-gray-100 text-gray-700' };
