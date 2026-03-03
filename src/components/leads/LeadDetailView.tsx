@@ -387,6 +387,12 @@ export function LeadDetailView({
                     Export
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  {!['won', 'lost', 'deleted', 'pending_lost'].includes(currentLead.status) && (
+                    <DropdownMenuItem onClick={() => setMarkLostOpen(true)}>
+                      <XOctagon className="h-4 w-4 mr-2" />
+                      Mark as Lost
+                    </DropdownMenuItem>
+                  )}
                   {onDelete && (
                     <DropdownMenuItem 
                       className="text-destructive"
