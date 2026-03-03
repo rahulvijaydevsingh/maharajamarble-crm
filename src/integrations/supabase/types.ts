@@ -1217,6 +1217,36 @@ export type Database = {
           },
         ]
       }
+      lead_lost_reasons: {
+        Row: {
+          cooling_off_days: number | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          reason_key: string
+          reason_label: string
+          sort_order: number | null
+        }
+        Insert: {
+          cooling_off_days?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          reason_key: string
+          reason_label: string
+          sort_order?: number | null
+        }
+        Update: {
+          cooling_off_days?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          reason_key?: string
+          reason_label?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           additional_contacts: Json | null
@@ -1226,9 +1256,12 @@ export type Database = {
           construction_stage: string | null
           converted_at: string | null
           converted_to_customer_id: string | null
+          cooling_off_due_date: string | null
           created_at: string
           created_by: string
           created_from_customer_id: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           designation: string
           email: string | null
           estimated_quantity: number | null
@@ -1238,11 +1271,19 @@ export type Database = {
           kit_status: string | null
           kit_subscription_id: string | null
           last_follow_up: string | null
+          lost_approved_by: string | null
+          lost_at: string | null
+          lost_reason: string | null
+          lost_reason_notes: string | null
           material_interests: string[] | null
           name: string
           next_follow_up: string | null
           notes: string | null
+          pending_lost_since: string | null
           phone: string
+          previous_lead_id: string | null
+          previous_phone_match: boolean | null
+          previous_status: string | null
           priority: number
           referred_by: Json | null
           site_location: string | null
@@ -1260,9 +1301,12 @@ export type Database = {
           construction_stage?: string | null
           converted_at?: string | null
           converted_to_customer_id?: string | null
+          cooling_off_due_date?: string | null
           created_at?: string
           created_by?: string
           created_from_customer_id?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           designation?: string
           email?: string | null
           estimated_quantity?: number | null
@@ -1272,11 +1316,19 @@ export type Database = {
           kit_status?: string | null
           kit_subscription_id?: string | null
           last_follow_up?: string | null
+          lost_approved_by?: string | null
+          lost_at?: string | null
+          lost_reason?: string | null
+          lost_reason_notes?: string | null
           material_interests?: string[] | null
           name: string
           next_follow_up?: string | null
           notes?: string | null
+          pending_lost_since?: string | null
           phone: string
+          previous_lead_id?: string | null
+          previous_phone_match?: boolean | null
+          previous_status?: string | null
           priority?: number
           referred_by?: Json | null
           site_location?: string | null
@@ -1294,9 +1346,12 @@ export type Database = {
           construction_stage?: string | null
           converted_at?: string | null
           converted_to_customer_id?: string | null
+          cooling_off_due_date?: string | null
           created_at?: string
           created_by?: string
           created_from_customer_id?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           designation?: string
           email?: string | null
           estimated_quantity?: number | null
@@ -1306,11 +1361,19 @@ export type Database = {
           kit_status?: string | null
           kit_subscription_id?: string | null
           last_follow_up?: string | null
+          lost_approved_by?: string | null
+          lost_at?: string | null
+          lost_reason?: string | null
+          lost_reason_notes?: string | null
           material_interests?: string[] | null
           name?: string
           next_follow_up?: string | null
           notes?: string | null
+          pending_lost_since?: string | null
           phone?: string
+          previous_lead_id?: string | null
+          previous_phone_match?: boolean | null
+          previous_status?: string | null
           priority?: number
           referred_by?: Json | null
           site_location?: string | null
@@ -1340,6 +1403,13 @@ export type Database = {
             columns: ["kit_subscription_id"]
             isOneToOne: false
             referencedRelation: "kit_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_previous_lead_id_fkey"
+            columns: ["previous_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
@@ -1686,6 +1756,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          can_delete_leads: boolean | null
           created_at: string | null
           email: string | null
           full_name: string | null
@@ -1696,6 +1767,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          can_delete_leads?: boolean | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -1706,6 +1778,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          can_delete_leads?: boolean | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -2506,6 +2579,8 @@ export type Database = {
           status_override_at: string | null
           status_override_by: string | null
           status_override_reason: string | null
+          suspended_at: string | null
+          suspension_reason: string | null
           title: string
           type: string
           updated_at: string
@@ -2557,6 +2632,8 @@ export type Database = {
           status_override_at?: string | null
           status_override_by?: string | null
           status_override_reason?: string | null
+          suspended_at?: string | null
+          suspension_reason?: string | null
           title: string
           type?: string
           updated_at?: string
@@ -2608,6 +2685,8 @@ export type Database = {
           status_override_at?: string | null
           status_override_by?: string | null
           status_override_reason?: string | null
+          suspended_at?: string | null
+          suspension_reason?: string | null
           title?: string
           type?: string
           updated_at?: string
