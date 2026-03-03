@@ -558,6 +558,13 @@ export function LeadDetailView({
           },
         }}
       />
+
+      <MarkAsLostDialog
+        open={markLostOpen}
+        onOpenChange={setMarkLostOpen}
+        leadName={currentLead.name}
+        onSubmit={handleMarkAsLost}
+      />
     </>
   );
 }
