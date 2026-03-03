@@ -451,6 +451,15 @@ export function LeadDetailView({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
+              {currentLead.status === 'pending_lost' && (
+                <PendingLostBanner
+                  lostReason={(currentLead as any).lost_reason}
+                  lostReasonNotes={(currentLead as any).lost_reason_notes}
+                  pendingLostSince={(currentLead as any).pending_lost_since}
+                  onApprove={handleApproveLost}
+                  onReject={handleRejectLost}
+                />
+              )}
               <TabsContent value="profile" className="m-0 h-full">
                 <LeadProfileTab 
                   lead={currentLead} 
