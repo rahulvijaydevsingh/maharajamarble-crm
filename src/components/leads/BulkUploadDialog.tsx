@@ -131,7 +131,7 @@ interface PhotoLeadData {
   duplicateInfo?: string;
 }
 
-const STATUS_OPTIONS = ["new", "in-progress", "quoted", "won", "lost"];
+const STATUS_OPTIONS = ["new", "in-progress", "quoted", "won", "pending_lost", "lost"];
 const PRIORITY_OPTIONS = [
   { value: "1", label: "1 - Very High" },
   { value: "2", label: "2 - High" },

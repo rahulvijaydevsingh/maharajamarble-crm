@@ -68,7 +68,9 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'in-progress': { label: 'In Progress', className: 'bg-yellow-100 text-yellow-700' },
   'quoted': { label: 'Quoted', className: 'bg-purple-100 text-purple-700' },
   'won': { label: 'Won', className: 'bg-green-100 text-green-700' },
+  'pending_lost': { label: 'Pending Approval', className: 'bg-violet-100 text-violet-700' },
   'lost': { label: 'Lost', className: 'bg-red-100 text-red-700' },
+  'deleted': { label: 'Deleted', className: 'bg-gray-100 text-gray-500' },
 };
 
 export function LeadDetailView({

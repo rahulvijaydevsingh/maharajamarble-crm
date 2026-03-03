@@ -351,7 +351,7 @@ export function ActionSettingsPanel() {
                             <div>
                               <div className="text-xs mb-2">Show for Status:</div>
                               <div className="flex flex-wrap gap-2">
-                                {['new', 'in-progress', 'quoted', 'won', 'lost'].map((status) => (
+                                {['new', 'in-progress', 'quoted', 'won', 'pending_lost', 'lost'].map((status) => (
                                   <div key={status} className="flex items-center gap-1">
                                     <Checkbox
                                       id={`${action.id}-status-${status}`}
