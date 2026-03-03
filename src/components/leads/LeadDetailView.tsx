@@ -32,12 +32,14 @@ import {
   Mail,
   Download,
   Edit,
+  XOctagon,
 } from 'lucide-react';
  import { HeartHandshake } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useReminders } from '@/hooks/useReminders';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { LeadProfileTab } from './detail-tabs/LeadProfileTab';
 import { LeadQuotationsTab } from './detail-tabs/LeadQuotationsTab';
 import { LeadTasksTab } from './detail-tabs/LeadTasksTab';
@@ -50,6 +52,9 @@ import { KitProfileTab } from '@/components/kit/KitProfileTab';
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { AddReminderDialog } from './detail-tabs/AddReminderDialog';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
+import { MarkAsLostDialog } from './MarkAsLostDialog';
+import { PendingLostBanner } from './PendingLostBanner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LeadDetailViewProps {
   lead: Lead | null;
