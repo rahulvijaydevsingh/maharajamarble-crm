@@ -33,6 +33,7 @@ export function PendingLostBanner({
 }: PendingLostBannerProps) {
   const { role } = usePermissions();
   const isAdminUser = role === "super_admin" || role === "admin" || role === "manager";
+  const [processing, setProcessing] = useState<"approve" | "reject" | null>(null);
 
   const handleApprove = async () => {
     setProcessing("approve");
