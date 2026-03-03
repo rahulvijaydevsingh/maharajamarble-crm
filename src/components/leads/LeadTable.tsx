@@ -41,7 +41,9 @@ const statuses: Record<string, { label: string; className: string }> = {
   'in-progress': { label: 'In Progress', className: 'bg-yellow-50 text-yellow-600 hover:bg-yellow-50' },
   'quoted': { label: 'Quoted', className: 'bg-purple-50 text-purple-600 hover:bg-purple-50' },
   'won': { label: 'Won', className: 'bg-green-50 text-green-600 hover:bg-green-50' },
-  'lost': { label: 'Lost', className: 'bg-red-50 text-red-600 hover:bg-red-50' }
+  'pending_lost': { label: 'Pending Approval', className: 'bg-violet-50 text-violet-600 hover:bg-violet-50' },
+  'lost': { label: 'Lost', className: 'bg-red-50 text-red-600 hover:bg-red-50' },
+  'deleted': { label: 'Deleted', className: 'bg-gray-50 text-gray-500 hover:bg-gray-50' },
 };
 
 const dummyLeads: Lead[] = [

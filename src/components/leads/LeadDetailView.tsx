@@ -32,12 +32,14 @@ import {
   Mail,
   Download,
   Edit,
+  XOctagon,
 } from 'lucide-react';
  import { HeartHandshake } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useReminders } from '@/hooks/useReminders';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { LeadProfileTab } from './detail-tabs/LeadProfileTab';
 import { LeadQuotationsTab } from './detail-tabs/LeadQuotationsTab';
 import { LeadTasksTab } from './detail-tabs/LeadTasksTab';
@@ -50,6 +52,9 @@ import { KitProfileTab } from '@/components/kit/KitProfileTab';
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { AddReminderDialog } from './detail-tabs/AddReminderDialog';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
+import { MarkAsLostDialog } from './MarkAsLostDialog';
+import { PendingLostBanner } from './PendingLostBanner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LeadDetailViewProps {
   lead: Lead | null;
@@ -68,7 +73,9 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'in-progress': { label: 'In Progress', className: 'bg-yellow-100 text-yellow-700' },
   'quoted': { label: 'Quoted', className: 'bg-purple-100 text-purple-700' },
   'won': { label: 'Won', className: 'bg-green-100 text-green-700' },
+  'pending_lost': { label: 'Pending Approval', className: 'bg-violet-100 text-violet-700' },
   'lost': { label: 'Lost', className: 'bg-red-100 text-red-700' },
+  'deleted': { label: 'Deleted', className: 'bg-gray-100 text-gray-500' },
 };
 
 export function LeadDetailView({
@@ -131,6 +138,8 @@ export function LeadDetailView({
   const [addQuotationOpen, setAddQuotationOpen] = useState(false);
   const [addReminderOpen, setAddReminderOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [markLostOpen, setMarkLostOpen] = useState(false);
+  const { user } = useAuth();
   
   // Get the fresh lead data from the leads array (to ensure we have latest after refetch)
   const currentLead = leads.find(l => l.id === lead?.id) || lead;
@@ -223,6 +232,72 @@ export function LeadDetailView({
     setIsEditing(false);
   };
 
+  const handleMarkAsLost = async (reasonKey: string, notes: string) => {
+    if (!currentLead) return;
+    await updateLead(currentLead.id, {
+      status: 'pending_lost',
+      lost_reason: reasonKey,
+      lost_reason_notes: notes || null,
+      previous_status: currentLead.status,
+    } as any);
+    await supabase.from('leads').update({ pending_lost_since: new Date().toISOString() }).eq('id', currentLead.id);
+    await logActivity({
+      lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
+      title: 'Lost Request Submitted',
+      description: `Lead marked as Pending Lost. Reason: ${reasonKey}${notes ? ` — ${notes}` : ''}`,
+      metadata: { old_status: currentLead.status, new_status: 'pending_lost', lost_reason: reasonKey },
+    });
+    await refetch();
+    toast({ title: "Lost Request Submitted", description: "Awaiting manager approval." });
+  };
+
+  const handleApproveLost = async () => {
+    if (!currentLead) return;
+    const { data: reasonData } = await supabase.from('lead_lost_reasons').select('cooling_off_days').eq('reason_key', (currentLead as any).lost_reason || '').single();
+    const coolingDays = reasonData?.cooling_off_days;
+    const coolingDate = coolingDays ? new Date(Date.now() + coolingDays * 86400000).toISOString().split('T')[0] : null;
+    
+    await supabase.from('leads').update({
+      status: 'lost',
+      lost_at: new Date().toISOString(),
+      lost_approved_by: user?.id || null,
+      cooling_off_due_date: coolingDate,
+    }).eq('id', currentLead.id);
+    
+    // Cancel all open tasks on this lead
+    await supabase.from('tasks').update({ status: 'Completed', completion_notes: 'Cancelled — Lead marked Lost' } as any)
+      .eq('lead_id', currentLead.id).not('status', 'eq', 'Completed');
+    
+    await logActivity({
+      lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
+      title: 'Lead Marked Lost — Approved',
+      description: `Lead approved as Lost. Reason: ${(currentLead as any).lost_reason || 'N/A'}`,
+    });
+    await refetch();
+    toast({ title: "Lead Marked as Lost", description: "Lead moved to archive." });
+    onOpenChange(false);
+  };
+
+  const handleRejectLost = async () => {
+    if (!currentLead) return;
+    const prevStatus = (currentLead as any).previous_status || 'in-progress';
+    await supabase.from('leads').update({
+      status: prevStatus,
+      pending_lost_since: null,
+      lost_reason: null,
+      lost_reason_notes: null,
+      previous_status: null,
+    }).eq('id', currentLead.id);
+    
+    await logActivity({
+      lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
+      title: 'Lost Request Rejected',
+      description: `Lost request rejected. Lead returned to ${prevStatus}.`,
+    });
+    await refetch();
+    toast({ title: "Lost Request Rejected", description: `Lead returned to active status.` });
+  };
+
   if (!currentLead) return null;
 
   const statusConfig = statusStyles[currentLead.status] || { label: currentLead.status, className: 'bg-gray-100 text-gray-700' };
@@ -312,6 +387,12 @@ export function LeadDetailView({
                     Export
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  {!['won', 'lost', 'deleted', 'pending_lost'].includes(currentLead.status) && (
+                    <DropdownMenuItem onClick={() => setMarkLostOpen(true)}>
+                      <XOctagon className="h-4 w-4 mr-2" />
+                      Mark as Lost
+                    </DropdownMenuItem>
+                  )}
                   {onDelete && (
                     <DropdownMenuItem 
                       className="text-destructive"
@@ -370,6 +451,15 @@ export function LeadDetailView({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
+              {currentLead.status === 'pending_lost' && (
+                <PendingLostBanner
+                  lostReason={(currentLead as any).lost_reason}
+                  lostReasonNotes={(currentLead as any).lost_reason_notes}
+                  pendingLostSince={(currentLead as any).pending_lost_since}
+                  onApprove={handleApproveLost}
+                  onReject={handleRejectLost}
+                />
+              )}
               <TabsContent value="profile" className="m-0 h-full">
                 <LeadProfileTab 
                   lead={currentLead} 
@@ -467,6 +557,13 @@ export function LeadDetailView({
             type: 'lead' as const,
           },
         }}
+      />
+
+      <MarkAsLostDialog
+        open={markLostOpen}
+        onOpenChange={setMarkLostOpen}
+        leadName={currentLead.name}
+        onSubmit={handleMarkAsLost}
       />
     </>
   );

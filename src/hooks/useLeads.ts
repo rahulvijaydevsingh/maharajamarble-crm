@@ -71,6 +71,7 @@ export function useLeads() {
         .from("leads")
         .select("*")
         .or("is_converted.is.null,is_converted.eq.false")
+        .not("status", "in", '("lost","deleted")')
         .order("created_at", { ascending: false });
 
       if (error) throw error;

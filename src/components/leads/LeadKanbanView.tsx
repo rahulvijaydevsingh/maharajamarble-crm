@@ -27,7 +27,7 @@ const KANBAN_FIELDS = [
   { value: "construction_stage", label: "Construction Stage" },
 ];
 
-const STATUS_OPTIONS = ["new", "in-progress", "quoted", "won", "lost"];
+const STATUS_OPTIONS = ["new", "in-progress", "quoted", "won", "pending_lost", "lost"];
 const PRIORITY_OPTIONS = ["1", "2", "3", "4", "5"];
 
 const statusLabels: Record<string, string> = {
@@ -35,6 +35,7 @@ const statusLabels: Record<string, string> = {
   "in-progress": "In Progress",
   quoted: "Quoted",
   won: "Won",
+  pending_lost: "Pending Approval",
   lost: "Lost",
 };
 
@@ -51,6 +52,7 @@ const statusColors: Record<string, string> = {
   "in-progress": "bg-yellow-100 border-yellow-300",
   quoted: "bg-purple-100 border-purple-300",
   won: "bg-green-100 border-green-300",
+  pending_lost: "bg-violet-100 border-violet-300",
   lost: "bg-red-100 border-red-300",
 };
 

@@ -130,6 +130,7 @@ const STATUS_OPTIONS = [
   { value: "in-progress", label: "In Progress" },
   { value: "quoted", label: "Quoted" },
   { value: "won", label: "Won" },
+  { value: "pending_lost", label: "Pending Approval" },
   { value: "lost", label: "Lost" },
   { value: "on-hold", label: "On Hold" },
 ];
