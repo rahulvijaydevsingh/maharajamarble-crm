@@ -138,6 +138,8 @@ export function LeadDetailView({
   const [addQuotationOpen, setAddQuotationOpen] = useState(false);
   const [addReminderOpen, setAddReminderOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [markLostOpen, setMarkLostOpen] = useState(false);
+  const { user } = useAuth();
   
   // Get the fresh lead data from the leads array (to ensure we have latest after refetch)
   const currentLead = leads.find(l => l.id === lead?.id) || lead;
