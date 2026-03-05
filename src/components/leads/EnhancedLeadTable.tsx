@@ -87,6 +87,7 @@ import { ManageFiltersDialog } from "./filters/ManageFiltersDialog";
 import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { Lead, useLeads } from "@/hooks/useLeads";
+import { useDeletedLeads } from "@/hooks/useDeletedLeads";
 import { useTasks } from "@/hooks/useTasks";
 import { usePendingTasksByLead, LeadPendingTasks } from "@/hooks/usePendingTasksByLead";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
