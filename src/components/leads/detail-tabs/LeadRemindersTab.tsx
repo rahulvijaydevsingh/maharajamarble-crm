@@ -77,7 +77,7 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
         recurrence_end_date: data.recurrence_end_date,
         entity_type: 'lead',
         entity_id: lead.id,
-        created_by: 'Current User',
+        // created_by handled by DB default get_current_user_email()
         assigned_to: data.assigned_to,
       });
 

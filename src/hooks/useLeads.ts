@@ -89,9 +89,12 @@ export function useLeads() {
 
   const addLead = async (lead: LeadInsert) => {
     try {
+      // Don't pass created_by — let DB default (get_current_user_email()) handle it
+      // This ensures RLS is_assigned_to_me() works for non-admin users
+      const { created_by: _cb, ...leadWithoutCreatedBy } = lead as any;
       const { data, error } = await supabase
         .from("leads")
-        .insert([{ ...lead, created_by: lead.created_by || "Current User" }])
+        .insert([leadWithoutCreatedBy])
         .select()
         .single();
 

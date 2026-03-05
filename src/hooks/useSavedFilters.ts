@@ -91,7 +91,7 @@ export function useSavedFilters(entityType: string = "leads") {
           is_shared: filter.is_shared,
           is_default: filter.is_default,
           entity_type: entityType,
-          created_by: filter.created_by || "Current User" 
+          // created_by handled by DB default get_current_user_email() 
         }])
         .select()
         .single();

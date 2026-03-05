@@ -71,7 +71,6 @@ const Leads = () => {
               isProfessional: !!c.isProfessional,
             }))
           : [],
-        created_by: "Current User",
       };
 
       const newLead = await addLead(leadData);
@@ -117,7 +116,6 @@ const Leads = () => {
               priority: 3,
               assigned_to: assignedToName,
               site_plus_code: formData.sitePlusCode || null,
-              created_by: "Current User",
             },
           ]);
         }
@@ -135,7 +133,6 @@ const Leads = () => {
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
-          created_by: "Current User",
         });
       }
 

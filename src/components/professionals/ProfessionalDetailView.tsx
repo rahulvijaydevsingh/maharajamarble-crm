@@ -586,7 +586,7 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
         recurrence_end_date: data.recurrence_end_date,
         entity_type: 'professional',
         entity_id: professional.id,
-        created_by: 'Current User',
+        // created_by handled by DB default get_current_user_email()
         assigned_to: data.assigned_to,
       });
       await logActivity({

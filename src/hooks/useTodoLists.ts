@@ -92,9 +92,11 @@ export function useTodoLists() {
       // Add to UI immediately
       setLists((prev) => [optimisticList, ...prev]);
 
+      // Don't override created_by — let DB default handle it
+      const { created_by: _cb, ...listWithoutCb } = list as any;
       const { data, error } = await supabase
         .from("todo_lists")
-        .insert([{ ...list, created_by: list.created_by || "Current User" }])
+        .insert([listWithoutCb])
         .select()
         .single();
 
