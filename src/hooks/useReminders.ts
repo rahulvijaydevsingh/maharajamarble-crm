@@ -31,7 +31,7 @@ export interface ReminderInsert {
   is_recurring?: boolean;
   recurrence_pattern?: "daily" | "weekly" | "monthly" | "yearly" | null;
   recurrence_end_date?: string | null;
-  created_by: string;
+  created_by?: string;
   assigned_to: string;
 }
 
@@ -70,9 +70,11 @@ export function useReminders(entityType?: string, entityId?: string) {
 
   const addReminder = async (reminder: ReminderInsert) => {
     try {
+      // Don't pass created_by — let DB default handle it
+      const { created_by: _cb, ...reminderWithoutCb } = reminder as any;
       const { data, error } = await supabase
         .from("reminders")
-        .insert([reminder])
+        .insert([reminderWithoutCb])
         .select()
         .single();
 
