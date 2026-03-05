@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { EnhancedLeadTable } from "@/components/leads/EnhancedLeadTable";
 import { SmartLeadForm } from "@/components/leads/SmartLeadForm";
 import { BulkUploadDialog } from "@/components/leads/BulkUploadDialog";
+import { LeadRecycleBin } from "@/components/leads/LeadRecycleBin";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,13 +12,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, Upload } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Upload, Trash2 } from "lucide-react";
 import { useLeads, LeadInsert } from "@/hooks/useLeads";
 import { useTasks } from "@/hooks/useTasks";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { format } from "date-fns";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
