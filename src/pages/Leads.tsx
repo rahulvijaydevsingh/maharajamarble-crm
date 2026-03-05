@@ -180,17 +180,47 @@ const Leads = () => {
           )}
         </div>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>Lead Management</CardTitle>
-            <CardDescription>
-              View, filter, and manage all leads with advanced filtering and export capabilities
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <EnhancedLeadTable onEditLead={handleEditLead} />
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="active">
+          <TabsList>
+            <TabsTrigger value="active">Active Leads</TabsTrigger>
+            {canSeeRecycleBin && (
+              <TabsTrigger value="recycle-bin" className="gap-1.5">
+                <Trash2 className="h-3.5 w-3.5" />
+                Recycle Bin
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="active">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Lead Management</CardTitle>
+                <CardDescription>
+                  View, filter, and manage all leads with advanced filtering and export capabilities
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EnhancedLeadTable onEditLead={handleEditLead} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {canSeeRecycleBin && (
+            <TabsContent value="recycle-bin">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Recycle Bin</CardTitle>
+                  <CardDescription>
+                    View, restore, or permanently delete leads that have been removed
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LeadRecycleBin />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
 
         <SmartLeadForm
           open={addLeadDialogOpen}
