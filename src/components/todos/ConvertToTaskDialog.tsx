@@ -70,7 +70,7 @@ export function ConvertToTaskDialog({ open, onOpenChange, todoItem }: ConvertToT
         due_date: format(formData.dueDate, 'yyyy-MM-dd'),
         status: 'Pending',
         description: formData.description.trim() || null,
-        created_by: "Current User",
+        // created_by handled by DB default or useTasks hook
       };
 
       const createdTask = await addTask(taskData);

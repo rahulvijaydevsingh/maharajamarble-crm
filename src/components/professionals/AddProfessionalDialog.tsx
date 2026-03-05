@@ -171,7 +171,7 @@ export function AddProfessionalDialog({ open, onOpenChange, editingProfessional 
         rating: formData.rating ? parseInt(formData.rating) : null,
         notes: formData.notes.trim() || null,
         assigned_to: formData.assigned_to,
-        created_by: "Current User",
+        // created_by handled by DB default get_current_user_email()
       };
 
       if (editingProfessional) {

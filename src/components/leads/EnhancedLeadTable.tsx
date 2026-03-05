@@ -87,6 +87,7 @@ import { ManageFiltersDialog } from "./filters/ManageFiltersDialog";
 import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { Lead, useLeads } from "@/hooks/useLeads";
+import { useDeletedLeads } from "@/hooks/useDeletedLeads";
 import { useTasks } from "@/hooks/useTasks";
 import { usePendingTasksByLead, LeadPendingTasks } from "@/hooks/usePendingTasksByLead";
 import { useSavedFilters, SavedFilter, FilterConfig } from "@/hooks/useSavedFilters";
@@ -178,7 +179,8 @@ interface EnhancedLeadTableProps {
 export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { leads, loading, updateLead, deleteLead, refetch } = useLeads();
+  const { leads, loading, updateLead, refetch } = useLeads();
+  const { softDeleteLead } = useDeletedLeads();
   const { getLeadTasks, refetch: refetchTasks } = usePendingTasksByLead();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("leads");
   const { 
@@ -573,7 +575,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             } else if (bulkActionType === "assigned_to") {
               await updateLead(leadId, { assigned_to: bulkActionValue });
             } else if (bulkActionType === "delete") {
-              await deleteLead(leadId);
+              const lead = leads.find(l => l.id === leadId);
+              await softDeleteLead(leadId, lead?.name || "Unknown");
             }
           })
         );
@@ -1292,9 +1295,11 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           setDetailViewOpen(false);
           handleAddToCustomer(lead);
         }}
-        onDelete={(id) => {
+        onDelete={async (id) => {
+          const lead = leads.find(l => l.id === id);
           setDetailViewOpen(false);
-          deleteLead(id);
+          await softDeleteLead(id, lead?.name || "Unknown");
+          refetch();
         }}
       />
       

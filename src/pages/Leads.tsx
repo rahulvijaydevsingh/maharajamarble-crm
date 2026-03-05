@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { EnhancedLeadTable } from "@/components/leads/EnhancedLeadTable";
 import { SmartLeadForm } from "@/components/leads/SmartLeadForm";
 import { BulkUploadDialog } from "@/components/leads/BulkUploadDialog";
+import { LeadRecycleBin } from "@/components/leads/LeadRecycleBin";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,13 +12,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, Upload } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Upload, Trash2 } from "lucide-react";
 import { useLeads, LeadInsert } from "@/hooks/useLeads";
 import { useTasks } from "@/hooks/useTasks";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { format } from "date-fns";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
@@ -30,6 +33,8 @@ const Leads = () => {
   const { canCreate } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { logStaffAction } = useStaffActivityLog();
+  const { role, isAdmin } = useAuth();
+  const canSeeRecycleBin = isAdmin() || role === "manager";
 
   const handleAddLead = async (formData: any, generatedTask: any) => {
     try {
@@ -71,7 +76,6 @@ const Leads = () => {
               isProfessional: !!c.isProfessional,
             }))
           : [],
-        created_by: "Current User",
       };
 
       const newLead = await addLead(leadData);
@@ -117,7 +121,6 @@ const Leads = () => {
               priority: 3,
               assigned_to: assignedToName,
               site_plus_code: formData.sitePlusCode || null,
-              created_by: "Current User",
             },
           ]);
         }
@@ -135,7 +138,6 @@ const Leads = () => {
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
-          created_by: "Current User",
         });
       }
 
@@ -178,17 +180,47 @@ const Leads = () => {
           )}
         </div>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>Lead Management</CardTitle>
-            <CardDescription>
-              View, filter, and manage all leads with advanced filtering and export capabilities
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <EnhancedLeadTable onEditLead={handleEditLead} />
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="active">
+          <TabsList>
+            <TabsTrigger value="active">Active Leads</TabsTrigger>
+            {canSeeRecycleBin && (
+              <TabsTrigger value="recycle-bin" className="gap-1.5">
+                <Trash2 className="h-3.5 w-3.5" />
+                Recycle Bin
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="active">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Lead Management</CardTitle>
+                <CardDescription>
+                  View, filter, and manage all leads with advanced filtering and export capabilities
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EnhancedLeadTable onEditLead={handleEditLead} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {canSeeRecycleBin && (
+            <TabsContent value="recycle-bin">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Recycle Bin</CardTitle>
+                  <CardDescription>
+                    View, restore, or permanently delete leads that have been removed
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LeadRecycleBin />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
 
         <SmartLeadForm
           open={addLeadDialogOpen}

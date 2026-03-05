@@ -122,7 +122,7 @@ export function LeadDetailView({
         recurrence_end_date: data.recurrence_end_date,
         entity_type: 'lead',
         entity_id: currentLead.id,
-        created_by: 'Current User',
+        // created_by handled by DB default get_current_user_email()
         assigned_to: data.assigned_to,
       });
       setAddReminderOpen(false);
@@ -139,7 +139,16 @@ export function LeadDetailView({
   const [addReminderOpen, setAddReminderOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [markLostOpen, setMarkLostOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, isAdmin, role } = useAuth();
+  
+  // Check if current user can delete leads
+  const [canDeleteLeads, setCanDeleteLeads] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    if (isAdmin()) { setCanDeleteLeads(true); return; }
+    supabase.from("profiles").select("can_delete_leads").eq("id", user.id).single()
+      .then(({ data }) => setCanDeleteLeads(data?.can_delete_leads || false));
+  }, [user]);
   
   // Get the fresh lead data from the leads array (to ensure we have latest after refetch)
   const currentLead = leads.find(l => l.id === lead?.id) || lead;
@@ -393,7 +402,7 @@ export function LeadDetailView({
                       Mark as Lost
                     </DropdownMenuItem>
                   )}
-                  {onDelete && (
+                  {onDelete && canDeleteLeads && !['deleted'].includes(currentLead.status) && (
                     <DropdownMenuItem 
                       className="text-destructive"
                       onClick={() => onDelete(currentLead.id)}

@@ -169,7 +169,7 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
         source: formData.source,
         notes: formData.notes.trim() || null,
         assigned_to: formData.assigned_to,
-        created_by: "Current User",
+        // created_by handled by DB default get_current_user_email()
       };
 
       if (editingCustomer) {

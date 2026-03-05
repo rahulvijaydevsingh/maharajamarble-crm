@@ -182,7 +182,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         notes: initialNote || null,
         assigned_to: assignedMember?.name || assignedTo,
         next_follow_up: format(nextActionDate, "yyyy-MM-dd"),
-        created_by: "Current User",
+        // created_by handled by DB default get_current_user_email()
       };
 
       await addCustomer(customerData);

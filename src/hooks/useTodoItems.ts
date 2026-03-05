@@ -87,9 +87,11 @@ export function useTodoItems(listId?: string) {
 
   const addItem = async (item: TodoItemInsert) => {
     try {
+      // Don't override created_by — let DB default handle it
+      const { created_by: _cb, ...itemWithoutCb } = item as any;
       const { data, error } = await supabase
         .from("todo_items")
-        .insert([{ ...item, created_by: item.created_by || "Current User" }])
+        .insert([itemWithoutCb])
         .select()
         .single();
 
