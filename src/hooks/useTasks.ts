@@ -426,7 +426,7 @@ export function useTasks() {
         original_due_date: task.due_date,
         original_due_time: task.due_time,
         snoozed_until: snoozedUntil.toISOString(),
-        created_by: "Current User",
+        // created_by handled by DB default
       }]);
 
       // Calculate new due date
