@@ -4,6 +4,7 @@ import { EnhancedLeadTable } from "@/components/leads/EnhancedLeadTable";
 import { SmartLeadForm } from "@/components/leads/SmartLeadForm";
 import { BulkUploadDialog } from "@/components/leads/BulkUploadDialog";
 import { LeadRecycleBin } from "@/components/leads/LeadRecycleBin";
+import { LeadArchive } from "@/components/leads/LeadArchive";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Upload, Trash2 } from "lucide-react";
+import { Plus, Upload, Trash2, Archive } from "lucide-react";
 import { useLeads, LeadInsert } from "@/hooks/useLeads";
 import { useTasks } from "@/hooks/useTasks";
 import { useToast } from "@/hooks/use-toast";
@@ -35,7 +36,7 @@ const Leads = () => {
   const { logStaffAction } = useStaffActivityLog();
   const { role, isAdmin } = useAuth();
   const canSeeRecycleBin = isAdmin() || role === "manager";
-
+  const canSeeArchive = isAdmin() || role === "manager";
   const handleAddLead = async (formData: any, generatedTask: any) => {
     try {
       const normalizePhone = (phone: string): string => {
