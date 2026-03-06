@@ -135,7 +135,20 @@ export function ContactDetailsSection({
       case "lead": return "Active Lead";
       case "customer": return "Customer";
       case "professional": return "Professional";
+      case "lost_lead": return "Lost Lead (Archive)";
+      case "deleted_lead": return "Deleted Lead (Recycle Bin)";
       default: return "Record";
+    }
+  };
+
+  const getDuplicateAlertStyle = (type: string | null) => {
+    switch (type) {
+      case "lost_lead":
+        return { border: "border-yellow-500", bg: "bg-yellow-50 dark:bg-yellow-950/20", titleColor: "text-yellow-800 dark:text-yellow-200", descColor: "text-yellow-700 dark:text-yellow-300", iconColor: "text-yellow-600" };
+      case "deleted_lead":
+        return { border: "border-gray-400", bg: "bg-gray-50 dark:bg-gray-900/20", titleColor: "text-gray-700 dark:text-gray-300", descColor: "text-gray-600 dark:text-gray-400", iconColor: "text-gray-500" };
+      default:
+        return { border: "border-amber-500", bg: "bg-amber-50 dark:bg-amber-950/20", titleColor: "text-amber-800 dark:text-amber-200", descColor: "text-amber-700 dark:text-amber-300", iconColor: "text-amber-600" };
     }
   };
 
