@@ -212,6 +212,22 @@ const Leads = () => {
             </Card>
           </TabsContent>
 
+          {canSeeArchive && (
+            <TabsContent value="archive">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Lost Lead Archive</CardTitle>
+                  <CardDescription>
+                    View lost leads, track re-engagement opportunities, and manage cooling-off periods
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LeadArchive />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
           {canSeeRecycleBin && (
             <TabsContent value="recycle-bin">
               <Card>
