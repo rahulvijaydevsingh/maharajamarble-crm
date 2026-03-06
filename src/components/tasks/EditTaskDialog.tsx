@@ -578,10 +578,15 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                   <SelectValue placeholder={staffLoading ? "Loading..." : "Select assignee"} />
                 </SelectTrigger>
                 <SelectContent className="z-[220]">
-                  {staffMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.email || member.id}>
-                      {(member as any)._display || member.name}
-                    </SelectItem>
+                  {staffGroups.map((group) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel>{group.label}</SelectLabel>
+                      {group.members.map((member) => (
+                        <SelectItem key={member.id} value={member.email || member.id}>
+                          {member._display}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
