@@ -51,6 +51,7 @@ import {
   SelectLabel,
 } from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface RelatedEntity {
