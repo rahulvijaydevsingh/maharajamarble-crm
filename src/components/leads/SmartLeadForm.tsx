@@ -56,10 +56,10 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
     [professionalTypeValues]
   );
 
-  // Only lead/customer duplicates should block lead creation.
-  // Professional duplicates should NOT block; we will skip creating the professional record.
+  // Only active lead/customer duplicates should block lead creation.
+  // Professional, lost_lead, and deleted_lead duplicates should NOT block.
   const hasDuplicateBlocking = Object.values(duplicateResults).some(
-    (r) => r.found && r.type !== "professional"
+    (r) => r.found && r.type !== "professional" && r.type !== "lost_lead" && r.type !== "deleted_lead"
   );
 
   // Form state - Group 1: Contacts

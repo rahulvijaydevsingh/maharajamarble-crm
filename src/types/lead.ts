@@ -91,7 +91,7 @@ export interface SmartLeadFormData {
 // Duplicate check result
 export interface DuplicateCheckResult {
   found: boolean;
-  type: "lead" | "customer" | "professional" | null;
+  type: "lead" | "customer" | "professional" | "lost_lead" | "deleted_lead" | null;
   existingRecord?: {
     id: string;
     name: string;
@@ -102,6 +102,8 @@ export interface DuplicateCheckResult {
     assigned_to: string;
     created_at: string;
     firm_name: string | null;
+    lost_reason?: string | null;
+    lost_at?: string | null;
   };
 }
 

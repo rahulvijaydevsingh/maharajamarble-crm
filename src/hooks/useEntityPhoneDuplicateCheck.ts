@@ -52,11 +52,16 @@ export function useEntityPhoneDuplicateCheck() {
 
             if (data && data.length > 0) {
               const lead = data[0] as any;
+              let dupType: DuplicateCheckResult["type"] = "lead";
+              if (lead.status === "won") dupType = "customer";
+              else if (lead.status === "lost") dupType = "lost_lead";
+              else if (lead.status === "deleted") dupType = "deleted_lead";
+
               setResults((prev) => ({
                 ...prev,
                 [fieldKey]: {
                   found: true,
-                  type: lead.status === "won" ? "customer" : "lead",
+                  type: dupType,
                   existingRecord: {
                     id: lead.id,
                     name: lead.name,
@@ -67,6 +72,8 @@ export function useEntityPhoneDuplicateCheck() {
                     assigned_to: lead.assigned_to,
                     created_at: lead.created_at,
                     firm_name: lead.firm_name,
+                    lost_reason: lead.lost_reason,
+                    lost_at: lead.lost_at,
                   },
                 },
               }));

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -135,7 +136,20 @@ export function ContactDetailsSection({
       case "lead": return "Active Lead";
       case "customer": return "Customer";
       case "professional": return "Professional";
+      case "lost_lead": return "Lost Lead (Archive)";
+      case "deleted_lead": return "Deleted Lead (Recycle Bin)";
       default: return "Record";
+    }
+  };
+
+  const getDuplicateAlertStyle = (type: string | null) => {
+    switch (type) {
+      case "lost_lead":
+        return { border: "border-yellow-500", bg: "bg-yellow-50 dark:bg-yellow-950/20", titleColor: "text-yellow-800 dark:text-yellow-200", descColor: "text-yellow-700 dark:text-yellow-300", iconColor: "text-yellow-600" };
+      case "deleted_lead":
+        return { border: "border-gray-400", bg: "bg-gray-50 dark:bg-gray-900/20", titleColor: "text-gray-700 dark:text-gray-300", descColor: "text-gray-600 dark:text-gray-400", iconColor: "text-gray-500" };
+      default:
+        return { border: "border-amber-500", bg: "bg-amber-50 dark:bg-amber-950/20", titleColor: "text-amber-800 dark:text-amber-200", descColor: "text-amber-700 dark:text-amber-300", iconColor: "text-amber-600" };
     }
   };
 
@@ -187,26 +201,44 @@ export function ContactDetailsSection({
         )}
         
         {/* Duplicate Warning */}
-        {duplicateResult?.found && duplicateResult.existingRecord && (
-          <Alert variant="destructive" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20 py-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-800 dark:text-amber-200 text-sm">
-              Duplicate {getTypeLabel(duplicateResult.type)} Found!
-            </AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
-              <span><strong>{duplicateResult.existingRecord.name}</strong> - Assigned to {duplicateResult.existingRecord.assigned_to}</span>
-              <Button 
-                type="button"
-                variant="outline" 
-                size="sm" 
-                className="mt-2 h-6 text-xs border-amber-600 text-amber-700 hover:bg-amber-100"
-                onClick={() => handleViewDuplicate(checkKey)}
-              >
-                View Details
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+        {duplicateResult?.found && duplicateResult.existingRecord && (() => {
+          const style = getDuplicateAlertStyle(duplicateResult.type);
+          const isLost = duplicateResult.type === "lost_lead";
+          const isDeleted = duplicateResult.type === "deleted_lead";
+          const isNonBlocking = isLost || isDeleted;
+          return (
+            <Alert variant="destructive" className={`${style.border} ${style.bg} py-2`}>
+              <AlertTriangle className={`h-4 w-4 ${style.iconColor}`} />
+              <AlertTitle className={`${style.titleColor} text-sm`}>
+                {isNonBlocking ? "" : "Duplicate "}{getTypeLabel(duplicateResult.type)} Found!
+              </AlertTitle>
+              <AlertDescription className={`${style.descColor} text-xs`}>
+                <span>
+                  <strong>{duplicateResult.existingRecord.name}</strong>
+                  {isLost && duplicateResult.existingRecord.lost_reason && (
+                    <> — Lost for: {duplicateResult.existingRecord.lost_reason}</>
+                  )}
+                  {isLost && duplicateResult.existingRecord.lost_at && (
+                    <> ({formatDistanceToNow(new Date(duplicateResult.existingRecord.lost_at))} ago)</>
+                  )}
+                  {!isLost && !isDeleted && <> - Assigned to {duplicateResult.existingRecord.assigned_to}</>}
+                </span>
+                {isNonBlocking && (
+                  <p className="mt-1 text-xs opacity-80">You can still create this lead.</p>
+                )}
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  size="sm" 
+                  className={`mt-2 h-6 text-xs ${style.border} ${style.titleColor}`}
+                  onClick={() => handleViewDuplicate(checkKey)}
+                >
+                  {isLost ? "View Previous History" : isDeleted ? "View in Recycle Bin" : "View Details"}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          );
+        })()}
       </div>
     );
   };

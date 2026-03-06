@@ -51,6 +51,7 @@ import {
   SelectLabel,
 } from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface RelatedEntity {
@@ -74,6 +75,9 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { logActivity } = useLogActivity();
   const { getFieldOptions } = useControlPanelSettings();
+
+  const staffGroups = useMemo(() => buildStaffGroups(staffMembers), [staffMembers]);
+  const allStaffFlat = useMemo(() => staffGroups.flatMap(g => g.members), [staffGroups]);
 
   // Use control panel options, fallback to constants
   const TASK_TYPES = useMemo(() => {
@@ -574,10 +578,15 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
                   <SelectValue placeholder={staffLoading ? "Loading..." : "Select assignee"} />
                 </SelectTrigger>
                 <SelectContent className="z-[220]">
-                  {staffMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.email || member.id}>
-                      {(member as any)._display || member.name}
-                    </SelectItem>
+                  {staffGroups.map((group) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel>{group.label}</SelectLabel>
+                      {group.members.map((member) => (
+                        <SelectItem key={member.id} value={member.email || member.id}>
+                          {member._display}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
