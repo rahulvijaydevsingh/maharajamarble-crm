@@ -76,6 +76,9 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
   const { logActivity } = useLogActivity();
   const { getFieldOptions } = useControlPanelSettings();
 
+  const staffGroups = useMemo(() => buildStaffGroups(staffMembers), [staffMembers]);
+  const allStaffFlat = useMemo(() => staffGroups.flatMap(g => g.members), [staffGroups]);
+
   // Use control panel options, fallback to constants
   const TASK_TYPES = useMemo(() => {
     const cpOptions = getFieldOptions("tasks", "type");
