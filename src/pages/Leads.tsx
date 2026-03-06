@@ -184,6 +184,12 @@ const Leads = () => {
         <Tabs defaultValue="active">
           <TabsList>
             <TabsTrigger value="active">Active Leads</TabsTrigger>
+            {canSeeArchive && (
+              <TabsTrigger value="archive" className="gap-1.5">
+                <Archive className="h-3.5 w-3.5" />
+                Archive
+              </TabsTrigger>
+            )}
             {canSeeRecycleBin && (
               <TabsTrigger value="recycle-bin" className="gap-1.5">
                 <Trash2 className="h-3.5 w-3.5" />
