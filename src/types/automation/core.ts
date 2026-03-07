@@ -16,7 +16,8 @@ export type ActionType =
   | "update_field"
   | "send_email"
   | "execute_webhook"
-  | "trigger_automation";
+  | "trigger_automation"
+  | "handle_lead_tasks";
 
 export type ConditionLogic = "and" | "or";
 
