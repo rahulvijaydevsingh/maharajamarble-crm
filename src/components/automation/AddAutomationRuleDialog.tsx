@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Trash2, Zap, Bell, Mail, Edit3, Webhook, RefreshCw, ChevronDown, ChevronUp, Play, CheckSquare, AlarmClock, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Zap, Bell, Mail, Edit3, Webhook, RefreshCw, ChevronDown, ChevronUp, Play, CheckSquare, AlarmClock, MessageSquare, ListChecks } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AutomationRule, EntityType, TriggerType, ActionType, ConditionLogic } from "@/types/automation";
 import { 
@@ -25,6 +25,7 @@ import { SendNotificationActionConfig } from "./actions/SendNotificationActionCo
 import { SendMessageActionConfig } from "./actions/SendMessageActionConfig";
 import { CreateReminderActionConfig } from "./actions/CreateReminderActionConfig";
 import { TriggerAutomationActionConfig } from "./actions/TriggerAutomationActionConfig";
+import { HandleLeadTasksActionConfig } from "./actions/HandleLeadTasksActionConfig";
 import { FieldValueSelector } from "./triggers/FieldValueSelector";
 import { TriggerConditionBlock, TriggerConditionData } from "./TriggerConditionBlock";
 import { toast } from "@/hooks/use-toast";
