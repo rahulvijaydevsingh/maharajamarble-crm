@@ -86,6 +86,13 @@ export interface TriggerAutomationActionConfig {
   pass_variables?: boolean;
 }
 
+export interface HandleLeadTasksActionConfig {
+  operation: "cancel_all" | "reassign_all" | "add_note_all" | "complete_all";
+  reassign_to_type?: "specific_user" | "admin_role";
+  reassign_to_user?: string;
+  task_note?: string;
+}
+
 export type ActionConfig =
   | CreateTaskActionConfig
   | CreateReminderActionConfig
@@ -94,7 +101,8 @@ export type ActionConfig =
   | UpdateFieldActionConfig
   | SendEmailActionConfig
   | ExecuteWebhookActionConfig
-  | TriggerAutomationActionConfig;
+  | TriggerAutomationActionConfig
+  | HandleLeadTasksActionConfig;
 
 export interface AutomationAction {
   id: string;
