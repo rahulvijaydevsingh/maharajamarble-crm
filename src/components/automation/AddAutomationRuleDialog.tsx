@@ -222,6 +222,8 @@ export const AddAutomationRuleDialog = ({
         return { url: "", method: "POST", payload: {}, retry_logic: "none", error_handling: "ignore" };
       case "trigger_automation":
         return { target_rule_id: "", pass_variables: true };
+      case "handle_lead_tasks":
+        return { operation: "", task_note: "" };
       default:
         return {};
     }
@@ -322,6 +324,7 @@ export const AddAutomationRuleDialog = ({
       case "send_email": return <Mail className="h-4 w-4" />;
       case "execute_webhook": return <Webhook className="h-4 w-4" />;
       case "trigger_automation": return <RefreshCw className="h-4 w-4" />;
+      case "handle_lead_tasks": return <ListChecks className="h-4 w-4" />;
       default: return <Zap className="h-4 w-4" />;
     }
   };
@@ -622,6 +625,13 @@ export const AddAutomationRuleDialog = ({
 
                                 {action.type === "trigger_automation" && (
                                   <TriggerAutomationActionConfig
+                                    config={action.config}
+                                    onConfigChange={(newConfig) => handleUpdateAction(action.id, { config: newConfig })}
+                                  />
+                                )}
+
+                                {action.type === "handle_lead_tasks" && (
+                                  <HandleLeadTasksActionConfig
                                     config={action.config}
                                     onConfigChange={(newConfig) => handleUpdateAction(action.id, { config: newConfig })}
                                   />
