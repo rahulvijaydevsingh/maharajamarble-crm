@@ -10,8 +10,9 @@ interface HandleLeadTasksActionConfigProps {
 }
 
 export const HandleLeadTasksActionConfig = ({ config, onConfigChange }: HandleLeadTasksActionConfigProps) => {
-  const { data: staffList = [] } = useActiveStaff();
-  const { allStaffFlat } = buildStaffGroups(staffList);
+  const { staffMembers } = useActiveStaff();
+  const staffGroups = buildStaffGroups(staffMembers);
+  const allStaffFlat = staffGroups.flatMap(g => g.members.map(m => ({ value: m.email, label: m._display })));
 
   return (
     <div className="space-y-4">
