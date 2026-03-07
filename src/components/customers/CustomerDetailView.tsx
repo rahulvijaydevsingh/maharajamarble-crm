@@ -147,7 +147,7 @@ export function CustomerDetailView({
         assigned_to: customer.assigned_to,
         priority: customer.priority,
         notes: `Converted from customer: ${customer.name}${customer.notes ? '\n\nOriginal notes: ' + customer.notes : ''}`,
-        created_by: customer.created_by,
+        // created_by omitted — let DB default handle it for RLS compatibility
         created_from_customer_id: customer.id,
       });
 

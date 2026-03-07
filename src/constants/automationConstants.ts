@@ -48,6 +48,7 @@ export const ACTION_TYPES: { value: ActionType; label: string; description: stri
   { value: "send_email", label: "Send Email", description: "Send external email with templates", icon: "Mail", category: "Communication" },
   { value: "execute_webhook", label: "Execute Webhook", description: "Call external API endpoints", icon: "Webhook", category: "Integration" },
   { value: "trigger_automation", label: "Trigger Automation", description: "Chain to another automation rule", icon: "RefreshCw", category: "Advanced" },
+  { value: "handle_lead_tasks", label: "Handle Lead Tasks", description: "Cancel, reassign, or complete all open tasks on a lead", icon: "ListChecks", category: "Records" },
 ];
 
 export const FIELD_CHANGE_WHEN_OPTIONS = [
