@@ -338,6 +338,67 @@ async function executeAction(
         return { status: "failed", error: "Related record updates not yet supported" };
       }
 
+      case "handle_lead_tasks": {
+        // Find the lead_id from the trigger record
+        const leadId = String(newRow.id || newRow.lead_id || entityId);
+        const operation = String(config.operation || "cancel_all");
+        const taskNote = String(config.task_note || "");
+
+        // Resolve note variables
+        const resolvedNote = taskNote
+          .replace("{lead_name}", String(newRow.name || ""))
+          .replace("{trigger_reason}", String(newRow.lost_reason || ""))
+          .replace("{original_assignee}", String(newRow.assigned_to || ""))
+          .replace("{new_status}", String(newRow.status || ""));
+
+        // Find all open tasks on this lead
+        const { data: openTasks, error: tasksErr } = await supabase
+          .from("tasks")
+          .select("id, assigned_to, status")
+          .eq("lead_id", leadId)
+          .not("status", "in", '("Completed","Cancelled")');
+
+        if (tasksErr) return { status: "failed", error: tasksErr.message };
+        if (!openTasks || openTasks.length === 0) {
+          return { status: "success", details: "No open tasks found on this lead" };
+        }
+
+        let updatedCount = 0;
+        for (const task of openTasks) {
+          let updateData: Record<string, unknown> = {};
+
+          if (operation === "cancel_all") {
+            updateData = { status: "Cancelled" };
+          } else if (operation === "complete_all") {
+            updateData = { status: "Completed", completed_at: new Date().toISOString() };
+          } else if (operation === "reassign_all") {
+            const reassignTo = String(config.reassign_to_user || newRow.assigned_to || "");
+            updateData = { assigned_to: reassignTo };
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            const { error: upErr } = await supabase.from("tasks").update(updateData).eq("id", task.id);
+            if (!upErr) updatedCount++;
+          }
+
+          // Add note if provided
+          if (resolvedNote && (operation === "add_note_all" || operation === "reassign_all" || operation === "cancel_all")) {
+            // Log as activity on the task
+            await supabase.from("activity_log").insert({
+              activity_type: "automation_note",
+              activity_category: "automation",
+              title: resolvedNote,
+              user_name: "Automation",
+              related_entity_type: "task",
+              related_entity_id: task.id,
+              lead_id: leadId,
+            });
+          }
+        }
+
+        return { status: "success", details: `${operation}: ${updatedCount}/${openTasks.length} tasks updated` };
+      }
+
       default:
         return { status: "failed", error: `Unsupported action type: ${action.type}` };
     }
