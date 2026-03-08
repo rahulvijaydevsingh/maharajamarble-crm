@@ -56,6 +56,18 @@ export function PhoneLink({
           related_entity_id: log?.relatedEntityId,
         });
       }
+      // Also log to staff_activity_log for performance metrics
+      if (user) {
+        await logToStaffActivity(
+          'call_made',
+          user.email || '',
+          user.id,
+          `Called ${phone}`,
+          log?.leadId ? 'lead' : log?.customerId ? 'customer' : undefined,
+          log?.leadId || log?.customerId || undefined,
+          { phone_number: phone, lead_id: log?.leadId, customer_id: log?.customerId }
+        );
+      }
     } catch {
       // Don't block the click action if logging fails.
     } finally {
