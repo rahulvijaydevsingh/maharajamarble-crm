@@ -32,7 +32,9 @@ import { cn } from "@/lib/utils";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useCustomers } from "@/hooks/useCustomers";
 import { useLogActivity } from "@/hooks/useActivityLog";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AddToCustomerDialogProps {
   open: boolean;
