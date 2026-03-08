@@ -26,6 +26,7 @@ import HRAttendance from "./pages/HRAttendance";
 import HRLeave from "./pages/HRLeave";
 import HRLeaveApprovals from "./pages/HRLeaveApprovals";
 import HRPayroll from "./pages/HRPayroll";
+import PerformanceMatrix from "./pages/PerformanceMatrix";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,6 +62,7 @@ const App = () => (
                 <Route path="/hr/leave-approvals" element={<ProtectedRoute requiredRole="admin"><HRLeaveApprovals /></ProtectedRoute>} />
                 <Route path="/hr/payroll" element={<ProtectedRoute requiredRole="admin"><HRPayroll /></ProtectedRoute>} />
                 <Route path="/hr" element={<ProtectedRoute><HRAttendance /></ProtectedRoute>} />
+                <Route path="/performance" element={<ProtectedRoute requiredRole="admin"><PerformanceMatrix /></ProtectedRoute>} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
