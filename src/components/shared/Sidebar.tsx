@@ -17,7 +17,8 @@ import {
   Clock,
   CalendarDays,
   CheckSquare,
-  Wallet
+  Wallet,
+  BarChart3
 } from "lucide-react";
 import { useHRModule } from "@/contexts/HRModuleContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
