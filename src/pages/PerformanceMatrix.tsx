@@ -4,7 +4,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePermissions } from "@/hooks/usePermissions";
 import { useAllStaffMetrics, usePerformanceMetrics, usePerformanceTargets, PeriodType } from "@/hooks/usePerformanceMetrics";
 import { PerformanceWidget } from "@/components/performance/PerformanceWidget";
 import { LeaderboardCard } from "@/components/performance/LeaderboardCard";
