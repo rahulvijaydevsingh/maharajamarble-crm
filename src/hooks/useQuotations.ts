@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Quotation, QuotationInsert, QuotationItem } from '@/types/quotation';
 import { useToast } from '@/hooks/use-toast';
+import { logToStaffActivity } from '@/lib/staffActivityLogger';
 
 export function useQuotations() {
   const [quotations, setQuotations] = useState<Quotation[]>([]);
