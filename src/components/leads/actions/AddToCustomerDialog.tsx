@@ -75,6 +75,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   const { toast } = useToast();
   const { addCustomer } = useCustomers();
   const { logActivity } = useLogActivity();
+  const { user } = useAuth();
 
   const handleConfirmConversion = () => {
     setStep(2);
