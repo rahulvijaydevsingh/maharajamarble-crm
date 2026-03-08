@@ -32,6 +32,7 @@ export function PhoneLink({
   };
 }) {
   const { logActivity } = useLogActivity();
+  const { user } = useAuth();
   if (!phone) return <span className={cn("text-muted-foreground", className)}>-</span>;
   const href = toTelHref(phone);
   if (!href) return <span className={cn("text-muted-foreground", className)}>{phone}</span>;
