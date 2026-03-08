@@ -1,6 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useLogActivity } from "@/hooks/useActivityLog";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import { useAuth } from "@/contexts/AuthContext";
 
 function toTelHref(phone: string) {
   // Keep leading +, strip everything else except digits.
