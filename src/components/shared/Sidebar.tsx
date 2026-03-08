@@ -56,6 +56,7 @@ const mainNavigation: NavigationItem[] = [
 ];
 
 const adminNavigation: NavigationItem[] = [
+  { name: "Performance", icon: BarChart3, path: "/performance" },
   { name: "Workflow Automation", icon: Zap, path: "/automation" },
   { name: "Settings", icon: Settings, path: "/settings" },
 ];
