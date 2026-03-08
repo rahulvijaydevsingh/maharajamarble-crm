@@ -30,7 +30,7 @@ const PerformanceMatrix = () => {
   const [period, setPeriod] = useState<PeriodType>("this_month");
   const [activeTab, setActiveTab] = useState("my_performance");
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
-  const { role } = useAuth();
+  const { user, role } = useAuth();
   const isAdmin = role === "super_admin" || role === "admin";
 
   // My own metrics
