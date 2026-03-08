@@ -158,6 +158,28 @@ export function useQuotations() {
         }
       }
 
+      // Log quotation status change to staff_activity_log
+      if (updates.status) {
+        try {
+          const prevQuotation = quotations.find(q => q.id === id);
+          if (prevQuotation && prevQuotation.status !== updates.status) {
+            const session = await supabase.auth.getSession();
+            const u = session.data.session?.user;
+            if (u) {
+              await logToStaffActivity(
+                'quotation_status_changed',
+                u.email || '',
+                u.id,
+                `Quotation ${prevQuotation.quotation_number} status: ${prevQuotation.status} → ${updates.status}`,
+                'quotation',
+                id,
+                { quotation_id: id, old_status: prevQuotation.status, new_status: updates.status, client_name: prevQuotation.client_name, amount: prevQuotation.total }
+              );
+            }
+          }
+        } catch (_) {}
+      }
+
       await fetchQuotations();
       
       toast({
