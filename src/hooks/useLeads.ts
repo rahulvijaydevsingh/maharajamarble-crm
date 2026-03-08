@@ -132,14 +132,21 @@ export function useLeads() {
           const changedFields = Object.keys(updates).filter(
             (k) => prevLead && String((prevLead as any)[k]) !== String((updates as any)[k])
           );
+          const actionType = updates.status && prevLead?.status !== updates.status 
+            ? "update_lead_status" 
+            : updates.assigned_to && prevLead?.assigned_to !== updates.assigned_to
+            ? "lead_assigned"
+            : "update_lead";
           await logToStaffActivity(
-            updates.status && prevLead?.status !== updates.status ? "update_lead_status" : "update_lead",
+            actionType,
             u.email || "",
             u.id,
-            `Updated lead: ${data.name}${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
+            actionType === "lead_assigned"
+              ? `Assigned lead: ${data.name} to ${updates.assigned_to}`
+              : `Updated lead: ${data.name}${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
             "lead",
             id,
-            { changed_fields: changedFields, old_status: prevLead?.status, new_status: updates.status }
+            { changed_fields: changedFields, old_status: prevLead?.status, new_status: updates.status, assigned_from: prevLead?.assigned_to, assigned_to: updates.assigned_to }
           );
         }
       } catch (_) {}
