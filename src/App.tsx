@@ -26,6 +26,7 @@ import HRAttendance from "./pages/HRAttendance";
 import HRLeave from "./pages/HRLeave";
 import HRLeaveApprovals from "./pages/HRLeaveApprovals";
 import HRPayroll from "./pages/HRPayroll";
+import PerformanceMatrix from "./pages/PerformanceMatrix";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
