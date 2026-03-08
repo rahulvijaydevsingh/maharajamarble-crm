@@ -32,7 +32,9 @@ import { cn } from "@/lib/utils";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useCustomers } from "@/hooks/useCustomers";
 import { useLogActivity } from "@/hooks/useActivityLog";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AddToCustomerDialogProps {
   open: boolean;
@@ -73,6 +75,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   const { toast } = useToast();
   const { addCustomer } = useCustomers();
   const { logActivity } = useLogActivity();
+  const { user } = useAuth();
 
   const handleConfirmConversion = () => {
     setStep(2);
@@ -153,7 +156,19 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         });
       }
 
-      // Ensure existing lead-linked tasks also show up when viewing the new customer
+      // Log to staff_activity_log for performance metrics
+      if (user) {
+        await logToStaffActivity(
+          'convert_lead',
+          user.email || '',
+          user.id,
+          `Converted lead: ${leadData.name}`,
+          'lead',
+          leadData.id,
+          { lead_name: leadData.name, customer_id: newCustomer.id, converted_at: new Date().toISOString() }
+        );
+      }
+
       // (Tasks page filters by related_entity_id for customers.)
       try {
         const { data: relinkedTasks, error: relinkError } = await supabase

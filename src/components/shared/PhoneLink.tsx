@@ -1,6 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useLogActivity } from "@/hooks/useActivityLog";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import { useAuth } from "@/contexts/AuthContext";
 
 function toTelHref(phone: string) {
   // Keep leading +, strip everything else except digits.
@@ -30,6 +32,7 @@ export function PhoneLink({
   };
 }) {
   const { logActivity } = useLogActivity();
+  const { user } = useAuth();
   if (!phone) return <span className={cn("text-muted-foreground", className)}>-</span>;
   const href = toTelHref(phone);
   if (!href) return <span className={cn("text-muted-foreground", className)}>{phone}</span>;
@@ -52,6 +55,18 @@ export function PhoneLink({
           related_entity_type: log?.relatedEntityType,
           related_entity_id: log?.relatedEntityId,
         });
+      }
+      // Also log to staff_activity_log for performance metrics
+      if (user) {
+        await logToStaffActivity(
+          'call_made',
+          user.email || '',
+          user.id,
+          `Called ${phone}`,
+          log?.leadId ? 'lead' : log?.customerId ? 'customer' : undefined,
+          log?.leadId || log?.customerId || undefined,
+          { phone_number: phone, lead_id: log?.leadId, customer_id: log?.customerId }
+        );
       }
     } catch {
       // Don't block the click action if logging fails.

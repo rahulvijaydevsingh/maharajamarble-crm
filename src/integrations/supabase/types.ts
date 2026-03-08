@@ -1661,6 +1661,98 @@ export type Database = {
           },
         ]
       }
+      performance_targets: {
+        Row: {
+          created_at: string | null
+          id: string
+          metric_key: string
+          notes: string | null
+          period: string
+          set_by: string | null
+          staff_id: string | null
+          target_value: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          metric_key: string
+          notes?: string | null
+          period: string
+          set_by?: string | null
+          staff_id?: string | null
+          target_value: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          metric_key?: string
+          notes?: string | null
+          period?: string
+          set_by?: string | null
+          staff_id?: string | null
+          target_value?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_targets_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "performance_targets_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      performance_trigger_log: {
+        Row: {
+          actions_fired: Json | null
+          automation_rule_id: string | null
+          fired_at: string | null
+          id: string
+          staff_id: string | null
+          threshold_value: number | null
+          trigger_metric: string | null
+          trigger_value: number | null
+        }
+        Insert: {
+          actions_fired?: Json | null
+          automation_rule_id?: string | null
+          fired_at?: string | null
+          id?: string
+          staff_id?: string | null
+          threshold_value?: number | null
+          trigger_metric?: string | null
+          trigger_value?: number | null
+        }
+        Update: {
+          actions_fired?: Json | null
+          automation_rule_id?: string | null
+          fired_at?: string | null
+          id?: string
+          staff_id?: string | null
+          threshold_value?: number | null
+          trigger_metric?: string | null
+          trigger_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_trigger_log_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       professionals: {
         Row: {
           address: string | null
@@ -2325,6 +2417,60 @@ export type Database = {
           },
         ]
       }
+      staff_performance_notes: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_visible_to_staff: boolean | null
+          metric_key: string | null
+          metric_value: number | null
+          note: string
+          note_type: string | null
+          period_ref: string | null
+          staff_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_visible_to_staff?: boolean | null
+          metric_key?: string | null
+          metric_value?: number | null
+          note: string
+          note_type?: string | null
+          period_ref?: string | null
+          staff_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_visible_to_staff?: boolean | null
+          metric_key?: string | null
+          metric_value?: number | null
+          note?: string
+          note_type?: string | null
+          period_ref?: string | null
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_performance_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_performance_notes_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_settings: {
         Row: {
           created_at: string
@@ -2920,6 +3066,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      widget_preferences: {
+        Row: {
+          id: string
+          updated_at: string | null
+          user_id: string
+          view_type: string
+          widgets: Json
+        }
+        Insert: {
+          id?: string
+          updated_at?: string | null
+          user_id: string
+          view_type: string
+          widgets?: Json
+        }
+        Update: {
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+          view_type?: string
+          widgets?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "widget_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       work_delegations: {
         Row: {
