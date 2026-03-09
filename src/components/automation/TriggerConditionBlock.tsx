@@ -115,6 +115,11 @@ export const TriggerConditionBlock = ({
         return "Count-based";
       case "saved_filter":
         return triggerConfig.saved_filter_id ? "Saved filter trigger" : "Saved Filter";
+      case "performance": {
+        const metricLabel = PERFORMANCE_METRICS.find(m => m.value === triggerConfig.metric)?.label || "metric";
+        const condLabel = PERFORMANCE_CONDITIONS.find(c => c.value === triggerConfig.condition)?.label || "";
+        return triggerConfig.metric ? `${metricLabel} ${condLabel} ${triggerConfig.threshold_value || ""}` : "Performance trigger";
+      }
       default:
         return "Configure trigger...";
     }
