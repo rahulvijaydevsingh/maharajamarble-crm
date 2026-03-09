@@ -81,6 +81,7 @@ export const TriggerConditionBlock = ({
       case "time_based": return <Clock className="h-4 w-4" />;
       case "count_based": return <Hash className="h-4 w-4" />;
       case "saved_filter": return <Filter className="h-4 w-4" />;
+      case "performance": return <Gauge className="h-4 w-4" />;
       default: return <Zap className="h-4 w-4" />;
     }
   };
