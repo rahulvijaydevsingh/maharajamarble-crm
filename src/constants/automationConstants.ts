@@ -457,6 +457,17 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
     { name: "action_description", label: "Description", type: "text", editable: false },
     { name: "created_at", label: "Timestamp", type: "datetime", editable: false },
   ],
+  performance: [
+    { name: "activity_score", label: "Activity Score", type: "number", editable: false },
+    { name: "total_calls", label: "Total Calls", type: "number", editable: false },
+    { name: "site_visits", label: "Site Visits", type: "number", editable: false },
+    { name: "task_completion_rate", label: "Task Completion Rate %", type: "number", editable: false },
+    { name: "conversion_rate", label: "Conversion Rate %", type: "number", editable: false },
+    { name: "win_rate", label: "Win Rate %", type: "number", editable: false },
+    { name: "overdue_tasks", label: "Overdue Task Count", type: "number", editable: false },
+    { name: "leads_no_activity_days", label: "Lead No-Activity Days", type: "number", editable: false },
+    { name: "quotation_stale_days", label: "Quotation Stale Days", type: "number", editable: false },
+  ],
 };
 
 // Task types for action configuration
