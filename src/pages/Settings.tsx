@@ -48,6 +48,7 @@ import { StaffActivityPanel } from "@/components/settings/StaffActivityPanel";
 import { ApiAccessPanel } from "@/components/settings/ApiAccessPanel";
 import { HRModuleToggle } from "@/components/settings/HRModuleToggle";
 import { KitPresetList } from "@/components/kit/presets/KitPresetList";
+import { WhatsAppSettingsPanel } from "@/components/settings/WhatsAppSettingsPanel";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useProfileSettings } from "@/hooks/useProfileSettings";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
