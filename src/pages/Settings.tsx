@@ -85,7 +85,7 @@ const Settings = () => {
         </div>
 
           <Tabs defaultValue="profile" className="w-full">
-          	<TabsList className="grid grid-cols-11 md:w-[1400px]">
+          	<TabsList className="grid grid-cols-12 md:w-[1500px]">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -96,6 +96,10 @@ const Settings = () => {
             <TabsTrigger value="kit">
               <HeartHandshake className="h-4 w-4 mr-1" />
               KIT
+            </TabsTrigger>
+            <TabsTrigger value="whatsapp">
+              <MessageCircle className="h-4 w-4 mr-1" />
+              WhatsApp
             </TabsTrigger>
             <TabsTrigger value="staff-activity">
               <Activity className="h-4 w-4 mr-1" />
