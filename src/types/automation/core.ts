@@ -1,8 +1,8 @@
 // Automation System Types (core primitives)
 
-export type EntityType = "leads" | "tasks" | "customers" | "professionals" | "quotations" | "kit" | "staff_activity";
+export type EntityType = "leads" | "tasks" | "customers" | "professionals" | "quotations" | "kit" | "staff_activity" | "performance";
 
-export type TriggerType = "field_change" | "time_based" | "count_based" | "saved_filter";
+export type TriggerType = "field_change" | "time_based" | "count_based" | "saved_filter" | "performance";
 
 export type ExecutionLimit = "once_per_record" | "once_daily" | "unlimited" | "max_limit";
 
