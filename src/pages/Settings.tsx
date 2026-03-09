@@ -37,6 +37,7 @@ import {
   HeartHandshake,
   Activity,
   Globe,
+  MessageCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ControlPanel } from "@/components/settings/ControlPanel";
@@ -47,6 +48,7 @@ import { StaffActivityPanel } from "@/components/settings/StaffActivityPanel";
 import { ApiAccessPanel } from "@/components/settings/ApiAccessPanel";
 import { HRModuleToggle } from "@/components/settings/HRModuleToggle";
 import { KitPresetList } from "@/components/kit/presets/KitPresetList";
+import { WhatsAppSettingsPanel } from "@/components/settings/WhatsAppSettingsPanel";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useProfileSettings } from "@/hooks/useProfileSettings";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
@@ -83,7 +85,7 @@ const Settings = () => {
         </div>
 
           <Tabs defaultValue="profile" className="w-full">
-          	<TabsList className="grid grid-cols-11 md:w-[1400px]">
+          	<TabsList className="grid grid-cols-12 md:w-[1500px]">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -94,6 +96,10 @@ const Settings = () => {
             <TabsTrigger value="kit">
               <HeartHandshake className="h-4 w-4 mr-1" />
               KIT
+            </TabsTrigger>
+            <TabsTrigger value="whatsapp">
+              <MessageCircle className="h-4 w-4 mr-1" />
+              WhatsApp
             </TabsTrigger>
             <TabsTrigger value="staff-activity">
               <Activity className="h-4 w-4 mr-1" />
@@ -578,6 +584,10 @@ const Settings = () => {
 
           <TabsContent value="kit" className="space-y-4 mt-4">
             <KitPresetList />
+          </TabsContent>
+
+          <TabsContent value="whatsapp" className="space-y-4 mt-4">
+            <WhatsAppSettingsPanel />
           </TabsContent>
 
           <TabsContent value="staff-activity" className="space-y-4 mt-4">

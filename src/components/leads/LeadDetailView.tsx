@@ -40,6 +40,10 @@ import { useLogActivity } from '@/hooks/useActivityLog';
 import { useReminders } from '@/hooks/useReminders';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { SendWhatsAppDialog } from '@/components/whatsapp/SendWhatsAppDialog';
+import { useWhatsAppSettings } from '@/hooks/useWhatsAppSettings';
+import { useWhatsAppSession } from '@/hooks/useWhatsAppSession';
+import { MessageCircle } from 'lucide-react';
 import { LeadProfileTab } from './detail-tabs/LeadProfileTab';
 import { LeadQuotationsTab } from './detail-tabs/LeadQuotationsTab';
 import { LeadTasksTab } from './detail-tabs/LeadTasksTab';
@@ -139,7 +143,10 @@ export function LeadDetailView({
   const [addReminderOpen, setAddReminderOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [markLostOpen, setMarkLostOpen] = useState(false);
+  const [sendWAOpen, setSendWAOpen] = useState(false);
   const { user, isAdmin, role } = useAuth();
+  const { settings: waSettings } = useWhatsAppSettings();
+  const { session: waSession } = useWhatsAppSession();
   
   // Check if current user can delete leads
   const [canDeleteLeads, setCanDeleteLeads] = useState(false);
@@ -350,6 +357,24 @@ export function LeadDetailView({
             </div>
             
             <div className="flex items-center gap-2">
+              {waSettings?.module_enabled && currentLead.phone && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSendWAOpen(true)}
+                  disabled={!waSession || waSession.status !== 'connected'}
+                  title={
+                    !waSession || waSession.status !== 'connected'
+                      ? 'Connect WhatsApp in Settings first'
+                      : 'Send WhatsApp message'
+                  }
+                  className="text-green-600 border-green-200 hover:bg-green-50"
+                >
+                  <MessageCircle className="h-4 w-4 mr-1" />
+                  WhatsApp
+                </Button>
+              )}
+
               <Button variant="outline" size="sm" onClick={handleEditClick}>
                 <Edit className="h-4 w-4 mr-1" />
                 Edit
@@ -574,6 +599,16 @@ export function LeadDetailView({
         leadName={currentLead.name}
         onSubmit={handleMarkAsLost}
       />
+
+      {currentLead.phone && (
+        <SendWhatsAppDialog
+          open={sendWAOpen}
+          onOpenChange={setSendWAOpen}
+          recipientName={currentLead.name}
+          recipientPhone={currentLead.phone}
+          leadId={currentLead.id}
+        />
+      )}
     </>
   );
 }

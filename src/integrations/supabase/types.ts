@@ -3067,6 +3067,257 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_messages: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          error_message: string | null
+          evolution_message_id: string | null
+          id: string
+          lead_id: string | null
+          media_url: string | null
+          message_body: string | null
+          message_type: string
+          recipient_name: string | null
+          recipient_phone: string
+          sent_at: string | null
+          sent_by: string | null
+          session_id: string | null
+          status: string
+          template_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          error_message?: string | null
+          evolution_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          media_url?: string | null
+          message_body?: string | null
+          message_type?: string
+          recipient_name?: string | null
+          recipient_phone: string
+          sent_at?: string | null
+          sent_by?: string | null
+          session_id?: string | null
+          status?: string
+          template_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          error_message?: string | null
+          evolution_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          media_url?: string | null
+          message_body?: string | null
+          message_type?: string
+          recipient_name?: string | null
+          recipient_phone?: string
+          sent_at?: string | null
+          sent_by?: string | null
+          session_id?: string | null
+          status?: string
+          template_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_queue: {
+        Row: {
+          attempts: number | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          is_bulk: boolean | null
+          last_error: string | null
+          lead_id: string | null
+          media_url: string | null
+          message_body: string | null
+          message_type: string
+          priority: number | null
+          processed_at: string | null
+          recipient_name: string | null
+          recipient_phone: string
+          scheduled_for: string
+          session_id: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          is_bulk?: boolean | null
+          last_error?: string | null
+          lead_id?: string | null
+          media_url?: string | null
+          message_body?: string | null
+          message_type?: string
+          priority?: number | null
+          processed_at?: string | null
+          recipient_name?: string | null
+          recipient_phone: string
+          scheduled_for: string
+          session_id?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          is_bulk?: boolean | null
+          last_error?: string | null
+          lead_id?: string | null
+          media_url?: string | null
+          message_body?: string | null
+          message_type?: string
+          priority?: number | null
+          processed_at?: string | null
+          recipient_name?: string | null
+          recipient_phone?: string
+          scheduled_for?: string
+          session_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_queue_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_queue_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_sessions: {
+        Row: {
+          connected_at: string | null
+          created_at: string
+          id: string
+          instance_name: string
+          last_active_at: string | null
+          phone_number: string | null
+          session_type: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          instance_name: string
+          last_active_at?: string | null
+          phone_number?: string | null
+          session_type?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          instance_name?: string
+          last_active_at?: string | null
+          phone_number?: string | null
+          session_type?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_settings: {
+        Row: {
+          auto_send_quotations: boolean
+          auto_send_reminders: boolean
+          bulk_instance_name: string | null
+          daily_limit_bulk: number
+          daily_limit_main: number
+          delay_between_msgs_seconds: number
+          evolution_api_url: string | null
+          id: string
+          module_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          auto_send_quotations?: boolean
+          auto_send_reminders?: boolean
+          bulk_instance_name?: string | null
+          daily_limit_bulk?: number
+          daily_limit_main?: number
+          delay_between_msgs_seconds?: number
+          evolution_api_url?: string | null
+          id?: string
+          module_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          auto_send_quotations?: boolean
+          auto_send_reminders?: boolean
+          bulk_instance_name?: string | null
+          daily_limit_bulk?: number
+          daily_limit_main?: number
+          delay_between_msgs_seconds?: number
+          evolution_api_url?: string | null
+          id?: string
+          module_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       widget_preferences: {
         Row: {
           id: string
