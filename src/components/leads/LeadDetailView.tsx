@@ -357,6 +357,24 @@ export function LeadDetailView({
             </div>
             
             <div className="flex items-center gap-2">
+              {waSettings?.module_enabled && currentLead.phone && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSendWAOpen(true)}
+                  disabled={!waSession || waSession.status !== 'connected'}
+                  title={
+                    !waSession || waSession.status !== 'connected'
+                      ? 'Connect WhatsApp in Settings first'
+                      : 'Send WhatsApp message'
+                  }
+                  className="text-green-600 border-green-200 hover:bg-green-50"
+                >
+                  <MessageCircle className="h-4 w-4 mr-1" />
+                  WhatsApp
+                </Button>
+              )}
+
               <Button variant="outline" size="sm" onClick={handleEditClick}>
                 <Edit className="h-4 w-4 mr-1" />
                 Edit
