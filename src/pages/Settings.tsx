@@ -37,6 +37,7 @@ import {
   HeartHandshake,
   Activity,
   Globe,
+  MessageCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ControlPanel } from "@/components/settings/ControlPanel";
