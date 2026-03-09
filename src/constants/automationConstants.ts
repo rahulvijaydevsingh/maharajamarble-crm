@@ -38,6 +38,12 @@ export const TRIGGER_TYPES: { value: TriggerType; label: string; description: st
     description: "Fires when saved filter results change",
     icon: "Filter"
   },
+  {
+    value: "performance",
+    label: "Performance",
+    description: "Fires based on staff performance metrics vs targets",
+    icon: "Gauge"
+  },
 ];
 
 export const ACTION_TYPES: { value: ActionType; label: string; description: string; icon: string; category: string }[] = [
