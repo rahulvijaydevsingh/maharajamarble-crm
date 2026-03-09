@@ -541,6 +541,16 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { name: "system_name", label: "System Name", category: "system", example: "CRM System" },
   { name: "base_url", label: "Base URL", category: "system" },
   { name: "filter.count", label: "Filter Count (Saved Filter triggers)", category: "system", example: "25" },
+  
+  // Performance Variables
+  { name: "staff_name", label: "Staff Name", category: "trigger", example: "Priya S." },
+  { name: "metric_name", label: "Metric Name", category: "trigger", example: "Activity Score" },
+  { name: "current_value", label: "Current Value", category: "trigger", example: "42" },
+  { name: "target_value", label: "Target Value", category: "trigger", example: "60" },
+  { name: "change_percent", label: "Change %", category: "trigger", example: "-15" },
+  { name: "period", label: "Period", category: "trigger", example: "This Week" },
+  { name: "rank", label: "Team Rank", category: "trigger", example: "#3" },
+  { name: "team_avg", label: "Team Average", category: "trigger", example: "55" },
 ];
 
 export const EXECUTION_STATUS_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
