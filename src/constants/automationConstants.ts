@@ -553,6 +553,41 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { name: "team_avg", label: "Team Average", category: "trigger", example: "55" },
 ];
 
+// Performance trigger constants
+export const PERFORMANCE_METRICS = [
+  { value: "activity_score", label: "Activity Score" },
+  { value: "total_calls", label: "Call Count" },
+  { value: "site_visits", label: "Site Visits" },
+  { value: "task_completion_rate", label: "Task Completion Rate %" },
+  { value: "conversion_rate", label: "Conversion Rate %" },
+  { value: "win_rate", label: "Win Rate %" },
+  { value: "overdue_tasks", label: "Overdue Task Count" },
+  { value: "leads_no_activity_days", label: "Lead No-Activity Days" },
+  { value: "quotation_stale_days", label: "Quotation Stale Days" },
+];
+
+export const PERFORMANCE_CONDITIONS = [
+  { value: "below_value", label: "Value is below" },
+  { value: "above_value", label: "Value is above" },
+  { value: "below_target", label: "Value is below target" },
+  { value: "above_target", label: "Value is above target" },
+  { value: "dropped_by_percent", label: "Dropped by more than X% vs last period" },
+  { value: "no_change_days", label: "Value hasn't changed in X days" },
+  { value: "bottom_percent", label: "Value is in bottom X% of team" },
+];
+
+export const PERFORMANCE_STAFF_SCOPE = [
+  { value: "all", label: "All active staff (evaluate individually)" },
+  { value: "specific", label: "Specific staff member" },
+  { value: "by_role", label: "By role (e.g. field agents only)" },
+];
+
+export const PERFORMANCE_SCHEDULE_FREQUENCY = [
+  { value: "hourly", label: "Hourly" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+];
+
 export const EXECUTION_STATUS_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
   success: { bg: "bg-green-100", text: "text-green-800", icon: "CheckCircle" },
   failed: { bg: "bg-red-100", text: "text-red-800", icon: "XCircle" },
