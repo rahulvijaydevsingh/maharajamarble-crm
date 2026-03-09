@@ -77,8 +77,24 @@ export interface SavedFilterTriggerConfig {
   check_frequency: "realtime" | "15min" | "hourly" | "daily";
 }
 
+// Performance Trigger Config
+export interface PerformanceTriggerConfig {
+  metric: string;
+  condition: "below_value" | "above_value" | "below_target" | "above_target" | "dropped_by_percent" | "no_change_days" | "bottom_percent";
+  threshold_value?: number;
+  staff_scope: "all" | "specific" | "by_role";
+  specific_staff_id?: string;
+  role_filter?: string;
+  schedule: {
+    frequency: "daily" | "weekly" | "hourly";
+    time?: string;
+    day_of_week?: string;
+  };
+}
+
 export type TriggerConfig =
   | FieldChangeTriggerConfig
   | TimeBasedTriggerConfig
   | CountBasedTriggerConfig
-  | SavedFilterTriggerConfig;
+  | SavedFilterTriggerConfig
+  | PerformanceTriggerConfig;

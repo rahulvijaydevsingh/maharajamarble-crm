@@ -77,6 +77,7 @@ const entityIcons: Record<EntityType, React.ReactNode> = {
   quotations: <FileText className="h-4 w-4" />,
   kit: <HeartHandshake className="h-4 w-4" />,
   staff_activity: <Activity className="h-4 w-4" />,
+  performance: <Activity className="h-4 w-4" />,
 };
 
 const triggerIcons: Record<TriggerType, React.ReactNode> = {
@@ -84,6 +85,7 @@ const triggerIcons: Record<TriggerType, React.ReactNode> = {
   time_based: <Clock className="h-4 w-4" />,
   count_based: <Hash className="h-4 w-4" />,
   saved_filter: <Filter className="h-4 w-4" />,
+  performance: <Activity className="h-4 w-4" />,
 };
 
 const AutomationRules = () => {

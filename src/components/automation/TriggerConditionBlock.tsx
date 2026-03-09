@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Trash2, Zap, Clock, Hash, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, Zap, Clock, Hash, Filter, ChevronDown, ChevronUp, Gauge } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { EntityType, TriggerType, ConditionLogic, EntityField } from "@/types/automation";
 import { 
@@ -17,7 +17,11 @@ import {
   TIME_OFFSET_DIRECTIONS, 
   SAVED_FILTER_CONDITIONS,
   CHECK_FREQUENCY_OPTIONS,
-  THRESHOLD_OPERATORS
+  THRESHOLD_OPERATORS,
+  PERFORMANCE_METRICS,
+  PERFORMANCE_CONDITIONS,
+  PERFORMANCE_STAFF_SCOPE,
+  PERFORMANCE_SCHEDULE_FREQUENCY,
 } from "@/constants/automationConstants";
 import { FieldValueSelector } from "./triggers/FieldValueSelector";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
@@ -77,6 +81,7 @@ export const TriggerConditionBlock = ({
       case "time_based": return <Clock className="h-4 w-4" />;
       case "count_based": return <Hash className="h-4 w-4" />;
       case "saved_filter": return <Filter className="h-4 w-4" />;
+      case "performance": return <Gauge className="h-4 w-4" />;
       default: return <Zap className="h-4 w-4" />;
     }
   };
@@ -110,6 +115,11 @@ export const TriggerConditionBlock = ({
         return "Count-based";
       case "saved_filter":
         return triggerConfig.saved_filter_id ? "Saved filter trigger" : "Saved Filter";
+      case "performance": {
+        const metricLabel = PERFORMANCE_METRICS.find(m => m.value === triggerConfig.metric)?.label || "metric";
+        const condLabel = PERFORMANCE_CONDITIONS.find(c => c.value === triggerConfig.condition)?.label || "";
+        return triggerConfig.metric ? `${metricLabel} ${condLabel} ${triggerConfig.threshold_value || ""}` : "Performance trigger";
+      }
       default:
         return "Configure trigger...";
     }
@@ -521,6 +531,172 @@ export const TriggerConditionBlock = ({
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+
+              {/* Performance Trigger Config */}
+              {condition.triggerType === "performance" && (
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Performance Metric</Label>
+                    <Select
+                      value={condition.triggerConfig.metric || ""}
+                      onValueChange={(v) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, metric: v }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select metric..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {PERFORMANCE_METRICS.map(m => (
+                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Condition</Label>
+                    <Select
+                      value={condition.triggerConfig.condition || ""}
+                      onValueChange={(v) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, condition: v }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select condition..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {PERFORMANCE_CONDITIONS.map(c => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {condition.triggerConfig.condition && !["below_target", "above_target"].includes(condition.triggerConfig.condition) && (
+                    <Input
+                      type="number"
+                      value={condition.triggerConfig.threshold_value || ""}
+                      onChange={(e) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, threshold_value: parseFloat(e.target.value) }
+                      })}
+                      placeholder={condition.triggerConfig.condition === "dropped_by_percent" ? "% drop threshold" :
+                        condition.triggerConfig.condition === "no_change_days" ? "Days" :
+                        condition.triggerConfig.condition === "bottom_percent" ? "Bottom X%" : "Threshold value"}
+                    />
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Staff Scope</Label>
+                    <Select
+                      value={condition.triggerConfig.staff_scope || "all"}
+                      onValueChange={(v) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, staff_scope: v }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {PERFORMANCE_STAFF_SCOPE.map(s => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {condition.triggerConfig.staff_scope === "specific" && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Staff Member</Label>
+                      <Select
+                        value={condition.triggerConfig.specific_staff_id || ""}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, specific_staff_id: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select staff..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          {staffMembers.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {condition.triggerConfig.staff_scope === "by_role" && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Role Filter</Label>
+                      <Select
+                        value={condition.triggerConfig.role_filter || ""}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, role_filter: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select role..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          <SelectItem value="field_agent">Field Agent</SelectItem>
+                          <SelectItem value="sales_user">Sales User</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Evaluation Schedule</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select
+                        value={condition.triggerConfig.schedule_frequency || "daily"}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, schedule_frequency: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          {PERFORMANCE_SCHEDULE_FREQUENCY.map(f => (
+                            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="time"
+                        value={condition.triggerConfig.schedule_time || "18:00"}
+                        onChange={(e) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, schedule_time: e.target.value }
+                        })}
+                      />
+                    </div>
+                    {condition.triggerConfig.schedule_frequency === "weekly" && (
+                      <Select
+                        value={condition.triggerConfig.schedule_day || "mon"}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, schedule_day: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Day of week" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          <SelectItem value="mon">Monday</SelectItem>
+                          <SelectItem value="tue">Tuesday</SelectItem>
+                          <SelectItem value="wed">Wednesday</SelectItem>
+                          <SelectItem value="thu">Thursday</SelectItem>
+                          <SelectItem value="fri">Friday</SelectItem>
+                          <SelectItem value="sat">Saturday</SelectItem>
+                          <SelectItem value="sun">Sunday</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 </div>
               )}
             </CardContent>

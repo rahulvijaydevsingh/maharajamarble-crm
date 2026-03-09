@@ -10,6 +10,7 @@ export const ENTITY_TYPES: { value: EntityType; label: string; icon: string }[] 
   { value: "quotations", label: "Quotations", icon: "FileText" },
   { value: "kit", label: "Keep in Touch", icon: "HeartHandshake" },
   { value: "staff_activity", label: "Staff Activity", icon: "Activity" },
+  { value: "performance", label: "Performance", icon: "Gauge" },
 ];
 
 export const TRIGGER_TYPES: { value: TriggerType; label: string; description: string; icon: string }[] = [
@@ -36,6 +37,12 @@ export const TRIGGER_TYPES: { value: TriggerType; label: string; description: st
     label: "Saved Filter", 
     description: "Fires when saved filter results change",
     icon: "Filter"
+  },
+  {
+    value: "performance",
+    label: "Performance",
+    description: "Fires based on staff performance metrics vs targets",
+    icon: "Gauge"
   },
 ];
 
@@ -450,6 +457,17 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
     { name: "action_description", label: "Description", type: "text", editable: false },
     { name: "created_at", label: "Timestamp", type: "datetime", editable: false },
   ],
+  performance: [
+    { name: "activity_score", label: "Activity Score", type: "number", editable: false },
+    { name: "total_calls", label: "Total Calls", type: "number", editable: false },
+    { name: "site_visits", label: "Site Visits", type: "number", editable: false },
+    { name: "task_completion_rate", label: "Task Completion Rate %", type: "number", editable: false },
+    { name: "conversion_rate", label: "Conversion Rate %", type: "number", editable: false },
+    { name: "win_rate", label: "Win Rate %", type: "number", editable: false },
+    { name: "overdue_tasks", label: "Overdue Task Count", type: "number", editable: false },
+    { name: "leads_no_activity_days", label: "Lead No-Activity Days", type: "number", editable: false },
+    { name: "quotation_stale_days", label: "Quotation Stale Days", type: "number", editable: false },
+  ],
 };
 
 // Task types for action configuration
@@ -523,6 +541,51 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { name: "system_name", label: "System Name", category: "system", example: "CRM System" },
   { name: "base_url", label: "Base URL", category: "system" },
   { name: "filter.count", label: "Filter Count (Saved Filter triggers)", category: "system", example: "25" },
+  
+  // Performance Variables
+  { name: "staff_name", label: "Staff Name", category: "trigger", example: "Priya S." },
+  { name: "metric_name", label: "Metric Name", category: "trigger", example: "Activity Score" },
+  { name: "current_value", label: "Current Value", category: "trigger", example: "42" },
+  { name: "target_value", label: "Target Value", category: "trigger", example: "60" },
+  { name: "change_percent", label: "Change %", category: "trigger", example: "-15" },
+  { name: "period", label: "Period", category: "trigger", example: "This Week" },
+  { name: "rank", label: "Team Rank", category: "trigger", example: "#3" },
+  { name: "team_avg", label: "Team Average", category: "trigger", example: "55" },
+];
+
+// Performance trigger constants
+export const PERFORMANCE_METRICS = [
+  { value: "activity_score", label: "Activity Score" },
+  { value: "total_calls", label: "Call Count" },
+  { value: "site_visits", label: "Site Visits" },
+  { value: "task_completion_rate", label: "Task Completion Rate %" },
+  { value: "conversion_rate", label: "Conversion Rate %" },
+  { value: "win_rate", label: "Win Rate %" },
+  { value: "overdue_tasks", label: "Overdue Task Count" },
+  { value: "leads_no_activity_days", label: "Lead No-Activity Days" },
+  { value: "quotation_stale_days", label: "Quotation Stale Days" },
+];
+
+export const PERFORMANCE_CONDITIONS = [
+  { value: "below_value", label: "Value is below" },
+  { value: "above_value", label: "Value is above" },
+  { value: "below_target", label: "Value is below target" },
+  { value: "above_target", label: "Value is above target" },
+  { value: "dropped_by_percent", label: "Dropped by more than X% vs last period" },
+  { value: "no_change_days", label: "Value hasn't changed in X days" },
+  { value: "bottom_percent", label: "Value is in bottom X% of team" },
+];
+
+export const PERFORMANCE_STAFF_SCOPE = [
+  { value: "all", label: "All active staff (evaluate individually)" },
+  { value: "specific", label: "Specific staff member" },
+  { value: "by_role", label: "By role (e.g. field agents only)" },
+];
+
+export const PERFORMANCE_SCHEDULE_FREQUENCY = [
+  { value: "hourly", label: "Hourly" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
 ];
 
 export const EXECUTION_STATUS_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
