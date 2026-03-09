@@ -143,7 +143,10 @@ export function LeadDetailView({
   const [addReminderOpen, setAddReminderOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [markLostOpen, setMarkLostOpen] = useState(false);
+  const [sendWAOpen, setSendWAOpen] = useState(false);
   const { user, isAdmin, role } = useAuth();
+  const { settings: waSettings } = useWhatsAppSettings();
+  const { session: waSession } = useWhatsAppSession();
   
   // Check if current user can delete leads
   const [canDeleteLeads, setCanDeleteLeads] = useState(false);
