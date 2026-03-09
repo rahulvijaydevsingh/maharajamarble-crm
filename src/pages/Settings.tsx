@@ -586,6 +586,10 @@ const Settings = () => {
             <KitPresetList />
           </TabsContent>
 
+          <TabsContent value="whatsapp" className="space-y-4 mt-4">
+            <WhatsAppSettingsPanel />
+          </TabsContent>
+
           <TabsContent value="staff-activity" className="space-y-4 mt-4">
             <StaffActivityPanel />
           </TabsContent>

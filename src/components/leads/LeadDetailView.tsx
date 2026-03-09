@@ -599,6 +599,16 @@ export function LeadDetailView({
         leadName={currentLead.name}
         onSubmit={handleMarkAsLost}
       />
+
+      {currentLead.phone && (
+        <SendWhatsAppDialog
+          open={sendWAOpen}
+          onOpenChange={setSendWAOpen}
+          recipientName={currentLead.name}
+          recipientPhone={currentLead.phone}
+          leadId={currentLead.id}
+        />
+      )}
     </>
   );
 }
