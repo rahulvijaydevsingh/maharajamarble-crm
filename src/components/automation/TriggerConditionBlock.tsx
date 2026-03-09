@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Trash2, Zap, Clock, Hash, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, Zap, Clock, Hash, Filter, ChevronDown, ChevronUp, Gauge } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { EntityType, TriggerType, ConditionLogic, EntityField } from "@/types/automation";
 import { 
@@ -17,7 +17,11 @@ import {
   TIME_OFFSET_DIRECTIONS, 
   SAVED_FILTER_CONDITIONS,
   CHECK_FREQUENCY_OPTIONS,
-  THRESHOLD_OPERATORS
+  THRESHOLD_OPERATORS,
+  PERFORMANCE_METRICS,
+  PERFORMANCE_CONDITIONS,
+  PERFORMANCE_STAFF_SCOPE,
+  PERFORMANCE_SCHEDULE_FREQUENCY,
 } from "@/constants/automationConstants";
 import { FieldValueSelector } from "./triggers/FieldValueSelector";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
