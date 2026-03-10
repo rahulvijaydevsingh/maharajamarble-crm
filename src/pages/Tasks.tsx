@@ -85,7 +85,7 @@ const Tasks = () => {
               Manage and track all your team's tasks and follow-ups
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "kanban")}>
               <TabsList>
                 <TabsTrigger value="list" className="gap-1">

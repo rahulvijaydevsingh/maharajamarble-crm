@@ -70,7 +70,7 @@ const PerformanceMatrix = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="flex-wrap">
+          <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="my_performance">My Performance</TabsTrigger>
             {isAdmin && <TabsTrigger value="team_overview">Team Overview</TabsTrigger>}
             {isAdmin && <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>}
