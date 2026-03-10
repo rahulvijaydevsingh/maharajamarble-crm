@@ -182,7 +182,7 @@ const Leads = () => {
         </div>
 
         <Tabs defaultValue="active">
-          <TabsList>
+          <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="active">Active Leads</TabsTrigger>
             {canSeeArchive && (
               <TabsTrigger value="archive" className="gap-1.5">

@@ -85,7 +85,7 @@ const Settings = () => {
         </div>
 
           <Tabs defaultValue="profile" className="w-full">
-          	<TabsList className="grid grid-cols-12 md:w-[1500px]">
+          	<TabsList className="flex w-full overflow-x-auto justify-start">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
