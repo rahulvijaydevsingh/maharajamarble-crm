@@ -85,6 +85,15 @@ export function useQuotations() {
       }
 
       await fetchQuotations();
+
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          await logToStaffActivity("create_quotation", u.email || "", u.id, `Created quotation: ${(newQuotation as any).quotation_number} for ${quotation.client_name}`, "quotation", (newQuotation as any).id, { quotation_number: (newQuotation as any).quotation_number, client_name: quotation.client_name, total });
+        }
+      } catch (_) {}
       
       toast({
         title: 'Success',
