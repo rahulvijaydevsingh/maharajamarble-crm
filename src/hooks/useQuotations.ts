@@ -85,6 +85,15 @@ export function useQuotations() {
       }
 
       await fetchQuotations();
+
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          await logToStaffActivity("create_quotation", u.email || "", u.id, `Created quotation: ${(newQuotation as any).quotation_number} for ${quotation.client_name}`, "quotation", (newQuotation as any).id, { quotation_number: (newQuotation as any).quotation_number, client_name: quotation.client_name, total });
+        }
+      } catch (_) {}
       
       toast({
         title: 'Success',
@@ -199,6 +208,8 @@ export function useQuotations() {
 
   const deleteQuotation = async (id: string) => {
     try {
+      const quotation = quotations.find(q => q.id === id);
+
       const { error } = await supabase
         .from('quotations')
         .delete()
@@ -207,6 +218,15 @@ export function useQuotations() {
       if (error) throw error;
 
       await fetchQuotations();
+
+      // Log to staff activity
+      try {
+        const session = await supabase.auth.getSession();
+        const u = session.data.session?.user;
+        if (u) {
+          await logToStaffActivity("delete_quotation", u.email || "", u.id, `Deleted quotation: ${quotation?.quotation_number || id}`, "quotation", id, { quotation_number: quotation?.quotation_number, client_name: quotation?.client_name });
+        }
+      } catch (_) {}
       
       toast({
         title: 'Success',

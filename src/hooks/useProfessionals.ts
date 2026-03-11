@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Professional {
   id: string;
@@ -51,6 +52,11 @@ export interface ProfessionalInsert {
   site_plus_code?: string | null;
 }
 
+async function getSessionUser() {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user ?? null;
+}
+
 export function useProfessionals() {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +96,12 @@ export function useProfessionals() {
 
       setProfessionals((prev) => [data, ...prev]);
       toast({ title: "Professional added successfully" });
+
+      const u = await getSessionUser();
+      if (u) {
+        logToStaffActivity("create_professional", u.email || "", u.id, `Created professional: ${professional.name}`, "professional", data.id, { name: professional.name, type: professional.professional_type });
+      }
+
       return data;
     } catch (error: any) {
       console.error("Error adding professional:", error);
@@ -117,6 +129,12 @@ export function useProfessionals() {
         prev.map((p) => (p.id === id ? data : p))
       );
       toast({ title: "Professional updated successfully" });
+
+      const u = await getSessionUser();
+      if (u) {
+        logToStaffActivity("update_professional", u.email || "", u.id, `Updated professional: ${data.name}`, "professional", id, { updated_fields: Object.keys(updates) });
+      }
+
       return data;
     } catch (error: any) {
       console.error("Error updating professional:", error);
@@ -131,6 +149,8 @@ export function useProfessionals() {
 
   const deleteProfessional = async (id: string) => {
     try {
+      const professional = professionals.find((p) => p.id === id);
+
       const { error } = await supabase
         .from("professionals")
         .delete()
@@ -140,6 +160,11 @@ export function useProfessionals() {
 
       setProfessionals((prev) => prev.filter((p) => p.id !== id));
       toast({ title: "Professional deleted successfully" });
+
+      const u = await getSessionUser();
+      if (u) {
+        logToStaffActivity("delete_professional", u.email || "", u.id, `Deleted professional: ${professional?.name || id}`, "professional", id, { name: professional?.name });
+      }
     } catch (error: any) {
       console.error("Error deleting professional:", error);
       toast({

@@ -11,7 +11,10 @@ export type BackupModuleKey =
   | "company_system"
   | "todo"
   | "attachments_files"
-  | "kit";
+  | "kit"
+  | "performance"
+  | "staff_logs"
+  | "whatsapp";
 
 export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; description: string }> = [
   { key: "leads", label: "Leads", description: "Leads + related activity" },
@@ -27,6 +30,9 @@ export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; descri
   { key: "todo", label: "Todo Lists", description: "Todo lists and items" },
   { key: "attachments_files", label: "Attachments/Files", description: "Attachment metadata + stored objects" },
   { key: "kit", label: "Keep in Touch", description: "KIT subscriptions, touches, presets" },
+  { key: "performance", label: "Performance", description: "Performance targets, notes, triggers, widget prefs" },
+  { key: "staff_logs", label: "Staff Activity Logs", description: "Staff activity log + notifications" },
+  { key: "whatsapp", label: "WhatsApp", description: "WhatsApp settings, sessions, messages, queue" },
 ];
 
 export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
@@ -64,10 +70,26 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   todo: ["todo_lists", "todo_items"],
   attachments_files: ["entity_attachments", "quotation_attachments", "messages"],
   kit: ["kit_subscriptions", "kit_touches", "kit_presets", "kit_outcomes", "kit_touch_methods"],
+  performance: ["performance_targets", "staff_performance_notes", "performance_trigger_log", "widget_preferences"],
+  staff_logs: ["staff_activity_log", "notifications"],
+  whatsapp: ["whatsapp_settings", "whatsapp_sessions", "whatsapp_messages", "whatsapp_queue"],
 };
 
 // Deletion order for REPLACE restores: children first.
 export const REPLACE_DELETE_ORDER: string[] = [
+  // WhatsApp
+  "whatsapp_queue",
+  "whatsapp_messages",
+  "whatsapp_sessions",
+  "whatsapp_settings",
+  // Performance
+  "performance_trigger_log",
+  "widget_preferences",
+  "staff_performance_notes",
+  "performance_targets",
+  // Staff logs
+  "staff_activity_log",
+  // Existing
   "announcement_reads",
   "messages",
   "conversations",
@@ -155,6 +177,18 @@ export const RESTORE_INSERT_ORDER: string[] = [
   "kit_presets",
   "kit_subscriptions",
   "kit_touches",
+  // Performance
+  "performance_targets",
+  "staff_performance_notes",
+  "performance_trigger_log",
+  "widget_preferences",
+  // Staff logs
+  "staff_activity_log",
+  // WhatsApp
+  "whatsapp_settings",
+  "whatsapp_sessions",
+  "whatsapp_messages",
+  "whatsapp_queue",
 ];
 
 export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
@@ -190,6 +224,22 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   kit_presets: "id",
   kit_outcomes: "id",
   kit_touch_methods: "id",
+
+  // Performance
+  performance_targets: "id",
+  staff_performance_notes: "id",
+  performance_trigger_log: "id",
+  widget_preferences: "id",
+
+  // Staff logs
+  staff_activity_log: "id",
+  notifications: "id",
+
+  // WhatsApp
+  whatsapp_settings: "id",
+  whatsapp_sessions: "id",
+  whatsapp_messages: "id",
+  whatsapp_queue: "id",
 
   // Non-id PKs
   user_roles: "user_id",
