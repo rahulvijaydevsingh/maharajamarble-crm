@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Customer {
   id: string;
@@ -58,6 +59,11 @@ export interface CustomerInsert {
   site_plus_code?: string | null;
 }
 
+async function getSessionUser() {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user ?? null;
+}
+
 export function useCustomers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,6 +103,13 @@ export function useCustomers() {
 
       setCustomers((prev) => [data, ...prev]);
       toast({ title: "Customer added successfully" });
+
+      // Log to staff activity
+      const u = await getSessionUser();
+      if (u) {
+        logToStaffActivity("create_customer", u.email || "", u.id, `Created customer: ${customer.name}`, "customer", data.id, { customer_name: customer.name, phone: customer.phone });
+      }
+
       return data;
     } catch (error: any) {
       console.error("Error adding customer:", error);
@@ -124,6 +137,13 @@ export function useCustomers() {
         prev.map((c) => (c.id === id ? data : c))
       );
       toast({ title: "Customer updated successfully" });
+
+      // Log to staff activity
+      const u = await getSessionUser();
+      if (u) {
+        logToStaffActivity("update_customer", u.email || "", u.id, `Updated customer: ${data.name}`, "customer", id, { updated_fields: Object.keys(updates) });
+      }
+
       return data;
     } catch (error: any) {
       console.error("Error updating customer:", error);
@@ -138,6 +158,8 @@ export function useCustomers() {
 
   const deleteCustomer = async (id: string) => {
     try {
+      const customer = customers.find((c) => c.id === id);
+
       // First, clear any lead references to this customer
       await supabase
         .from("leads")
@@ -153,6 +175,12 @@ export function useCustomers() {
 
       setCustomers((prev) => prev.filter((c) => c.id !== id));
       toast({ title: "Customer deleted successfully" });
+
+      // Log to staff activity
+      const u = await getSessionUser();
+      if (u) {
+        logToStaffActivity("delete_customer", u.email || "", u.id, `Deleted customer: ${customer?.name || id}`, "customer", id, { customer_name: customer?.name });
+      }
     } catch (error: any) {
       console.error("Error deleting customer:", error);
       toast({
