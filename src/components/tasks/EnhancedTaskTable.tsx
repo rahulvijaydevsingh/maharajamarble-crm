@@ -1626,7 +1626,7 @@ export function EnhancedTaskTable({
                     </SelectTrigger>
                     <SelectContent className="z-[200]">
                       {uniqueAssignees.map(assignee => (
-                        <SelectItem key={assignee} value={assignee}>{assignee}</SelectItem>
+                        <SelectItem key={assignee.value} value={assignee.value}>{assignee.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
