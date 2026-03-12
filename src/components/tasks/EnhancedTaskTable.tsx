@@ -572,7 +572,8 @@ export function EnhancedTaskTable({
       // Multi-select filters
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(task.type);
       const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(task.priority);
-      const matchesAssignee = selectedAssignees.length === 0 || selectedAssignees.includes(task.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(task.assigned_to.toLowerCase()) || task.assigned_to;
+      const matchesAssignee = selectedAssignees.length === 0 || selectedAssignees.includes(resolvedAssignee);
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(task.computedStatus);
       
       // Date range filters
