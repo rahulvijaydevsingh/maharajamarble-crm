@@ -944,7 +944,7 @@ export function EnhancedTaskTable({
             <SortableHeader field="assigned_to" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
               {columnLabel}
             </SortableHeader>
-            <MultiSelectFilter
+            <StaffMultiSelectFilter
               options={uniqueAssignees}
               selectedValues={selectedAssignees}
               onSelectionChange={setSelectedAssignees}
