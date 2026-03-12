@@ -206,7 +206,65 @@ function MultiSelectFilter({
   );
 }
 
-// Date range filter component matching leads page style
+// Staff multi-select filter with {value, label} options
+function StaffMultiSelectFilter({ 
+  options, 
+  selectedValues, 
+  onSelectionChange, 
+  placeholder 
+}: {
+  options: { value: string; label: string }[];
+  selectedValues: string[];
+  onSelectionChange: (values: string[]) => void;
+  placeholder: string;
+}) {
+  const handleToggle = (value: string) => {
+    const newSelection = selectedValues.includes(value)
+      ? selectedValues.filter(v => v !== value)
+      : [...selectedValues, value];
+    onSelectionChange(newSelection);
+  };
+
+  const handleClearAll = () => {
+    onSelectionChange([]);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 px-2 text-xs font-normal hover:bg-muted/50"
+        >
+          <Filter className="mr-1 h-3 w-3" />
+          {selectedValues.length > 0 ? `${selectedValues.length}` : "All"}
+          <ChevronDown className="ml-1 h-3 w-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        {selectedValues.length > 0 && (
+          <>
+            <DropdownMenuItem onClick={handleClearAll} className="text-destructive">
+              <X className="mr-2 h-4 w-4" />
+              Clear All
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {options.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option.value}
+            checked={selectedValues.includes(option.value)}
+            onCheckedChange={() => handleToggle(option.value)}
+          >
+            {option.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 function DateRangeFilter({
   startDate,
   endDate,
