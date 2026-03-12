@@ -617,7 +617,8 @@ export function EnhancedTaskTable({
     const config = filter.filter_config;
     return transformedTasks.filter(task => {
       const priorityMatch = (config.priorityFilter?.length || 0) === 0 || config.priorityFilter?.includes(task.priority);
-      const assigneeMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter?.includes(task.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(task.assigned_to.toLowerCase()) || task.assigned_to;
+      const assigneeMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter?.includes(resolvedAssignee);
       const statusMatch = (config.statusFilter?.length || 0) === 0 || config.statusFilter?.includes(task.computedStatus);
       // Use sourceFilter to store task types for tasks entity
       const typeMatch = (config.sourceFilter?.length || 0) === 0 || config.sourceFilter?.includes(task.type);
