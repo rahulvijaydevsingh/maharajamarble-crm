@@ -1689,7 +1689,7 @@ export function EnhancedTaskTable({
         onUpdate={updateFilter}
         editingFilter={editingFilter}
         uniqueTypes={uniqueTypes}
-        uniqueAssignedTo={uniqueAssignees}
+        uniqueAssignedTo={uniqueAssignees.map(a => a.label)}
       />
 
       {/* Manage Filters Dialog */}
