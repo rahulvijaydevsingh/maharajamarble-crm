@@ -206,7 +206,65 @@ function MultiSelectFilter({
   );
 }
 
-// Date range filter component matching leads page style
+// Staff multi-select filter with {value, label} options
+function StaffMultiSelectFilter({ 
+  options, 
+  selectedValues, 
+  onSelectionChange, 
+  placeholder 
+}: {
+  options: { value: string; label: string }[];
+  selectedValues: string[];
+  onSelectionChange: (values: string[]) => void;
+  placeholder: string;
+}) {
+  const handleToggle = (value: string) => {
+    const newSelection = selectedValues.includes(value)
+      ? selectedValues.filter(v => v !== value)
+      : [...selectedValues, value];
+    onSelectionChange(newSelection);
+  };
+
+  const handleClearAll = () => {
+    onSelectionChange([]);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 px-2 text-xs font-normal hover:bg-muted/50"
+        >
+          <Filter className="mr-1 h-3 w-3" />
+          {selectedValues.length > 0 ? `${selectedValues.length}` : "All"}
+          <ChevronDown className="ml-1 h-3 w-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        {selectedValues.length > 0 && (
+          <>
+            <DropdownMenuItem onClick={handleClearAll} className="text-destructive">
+              <X className="mr-2 h-4 w-4" />
+              Clear All
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {options.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option.value}
+            checked={selectedValues.includes(option.value)}
+            onCheckedChange={() => handleToggle(option.value)}
+          >
+            {option.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 function DateRangeFilter({
   startDate,
   endDate,
@@ -461,8 +519,46 @@ export function EnhancedTaskTable({
   // Get unique values for filters
   const uniqueTypes = useMemo(() => [...new Set(transformedTasks.map(task => task.type))], [transformedTasks]);
   const uniquePriorities = useMemo(() => [...new Set(transformedTasks.map(task => task.priority))], [transformedTasks]);
-  const uniqueAssignees = useMemo(() => [...new Set(transformedTasks.map(task => task.assigned_to))], [transformedTasks]);
   const uniqueStatuses = useMemo(() => [...new Set(transformedTasks.map(task => task.computedStatus))], [transformedTasks]);
+
+  // Build staff-based assignee filter: resolve all assigned_to values to staff profiles
+  const resolveAssignedToStaff = useMemo(() => {
+    // Create a lookup: any possible assigned_to value → staff email (canonical key)
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      // Match by email
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      // Match by name
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+      // Match by "Role - Name" format (what getStaffDisplayName produces)
+      const displayName = getStaffDisplayName(s.email || s.name, staffMembers);
+      if (displayName) lookup.set(displayName.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  // Build clean assignee options from profiles that have tasks assigned
+  const { uniqueAssignees, assigneeDisplayMap } = useMemo(() => {
+    // Collect which staff emails appear in tasks
+    const assignedStaffEmails = new Set<string>();
+    for (const task of transformedTasks) {
+      const key = resolveAssignedToStaff.get(task.assigned_to.toLowerCase());
+      if (key) assignedStaffEmails.add(key);
+    }
+    // Build options from staffMembers that have tasks
+    const displayMap = new Map<string, string>(); // email → display name
+    const options: { value: string; label: string }[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffEmails.has(canonicalKey)) {
+        const label = getStaffDisplayName(s.email || s.name, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push({ value: canonicalKey, label });
+      }
+    }
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return { uniqueAssignees: options, assigneeDisplayMap: displayMap };
+  }, [transformedTasks, staffMembers, resolveAssignedToStaff]);
 
   // Filter and sort tasks
   const filteredTasks = useMemo(() => {
@@ -476,7 +572,8 @@ export function EnhancedTaskTable({
       // Multi-select filters
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(task.type);
       const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(task.priority);
-      const matchesAssignee = selectedAssignees.length === 0 || selectedAssignees.includes(task.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(task.assigned_to.toLowerCase()) || task.assigned_to;
+      const matchesAssignee = selectedAssignees.length === 0 || selectedAssignees.includes(resolvedAssignee);
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(task.computedStatus);
       
       // Date range filters
@@ -520,7 +617,8 @@ export function EnhancedTaskTable({
     const config = filter.filter_config;
     return transformedTasks.filter(task => {
       const priorityMatch = (config.priorityFilter?.length || 0) === 0 || config.priorityFilter?.includes(task.priority);
-      const assigneeMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter?.includes(task.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(task.assigned_to.toLowerCase()) || task.assigned_to;
+      const assigneeMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter?.includes(resolvedAssignee);
       const statusMatch = (config.statusFilter?.length || 0) === 0 || config.statusFilter?.includes(task.computedStatus);
       // Use sourceFilter to store task types for tasks entity
       const typeMatch = (config.sourceFilter?.length || 0) === 0 || config.sourceFilter?.includes(task.type);
@@ -846,7 +944,7 @@ export function EnhancedTaskTable({
             <SortableHeader field="assigned_to" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>
               {columnLabel}
             </SortableHeader>
-            <MultiSelectFilter
+            <StaffMultiSelectFilter
               options={uniqueAssignees}
               selectedValues={selectedAssignees}
               onSelectionChange={setSelectedAssignees}
@@ -1528,7 +1626,7 @@ export function EnhancedTaskTable({
                     </SelectTrigger>
                     <SelectContent className="z-[200]">
                       {uniqueAssignees.map(assignee => (
-                        <SelectItem key={assignee} value={assignee}>{assignee}</SelectItem>
+                        <SelectItem key={assignee.value} value={assignee.value}>{assignee.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1591,7 +1689,7 @@ export function EnhancedTaskTable({
         onUpdate={updateFilter}
         editingFilter={editingFilter}
         uniqueTypes={uniqueTypes}
-        uniqueAssignedTo={uniqueAssignees}
+        uniqueAssignedTo={uniqueAssignees.map(a => a.label)}
       />
 
       {/* Manage Filters Dialog */}
