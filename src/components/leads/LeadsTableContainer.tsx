@@ -172,7 +172,13 @@ export function LeadsTableContainer({
         return (
           <div className="flex items-center justify-between">
             <SortableHeader field="assigned_to">{columnLabel}</SortableHeader>
-            <MultiSelectFilter options={uniqueAssignedTo} selected={assignedToFilter} onSelectionChange={setAssignedToFilter} placeholder="Filter by Assignment" />
+            <MultiSelectFilter 
+              options={uniqueAssignedTo} 
+              selected={assignedToFilter} 
+              onSelectionChange={setAssignedToFilter} 
+              placeholder="Filter by Assignment" 
+              renderLabel={(key) => assigneeDisplayMap?.get(key) || key}
+            />
           </div>
         );
       case "tasks":
