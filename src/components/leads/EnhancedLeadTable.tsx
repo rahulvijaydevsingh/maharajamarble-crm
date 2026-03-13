@@ -1059,6 +1059,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           uniqueSources={uniqueSources}
           uniqueMaterials={uniqueMaterials}
           uniqueAssignedTo={uniqueAssignedTo}
+          assigneeDisplayMap={assigneeDisplayMap}
           uniqueCreatedBy={uniqueCreatedBy}
           statuses={statuses}
           priorities={priorities}

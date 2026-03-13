@@ -117,6 +117,7 @@ export function LeadsTableContainer({
   uniqueSources,
   uniqueMaterials,
   uniqueAssignedTo,
+  assigneeDisplayMap,
   uniqueCreatedBy,
   statuses,
   priorities,
