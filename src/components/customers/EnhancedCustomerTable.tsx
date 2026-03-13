@@ -671,6 +671,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               selected={assignedToFilter}
               onSelectionChange={setAssignedToFilter}
               placeholder="Filter by Assignee"
+              renderLabel={(key) => assigneeDisplayMap.get(key) || key}
             />
           </div>
         );
