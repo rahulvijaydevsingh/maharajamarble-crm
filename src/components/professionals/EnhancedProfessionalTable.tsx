@@ -49,6 +49,7 @@ interface EnhancedProfessionalTableProps {
 
 export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional, onBulkUpload }: EnhancedProfessionalTableProps) {
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
+  const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("professionals");
   const { 
     columns, 
