@@ -96,6 +96,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCustomers } from "@/hooks/useCustomers";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 
