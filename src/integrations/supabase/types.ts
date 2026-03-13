@@ -1755,6 +1755,8 @@ export type Database = {
       }
       professionals: {
         Row: {
+          added_by: string | null
+          added_via_lead_id: string | null
           address: string | null
           alternate_phone: string | null
           assigned_to: string
@@ -1780,8 +1782,13 @@ export type Database = {
           status: string
           total_projects: number | null
           updated_at: string
+          verified: boolean
+          verified_at: string | null
+          verified_by: string | null
         }
         Insert: {
+          added_by?: string | null
+          added_via_lead_id?: string | null
           address?: string | null
           alternate_phone?: string | null
           assigned_to: string
@@ -1807,8 +1814,13 @@ export type Database = {
           status?: string
           total_projects?: number | null
           updated_at?: string
+          verified?: boolean
+          verified_at?: string | null
+          verified_by?: string | null
         }
         Update: {
+          added_by?: string | null
+          added_via_lead_id?: string | null
           address?: string | null
           alternate_phone?: string | null
           assigned_to?: string
@@ -1834,6 +1846,9 @@ export type Database = {
           status?: string
           total_projects?: number | null
           updated_at?: string
+          verified?: boolean
+          verified_at?: string | null
+          verified_by?: string | null
         }
         Relationships: [
           {
