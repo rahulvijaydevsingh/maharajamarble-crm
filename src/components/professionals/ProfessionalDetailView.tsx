@@ -856,6 +856,9 @@ export function ProfessionalDetailView({
             </div>
 
             <div className="flex items-center gap-2">
+              {!(currentProfessional as any).verified && (
+                <MarkAsVerifiedButton professionalId={currentProfessional.id} onVerified={() => onOpenChange(false)} />
+              )}
               {onEdit && (
                 <Button variant="outline" size="sm" onClick={() => onEdit(currentProfessional)}>
                   <Edit className="h-4 w-4 mr-1" />
