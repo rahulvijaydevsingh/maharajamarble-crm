@@ -787,7 +787,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           </span>
         );
       case "assignedTo":
-        return customer.assigned_to;
+        return assigneeDisplayMap.get(customer.assigned_to) || getStaffDisplayName(customer.assigned_to, staffMembers);
       case "tasks":
         return (
           <PendingTasksBadge 
