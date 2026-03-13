@@ -70,11 +70,12 @@ interface LeadsTableContainerProps {
   uniqueSources: string[];
   uniqueMaterials: string[];
   uniqueAssignedTo: string[];
+  assigneeDisplayMap?: Map<string, string>;
   uniqueCreatedBy: string[];
   statuses: Record<string, { label: string; className: string }>;
   priorities: Record<number, { label: string; color: string }>;
   SortableHeader: React.FC<{ field: SortField; children: React.ReactNode }>;
-  MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string }>;
+  MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string; renderLabel?: (option: string) => string }>;
   DateRangeFilter: React.FC<{ dateRange: DateRange; onDateRangeChange: (range: DateRange) => void }>;
   PendingTasksBadge: React.FC<{ leadId: string; leadName: string }>;
   tasksFilter: string[];
@@ -116,6 +117,7 @@ export function LeadsTableContainer({
   uniqueSources,
   uniqueMaterials,
   uniqueAssignedTo,
+  assigneeDisplayMap,
   uniqueCreatedBy,
   statuses,
   priorities,
@@ -171,7 +173,13 @@ export function LeadsTableContainer({
         return (
           <div className="flex items-center justify-between">
             <SortableHeader field="assigned_to">{columnLabel}</SortableHeader>
-            <MultiSelectFilter options={uniqueAssignedTo} selected={assignedToFilter} onSelectionChange={setAssignedToFilter} placeholder="Filter by Assignment" />
+            <MultiSelectFilter 
+              options={uniqueAssignedTo} 
+              selected={assignedToFilter} 
+              onSelectionChange={setAssignedToFilter} 
+              placeholder="Filter by Assignment" 
+              renderLabel={(key) => assigneeDisplayMap?.get(key) || key}
+            />
           </div>
         );
       case "tasks":
@@ -287,7 +295,7 @@ export function LeadsTableContainer({
           </span>
         );
       case "assignedTo":
-        return lead.assigned_to;
+        return assigneeDisplayMap?.get(lead.assigned_to) || assigneeDisplayMap?.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
       case "tasks":
         return <PendingTasksBadge leadId={lead.id} leadName={lead.name} />;
       case "nextFollowUp":

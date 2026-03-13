@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -210,6 +212,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { getCustomerTasks } = usePendingTasksByCustomer();
+  const { staffMembers } = useActiveStaff();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -283,7 +286,36 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     }
   }, [searchParams, customers, setSearchParams]);
 
-  const uniqueAssignedTo = useMemo(() => Array.from(new Set(customers.map(c => c.assigned_to))), [customers]);
+  // Build staff-based assignee filter
+  const resolveAssignedToStaff = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
+    const assignedStaffKeys = new Set<string>();
+    for (const c of customers) {
+      const key = resolveAssignedToStaff.get(c.assigned_to.toLowerCase());
+      if (key) assignedStaffKeys.add(key);
+    }
+    const displayMap = new Map<string, string>();
+    const options: string[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffKeys.has(canonicalKey)) {
+        const label = getStaffDisplayName(canonicalKey, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push(canonicalKey);
+      }
+    }
+    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+    return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
+  }, [customers, staffMembers, resolveAssignedToStaff]);
+
   const uniqueCities = useMemo(() => Array.from(new Set(customers.map(c => c.city).filter(Boolean) as string[])), [customers]);
   const uniqueStatuses = useMemo(() => Object.keys(CUSTOMER_STATUSES), []);
   const uniqueTypes = useMemo(() => CUSTOMER_TYPES.map(t => t.value), []);
@@ -299,7 +331,8 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(c.status);
       const typeMatch = typeFilter.length === 0 || typeFilter.includes(c.customer_type);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(c.priority.toString());
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(c.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const cityMatch = cityFilter.length === 0 || cityFilter.includes(c.city || "");
 
       // Pending tasks filter
@@ -638,6 +671,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               selected={assignedToFilter}
               onSelectionChange={setAssignedToFilter}
               placeholder="Filter by Assignee"
+              renderLabel={(key) => assigneeDisplayMap.get(key) || key}
             />
           </div>
         );
@@ -753,7 +787,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           </span>
         );
       case "assignedTo":
-        return customer.assigned_to;
+        return assigneeDisplayMap.get(customer.assigned_to) || getStaffDisplayName(customer.assigned_to, staffMembers);
       case "tasks":
         return (
           <PendingTasksBadge 

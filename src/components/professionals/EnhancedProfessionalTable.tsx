@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from "react";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -47,6 +49,7 @@ interface EnhancedProfessionalTableProps {
 
 export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional, onBulkUpload }: EnhancedProfessionalTableProps) {
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
+  const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("professionals");
   const { 
     columns, 
@@ -76,7 +79,36 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
 
-  const uniqueAssignedTo = useMemo(() => Array.from(new Set(professionals.map(p => p.assigned_to))), [professionals]);
+  // Build staff-based assignee filter
+  const resolveAssignedToStaff = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
+    const assignedStaffKeys = new Set<string>();
+    for (const p of professionals) {
+      const key = resolveAssignedToStaff.get(p.assigned_to.toLowerCase());
+      if (key) assignedStaffKeys.add(key);
+    }
+    const displayMap = new Map<string, string>();
+    const options: string[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffKeys.has(canonicalKey)) {
+        const label = getStaffDisplayName(canonicalKey, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push(canonicalKey);
+      }
+    }
+    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+    return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
+  }, [professionals, staffMembers, resolveAssignedToStaff]);
+
   const uniqueCities = useMemo(() => Array.from(new Set(professionals.map(p => p.city).filter(Boolean) as string[])), [professionals]);
   const uniqueStatuses = useMemo(() => Object.keys(PROFESSIONAL_STATUSES), []);
   const uniqueTypes = useMemo(() => Array.from(new Set(professionals.map(p => p.professional_type))), [professionals]);
@@ -92,7 +124,8 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(p.status);
       const typeMatch = typeFilter.length === 0 || typeFilter.includes(p.professional_type);
       const cityMatch = cityFilter.length === 0 || cityFilter.includes(p.city || "");
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(p.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(p.assigned_to.toLowerCase()) || p.assigned_to;
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(p.priority.toString());
       
       // Date range filter
@@ -333,7 +366,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
           <span className={priorityConfig.color}>{priorityConfig.label}</span>
         ) : "-";
       case "assignedTo":
-        return professional.assigned_to;
+        return assigneeDisplayMap.get(professional.assigned_to) || getStaffDisplayName(professional.assigned_to, staffMembers);
       case "serviceCategory":
         return professional.service_category || "-";
       case "rating":
@@ -450,6 +483,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                         selected={assignedToFilter}
                         onSelectionChange={setAssignedToFilter}
                         placeholder="Filter by Assignee"
+                        renderLabel={(key) => assigneeDisplayMap.get(key) || key}
                       />
                     )}
                     {column.key === "priority" && (

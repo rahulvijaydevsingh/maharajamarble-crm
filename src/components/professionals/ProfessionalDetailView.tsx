@@ -67,6 +67,8 @@ import {
   RefreshCw,
   Download,
   Share2,
+  UserCheck,
+  ShieldCheck,
 } from 'lucide-react';
 import { Professional, useProfessionals } from '@/hooks/useProfessionals';
 import { useLogActivity } from '@/hooks/useActivityLog';
@@ -800,6 +802,41 @@ function ProfessionalQuotationsTab({ professional }: { professional: Professiona
   );
 }
 
+// ---- Mark as Verified Button ----
+function MarkAsVerifiedButton({ professionalId, onVerified }: { professionalId: string; onVerified: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleVerify = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('professionals')
+        .update({
+          verified: true,
+          verified_at: new Date().toISOString(),
+          verified_by: user?.id,
+        } as any)
+        .eq('id', professionalId);
+      if (error) throw error;
+      toast({ title: 'Professional marked as verified' });
+      onVerified();
+    } catch {
+      toast({ title: 'Error verifying professional', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleVerify} disabled={loading} className="text-green-700 border-green-300 hover:bg-green-50">
+      <ShieldCheck className="h-4 w-4 mr-1" />
+      {loading ? 'Verifying...' : 'Mark Verified'}
+    </Button>
+  );
+}
+
 // ---- Main Detail View ----
 export function ProfessionalDetailView({
   professional,
@@ -841,12 +878,24 @@ export function ProfessionalDetailView({
             <div className="flex items-center gap-3 min-w-0">
               <h2 className="text-lg md:text-xl font-semibold truncate">{displayName}</h2>
               <Badge variant="secondary" className={statusConfig.className}>{statusConfig.label}</Badge>
+              {(currentProfessional as any).verified ? (
+                <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                  <UserCheck className="h-3 w-3 mr-1" />Verified
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+                  Pending Verification
+                </Badge>
+              )}
               <span className="text-sm text-muted-foreground capitalize hidden md:inline">
                 {currentProfessional.professional_type.replace('_', ' ')}
               </span>
             </div>
 
             <div className="flex items-center gap-2">
+              {!(currentProfessional as any).verified && (
+                <MarkAsVerifiedButton professionalId={currentProfessional.id} onVerified={() => onOpenChange(false)} />
+              )}
               {onEdit && (
                 <Button variant="outline" size="sm" onClick={() => onEdit(currentProfessional)}>
                   <Edit className="h-4 w-4 mr-1" />

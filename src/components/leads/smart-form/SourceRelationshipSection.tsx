@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -26,7 +27,7 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link2, Users, Search, X, Phone, Mail, Building2 } from "lucide-react";
+import { Link2, Users, Search, X, Phone, Mail, Building2, Loader2, CheckCircle, AlertCircle, PlusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LeadSource, ProfessionalRef } from "@/types/lead";
 import { LEAD_SOURCES as FALLBACK_LEAD_SOURCES } from "@/constants/leadConstants";
@@ -34,6 +35,7 @@ import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { useProfessionals } from "@/hooks/useProfessionals";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
@@ -59,6 +61,15 @@ export function SourceRelationshipSection({
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
   const { professionals, loading: profLoading } = useProfessionals();
+  
+  // Inline professional phone check state
+  const [phoneCheckInput, setPhoneCheckInput] = useState("");
+  const [phoneCheckLoading, setPhoneCheckLoading] = useState(false);
+  const [phoneCheckResult, setPhoneCheckResult] = useState<{
+    status: "existing" | "new_added" | "error";
+    professional?: any;
+    message?: string;
+  } | null>(null);
 
   // Map DB professionals to the format used by the UI
   const mappedProfessionals = useMemo(() => {
@@ -119,6 +130,38 @@ export function SourceRelationshipSection({
       case "interior_designer": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
       default: return "bg-gray-100 text-gray-800";
     }
+  };
+  // Inline professional phone check
+  const handlePhoneCheck = useCallback(async () => {
+    const phone = phoneCheckInput.replace(/[\s\-()]/g, "");
+    if (!phone || phone.length < 7) return;
+    
+    setPhoneCheckLoading(true);
+    setPhoneCheckResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("check-professional", {
+        body: { phone, name: "", lead_id: null },
+      });
+      if (error) throw error;
+      setPhoneCheckResult(data);
+    } catch (err) {
+      setPhoneCheckResult({ status: "error", message: "Could not check professional. You can still proceed." });
+    } finally {
+      setPhoneCheckLoading(false);
+    }
+  }, [phoneCheckInput]);
+
+  const handleAcceptProfessional = (prof: any) => {
+    onReferredByChange({
+      id: prof.id,
+      name: prof.name,
+      firmName: prof.firm_name || "",
+      type: (prof.professional_type || "contractor") as "architect" | "builder" | "contractor" | "interior_designer",
+      phone: prof.phone,
+      email: prof.email,
+    });
+    setPhoneCheckResult(null);
+    setPhoneCheckInput("");
   };
 
   return (
@@ -300,6 +343,63 @@ export function SourceRelationshipSection({
                   </Command>
                 </PopoverContent>
               </Popover>
+            )}
+
+            {/* Inline Phone Check */}
+            {!referredBy && (
+              <div className="mt-3 space-y-2">
+                <Label className="text-xs text-muted-foreground">Or check by phone number</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter professional's phone..."
+                    value={phoneCheckInput}
+                    onChange={(e) => { setPhoneCheckInput(e.target.value); setPhoneCheckResult(null); }}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePhoneCheck}
+                    disabled={phoneCheckLoading || phoneCheckInput.replace(/[\s\-()]/g, "").length < 7}
+                  >
+                    {phoneCheckLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                {phoneCheckResult && phoneCheckResult.status === "existing" && (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+                    <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">Professional found: {phoneCheckResult.professional.name}</p>
+                      <p className="text-xs text-muted-foreground">{phoneCheckResult.professional.firm_name || phoneCheckResult.professional.professional_type}</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => handleAcceptProfessional(phoneCheckResult.professional)}>
+                      Select
+                    </Button>
+                  </div>
+                )}
+
+                {phoneCheckResult && phoneCheckResult.status === "new_added" && (
+                  <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <PlusCircle className="h-4 w-4 text-blue-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">New professional added (pending verification)</p>
+                      <p className="text-xs text-muted-foreground">{phoneCheckResult.professional.name} — Admin notified</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => handleAcceptProfessional(phoneCheckResult.professional)}>
+                      Select
+                    </Button>
+                  </div>
+                )}
+
+                {phoneCheckResult && phoneCheckResult.status === "error" && (
+                  <div className="flex items-center gap-2 p-2 text-sm text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{phoneCheckResult.message}</span>
+                  </div>
+                )}
+              </div>
             )}
             
             {validationErrors.referredBy && (

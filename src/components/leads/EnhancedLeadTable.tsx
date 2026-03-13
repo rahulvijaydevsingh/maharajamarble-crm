@@ -96,6 +96,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCustomers } from "@/hooks/useCustomers";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 
@@ -305,12 +306,40 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   // Get unique values for filters
   const uniqueSources = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.source))), [leads]);
-  const uniqueAssignedTo = useMemo(() => 
-    Array.from(new Set(leads.map(lead => lead.assigned_to))), [leads]);
   const uniqueMaterials = useMemo(() => 
     Array.from(new Set(leads.flatMap(lead => (lead.material_interests as string[]) || []))), [leads]);
   const uniqueCreatedBy = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
+
+  // Build staff-based assignee filter (same pattern as Tasks)
+  const resolveAssignedToStaff = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
+    const assignedStaffKeys = new Set<string>();
+    for (const lead of leads) {
+      const key = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase());
+      if (key) assignedStaffKeys.add(key);
+    }
+    const displayMap = new Map<string, string>();
+    const options: string[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffKeys.has(canonicalKey)) {
+        const label = getStaffDisplayName(canonicalKey, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push(canonicalKey);
+      }
+    }
+    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+    return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
+  }, [leads, staffMembers, resolveAssignedToStaff]);
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
@@ -323,7 +352,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         (lead.notes || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(lead.status);
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(lead.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const sourceMatch = sourceFilter.length === 0 || sourceFilter.includes(lead.source);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(lead.priority.toString());
       const materialsMatch = materialsFilter.length === 0 || materialsFilter.some(material => 
@@ -402,7 +432,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     const config = filter.filter_config;
     return leads.filter(lead => {
       const statusMatch = config.statusFilter.length === 0 || config.statusFilter.includes(lead.status);
-      const assignedMatch = config.assignedToFilter.length === 0 || config.assignedToFilter.includes(lead.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
+      const assignedMatch = config.assignedToFilter.length === 0 || config.assignedToFilter.includes(resolvedAssignee);
       const sourceMatch = config.sourceFilter.length === 0 || config.sourceFilter.includes(lead.source);
       const priorityMatch = config.priorityFilter.length === 0 || config.priorityFilter.includes(lead.priority.toString());
       const materialsMatch = config.materialsFilter.length === 0 || config.materialsFilter.some(material => 
@@ -1028,6 +1059,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           uniqueSources={uniqueSources}
           uniqueMaterials={uniqueMaterials}
           uniqueAssignedTo={uniqueAssignedTo}
+          assigneeDisplayMap={assigneeDisplayMap}
           uniqueCreatedBy={uniqueCreatedBy}
           statuses={statuses}
           priorities={priorities}
