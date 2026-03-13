@@ -61,6 +61,15 @@ export function SourceRelationshipSection({
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
   const { professionals, loading: profLoading } = useProfessionals();
+  
+  // Inline professional phone check state
+  const [phoneCheckInput, setPhoneCheckInput] = useState("");
+  const [phoneCheckLoading, setPhoneCheckLoading] = useState(false);
+  const [phoneCheckResult, setPhoneCheckResult] = useState<{
+    status: "existing" | "new_added" | "error";
+    professional?: any;
+    message?: string;
+  } | null>(null);
 
   // Map DB professionals to the format used by the UI
   const mappedProfessionals = useMemo(() => {
