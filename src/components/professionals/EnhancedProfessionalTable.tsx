@@ -366,7 +366,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
           <span className={priorityConfig.color}>{priorityConfig.label}</span>
         ) : "-";
       case "assignedTo":
-        return professional.assigned_to;
+        return assigneeDisplayMap.get(professional.assigned_to) || getStaffDisplayName(professional.assigned_to, staffMembers);
       case "serviceCategory":
         return professional.service_category || "-";
       case "rating":
