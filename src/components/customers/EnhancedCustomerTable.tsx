@@ -331,7 +331,8 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(c.status);
       const typeMatch = typeFilter.length === 0 || typeFilter.includes(c.customer_type);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(c.priority.toString());
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(c.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const cityMatch = cityFilter.length === 0 || cityFilter.includes(c.city || "");
 
       // Pending tasks filter
