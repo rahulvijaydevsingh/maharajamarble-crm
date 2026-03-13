@@ -212,6 +212,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { getCustomerTasks } = usePendingTasksByCustomer();
+  const { staffMembers } = useActiveStaff();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
