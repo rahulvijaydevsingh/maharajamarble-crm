@@ -841,6 +841,15 @@ export function ProfessionalDetailView({
             <div className="flex items-center gap-3 min-w-0">
               <h2 className="text-lg md:text-xl font-semibold truncate">{displayName}</h2>
               <Badge variant="secondary" className={statusConfig.className}>{statusConfig.label}</Badge>
+              {(currentProfessional as any).verified ? (
+                <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                  <UserCheck className="h-3 w-3 mr-1" />Verified
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+                  Pending Verification
+                </Badge>
+              )}
               <span className="text-sm text-muted-foreground capitalize hidden md:inline">
                 {currentProfessional.professional_type.replace('_', ' ')}
               </span>
