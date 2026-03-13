@@ -352,7 +352,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         (lead.notes || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(lead.status);
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(lead.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const sourceMatch = sourceFilter.length === 0 || sourceFilter.includes(lead.source);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(lead.priority.toString());
       const materialsMatch = materialsFilter.length === 0 || materialsFilter.some(material => 
