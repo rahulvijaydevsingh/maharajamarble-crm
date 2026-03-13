@@ -432,7 +432,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     const config = filter.filter_config;
     return leads.filter(lead => {
       const statusMatch = config.statusFilter.length === 0 || config.statusFilter.includes(lead.status);
-      const assignedMatch = config.assignedToFilter.length === 0 || config.assignedToFilter.includes(lead.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
+      const assignedMatch = config.assignedToFilter.length === 0 || config.assignedToFilter.includes(resolvedAssignee);
       const sourceMatch = config.sourceFilter.length === 0 || config.sourceFilter.includes(lead.source);
       const priorityMatch = config.priorityFilter.length === 0 || config.priorityFilter.includes(lead.priority.toString());
       const materialsMatch = config.materialsFilter.length === 0 || config.materialsFilter.some(material => 
