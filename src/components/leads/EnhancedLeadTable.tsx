@@ -306,12 +306,40 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   // Get unique values for filters
   const uniqueSources = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.source))), [leads]);
-  const uniqueAssignedTo = useMemo(() => 
-    Array.from(new Set(leads.map(lead => lead.assigned_to))), [leads]);
   const uniqueMaterials = useMemo(() => 
     Array.from(new Set(leads.flatMap(lead => (lead.material_interests as string[]) || []))), [leads]);
   const uniqueCreatedBy = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
+
+  // Build staff-based assignee filter (same pattern as Tasks)
+  const resolveAssignedToStaff = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
+    const assignedStaffKeys = new Set<string>();
+    for (const lead of leads) {
+      const key = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase());
+      if (key) assignedStaffKeys.add(key);
+    }
+    const displayMap = new Map<string, string>();
+    const options: string[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffKeys.has(canonicalKey)) {
+        const label = getStaffDisplayName(canonicalKey, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push(canonicalKey);
+      }
+    }
+    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+    return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
+  }, [leads, staffMembers, resolveAssignedToStaff]);
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
