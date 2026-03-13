@@ -124,7 +124,8 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(p.status);
       const typeMatch = typeFilter.length === 0 || typeFilter.includes(p.professional_type);
       const cityMatch = cityFilter.length === 0 || cityFilter.includes(p.city || "");
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(p.assigned_to);
+      const resolvedAssignee = resolveAssignedToStaff.get(p.assigned_to.toLowerCase()) || p.assigned_to;
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(p.priority.toString());
       
       // Date range filter
