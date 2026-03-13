@@ -70,11 +70,12 @@ interface LeadsTableContainerProps {
   uniqueSources: string[];
   uniqueMaterials: string[];
   uniqueAssignedTo: string[];
+  assigneeDisplayMap?: Map<string, string>;
   uniqueCreatedBy: string[];
   statuses: Record<string, { label: string; className: string }>;
   priorities: Record<number, { label: string; color: string }>;
   SortableHeader: React.FC<{ field: SortField; children: React.ReactNode }>;
-  MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string }>;
+  MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string; renderLabel?: (option: string) => string }>;
   DateRangeFilter: React.FC<{ dateRange: DateRange; onDateRangeChange: (range: DateRange) => void }>;
   PendingTasksBadge: React.FC<{ leadId: string; leadName: string }>;
   tasksFilter: string[];
