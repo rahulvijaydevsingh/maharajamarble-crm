@@ -286,7 +286,36 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     }
   }, [searchParams, customers, setSearchParams]);
 
-  const uniqueAssignedTo = useMemo(() => Array.from(new Set(customers.map(c => c.assigned_to))), [customers]);
+  // Build staff-based assignee filter
+  const resolveAssignedToStaff = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
+    const assignedStaffKeys = new Set<string>();
+    for (const c of customers) {
+      const key = resolveAssignedToStaff.get(c.assigned_to.toLowerCase());
+      if (key) assignedStaffKeys.add(key);
+    }
+    const displayMap = new Map<string, string>();
+    const options: string[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffKeys.has(canonicalKey)) {
+        const label = getStaffDisplayName(canonicalKey, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push(canonicalKey);
+      }
+    }
+    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+    return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
+  }, [customers, staffMembers, resolveAssignedToStaff]);
+
   const uniqueCities = useMemo(() => Array.from(new Set(customers.map(c => c.city).filter(Boolean) as string[])), [customers]);
   const uniqueStatuses = useMemo(() => Object.keys(CUSTOMER_STATUSES), []);
   const uniqueTypes = useMemo(() => CUSTOMER_TYPES.map(t => t.value), []);
