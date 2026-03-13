@@ -67,6 +67,8 @@ import {
   RefreshCw,
   Download,
   Share2,
+  UserCheck,
+  ShieldCheck,
 } from 'lucide-react';
 import { Professional, useProfessionals } from '@/hooks/useProfessionals';
 import { useLogActivity } from '@/hooks/useActivityLog';
