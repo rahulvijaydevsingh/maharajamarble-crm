@@ -79,7 +79,36 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
 
-  const uniqueAssignedTo = useMemo(() => Array.from(new Set(professionals.map(p => p.assigned_to))), [professionals]);
+  // Build staff-based assignee filter
+  const resolveAssignedToStaff = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const s of staffMembers) {
+      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+    }
+    return lookup;
+  }, [staffMembers]);
+
+  const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
+    const assignedStaffKeys = new Set<string>();
+    for (const p of professionals) {
+      const key = resolveAssignedToStaff.get(p.assigned_to.toLowerCase());
+      if (key) assignedStaffKeys.add(key);
+    }
+    const displayMap = new Map<string, string>();
+    const options: string[] = [];
+    for (const s of staffMembers) {
+      const canonicalKey = s.email || s.name;
+      if (assignedStaffKeys.has(canonicalKey)) {
+        const label = getStaffDisplayName(canonicalKey, staffMembers);
+        displayMap.set(canonicalKey, label);
+        options.push(canonicalKey);
+      }
+    }
+    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+    return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
+  }, [professionals, staffMembers, resolveAssignedToStaff]);
+
   const uniqueCities = useMemo(() => Array.from(new Set(professionals.map(p => p.city).filter(Boolean) as string[])), [professionals]);
   const uniqueStatuses = useMemo(() => Object.keys(PROFESSIONAL_STATUSES), []);
   const uniqueTypes = useMemo(() => Array.from(new Set(professionals.map(p => p.professional_type))), [professionals]);
