@@ -131,8 +131,40 @@ export function SourceRelationshipSection({
       default: return "bg-gray-100 text-gray-800";
     }
   };
+  // Inline professional phone check
+  const handlePhoneCheck = useCallback(async () => {
+    const phone = phoneCheckInput.replace(/[\s\-()]/g, "");
+    if (!phone || phone.length < 7) return;
+    
+    setPhoneCheckLoading(true);
+    setPhoneCheckResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("check-professional", {
+        body: { phone, name: "", lead_id: null },
+      });
+      if (error) throw error;
+      setPhoneCheckResult(data);
+    } catch (err) {
+      setPhoneCheckResult({ status: "error", message: "Could not check professional. You can still proceed." });
+    } finally {
+      setPhoneCheckLoading(false);
+    }
+  }, [phoneCheckInput]);
 
-  return (
+  const handleAcceptProfessional = (prof: any) => {
+    onReferredByChange({
+      id: prof.id,
+      name: prof.name,
+      firmName: prof.firm_name || "",
+      type: (prof.professional_type || "contractor") as "architect" | "builder" | "contractor" | "interior_designer",
+      phone: prof.phone,
+      email: prof.email,
+    });
+    setPhoneCheckResult(null);
+    setPhoneCheckInput("");
+  };
+
+
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
