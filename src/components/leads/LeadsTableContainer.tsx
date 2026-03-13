@@ -295,7 +295,7 @@ export function LeadsTableContainer({
           </span>
         );
       case "assignedTo":
-        return lead.assigned_to;
+        return assigneeDisplayMap?.get(lead.assigned_to) || assigneeDisplayMap?.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
       case "tasks":
         return <PendingTasksBadge leadId={lead.id} leadName={lead.name} />;
       case "nextFollowUp":

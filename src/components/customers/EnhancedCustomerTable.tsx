@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
