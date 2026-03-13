@@ -483,6 +483,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                         selected={assignedToFilter}
                         onSelectionChange={setAssignedToFilter}
                         placeholder="Filter by Assignee"
+                        renderLabel={(key) => assigneeDisplayMap.get(key) || key}
                       />
                     )}
                     {column.key === "priority" && (
