@@ -328,6 +328,7 @@ export function LeadDetailView({
           </VisuallyHidden>
           <div className="flex-1 overflow-y-auto p-6">
             <EditSmartLeadForm
+              key={currentLead.id}
               lead={currentLead}
               onSave={handleSaveEdit}
               onCancel={handleCancelEdit}
