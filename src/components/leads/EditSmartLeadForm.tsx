@@ -115,71 +115,13 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
 
-  // Initialize form with lead data
+  // Resolve assignedTo: map stored name → staff UUID when staff list loads
   useEffect(() => {
-    if (lead) {
-      // Set primary contact from lead data
-      setContacts([
-        {
-          id: `contact_${Date.now()}`,
-          designation: lead.designation || "owner",
-          name: lead.name,
-          email: lead.email || "",
-          phone: lead.phone,
-          alternatePhone: lead.alternate_phone || "",
-          firmName: lead.firm_name || "",
-        },
-      ]);
-
-      // Set site details
-      setSiteLocation(lead.site_location || lead.address || "");
-      setSitePhotoUrl(lead.site_photo_url || null);
-      setSitePlusCode(lead.site_plus_code || null);
-      // Use the actual value from the lead, don't default
-      setConstructionStage(lead.construction_stage as ConstructionStage || null);
-      setEstimatedQuantity(lead.estimated_quantity || null);
-      setMaterialInterests((lead.material_interests as string[]) || []);
-
-      // Set source & relationship - use actual value
-      setLeadSource(lead.source as LeadSource || null);
-      // Map stored name -> staff id (fallback to stored string so the select can still show it)
-      const match = staffMembers.find(m => m.name === lead.assigned_to);
+    if (staffMembers.length > 0 && !assignedTo) {
+      const match = staffMembers.find(m => m.name === lead.assigned_to || m.email === lead.assigned_to);
       setAssignedTo(match?.id || lead.assigned_to || "");
-      
-      // Handle referred_by which could be JSON
-      if (lead.referred_by && typeof lead.referred_by === 'object' && !Array.isArray(lead.referred_by)) {
-        const ref = lead.referred_by as Record<string, unknown>;
-        if (ref.id && ref.name && ref.firmName && ref.type) {
-          setReferredBy({
-            id: String(ref.id),
-            name: String(ref.name),
-            firmName: String(ref.firmName),
-            type: ref.type as "architect" | "builder" | "contractor" | "interior_designer",
-            phone: ref.phone ? String(ref.phone) : undefined,
-            email: ref.email ? String(ref.email) : undefined,
-          });
-        }
-      }
-
-      // Set action trigger & priority
-      // Check if priority is not standard (1, 3, 5) - use manual mode
-      const standardPriorities = [1, 3, 5];
-      if (!standardPriorities.includes(lead.priority)) {
-        setUseManualPriority(true);
-        setManualPriority(lead.priority);
-        setFollowUpPriority("normal"); // default
-      } else {
-        setUseManualPriority(false);
-        setManualPriority(lead.priority);
-        setFollowUpPriority(
-          lead.priority === 1 ? "urgent" : lead.priority <= 3 ? "normal" : "low"
-        );
-      }
-      
-      setNextActionDate(lead.next_follow_up ? new Date(lead.next_follow_up) : addDays(new Date(), 2));
-      setInitialNote(lead.notes || "");
     }
-  }, [lead, staffMembers]);
+  }, [staffMembers.length]); // Only run when staff list first loads
 
   const handleSitePhotoChange = (photoUrl: string | null, plusCode: string | null) => {
     setSitePhotoUrl(photoUrl);
