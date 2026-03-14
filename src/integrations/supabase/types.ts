@@ -2697,6 +2697,8 @@ export type Database = {
           actual_time_spent_minutes: number | null
           assigned_to: string
           attempt_count: number
+          closed_at: string | null
+          closed_by: string | null
           completed_at: string | null
           completion_key_points: Json | null
           completion_notes: string | null
@@ -2704,6 +2706,7 @@ export type Database = {
           completion_status: string | null
           created_at: string
           created_by: string
+          custom_reminder_at: string | null
           deal_ready: boolean
           deal_ready_at: string | null
           description: string | null
@@ -2733,7 +2736,10 @@ export type Database = {
           related_entity_id: string | null
           related_entity_type: string | null
           reminder: boolean | null
+          reminder_offset_hours: number | null
           reminder_time: string | null
+          reschedule_count: number
+          reschedule_reason: string | null
           snoozed_until: string | null
           status: string
           status_override: string | null
@@ -2750,6 +2756,8 @@ export type Database = {
           actual_time_spent_minutes?: number | null
           assigned_to: string
           attempt_count?: number
+          closed_at?: string | null
+          closed_by?: string | null
           completed_at?: string | null
           completion_key_points?: Json | null
           completion_notes?: string | null
@@ -2757,6 +2765,7 @@ export type Database = {
           completion_status?: string | null
           created_at?: string
           created_by?: string
+          custom_reminder_at?: string | null
           deal_ready?: boolean
           deal_ready_at?: string | null
           description?: string | null
@@ -2786,7 +2795,10 @@ export type Database = {
           related_entity_id?: string | null
           related_entity_type?: string | null
           reminder?: boolean | null
+          reminder_offset_hours?: number | null
           reminder_time?: string | null
+          reschedule_count?: number
+          reschedule_reason?: string | null
           snoozed_until?: string | null
           status?: string
           status_override?: string | null
@@ -2803,6 +2815,8 @@ export type Database = {
           actual_time_spent_minutes?: number | null
           assigned_to?: string
           attempt_count?: number
+          closed_at?: string | null
+          closed_by?: string | null
           completed_at?: string | null
           completion_key_points?: Json | null
           completion_notes?: string | null
@@ -2810,6 +2824,7 @@ export type Database = {
           completion_status?: string | null
           created_at?: string
           created_by?: string
+          custom_reminder_at?: string | null
           deal_ready?: boolean
           deal_ready_at?: string | null
           description?: string | null
@@ -2839,7 +2854,10 @@ export type Database = {
           related_entity_id?: string | null
           related_entity_type?: string | null
           reminder?: boolean | null
+          reminder_offset_hours?: number | null
           reminder_time?: string | null
+          reschedule_count?: number
+          reschedule_reason?: string | null
           snoozed_until?: string | null
           status?: string
           status_override?: string | null
@@ -2853,6 +2871,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_lead_id_fkey"
             columns: ["lead_id"]
