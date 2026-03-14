@@ -52,32 +52,66 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
   const { staffMembers } = useActiveStaff();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form state - Group 1: Contacts
-  const [contacts, setContacts] = useState<ContactPerson[]>([]);
+  // Derive initial priority mode from lead data
+  const standardPriorities = [1, 3, 5];
+  const initialUseManual = !standardPriorities.includes(lead.priority);
+  const initialFollowUpPriority: FollowUpPriority = initialUseManual
+    ? "normal"
+    : lead.priority === 1 ? "urgent" : lead.priority <= 3 ? "normal" : "low";
 
-  // Form state - Group 2: Site Details
-  const [siteLocation, setSiteLocation] = useState("");
-  const [sitePhotoUrl, setSitePhotoUrl] = useState<string | null>(null);
-  const [sitePlusCode, setSitePlusCode] = useState<string | null>(null);
-  const [constructionStage, setConstructionStage] = useState<ConstructionStage | null>(null);
-  const [estimatedQuantity, setEstimatedQuantity] = useState<number | null>(null);
-  const [materialInterests, setMaterialInterests] = useState<string[]>([]);
+  // Parse referred_by from lead
+  const initialReferredBy = (() => {
+    if (lead.referred_by && typeof lead.referred_by === 'object' && !Array.isArray(lead.referred_by)) {
+      const ref = lead.referred_by as Record<string, unknown>;
+      if (ref.id && ref.name && ref.firmName && ref.type) {
+        return {
+          id: String(ref.id),
+          name: String(ref.name),
+          firmName: String(ref.firmName),
+          type: ref.type as "architect" | "builder" | "contractor" | "interior_designer",
+          phone: ref.phone ? String(ref.phone) : undefined,
+          email: ref.email ? String(ref.email) : undefined,
+        };
+      }
+    }
+    return null;
+  })();
+
+  // Form state - initialized directly from lead prop (component is keyed by lead.id)
+  // Group 1: Contacts
+  const [contacts, setContacts] = useState<ContactPerson[]>([{
+    id: `contact_${Date.now()}`,
+    designation: lead.designation || "owner",
+    name: lead.name,
+    email: lead.email || "",
+    phone: lead.phone,
+    alternatePhone: lead.alternate_phone || "",
+    firmName: lead.firm_name || "",
+  }]);
+
+  // Group 2: Site Details
+  const [siteLocation, setSiteLocation] = useState(lead.site_location || lead.address || "");
+  const [sitePhotoUrl, setSitePhotoUrl] = useState<string | null>(lead.site_photo_url || null);
+  const [sitePlusCode, setSitePlusCode] = useState<string | null>(lead.site_plus_code || null);
+  const [constructionStage, setConstructionStage] = useState<ConstructionStage | null>(lead.construction_stage as ConstructionStage || null);
+  const [estimatedQuantity, setEstimatedQuantity] = useState<number | null>(lead.estimated_quantity || null);
+  const [materialInterests, setMaterialInterests] = useState<string[]>((lead.material_interests as string[]) || []);
   const [otherMaterial, setOtherMaterial] = useState("");
 
-  // Form state - Group 3: Source & Relationship
-  const [leadSource, setLeadSource] = useState<LeadSource | null>(null);
+  // Group 3: Source & Relationship
+  const [leadSource, setLeadSource] = useState<LeadSource | null>(lead.source as LeadSource || null);
   const [assignedTo, setAssignedTo] = useState("");
-  const [referredBy, setReferredBy] = useState<ProfessionalRef | null>(null);
+  const [referredBy, setReferredBy] = useState<ProfessionalRef | null>(initialReferredBy);
 
-  // Form state - Group 4: Action Trigger
-  const [followUpPriority, setFollowUpPriority] = useState<FollowUpPriority>("normal");
-  const [nextActionDate, setNextActionDate] = useState(addDays(new Date(), 2));
+  // Group 4: Action Trigger
+  const [followUpPriority, setFollowUpPriority] = useState<FollowUpPriority>(initialFollowUpPriority);
+  const [nextActionDate, setNextActionDate] = useState(lead.next_follow_up ? new Date(lead.next_follow_up) : addDays(new Date(), 2));
   const [nextActionTime, setNextActionTime] = useState("10:00");
-  const [initialNote, setInitialNote] = useState("");
+  const [initialNote, setInitialNote] = useState(lead.notes || "");
   
-  // Priority override - allows manual priority selection (1-5 scale)
-  const [useManualPriority, setUseManualPriority] = useState(false);
-  const [manualPriority, setManualPriority] = useState<number>(lead?.priority ?? 3);
+  // Priority override
+  const [useManualPriority, setUseManualPriority] = useState(initialUseManual);
+  const [manualPriority, setManualPriority] = useState<number>(lead.priority ?? 3);
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
 
