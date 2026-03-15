@@ -117,6 +117,13 @@ export interface TaskInsert {
   recurrence_occurrences_limit?: number | null;
   parent_task_id?: string | null;
   original_due_date?: string | null;
+  // Closure & scheduling fields
+  closed_at?: string | null;
+  closed_by?: string | null;
+  reschedule_count?: number;
+  reschedule_reason?: string | null;
+  reminder_offset_hours?: number | null;
+  custom_reminder_at?: string | null;
 }
 
 // Helper function to calculate next due date based on recurrence settings
