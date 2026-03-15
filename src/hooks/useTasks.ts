@@ -55,6 +55,13 @@ export interface Task {
   parent_task_id: string | null;
   snoozed_until: string | null;
   original_due_date: string | null;
+  // Closure & scheduling fields
+  closed_at?: string | null;
+  closed_by?: string | null;
+  reschedule_count?: number;
+  reschedule_reason?: string | null;
+  reminder_offset_hours?: number | null;
+  custom_reminder_at?: string | null;
   // Joined lead data
   lead?: {
     id: string;
