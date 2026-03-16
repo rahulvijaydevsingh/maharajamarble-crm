@@ -2735,6 +2735,7 @@ export type Database = {
           recurrence_reset_from_completion: boolean | null
           related_entity_id: string | null
           related_entity_type: string | null
+          reminded_at: string | null
           reminder: boolean | null
           reminder_offset_hours: number | null
           reminder_time: string | null
@@ -2794,6 +2795,7 @@ export type Database = {
           recurrence_reset_from_completion?: boolean | null
           related_entity_id?: string | null
           related_entity_type?: string | null
+          reminded_at?: string | null
           reminder?: boolean | null
           reminder_offset_hours?: number | null
           reminder_time?: string | null
@@ -2853,6 +2855,7 @@ export type Database = {
           recurrence_reset_from_completion?: boolean | null
           related_entity_id?: string | null
           related_entity_type?: string | null
+          reminded_at?: string | null
           reminder?: boolean | null
           reminder_offset_hours?: number | null
           reminder_time?: string | null
