@@ -210,6 +210,44 @@ export function TaskDetailView({
     };
   }, [open, task, leads, customers]);
 
+  // Load parent task and follow-up children
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadChain() {
+      if (!open || !task) {
+        setParentTask(null);
+        setFollowUpTasks([]);
+        return;
+      }
+
+      // Parent
+      if (task.parent_task_id) {
+        const { data } = await supabase
+          .from("tasks")
+          .select("id, title")
+          .eq("id", task.parent_task_id)
+          .maybeSingle();
+        if (!cancelled && data) setParentTask({ id: data.id, title: data.title });
+        else if (!cancelled) setParentTask(null);
+      } else {
+        setParentTask(null);
+      }
+
+      // Children
+      const { data: children } = await supabase
+        .from("tasks")
+        .select("id, title, status, due_date")
+        .eq("parent_task_id", task.id)
+        .order("due_date", { ascending: true })
+        .limit(20);
+      if (!cancelled) setFollowUpTasks(children || []);
+    }
+
+    void loadChain();
+    return () => { cancelled = true; };
+  }, [open, task?.id, task?.parent_task_id]);
+
   const { entries, loading: activityLoading, hasMore, loadMore } = useTaskActivityLog(taskId);
 
   const canEditTask = canEdit("tasks");
