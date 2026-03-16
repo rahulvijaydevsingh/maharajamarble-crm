@@ -73,6 +73,7 @@ interface EditTaskDialogProps {
 
 export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTaskDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { updateTask, snoozeTask, toggleStar } = useTasks();
   const { subtasks, addSubtask, updateSubtask, deleteSubtask, refetch: refetchSubtasks } = useSubtasks(taskData?.id);
   const { staffMembers, loading: staffLoading } = useActiveStaff();
