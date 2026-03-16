@@ -550,7 +550,22 @@ export function TaskCompletionDialog({
                 </div>
               </div>
 
-              {/* Reminder fields for follow-up */}
+              {/* Reschedule reason (only for reschedule) */}
+              {nextAction === "reschedule" && (
+                <div className="space-y-2">
+                  <Label>Reschedule Reason *</Label>
+                  <Textarea
+                    value={rescheduleReason}
+                    onChange={(e) => { setRescheduleReason(e.target.value); setErrors((p) => ({ ...p, rescheduleReason: undefined })); }}
+                    className={cn(errors.rescheduleReason && "border-destructive")}
+                    placeholder="Why is this task being rescheduled?"
+                    rows={2}
+                  />
+                  {errors.rescheduleReason && <p className="text-sm text-destructive">{errors.rescheduleReason}</p>}
+                </div>
+              )}
+
+              {/* Reminder fields for follow-up/reschedule */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Auto Reminder (hours before)</Label>
