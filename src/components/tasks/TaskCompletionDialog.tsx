@@ -192,6 +192,10 @@ export function TaskCompletionDialog({
       }
     }
 
+    if (nextAction === "reschedule" && !rescheduleReason.trim()) {
+      nextErrors.rescheduleReason = "Reschedule reason is required";
+    }
+
     if (isUnsuccessful && nextAction === "convert_to_deal") {
       nextErrors.nextAction = "Unsuccessful outcomes require Follow-up or Reschedule";
     }
