@@ -1,106 +1,94 @@
 
 
-# Comprehensive Fix: Staff Activity Logging, Automation Engine, and Notifications
+## Prompt 4 & 5: Reschedule Flow Fix + Timeline Panel & Chain Navigation
 
-## Root Cause Analysis
+### Current State
 
-### Problem 1: Staff Activity Log Only Shows Login/Logout
-**Two causes found:**
-- **Missing coverage**: `logStaffAction()` is only called in 5 places (create_lead, create_task, create_customer, create_quotation, logout). Lead edits, status changes, deletes, task updates/completions, reminders, notes, KIT operations, and professional creates have NO logging calls.
-- **The `delete_staff` entry that does appear** comes from an Edge Function (using SERVICE_ROLE), confirming client-side logging works in principle but is just not called broadly enough.
+- **Prompt 4 (Reschedule)**: The "Reschedule" option in TaskCompletionDialog currently creates a NEW task (identical to follow-up). The spec says reschedule should update the SAME task's due date, increment `reschedule_count`, store `reschedule_reason`, and log to `task_activity_log` with old/new dates. There is NO standalone reschedule dialog -- rescheduling is done through the Edit dialog (due date change) or the completion dialog. The Edit dialog does NOT log to `task_activity_log` when the due date changes, and has no mandatory reason field.
 
-### Problem 2: Automation Engine Never Fires (Critical Bug)
-**The database trigger function `notify_automation_engine()` calls `extensions.http_post()`** but the `pg_net` function actually lives at **`net.http_post()`**. The function silently fails in the EXCEPTION handler, so no HTTP call ever reaches the `run-automations` Edge Function. Additionally, the `body` parameter is passed as `text` but `net.http_post` requires `jsonb`.
+- **Prompt 5 (Timeline + Chain)**: The `TaskActivityTimeline` renders entries but shows raw metadata in a `<details>` collapsible. No parent task banner, no follow-up links, no special rendering for `rescheduled`, `closed`, `follow_up_created` event types. No chain navigation.
 
-### Problem 3: Notifications Invisible Even If Created
-**The `notifications.user_id` column is TEXT type.** The automation engine stores the profile UUID (e.g., `372e9660-...`) as `user_id`. But:
-- The RLS policy checks `user_id = get_current_user_email()` (which returns an email like `superadmin@demo.com`)
-- The client hook `useNotifications` queries `.eq("user_id", user?.id)` where `user?.id` is the auth UUID
-- For admins, `is_admin()` bypasses the RLS check, but the query filter still uses UUID
-- **Result**: Even if notifications existed, the query filter and RLS would conflict for non-admin users
+### Plan
 
-Also, the edge function has a **duplicate push bug** (line 176-177: `userIds.push(profile.id)` appears twice).
+#### Task 1: Redesign Reschedule in TaskCompletionDialog
 
----
+**File: `src/components/tasks/TaskCompletionDialog.tsx`**
 
-## Fix Plan
+Change the `reschedule` next action to update the SAME task instead of creating a new one:
 
-### Fix 1: Repair the Automation Trigger Function (Database Migration)
-Update the `notify_automation_engine()` function to:
-- Use `net.http_post()` instead of `extensions.http_post()`
-- Pass `body` as `jsonb` instead of `text`
+- When `nextAction === "reschedule"`:
+  - Update current task's `due_date`, `due_time`, `reschedule_count` (+1), `reschedule_reason` (from a new mandatory text field), `reminder_offset_hours`, `custom_reminder_at`
+  - Do NOT create a new task
+  - Log `rescheduled` to `task_activity_log` with `old_value` (previous due date), `new_value` (new due date), `reason`
+  - Log to lead's `activity_log` if `lead_id` exists: "Task rescheduled: [title] — [reason]"
+  - Log to `staff_activity_log`: "task_rescheduled"
 
-```sql
-CREATE OR REPLACE FUNCTION public.notify_automation_engine()
-RETURNS trigger ...
-AS $$
-  ...
-  PERFORM net.http_post(
-    url := edge_url || '/functions/v1/run-automations',
-    body := payload,  -- jsonb, not text
-    headers := jsonb_build_object(...)
-  );
-  ...
-$$;
-```
+- Add a "Reschedule Reason" mandatory text field that appears when `nextAction === "reschedule"`
+- Keep `follow_up` behavior unchanged (creates new task)
+- Update validation: reschedule reason required when rescheduling
 
-### Fix 2: Fix Notification user_id Storage in Edge Function
-In `supabase/functions/run-automations/index.ts`:
-- Store the user's **email** as `user_id` in notifications (not their profile UUID), since the RLS policy and original design expect email
-- Remove the duplicate `userIds.push(profile.id)` on line 176-177
-- Change the notification insert to use email instead of profile.id
+#### Task 2: Add Reschedule Logging to EditTaskDialog
 
-### Fix 3: Fix Notification Querying in Client
-In `src/hooks/useNotifications.ts` and `src/components/shared/NotificationDropdown.tsx`:
-- Query notifications by `user?.email` instead of `user?.id` since `user_id` stores email
-- Update the realtime subscription filter accordingly
+**File: `src/components/tasks/EditTaskDialog.tsx`**
 
-### Fix 4: Add Comprehensive Staff Activity Logging
-Add `logStaffAction()` calls to these operations that currently lack them:
+When the due date changes in the edit dialog:
+- Detect due date change (compare old vs new)
+- If changed, show a mandatory "Reschedule Reason" dialog/prompt before saving
+- On save with date change: increment `reschedule_count`, set `reschedule_reason`, log `rescheduled` to `task_activity_log`
+- Log to lead timeline and staff activity log
 
-| Operation | File | Action Type |
-|-----------|------|-------------|
-| Lead edited | `src/components/leads/LeadDetailView.tsx` (`handleSaveEdit`) | `update_lead` |
-| Lead deleted | `src/pages/Leads.tsx` (delete handler) | `delete_lead` |
-| Lead status change | `src/hooks/useLeads.ts` (`updateLead` when status changes) | `update_lead` |
-| Task updated | `src/hooks/useTasks.ts` (`updateTask`) | `update_task` |
-| Task completed | `src/hooks/useTasks.ts` (`updateTask` with completed_at) | `complete_task` |
-| Reminder created | `src/hooks/useReminders.ts` (`addReminder`) | `create_reminder` |
-| Reminder dismissed | `src/hooks/useReminders.ts` (`dismissReminder`) | `dismiss_reminder` |
-| Note added | `src/components/leads/detail-tabs/LeadNotesTab.tsx` | `add_note` |
-| Professional created | `src/components/professionals/AddProfessionalDialog.tsx` | `create_professional` |
-| KIT activated | `src/components/kit/KitProfileTab.tsx` | `activate_kit` |
+Implementation: Add a confirmation step -- when `handleSave` detects a due date change, show an inline reason input that blocks save until filled. Or simpler: add an optional "Reschedule Reason" field that becomes visible and mandatory when due date differs from original.
 
-Since `logStaffAction` in `useStaffActivityLog` requires the hook context, and hooks like `useTasks.ts` already use `useAuth`, I will add direct Supabase inserts (using the same pattern as the existing hook) within these data hooks to avoid circular dependencies.
+#### Task 3: Enhanced Timeline Rendering
 
-### Fix 5: Expand StaffActivityPanel Display
-Update `src/components/settings/StaffActivityPanel.tsx` to:
-- Add labels/colors for all new action types (update_lead, delete_lead, complete_task, create_reminder, dismiss_reminder, add_note, create_professional, activate_kit)
-- Add a date range filter (Today / Last 7 days / Last 30 days / All time)
+**File: `src/components/tasks/TaskActivityTimeline.tsx`**
 
----
+Replace raw metadata display with formatted rendering per event type:
+- `created`: "Task created" with icon
+- `rescheduled`: "Rescheduled" showing old date → new date + reason (not in collapsible)
+- `outcome_recorded`: "Outcome noted" showing outcome text
+- `follow_up_created`: "Follow-up task created" with clickable link to new task
+- `closed`: "Task closed by [staff name]"
+- Other types: current fallback rendering
 
-## Files to Modify
+Add `onOpenTask?: (taskId: string) => void` prop for follow-up navigation.
 
-| File | Change |
-|------|--------|
-| Database migration | Fix `notify_automation_engine()`: `net.http_post` + jsonb body |
-| `supabase/functions/run-automations/index.ts` | Store email as notification user_id; fix duplicate push |
-| `src/hooks/useNotifications.ts` | Query by `user?.email` instead of `user?.id` |
-| `src/components/shared/NotificationDropdown.tsx` | Pass email to notification hooks |
-| `src/hooks/useStaffActivityLog.ts` | Add a standalone `logToStaffActivity()` helper that doesn't need hooks |
-| `src/hooks/useTasks.ts` | Add activity logging for task update/complete/delete |
-| `src/hooks/useLeads.ts` | Add activity logging for lead update/delete |
-| `src/hooks/useReminders.ts` | Add activity logging for reminder create/dismiss |
-| `src/components/leads/LeadDetailView.tsx` | Add logStaffAction for lead edits |
-| `src/components/kit/KitProfileTab.tsx` | Add logStaffAction for KIT activation |
-| `src/components/professionals/AddProfessionalDialog.tsx` | Add logStaffAction for professional create |
-| `src/components/settings/StaffActivityPanel.tsx` | Add new action type labels + date filter |
+#### Task 4: Parent Task Banner + Follow-up Links
 
-## Implementation Order
-1. Fix DB trigger function (migration) -- unblocks all automation
-2. Fix edge function notification user_id + duplicate push
-3. Fix notification client queries (email-based)
-4. Add comprehensive activity logging across all hooks
-5. Update StaffActivityPanel with new types and date filter
+**File: `src/components/tasks/TaskDetailView.tsx`**
+
+- **Parent banner**: If `task.parent_task_id` exists, query parent task title and show banner: "This is a follow-up to: [parent task title]" with clickable link that opens parent in TaskDetailView
+- **Follow-up section**: Query tasks where `parent_task_id = task.id`, show at bottom: "Follow-up tasks: [list]" with clickable links
+- Show `reschedule_count` and `reschedule_reason` in Task Details card if set
+- Show `reminder_offset_hours` and `custom_reminder_at` in the details card
+
+#### Task 5: Lead Timeline Propagation Verification
+
+Verify all task events propagate to lead timeline. From code review:
+- `outcome_recorded` / `closed`: Already logged in TaskCompletionDialog ✓
+- `follow_up_created`: Already logged ✓
+- `rescheduled`: Will be added in Task 1 and Task 2
+- `created`: Check if AddTaskDialog logs -- need to verify and add if missing
+
+#### Task 6: Reminder Notification Section C (Prompt 4)
+
+**DB Migration**: Add `reminded_at` column to tasks table to track reminder firing.
+
+**File: `supabase/functions/run-automations/index.ts`**: This is a larger change to the edge function. Given complexity, I recommend handling reminder checks as a separate enhancement -- the column infrastructure is there, but wiring it into the automation engine requires careful work with the existing trigger evaluation logic.
+
+### Files to Modify
+
+| # | File | Change |
+|---|------|--------|
+| 1 | `src/components/tasks/TaskCompletionDialog.tsx` | Reschedule updates same task + reason field + activity logs |
+| 2 | `src/components/tasks/EditTaskDialog.tsx` | Detect due date change, add reason field, log reschedule |
+| 3 | `src/components/tasks/TaskActivityTimeline.tsx` | Rich rendering per event type + task navigation callback |
+| 4 | `src/components/tasks/TaskDetailView.tsx` | Parent banner, follow-up links, reschedule/reminder details |
+| 5 | DB Migration | Add `reminded_at` TIMESTAMPTZ to tasks |
+
+### Technical Notes
+- Reschedule in completion dialog changes from "create new task" to "update same task" -- this is a behavioral change
+- The `reschedule_reason` field in completion dialog uses a `Textarea` that appears only when `nextAction === "reschedule"`
+- Parent/child task queries use the existing `parent_task_id` column
+- Follow-up tasks list in TaskDetailView uses a simple Supabase query filtered by `parent_task_id`
 
