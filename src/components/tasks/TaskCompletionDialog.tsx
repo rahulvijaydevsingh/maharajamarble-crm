@@ -88,12 +88,15 @@ export function TaskCompletionDialog({
   const [reminderOffsetHours, setReminderOffsetHours] = useState<string>("");
   const [customReminderAt, setCustomReminderAt] = useState<string>("");
 
+  const [rescheduleReason, setRescheduleReason] = useState<string>("");
+
   const [errors, setErrors] = useState<{
     outcome?: string;
     nextAction?: string;
     notes?: string;
     nextDate?: string;
     nextTime?: string;
+    rescheduleReason?: string;
   }>({});
 
   useEffect(() => {
