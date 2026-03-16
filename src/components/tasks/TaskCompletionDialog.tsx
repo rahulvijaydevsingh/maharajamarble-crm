@@ -398,11 +398,13 @@ export function TaskCompletionDialog({
         description:
           nextAction === "convert_to_deal"
             ? "Marked as ready to convert to deal."
-            : nextAction === "follow_up" || nextAction === "reschedule"
-              ? "Next action created."
-              : closeTask
-                ? "Task has been closed."
-                : "Outcome recorded, task stays open.",
+            : nextAction === "reschedule"
+              ? "Task rescheduled."
+              : nextAction === "follow_up"
+                ? "Follow-up task created."
+                : closeTask
+                  ? "Task has been closed."
+                  : "Outcome recorded, task stays open.",
       });
 
       onOpenChange(false);
