@@ -141,6 +141,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   useEffect(() => {
     if (taskData) {
