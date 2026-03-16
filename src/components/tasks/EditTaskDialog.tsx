@@ -735,6 +735,28 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
             </div>
           </div>
 
+          {/* Reschedule Reason - visible when due date changed */}
+          {(() => {
+            const oldDate = taskData?.due_date ? format(new Date(taskData.due_date), 'yyyy-MM-dd') : null;
+            const newDate = formData.dueDate ? format(formData.dueDate, 'yyyy-MM-dd') : null;
+            if (oldDate === newDate) return null;
+            return (
+              <div className="space-y-2">
+                <Label>Reschedule Reason *</Label>
+                <Textarea
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  placeholder="Why is the due date changing?"
+                  rows={2}
+                  className={cn(!rescheduleReason.trim() && "border-destructive")}
+                />
+                {!rescheduleReason.trim() && (
+                  <p className="text-xs text-destructive">Required when changing due date</p>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Description */}
           <div className="space-y-2">
             <Label>Description</Label>

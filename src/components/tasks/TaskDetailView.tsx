@@ -80,11 +80,18 @@ export function TaskDetailView({
   const [completeOpen, setCompleteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  // Parent task & follow-up children
+  const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
+  const [followUpTasks, setFollowUpTasks] = useState<{ id: string; title: string; status: string; due_date: string }[]>([]);
+
   // Related modals
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
   const [customerDetailOpen, setCustomerDetailOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  // For chain navigation from timeline
+  const [chainTaskId, setChainTaskId] = useState<string | null>(null);
 
   const fromStore = useMemo(
     () => (taskId ? tasks.find((t) => t.id === taskId) || null : null),
