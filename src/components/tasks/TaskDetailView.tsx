@@ -445,6 +445,20 @@ export function TaskDetailView({
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
+                  {/* Parent Task Banner */}
+                  {parentTask && (
+                    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+                      <span className="text-muted-foreground">Follow-up to:</span>
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-sm"
+                        onClick={() => setChainTaskId(parentTask.id)}
+                      >
+                        {parentTask.title}
+                      </Button>
+                    </div>
+                  )}
+
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle>Task Details</CardTitle>
@@ -460,6 +474,22 @@ export function TaskDetailView({
                           </span>
                         }
                       />
+
+                      {(task.reschedule_count ?? 0) > 0 && (
+                        <>
+                          <ValueRow label="Rescheduled" value={`${task.reschedule_count} time(s)`} />
+                          {task.reschedule_reason && (
+                            <ValueRow label="Last reason" value={task.reschedule_reason} />
+                          )}
+                        </>
+                      )}
+
+                      {task.reminder_offset_hours && (
+                        <ValueRow label="Auto reminder" value={`${task.reminder_offset_hours}h before due`} />
+                      )}
+                      {task.custom_reminder_at && (
+                        <ValueRow label="Custom reminder" value={format(new Date(task.custom_reminder_at), "dd MMM yyyy, HH:mm")} />
+                      )}
 
                       <ValueRow
                         label="Reminder"
