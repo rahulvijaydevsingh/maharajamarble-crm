@@ -80,11 +80,18 @@ export function TaskDetailView({
   const [completeOpen, setCompleteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  // Parent task & follow-up children
+  const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
+  const [followUpTasks, setFollowUpTasks] = useState<{ id: string; title: string; status: string; due_date: string }[]>([]);
+
   // Related modals
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
   const [customerDetailOpen, setCustomerDetailOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  // For chain navigation from timeline
+  const [chainTaskId, setChainTaskId] = useState<string | null>(null);
 
   const fromStore = useMemo(
     () => (taskId ? tasks.find((t) => t.id === taskId) || null : null),
@@ -202,6 +209,44 @@ export function TaskDetailView({
       cancelled = true;
     };
   }, [open, task, leads, customers]);
+
+  // Load parent task and follow-up children
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadChain() {
+      if (!open || !task) {
+        setParentTask(null);
+        setFollowUpTasks([]);
+        return;
+      }
+
+      // Parent
+      if (task.parent_task_id) {
+        const { data } = await supabase
+          .from("tasks")
+          .select("id, title")
+          .eq("id", task.parent_task_id)
+          .maybeSingle();
+        if (!cancelled && data) setParentTask({ id: data.id, title: data.title });
+        else if (!cancelled) setParentTask(null);
+      } else {
+        setParentTask(null);
+      }
+
+      // Children
+      const { data: children } = await supabase
+        .from("tasks")
+        .select("id, title, status, due_date")
+        .eq("parent_task_id", task.id)
+        .order("due_date", { ascending: true })
+        .limit(20);
+      if (!cancelled) setFollowUpTasks(children || []);
+    }
+
+    void loadChain();
+    return () => { cancelled = true; };
+  }, [open, task?.id, task?.parent_task_id]);
 
   const { entries, loading: activityLoading, hasMore, loadMore } = useTaskActivityLog(taskId);
 
@@ -400,6 +445,20 @@ export function TaskDetailView({
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
+                  {/* Parent Task Banner */}
+                  {parentTask && (
+                    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+                      <span className="text-muted-foreground">Follow-up to:</span>
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-sm"
+                        onClick={() => setChainTaskId(parentTask.id)}
+                      >
+                        {parentTask.title}
+                      </Button>
+                    </div>
+                  )}
+
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle>Task Details</CardTitle>
@@ -415,6 +474,22 @@ export function TaskDetailView({
                           </span>
                         }
                       />
+
+                      {(task.reschedule_count ?? 0) > 0 && (
+                        <>
+                          <ValueRow label="Rescheduled" value={`${task.reschedule_count} time(s)`} />
+                          {task.reschedule_reason && (
+                            <ValueRow label="Last reason" value={task.reschedule_reason} />
+                          )}
+                        </>
+                      )}
+
+                      {task.reminder_offset_hours && (
+                        <ValueRow label="Auto reminder" value={`${task.reminder_offset_hours}h before due`} />
+                      )}
+                      {task.custom_reminder_at && (
+                        <ValueRow label="Custom reminder" value={format(new Date(task.custom_reminder_at), "dd MMM yyyy, HH:mm")} />
+                      )}
 
                       <ValueRow
                         label="Reminder"
@@ -478,6 +553,36 @@ export function TaskDetailView({
 
                   <TaskSubtasksCard taskId={task.id} />
 
+                  {/* Follow-up Tasks */}
+                  {followUpTasks.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle>Follow-up Tasks</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {followUpTasks.map((ft) => (
+                          <div key={ft.id} className="flex items-center justify-between text-sm">
+                            <Button
+                              variant="link"
+                              className="h-auto p-0 text-sm text-left"
+                              onClick={() => setChainTaskId(ft.id)}
+                            >
+                              {ft.title}
+                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={ft.status === "Completed" ? "secondary" : "outline"} className="text-xs">
+                                {ft.status}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(ft.due_date), "dd MMM")}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <EntityAttachmentsTab entityType="task" entityId={task.id} title="Attachments" />
                 </div>
 
@@ -487,6 +592,7 @@ export function TaskDetailView({
                     loading={activityLoading}
                     hasMore={hasMore}
                     onLoadMore={loadMore}
+                    onOpenTask={(id) => setChainTaskId(id)}
                   />
                 </div>
               </div>
@@ -556,6 +662,17 @@ export function TaskDetailView({
           if (!o) setSelectedCustomer(null);
         }}
       />
+
+      {/* Chain navigation - open another task */}
+      {chainTaskId && (
+        <TaskDetailView
+          taskId={chainTaskId}
+          open={!!chainTaskId}
+          onOpenChange={(o) => {
+            if (!o) setChainTaskId(null);
+          }}
+        />
+      )}
     </>
   );
 }

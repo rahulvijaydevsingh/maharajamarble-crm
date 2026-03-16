@@ -88,12 +88,15 @@ export function TaskCompletionDialog({
   const [reminderOffsetHours, setReminderOffsetHours] = useState<string>("");
   const [customReminderAt, setCustomReminderAt] = useState<string>("");
 
+  const [rescheduleReason, setRescheduleReason] = useState<string>("");
+
   const [errors, setErrors] = useState<{
     outcome?: string;
     nextAction?: string;
     notes?: string;
     nextDate?: string;
     nextTime?: string;
+    rescheduleReason?: string;
   }>({});
 
   useEffect(() => {
@@ -107,6 +110,7 @@ export function TaskCompletionDialog({
     setCloseTask(false);
     setReminderOffsetHours("");
     setCustomReminderAt("");
+    setRescheduleReason("");
     setErrors({});
   }, [open, task?.id]);
 
@@ -186,6 +190,10 @@ export function TaskCompletionDialog({
       if (nextDate && nextDateTime && nextDateTime.getTime() <= Date.now()) {
         nextErrors.nextTime = "Next schedule must be in the future";
       }
+    }
+
+    if (nextAction === "reschedule" && !rescheduleReason.trim()) {
+      nextErrors.rescheduleReason = "Reschedule reason is required";
     }
 
     if (isUnsuccessful && nextAction === "convert_to_deal") {
@@ -293,16 +301,52 @@ export function TaskCompletionDialog({
         });
       }
 
-      // 4) Create follow-up / reschedule task if needed
-      if (nextAction === "follow_up" || nextAction === "reschedule") {
+      // 4a) Reschedule: update SAME task's due date
+      if (nextAction === "reschedule") {
         const nextDueDate = format(nextDate!, "yyyy-MM-dd");
-        const nextTaskTitle =
-          nextAction === "follow_up"
-            ? `Follow-up: ${task.title}`
-            : `Rescheduled: ${task.title}`;
+        const oldDueDate = task.due_date;
+        const oldDueTime = task.due_time;
+
+        await updateTask(task.id, {
+          due_date: nextDueDate,
+          due_time: nextTime || null,
+          reschedule_count: (task.reschedule_count ?? 0) + 1,
+          reschedule_reason: rescheduleReason.trim(),
+          reminder_offset_hours: reminderOffsetHours ? parseInt(reminderOffsetHours, 10) : null,
+          custom_reminder_at: customReminderAt || null,
+        });
+
+        await logTaskActivity(task.id, "rescheduled", {
+          old_value: { due_date: oldDueDate, due_time: oldDueTime },
+          new_value: { due_date: nextDueDate, due_time: nextTime || null },
+          reason: rescheduleReason.trim(),
+          reschedule_count: (task.reschedule_count ?? 0) + 1,
+        });
+
+        // Log to lead timeline
+        if (task.lead_id) {
+          await logLeadActivity(
+            task.lead_id,
+            `Task Rescheduled: ${task.title} — ${rescheduleReason.trim()}`,
+            { task_id: task.id, old_due_date: oldDueDate, new_due_date: nextDueDate, reason: rescheduleReason.trim() },
+            task.id
+          );
+        }
+
+        // Log to staff activity
+        try {
+          if (user) {
+            await logToStaffActivity("task_rescheduled", user.email || "", user.id, `Rescheduled task: ${task.title} to ${nextDueDate}`, "task", task.id);
+          }
+        } catch (_) {}
+      }
+
+      // 4b) Follow-up: create NEW task
+      if (nextAction === "follow_up") {
+        const nextDueDate = format(nextDate!, "yyyy-MM-dd");
 
         const nextTask: TaskInsert = {
-          title: nextTaskTitle,
+          title: `Follow-up: ${task.title}`,
           description: task.completion_notes || task.description || null,
           type: task.type,
           priority: task.priority,
@@ -324,12 +368,10 @@ export function TaskCompletionDialog({
 
         const newTask = await addTask(nextTask);
 
-        // Log follow_up_created on parent
         await logTaskActivity(task.id, "follow_up_created", {
           new_task_id: newTask?.id,
-          new_task_title: nextTaskTitle,
+          new_task_title: `Follow-up: ${task.title}`,
           due_date: nextDueDate,
-          action_type: nextAction,
         });
       }
 
@@ -356,11 +398,13 @@ export function TaskCompletionDialog({
         description:
           nextAction === "convert_to_deal"
             ? "Marked as ready to convert to deal."
-            : nextAction === "follow_up" || nextAction === "reschedule"
-              ? "Next action created."
-              : closeTask
-                ? "Task has been closed."
-                : "Outcome recorded, task stays open.",
+            : nextAction === "reschedule"
+              ? "Task rescheduled."
+              : nextAction === "follow_up"
+                ? "Follow-up task created."
+                : closeTask
+                  ? "Task has been closed."
+                  : "Outcome recorded, task stays open.",
       });
 
       onOpenChange(false);
@@ -506,7 +550,22 @@ export function TaskCompletionDialog({
                 </div>
               </div>
 
-              {/* Reminder fields for follow-up */}
+              {/* Reschedule reason (only for reschedule) */}
+              {nextAction === "reschedule" && (
+                <div className="space-y-2">
+                  <Label>Reschedule Reason *</Label>
+                  <Textarea
+                    value={rescheduleReason}
+                    onChange={(e) => { setRescheduleReason(e.target.value); setErrors((p) => ({ ...p, rescheduleReason: undefined })); }}
+                    className={cn(errors.rescheduleReason && "border-destructive")}
+                    placeholder="Why is this task being rescheduled?"
+                    rows={2}
+                  />
+                  {errors.rescheduleReason && <p className="text-sm text-destructive">{errors.rescheduleReason}</p>}
+                </div>
+              )}
+
+              {/* Reminder fields for follow-up/reschedule */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Auto Reminder (hours before)</Label>

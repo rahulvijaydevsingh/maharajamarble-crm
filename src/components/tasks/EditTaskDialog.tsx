@@ -35,6 +35,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useTasks } from "@/hooks/useTasks";
 import { useSubtasks } from "@/hooks/useSubtasks";
 import { useLogActivity } from "@/hooks/useActivityLog";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { SubtasksSection } from "./form/SubtasksSection";
 import { RecurrenceSection } from "./form/RecurrenceSection";
 import { RelatedEntitySection } from "./form/RelatedEntitySection";
@@ -70,6 +73,7 @@ interface EditTaskDialogProps {
 
 export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTaskDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { updateTask, snoozeTask, toggleStar } = useTasks();
   const { subtasks, addSubtask, updateSubtask, deleteSubtask, refetch: refetchSubtasks } = useSubtasks(taskData?.id);
   const { staffMembers, loading: staffLoading } = useActiveStaff();
@@ -137,6 +141,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   useEffect(() => {
     if (taskData) {
@@ -272,15 +277,29 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
   };
 
   const handleSave = async () => {
+    // Detect due date change
+    const oldDueDateStr = taskData.due_date ? format(new Date(taskData.due_date), 'yyyy-MM-dd') : null;
+    const newDueDateStr = formData.dueDate ? format(formData.dueDate, 'yyyy-MM-dd') : null;
+    const dueDateChanged = oldDueDateStr !== newDueDateStr;
+
+    if (dueDateChanged && !rescheduleReason.trim()) {
+      toast({
+        title: "Reschedule reason required",
+        description: "Please provide a reason for changing the due date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
-      const updatedData = {
+      const updatedData: Record<string, any> = {
         title: formData.title,
         type: formData.type,
         priority: formData.priority,
         assigned_to: formData.assignedTo,
         status: formData.status,
-        due_date: formData.dueDate ? format(formData.dueDate, 'yyyy-MM-dd') : null,
+        due_date: newDueDateStr,
         due_time: formData.dueTime || null,
         description: formData.description || null,
         reminder: formData.reminder,
@@ -301,7 +320,40 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
         related_entity_id: selectedEntity?.id || null,
       };
 
+      // If due date changed, add reschedule fields
+      if (dueDateChanged) {
+        updatedData.reschedule_count = (taskData.reschedule_count ?? 0) + 1;
+        updatedData.reschedule_reason = rescheduleReason.trim();
+      }
+
       await updateTask(taskData.id, updatedData);
+
+      // Log reschedule to task_activity_log
+      if (dueDateChanged) {
+        try {
+          await (supabase.from("task_activity_log") as any).insert({
+            task_id: taskData.id,
+            event_type: "rescheduled",
+            user_id: user?.id || null,
+            user_name: user?.email?.split("@")[0] || "System",
+            metadata: {
+              old_value: { due_date: oldDueDateStr, due_time: taskData.due_time },
+              new_value: { due_date: newDueDateStr, due_time: formData.dueTime || null },
+              reason: rescheduleReason.trim(),
+              reschedule_count: (taskData.reschedule_count ?? 0) + 1,
+              source: "edit_dialog",
+            },
+            notes: null,
+          });
+        } catch (e) { console.warn("Failed to log reschedule:", e); }
+
+        // Log to staff activity
+        try {
+          if (user) {
+            await logToStaffActivity("task_rescheduled", user.email || "", user.id, `Rescheduled task: ${formData.title} to ${newDueDateStr}`, "task", taskData.id);
+          }
+        } catch (_) {}
+      }
 
       // Log to activity log - determine entities
       // Use the NEW selected entity for logging if changed, otherwise use the original
@@ -682,6 +734,28 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
               </div>
             </div>
           </div>
+
+          {/* Reschedule Reason - visible when due date changed */}
+          {(() => {
+            const oldDate = taskData?.due_date ? format(new Date(taskData.due_date), 'yyyy-MM-dd') : null;
+            const newDate = formData.dueDate ? format(formData.dueDate, 'yyyy-MM-dd') : null;
+            if (oldDate === newDate) return null;
+            return (
+              <div className="space-y-2">
+                <Label>Reschedule Reason *</Label>
+                <Textarea
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  placeholder="Why is the due date changing?"
+                  rows={2}
+                  className={cn(!rescheduleReason.trim() && "border-destructive")}
+                />
+                {!rescheduleReason.trim() && (
+                  <p className="text-xs text-destructive">Required when changing due date</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Description */}
           <div className="space-y-2">
