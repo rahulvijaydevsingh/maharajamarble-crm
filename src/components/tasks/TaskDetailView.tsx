@@ -553,6 +553,36 @@ export function TaskDetailView({
 
                   <TaskSubtasksCard taskId={task.id} />
 
+                  {/* Follow-up Tasks */}
+                  {followUpTasks.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle>Follow-up Tasks</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {followUpTasks.map((ft) => (
+                          <div key={ft.id} className="flex items-center justify-between text-sm">
+                            <Button
+                              variant="link"
+                              className="h-auto p-0 text-sm text-left"
+                              onClick={() => setChainTaskId(ft.id)}
+                            >
+                              {ft.title}
+                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={ft.status === "Completed" ? "secondary" : "outline"} className="text-xs">
+                                {ft.status}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(ft.due_date), "dd MMM")}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <EntityAttachmentsTab entityType="task" entityId={task.id} title="Attachments" />
                 </div>
 
@@ -562,6 +592,7 @@ export function TaskDetailView({
                     loading={activityLoading}
                     hasMore={hasMore}
                     onLoadMore={loadMore}
+                    onOpenTask={(id) => setChainTaskId(id)}
                   />
                 </div>
               </div>
