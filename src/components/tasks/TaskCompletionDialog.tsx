@@ -110,6 +110,7 @@ export function TaskCompletionDialog({
     setCloseTask(false);
     setReminderOffsetHours("");
     setCustomReminderAt("");
+    setRescheduleReason("");
     setErrors({});
   }, [open, task?.id]);
 
