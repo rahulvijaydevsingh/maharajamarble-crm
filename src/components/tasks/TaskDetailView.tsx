@@ -662,6 +662,17 @@ export function TaskDetailView({
           if (!o) setSelectedCustomer(null);
         }}
       />
+
+      {/* Chain navigation - open another task */}
+      {chainTaskId && (
+        <TaskDetailView
+          taskId={chainTaskId}
+          open={!!chainTaskId}
+          onOpenChange={(o) => {
+            if (!o) setChainTaskId(null);
+          }}
+        />
+      )}
     </>
   );
 }
