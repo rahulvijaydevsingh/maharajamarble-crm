@@ -277,15 +277,29 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
   };
 
   const handleSave = async () => {
+    // Detect due date change
+    const oldDueDateStr = taskData.due_date ? format(new Date(taskData.due_date), 'yyyy-MM-dd') : null;
+    const newDueDateStr = formData.dueDate ? format(formData.dueDate, 'yyyy-MM-dd') : null;
+    const dueDateChanged = oldDueDateStr !== newDueDateStr;
+
+    if (dueDateChanged && !rescheduleReason.trim()) {
+      toast({
+        title: "Reschedule reason required",
+        description: "Please provide a reason for changing the due date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
-      const updatedData = {
+      const updatedData: Record<string, any> = {
         title: formData.title,
         type: formData.type,
         priority: formData.priority,
         assigned_to: formData.assignedTo,
         status: formData.status,
-        due_date: formData.dueDate ? format(formData.dueDate, 'yyyy-MM-dd') : null,
+        due_date: newDueDateStr,
         due_time: formData.dueTime || null,
         description: formData.description || null,
         reminder: formData.reminder,
@@ -306,7 +320,40 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
         related_entity_id: selectedEntity?.id || null,
       };
 
+      // If due date changed, add reschedule fields
+      if (dueDateChanged) {
+        updatedData.reschedule_count = (taskData.reschedule_count ?? 0) + 1;
+        updatedData.reschedule_reason = rescheduleReason.trim();
+      }
+
       await updateTask(taskData.id, updatedData);
+
+      // Log reschedule to task_activity_log
+      if (dueDateChanged) {
+        try {
+          await (supabase.from("task_activity_log") as any).insert({
+            task_id: taskData.id,
+            event_type: "rescheduled",
+            user_id: user?.id || null,
+            user_name: user?.email?.split("@")[0] || "System",
+            metadata: {
+              old_value: { due_date: oldDueDateStr, due_time: taskData.due_time },
+              new_value: { due_date: newDueDateStr, due_time: formData.dueTime || null },
+              reason: rescheduleReason.trim(),
+              reschedule_count: (taskData.reschedule_count ?? 0) + 1,
+              source: "edit_dialog",
+            },
+            notes: null,
+          });
+        } catch (e) { console.warn("Failed to log reschedule:", e); }
+
+        // Log to staff activity
+        try {
+          if (user) {
+            await logToStaffActivity("task_rescheduled", user.email || "", user.id, `Rescheduled task: ${formData.title} to ${newDueDateStr}`, "task", taskData.id);
+          }
+        } catch (_) {}
+      }
 
       // Log to activity log - determine entities
       // Use the NEW selected entity for logging if changed, otherwise use the original
