@@ -172,31 +172,71 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
       });
 
       // Set related entity from task data
-      if (taskData.related_entity_type && taskData.related_entity_id) {
-        const entity: RelatedEntity = {
-          id: taskData.related_entity_id,
-          name: taskData.lead?.name || taskData.related_entity_name || 'Unknown',
-          phone: taskData.lead?.phone || taskData.related_entity_phone || '',
-          type: taskData.related_entity_type as "lead" | "professional" | "customer",
-        };
-        setSelectedEntity(entity);
-        setOriginalEntity(entity);
-        setRelatedEntityType(taskData.related_entity_type);
-      } else if (taskData.lead_id && taskData.lead) {
-        const entity: RelatedEntity = {
-          id: taskData.lead_id,
-          name: taskData.lead.name,
-          phone: taskData.lead.phone || '',
-          type: 'lead',
-        };
-        setSelectedEntity(entity);
-        setOriginalEntity(entity);
-        setRelatedEntityType('lead');
-      } else {
-        setSelectedEntity(null);
-        setOriginalEntity(null);
-        setRelatedEntityType(null);
-      }
+      const resolveEntity = async () => {
+        if (taskData.related_entity_type && taskData.related_entity_id) {
+          let name = taskData.lead?.name || taskData.related_entity_name || '';
+          let phone = taskData.lead?.phone || taskData.related_entity_phone || '';
+          
+          // If name is missing, fetch from DB
+          if (!name || name === 'Unknown') {
+            const table = taskData.related_entity_type === 'lead' ? 'leads' 
+              : taskData.related_entity_type === 'customer' ? 'customers' 
+              : 'professionals';
+            const { data } = await supabase
+              .from(table)
+              .select('name, phone')
+              .eq('id', taskData.related_entity_id)
+              .maybeSingle();
+            if (data) {
+              name = data.name;
+              phone = data.phone || '';
+            }
+          }
+          
+          const entity: RelatedEntity = {
+            id: taskData.related_entity_id,
+            name: name || 'Unknown',
+            phone,
+            type: taskData.related_entity_type as "lead" | "professional" | "customer",
+          };
+          setSelectedEntity(entity);
+          setOriginalEntity(entity);
+          setRelatedEntityType(taskData.related_entity_type);
+        } else if (taskData.lead_id && taskData.lead) {
+          const entity: RelatedEntity = {
+            id: taskData.lead_id,
+            name: taskData.lead.name,
+            phone: taskData.lead.phone || '',
+            type: 'lead',
+          };
+          setSelectedEntity(entity);
+          setOriginalEntity(entity);
+          setRelatedEntityType('lead');
+        } else if (taskData.lead_id && !taskData.lead) {
+          // lead_id set but no joined lead data - fetch it
+          const { data } = await supabase
+            .from('leads')
+            .select('name, phone')
+            .eq('id', taskData.lead_id)
+            .maybeSingle();
+          if (data) {
+            const entity: RelatedEntity = {
+              id: taskData.lead_id,
+              name: data.name,
+              phone: data.phone || '',
+              type: 'lead',
+            };
+            setSelectedEntity(entity);
+            setOriginalEntity(entity);
+            setRelatedEntityType('lead');
+          }
+        } else {
+          setSelectedEntity(null);
+          setOriginalEntity(null);
+          setRelatedEntityType(null);
+        }
+      };
+      resolveEntity();
 
       if (taskData.is_recurring) {
         setShowAdvanced(true);
