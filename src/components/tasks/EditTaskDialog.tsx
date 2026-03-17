@@ -151,7 +151,7 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
         priority: taskData.priority || "",
         assignedTo: taskData.assigned_to || taskData.assignedTo || "",
         status: taskData.status || "",
-        dueDate: taskData.due_date ? new Date(taskData.due_date) : undefined,
+        dueDate: taskData.due_date ? new Date(taskData.due_date + 'T00:00:00') : undefined,
         dueTime: taskData.due_time || "",
         description: taskData.description || "",
         reminder: taskData.reminder || false,

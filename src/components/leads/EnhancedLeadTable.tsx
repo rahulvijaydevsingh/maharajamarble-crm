@@ -737,7 +737,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         title={tooltipText}
         onClick={handleNavigateToTasks}
       >
-        {taskInfo.total}
+        {taskInfo.overdue > 0 ? `${taskInfo.overdue}/${taskInfo.total}` : taskInfo.total}
       </Badge>
     );
   };
