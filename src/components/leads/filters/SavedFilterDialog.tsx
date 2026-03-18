@@ -67,6 +67,9 @@ const FIELD_OPTIONS = [
   { value: "materials", label: "Materials", type: "select", category: "Lead Classification" },
   { value: "construction_stage", label: "Construction Stage", type: "select", category: "Lead Classification" },
   { value: "estimated_quantity", label: "Estimated Quantity", type: "number", category: "Lead Classification" },
+  { value: "designation", label: "Designation", type: "select", category: "Lead Classification" },
+  { value: "kit_status", label: "KIT Status", type: "select", category: "Lead Classification" },
+  { value: "is_converted", label: "Converted", type: "boolean", category: "Lead Classification" },
   
   // Assignment & Ownership
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
@@ -79,6 +82,10 @@ const FIELD_OPTIONS = [
   
   // Task Information
   { value: "pending_tasks", label: "Pending Tasks Count", type: "number", category: "Tasks" },
+  { value: "overdue_tasks", label: "Overdue Tasks Count", type: "number", category: "Tasks" },
+  { value: "due_today_tasks", label: "Due Today Tasks", type: "number", category: "Tasks" },
+  { value: "upcoming_tasks", label: "Upcoming Tasks", type: "number", category: "Tasks" },
+  { value: "tasks_status", label: "Tasks Status", type: "select", category: "Tasks" },
 ];
 
 // Operators by field type
