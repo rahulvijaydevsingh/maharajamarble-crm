@@ -64,6 +64,8 @@ const FIELD_OPTIONS = [
   { value: "total_orders", label: "Total Orders", type: "number", category: "Metrics" },
   { value: "total_spent", label: "Total Spent", type: "number", category: "Metrics" },
   { value: "pending_tasks", label: "Pending Tasks", type: "select", category: "Tasks" },
+  { value: "overdue_tasks", label: "Overdue Tasks Count", type: "number", category: "Tasks" },
+  { value: "has_notes", label: "Has Notes", type: "boolean", category: "Tasks" },
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
   { value: "created_at", label: "Date Created", type: "date", category: "Dates" },
   { value: "last_purchase", label: "Last Purchase", type: "date", category: "Dates" },
