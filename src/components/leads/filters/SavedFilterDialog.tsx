@@ -296,6 +296,27 @@ export function SavedFilterDialog({
         return uniqueMaterials.map((m) => ({ value: m, label: m }));
       case "construction_stage":
         return CONSTRUCTION_STAGES;
+      case "designation":
+        return [
+          { value: "owner", label: "Owner" },
+          { value: "contractor", label: "Contractor" },
+          { value: "architect", label: "Architect" },
+          { value: "engineer", label: "Engineer" },
+          { value: "other", label: "Other" },
+        ];
+      case "kit_status":
+        return [
+          { value: "none", label: "None" },
+          { value: "active", label: "Active" },
+          { value: "paused", label: "Paused" },
+          { value: "completed", label: "Completed" },
+        ];
+      case "tasks_status":
+        return [
+          { value: "has_tasks", label: "Has Tasks" },
+          { value: "has_overdue", label: "Has Overdue" },
+          { value: "no_tasks", label: "No Tasks" },
+        ];
       default:
         return [];
     }
