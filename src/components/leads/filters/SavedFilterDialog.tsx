@@ -323,7 +323,7 @@ export function SavedFilterDialog({
   };
 
   const needsValueInput = (operator: string) => {
-    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days", "next_7_days", "next_30_days"].includes(operator);
+    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days", "next_7_days", "next_30_days", "is_true", "is_false"].includes(operator);
   };
 
   const buildFilterConfig = (): FilterConfig => {
