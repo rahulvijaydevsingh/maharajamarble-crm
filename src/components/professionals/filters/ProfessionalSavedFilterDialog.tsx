@@ -198,6 +198,13 @@ export function ProfessionalSavedFilterDialog({
         return [...CITIES, ...uniqueCities.filter(c => !CITIES.find(city => city.value === c)).map(c => ({ value: c, label: c }))];
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
+      case "kit_status":
+        return [
+          { value: "none", label: "None" },
+          { value: "active", label: "Active" },
+          { value: "paused", label: "Paused" },
+          { value: "completed", label: "Completed" },
+        ];
       default:
         return [];
     }
