@@ -130,6 +130,10 @@ const OPERATORS = {
     { value: "next_7_days", label: "next 7 days" },
     { value: "next_30_days", label: "next 30 days" },
   ],
+  boolean: [
+    { value: "is_true", label: "Yes" },
+    { value: "is_false", label: "No" },
+  ],
 };
 
 const STATUS_OPTIONS = [
