@@ -60,6 +60,11 @@ const FIELD_OPTIONS = [
   { value: "type", label: "Task Type", type: "select", category: "Task Classification" },
   { value: "is_starred", label: "Starred", type: "boolean", category: "Task Classification" },
   { value: "is_overdue", label: "Overdue", type: "boolean", category: "Task Classification" },
+  { value: "deal_ready", label: "Deal Ready", type: "boolean", category: "Task Classification" },
+  
+  // Completion
+  { value: "completion_outcome", label: "Completion Outcome", type: "text", category: "Completion" },
+  { value: "reschedule_count", label: "Reschedule Count", type: "number", category: "Completion" },
   
   // Recurrence
   { value: "is_recurring", label: "Recurring", type: "boolean", category: "Recurrence" },
@@ -68,6 +73,7 @@ const FIELD_OPTIONS = [
   // Subtasks
   { value: "has_subtasks", label: "Has Subtasks", type: "boolean", category: "Subtasks" },
   { value: "subtasks_status", label: "Subtasks Completion", type: "select", category: "Subtasks" },
+  { value: "has_parent_task", label: "Has Parent Task", type: "boolean", category: "Subtasks" },
   
   // Assignment
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
