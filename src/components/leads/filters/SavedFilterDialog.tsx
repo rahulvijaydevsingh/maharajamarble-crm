@@ -181,69 +181,12 @@ export function SavedFilterDialog({
       setIsShared(editingFilter.is_shared);
       setIsDefault(editingFilter.is_default);
       
-      // Convert filter_config to rules with per-rule logic
+      // Convert filter_config to rules — prefer advancedRules over legacy arrays
       const config = editingFilter.filter_config;
       const newRules: FilterRule[] = [];
       
-      // Parse existing filters into rules
-      if (config.statusFilter?.length > 0) {
-        config.statusFilter.forEach((v, i) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "status", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.priorityFilter?.length > 0) {
-        config.priorityFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "priority", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.sourceFilter?.length > 0) {
-        config.sourceFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "source", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.assignedToFilter?.length > 0) {
-        config.assignedToFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "assigned_to", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.materialsFilter?.length > 0) {
-        config.materialsFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "materials", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      
-      // Load advanced rules if they exist
-      if (config.advancedRules?.length > 0) {
+      if (config.advancedRules?.length) {
+        // Load from advancedRules ONLY to avoid duplicates
         config.advancedRules.forEach((rule: any) => {
           newRules.push({
             id: crypto.randomUUID(),
@@ -253,6 +196,33 @@ export function SavedFilterDialog({
             logic: rule.logic || "and",
           });
         });
+      } else {
+        // Legacy fallback for old filters without advancedRules
+        if (config.statusFilter?.length > 0) {
+          config.statusFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "status", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.priorityFilter?.length > 0) {
+          config.priorityFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "priority", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.sourceFilter?.length > 0) {
+          config.sourceFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "source", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.assignedToFilter?.length > 0) {
+          config.assignedToFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "assigned_to", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.materialsFilter?.length > 0) {
+          config.materialsFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "materials", operator: "equals", value: v, logic: "and" });
+          });
+        }
       }
       
       setRules(newRules.length > 0 ? newRules : [createEmptyRule()]);
