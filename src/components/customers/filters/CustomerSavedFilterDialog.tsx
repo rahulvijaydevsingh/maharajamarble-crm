@@ -64,6 +64,8 @@ const FIELD_OPTIONS = [
   { value: "total_orders", label: "Total Orders", type: "number", category: "Metrics" },
   { value: "total_spent", label: "Total Spent", type: "number", category: "Metrics" },
   { value: "pending_tasks", label: "Pending Tasks", type: "select", category: "Tasks" },
+  { value: "overdue_tasks", label: "Overdue Tasks Count", type: "number", category: "Tasks" },
+  { value: "has_notes", label: "Has Notes", type: "boolean", category: "Tasks" },
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
   { value: "created_at", label: "Date Created", type: "date", category: "Dates" },
   { value: "last_purchase", label: "Last Purchase", type: "date", category: "Dates" },
@@ -108,6 +110,10 @@ const OPERATORS = {
     { value: "this_month", label: "this month" },
     { value: "last_7_days", label: "last 7 days" },
     { value: "last_30_days", label: "last 30 days" },
+  ],
+  boolean: [
+    { value: "is_true", label: "Yes" },
+    { value: "is_false", label: "No" },
   ],
 };
 
@@ -208,7 +214,7 @@ export function CustomerSavedFilterDialog({
   };
 
   const needsValueInput = (operator: string) => {
-    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days"].includes(operator);
+    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days", "is_true", "is_false"].includes(operator);
   };
 
   const buildFilterConfig = (): FilterConfig => {

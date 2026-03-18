@@ -67,6 +67,9 @@ const FIELD_OPTIONS = [
   { value: "materials", label: "Materials", type: "select", category: "Lead Classification" },
   { value: "construction_stage", label: "Construction Stage", type: "select", category: "Lead Classification" },
   { value: "estimated_quantity", label: "Estimated Quantity", type: "number", category: "Lead Classification" },
+  { value: "designation", label: "Designation", type: "select", category: "Lead Classification" },
+  { value: "kit_status", label: "KIT Status", type: "select", category: "Lead Classification" },
+  { value: "is_converted", label: "Converted", type: "boolean", category: "Lead Classification" },
   
   // Assignment & Ownership
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
@@ -79,6 +82,10 @@ const FIELD_OPTIONS = [
   
   // Task Information
   { value: "pending_tasks", label: "Pending Tasks Count", type: "number", category: "Tasks" },
+  { value: "overdue_tasks", label: "Overdue Tasks Count", type: "number", category: "Tasks" },
+  { value: "due_today_tasks", label: "Due Today Tasks", type: "number", category: "Tasks" },
+  { value: "upcoming_tasks", label: "Upcoming Tasks", type: "number", category: "Tasks" },
+  { value: "tasks_status", label: "Tasks Status", type: "select", category: "Tasks" },
 ];
 
 // Operators by field type
@@ -122,6 +129,10 @@ const OPERATORS = {
     { value: "last_30_days", label: "last 30 days" },
     { value: "next_7_days", label: "next 7 days" },
     { value: "next_30_days", label: "next 30 days" },
+  ],
+  boolean: [
+    { value: "is_true", label: "Yes" },
+    { value: "is_false", label: "No" },
   ],
 };
 
@@ -174,69 +185,12 @@ export function SavedFilterDialog({
       setIsShared(editingFilter.is_shared);
       setIsDefault(editingFilter.is_default);
       
-      // Convert filter_config to rules with per-rule logic
+      // Convert filter_config to rules — prefer advancedRules over legacy arrays
       const config = editingFilter.filter_config;
       const newRules: FilterRule[] = [];
       
-      // Parse existing filters into rules
-      if (config.statusFilter?.length > 0) {
-        config.statusFilter.forEach((v, i) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "status", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.priorityFilter?.length > 0) {
-        config.priorityFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "priority", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.sourceFilter?.length > 0) {
-        config.sourceFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "source", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.assignedToFilter?.length > 0) {
-        config.assignedToFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "assigned_to", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      if (config.materialsFilter?.length > 0) {
-        config.materialsFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "materials", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      
-      // Load advanced rules if they exist
-      if (config.advancedRules?.length > 0) {
+      if (config.advancedRules?.length) {
+        // Load from advancedRules ONLY to avoid duplicates
         config.advancedRules.forEach((rule: any) => {
           newRules.push({
             id: crypto.randomUUID(),
@@ -246,6 +200,33 @@ export function SavedFilterDialog({
             logic: rule.logic || "and",
           });
         });
+      } else {
+        // Legacy fallback for old filters without advancedRules
+        if (config.statusFilter?.length > 0) {
+          config.statusFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "status", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.priorityFilter?.length > 0) {
+          config.priorityFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "priority", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.sourceFilter?.length > 0) {
+          config.sourceFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "source", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.assignedToFilter?.length > 0) {
+          config.assignedToFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "assigned_to", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.materialsFilter?.length > 0) {
+          config.materialsFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "materials", operator: "equals", value: v, logic: "and" });
+          });
+        }
       }
       
       setRules(newRules.length > 0 ? newRules : [createEmptyRule()]);
@@ -319,13 +300,34 @@ export function SavedFilterDialog({
         return uniqueMaterials.map((m) => ({ value: m, label: m }));
       case "construction_stage":
         return CONSTRUCTION_STAGES;
+      case "designation":
+        return [
+          { value: "owner", label: "Owner" },
+          { value: "contractor", label: "Contractor" },
+          { value: "architect", label: "Architect" },
+          { value: "engineer", label: "Engineer" },
+          { value: "other", label: "Other" },
+        ];
+      case "kit_status":
+        return [
+          { value: "none", label: "None" },
+          { value: "active", label: "Active" },
+          { value: "paused", label: "Paused" },
+          { value: "completed", label: "Completed" },
+        ];
+      case "tasks_status":
+        return [
+          { value: "has_tasks", label: "Has Tasks" },
+          { value: "has_overdue", label: "Has Overdue" },
+          { value: "no_tasks", label: "No Tasks" },
+        ];
       default:
         return [];
     }
   };
 
   const needsValueInput = (operator: string) => {
-    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days", "next_7_days", "next_30_days"].includes(operator);
+    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days", "next_7_days", "next_30_days", "is_true", "is_false"].includes(operator);
   };
 
   const buildFilterConfig = (): FilterConfig => {

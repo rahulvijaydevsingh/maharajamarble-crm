@@ -62,6 +62,9 @@ const FIELD_OPTIONS = [
   { value: "priority", label: "Priority", type: "select", category: "Classification" },
   { value: "rating", label: "Rating", type: "number", category: "Classification" },
   { value: "total_projects", label: "Total Projects", type: "number", category: "Classification" },
+  { value: "verified", label: "Verified", type: "boolean", category: "Classification" },
+  { value: "kit_status", label: "KIT Status", type: "select", category: "Classification" },
+  { value: "notes", label: "Notes", type: "text", category: "Basic Information" },
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
   { value: "created_at", label: "Date Created", type: "date", category: "Dates" },
   { value: "next_follow_up", label: "Next Follow Up", type: "date", category: "Dates" },
@@ -106,6 +109,10 @@ const OPERATORS = {
     { value: "this_month", label: "this month" },
     { value: "last_7_days", label: "last 7 days" },
     { value: "last_30_days", label: "last 30 days" },
+  ],
+  boolean: [
+    { value: "is_true", label: "Yes" },
+    { value: "is_false", label: "No" },
   ],
 };
 
@@ -191,13 +198,20 @@ export function ProfessionalSavedFilterDialog({
         return [...CITIES, ...uniqueCities.filter(c => !CITIES.find(city => city.value === c)).map(c => ({ value: c, label: c }))];
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
+      case "kit_status":
+        return [
+          { value: "none", label: "None" },
+          { value: "active", label: "Active" },
+          { value: "paused", label: "Paused" },
+          { value: "completed", label: "Completed" },
+        ];
       default:
         return [];
     }
   };
 
   const needsValueInput = (operator: string) => {
-    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days"].includes(operator);
+    return !["is_empty", "is_not_empty", "today", "this_week", "this_month", "last_7_days", "last_30_days", "is_true", "is_false"].includes(operator);
   };
 
   const buildFilterConfig = (): FilterConfig => {

@@ -60,6 +60,11 @@ const FIELD_OPTIONS = [
   { value: "type", label: "Task Type", type: "select", category: "Task Classification" },
   { value: "is_starred", label: "Starred", type: "boolean", category: "Task Classification" },
   { value: "is_overdue", label: "Overdue", type: "boolean", category: "Task Classification" },
+  { value: "deal_ready", label: "Deal Ready", type: "boolean", category: "Task Classification" },
+  
+  // Completion
+  { value: "completion_outcome", label: "Completion Outcome", type: "text", category: "Completion" },
+  { value: "reschedule_count", label: "Reschedule Count", type: "number", category: "Completion" },
   
   // Recurrence
   { value: "is_recurring", label: "Recurring", type: "boolean", category: "Recurrence" },
@@ -68,6 +73,7 @@ const FIELD_OPTIONS = [
   // Subtasks
   { value: "has_subtasks", label: "Has Subtasks", type: "boolean", category: "Subtasks" },
   { value: "subtasks_status", label: "Subtasks Completion", type: "select", category: "Subtasks" },
+  { value: "has_parent_task", label: "Has Parent Task", type: "boolean", category: "Subtasks" },
   
   // Assignment
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
@@ -188,57 +194,8 @@ export function TaskSavedFilterDialog({
       const config = editingFilter.filter_config;
       const newRules: FilterRule[] = [];
       
-      // Parse status filters
-      if (config.statusFilter?.length > 0) {
-        config.statusFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "status", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      // Parse priority filters
-      if (config.priorityFilter?.length > 0) {
-        config.priorityFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "priority", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      // Parse type filters (using sourceFilter for tasks)
-      if (config.sourceFilter?.length > 0) {
-        config.sourceFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "type", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      // Parse assignee filters
-      if (config.assignedToFilter?.length > 0) {
-        config.assignedToFilter.forEach((v) => {
-          newRules.push({ 
-            id: crypto.randomUUID(), 
-            field: "assigned_to", 
-            operator: "equals", 
-            value: v,
-            logic: "and"
-          });
-        });
-      }
-      
-      // Load advanced rules
-      if (config.advancedRules?.length > 0) {
+      if (config.advancedRules?.length) {
+        // Load from advancedRules ONLY to avoid duplicates
         config.advancedRules.forEach((rule: any) => {
           newRules.push({
             id: crypto.randomUUID(),
@@ -248,6 +205,28 @@ export function TaskSavedFilterDialog({
             logic: rule.logic || "and",
           });
         });
+      } else {
+        // Legacy fallback for old filters without advancedRules
+        if (config.statusFilter?.length > 0) {
+          config.statusFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "status", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.priorityFilter?.length > 0) {
+          config.priorityFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "priority", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.sourceFilter?.length > 0) {
+          config.sourceFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "type", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.assignedToFilter?.length > 0) {
+          config.assignedToFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "assigned_to", operator: "equals", value: v, logic: "and" });
+          });
+        }
       }
       
       setRules(newRules.length > 0 ? newRules : [createEmptyRule()]);
