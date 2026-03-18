@@ -111,6 +111,10 @@ const OPERATORS = {
     { value: "last_7_days", label: "last 7 days" },
     { value: "last_30_days", label: "last 30 days" },
   ],
+  boolean: [
+    { value: "is_true", label: "Yes" },
+    { value: "is_false", label: "No" },
+  ],
 };
 
 export function CustomerSavedFilterDialog({
