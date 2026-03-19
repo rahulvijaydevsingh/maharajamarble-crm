@@ -30,6 +30,7 @@ import { ProfessionalManageFiltersDialog } from "./filters/ProfessionalManageFil
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { PhoneLink } from "@/components/shared/PhoneLink";
+import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 
 interface DateRange {
@@ -66,6 +67,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
+  const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
   const [columnManagerOpen, setColumnManagerOpen] = useState(false);
@@ -141,7 +143,9 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         else if (toEnd) createdDateMatch = date <= toEnd;
       }
       
-      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch && createdDateMatch;
+      const advancedMatch = activeAdvancedRules.length === 0 ||
+        evaluateRules(p as Record<string, any>, activeAdvancedRules);
+      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch && createdDateMatch && advancedMatch;
     });
 
     if (sortField && sortDirection) {
@@ -158,7 +162,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       });
     }
     return result;
-  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter, createdDateRange]);
+  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter, createdDateRange, activeAdvancedRules]);
   
   // MultiSelectFilter component for inline column filters
   const MultiSelectFilter = ({
@@ -305,7 +309,20 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     setSelectedItems(prev => checked ? [...prev, id] : prev.filter(i => i !== id));
   };
 
-  const getFilterCount = (filter: SavedFilter) => professionals.length;
+  const getFilterCount = (filter: SavedFilter): number => {
+    const config = filter.filter_config as any;
+    return professionals.filter(p => {
+      const statusMatch = (config.statusFilter?.length || 0) === 0 || (config.statusFilter || []).includes(p.status);
+      const typeMatch = (config.typeFilter?.length || 0) === 0 || (config.typeFilter || []).includes(p.professional_type);
+      const priorityMatch = (config.priorityFilter?.length || 0) === 0 || (config.priorityFilter || []).includes(p.priority.toString());
+      const resolvedAssignee = resolveAssignedToStaff.get(p.assigned_to.toLowerCase()) || p.assigned_to;
+      const assignedMatch = (config.assignedToFilter?.length || 0) === 0 || (config.assignedToFilter || []).includes(resolvedAssignee);
+      const cityMatch = (config.cityFilter?.length || 0) === 0 || (config.cityFilter || []).includes(p.city || "");
+      const advancedMatch = ((config.advancedRules?.length) || 0) === 0 ||
+        evaluateRules(p as Record<string, any>, config.advancedRules || []);
+      return statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && advancedMatch;
+    }).length;
+  };
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort(field)}>

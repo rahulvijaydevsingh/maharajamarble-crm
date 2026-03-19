@@ -99,6 +99,7 @@ import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 import { ALL_TASK_TYPES } from "@/constants/taskConstants";
+import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -495,6 +496,7 @@ export function EnhancedTaskTable({
   
   // Saved filters
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
+  const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<SavedFilter | null>(null);
@@ -588,7 +590,9 @@ export function EnhancedTaskTable({
         task.lead_id === relatedToFilter || 
         task.related_entity_id === relatedToFilter;
       
-      return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && dueDateMatch && createdDateMatch && matchesRelatedTo;
+      const advancedMatch = activeAdvancedRules.length === 0 ||
+        evaluateRules(task as Record<string, any>, activeAdvancedRules);
+      return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && dueDateMatch && createdDateMatch && matchesRelatedTo && advancedMatch;
     });
 
     // Apply sorting
@@ -610,7 +614,7 @@ export function EnhancedTaskTable({
     }
 
     return result;
-  }, [transformedTasks, searchTerm, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter]);
+  }, [transformedTasks, searchTerm, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules]);
 
   // Saved filter counts - reuse existing filter config structure
   const getFilterCount = (filter: SavedFilter): number => {
@@ -622,7 +626,9 @@ export function EnhancedTaskTable({
       const statusMatch = (config.statusFilter?.length || 0) === 0 || config.statusFilter?.includes(task.computedStatus);
       // Use sourceFilter to store task types for tasks entity
       const typeMatch = (config.sourceFilter?.length || 0) === 0 || config.sourceFilter?.includes(task.type);
-      return priorityMatch && assigneeMatch && statusMatch && typeMatch;
+      const advancedMatch = ((config as any).advancedRules?.length || 0) === 0 ||
+        evaluateRules(task as Record<string, any>, (config as any).advancedRules || []);
+      return priorityMatch && assigneeMatch && statusMatch && typeMatch && advancedMatch;
     }).length;
   };
 
@@ -826,6 +832,7 @@ export function EnhancedTaskTable({
     setSelectedPriorities(config.priorityFilter || []);
     setSelectedAssignees(config.assignedToFilter || []);
     setSelectedStatuses(config.statusFilter || []);
+    setActiveAdvancedRules((config as any).advancedRules || []);
     setActiveFilterId(filter.id);
   };
 
@@ -836,6 +843,7 @@ export function EnhancedTaskTable({
     setSelectedStatuses([]);
     setDueDateRange({ from: undefined, to: undefined });
     setCreatedDateRange({ from: undefined, to: undefined });
+    setActiveAdvancedRules([]);
     setActiveFilterId(null);
   };
 

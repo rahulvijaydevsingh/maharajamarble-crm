@@ -98,6 +98,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
+import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 
 const COLUMN_VISIBILITY_KEY = "leads_column_visibility";
@@ -222,6 +223,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   
   // Active saved filter
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
+  const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
   
   // Filter dialogs
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
@@ -393,8 +395,10 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         });
       })();
 
+      const advancedMatch = activeAdvancedRules.length === 0 ||
+        evaluateRules(lead as Record<string, any>, activeAdvancedRules, { getLeadTasks });
       return searchMatch && statusMatch && assignedMatch && sourceMatch && priorityMatch && 
-             materialsMatch && createdByMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch;
+             materialsMatch && createdByMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
     });
 
     // Apply sorting
@@ -425,7 +429,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     return result;
   }, [leads, searchTerm, statusFilter, assignedToFilter, sourceFilter, priorityFilter, 
-      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks]);
+      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, activeAdvancedRules]);
 
   // Filter counts for saved filters
   const getFilterCount = (filter: SavedFilter): number => {
@@ -439,7 +443,9 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       const materialsMatch = config.materialsFilter.length === 0 || config.materialsFilter.some(material => 
         ((lead.material_interests as string[]) || []).includes(material)
       );
-      return statusMatch && assignedMatch && sourceMatch && priorityMatch && materialsMatch;
+      const advancedMatch = ((config as any).advancedRules?.length || 0) === 0 ||
+        evaluateRules(lead as Record<string, any>, (config as any).advancedRules || [], { getLeadTasks });
+      return statusMatch && assignedMatch && sourceMatch && priorityMatch && materialsMatch && advancedMatch;
     }).length;
   };
 
@@ -542,6 +548,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       from: config.nextFollowUpRange?.from ? new Date(config.nextFollowUpRange.from) : undefined,
       to: config.nextFollowUpRange?.to ? new Date(config.nextFollowUpRange.to) : undefined,
     });
+    setActiveAdvancedRules((config as any).advancedRules || []);
     setActiveFilterId(filter.id);
   };
 
@@ -555,6 +562,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setLastFollowUpRange({ from: undefined, to: undefined });
     setNextFollowUpRange({ from: undefined, to: undefined });
     setTasksFilter([]);
+    setActiveAdvancedRules([]);
     setActiveFilterId(null);
   };
 
