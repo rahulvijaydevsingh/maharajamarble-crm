@@ -76,6 +76,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { usePendingTasksByCustomer, CustomerPendingTasks } from "@/hooks/usePendingTasksByCustomer";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
+import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 import {
   Tooltip,
   TooltipContent,
@@ -244,6 +245,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [pendingTasksFilter, setPendingTasksFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
+  const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
 
   // Load column visibility from localStorage (fallback for backward compat)
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
@@ -363,7 +365,9 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         else if (toEnd) createdDateMatch = date <= toEnd;
       }
 
-      return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch;
+      const advancedMatch = activeAdvancedRules.length === 0 ||
+        evaluateRules(c as Record<string, any>, activeAdvancedRules, { getCustomerTasks });
+      return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch && advancedMatch;
     });
 
     if (sortField && sortDirection) {
@@ -380,7 +384,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       });
     }
     return result;
-  }, [customers, searchTerm, sortField, sortDirection, statusFilter, typeFilter, priorityFilter, assignedToFilter, cityFilter, pendingTasksFilter, createdDateRange, getCustomerTasks]);
+  }, [customers, searchTerm, sortField, sortDirection, statusFilter, typeFilter, priorityFilter, assignedToFilter, cityFilter, pendingTasksFilter, createdDateRange, getCustomerTasks, activeAdvancedRules]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -424,10 +428,24 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     setCityFilter([]);
     setPendingTasksFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
+    setActiveAdvancedRules([]);
     setActiveFilterId(null);
   };
 
-  const getFilterCount = (filter: SavedFilter) => customers.length;
+  const getFilterCount = (filter: SavedFilter): number => {
+    const config = filter.filter_config as any;
+    return customers.filter(c => {
+      const statusMatch = (config.statusFilter?.length || 0) === 0 || (config.statusFilter || []).includes(c.status);
+      const typeMatch = (config.typeFilter?.length || 0) === 0 || (config.typeFilter || []).includes(c.customer_type);
+      const priorityMatch = (config.priorityFilter?.length || 0) === 0 || (config.priorityFilter || []).includes(c.priority.toString());
+      const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
+      const assignedMatch = (config.assignedToFilter?.length || 0) === 0 || (config.assignedToFilter || []).includes(resolvedAssignee);
+      const cityMatch = (config.cityFilter?.length || 0) === 0 || (config.cityFilter || []).includes(c.city || "");
+      const advancedMatch = ((config.advancedRules?.length) || 0) === 0 ||
+        evaluateRules(c as Record<string, any>, config.advancedRules || [], { getCustomerTasks });
+      return statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && advancedMatch;
+    }).length;
+  };
 
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
 
