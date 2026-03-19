@@ -84,7 +84,6 @@ import {
 } from "@/components/ui/tooltip";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
-import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 
 const COLUMN_VISIBILITY_KEY = "customers_column_visibility";
 
@@ -245,7 +244,6 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [pendingTasksFilter, setPendingTasksFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
-  const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
 
   // Load column visibility from localStorage (fallback for backward compat)
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
@@ -365,10 +363,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         else if (toEnd) createdDateMatch = date <= toEnd;
       }
 
-      const advancedMatch = activeAdvancedRules.length === 0 ||
-        evaluateRules(c as Record<string, any>, activeAdvancedRules, { getCustomerTasks });
-
-      return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch && advancedMatch;
+      return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch;
     });
 
     if (sortField && sortDirection) {
@@ -385,7 +380,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       });
     }
     return result;
-  }, [customers, searchTerm, sortField, sortDirection, statusFilter, typeFilter, priorityFilter, assignedToFilter, cityFilter, pendingTasksFilter, createdDateRange, getCustomerTasks, activeAdvancedRules]);
+  }, [customers, searchTerm, sortField, sortDirection, statusFilter, typeFilter, priorityFilter, assignedToFilter, cityFilter, pendingTasksFilter, createdDateRange, getCustomerTasks]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -421,18 +416,6 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     toast({ title: "Column settings reset to defaults" });
   }, [toast]);
 
-  const applyFilter = (filter: SavedFilter) => {
-    const config = filter.filter_config as any;
-    setStatusFilter(config.statusFilter || []);
-    setTypeFilter(config.typeFilter || []);
-    setPriorityFilter(config.priorityFilter || []);
-    setAssignedToFilter(config.assignedToFilter || []);
-    setCityFilter(config.cityFilter || []);
-    setPendingTasksFilter(config.pendingTasksFilter || []);
-    setActiveAdvancedRules(config.advancedRules || []);
-    setActiveFilterId(filter.id);
-  };
-
   const clearFilters = () => {
     setStatusFilter([]);
     setTypeFilter([]);
@@ -441,24 +424,10 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     setCityFilter([]);
     setPendingTasksFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
-    setActiveAdvancedRules([]);
     setActiveFilterId(null);
   };
 
-  const getFilterCount = (filter: SavedFilter): number => {
-    const config = filter.filter_config as any;
-    return customers.filter(c => {
-      const statusMatch = (config.statusFilter?.length || 0) === 0 || config.statusFilter.includes(c.status);
-      const typeMatch = (config.typeFilter?.length || 0) === 0 || config.typeFilter.includes(c.customer_type);
-      const priorityMatch = (config.priorityFilter?.length || 0) === 0 || config.priorityFilter.includes(c.priority.toString());
-      const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
-      const assignedMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter.includes(resolvedAssignee);
-      const cityMatch = (config.cityFilter?.length || 0) === 0 || config.cityFilter.includes(c.city || "");
-      const advancedMatch = ((config.advancedRules?.length) || 0) === 0 ||
-        evaluateRules(c as Record<string, any>, config.advancedRules || [], { getCustomerTasks });
-      return statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && advancedMatch;
-    }).length;
-  };
+  const getFilterCount = (filter: SavedFilter) => customers.length;
 
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
 
@@ -861,7 +830,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   };
 
   const hasActiveFilters = statusFilter.length > 0 || typeFilter.length > 0 || priorityFilter.length > 0 ||
-    assignedToFilter.length > 0 || cityFilter.length > 0 || pendingTasksFilter.length > 0 || createdDateRange.from || activeAdvancedRules.length > 0;
+    assignedToFilter.length > 0 || cityFilter.length > 0 || pendingTasksFilter.length > 0 || createdDateRange.from;
 
   const pendingTasksOptions = ["has_pending", "no_pending", "has_overdue", "due_today"];
   const pendingTasksLabels: Record<string, string> = {
@@ -1021,7 +990,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       />
 
       <CustomerSavedFilterDialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen} onSave={addFilter} onUpdate={updateFilter} editingFilter={editingFilter} uniqueAssignedTo={uniqueAssignedTo} uniqueCities={uniqueCities} />
-      <CustomerManageFiltersDialog open={manageFiltersDialogOpen} onOpenChange={setManageFiltersDialogOpen} filters={savedFilters} onEdit={(f) => { setEditingFilter(f); setFilterDialogOpen(true); }} onDelete={deleteFilter} getFilterCount={getFilterCount} onApply={applyFilter} />
+      <CustomerManageFiltersDialog open={manageFiltersDialogOpen} onOpenChange={setManageFiltersDialogOpen} filters={savedFilters} onEdit={(f) => { setEditingFilter(f); setFilterDialogOpen(true); }} onDelete={deleteFilter} getFilterCount={getFilterCount} />
       <ColumnManagerDialog
         open={columnManagerOpen}
         onOpenChange={setColumnManagerOpen}
