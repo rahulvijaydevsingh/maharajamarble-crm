@@ -28,6 +28,7 @@ interface CustomerManageFiltersDialogProps {
   onEdit: (filter: SavedFilter) => void;
   onDelete: (id: string) => Promise<void>;
   getFilterCount: (filter: SavedFilter) => number;
+  onApply?: (filter: SavedFilter) => void;
 }
 
 export function CustomerManageFiltersDialog({
@@ -37,6 +38,7 @@ export function CustomerManageFiltersDialog({
   onEdit,
   onDelete,
   getFilterCount,
+  onApply,
 }: CustomerManageFiltersDialogProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -66,7 +68,16 @@ export function CustomerManageFiltersDialog({
               <p className="text-center text-muted-foreground py-8">No saved filters yet.</p>
             ) : (
               filters.map((filter) => (
-                <div key={filter.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                <div
+                  key={filter.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (onApply) {
+                      onApply(filter);
+                      onOpenChange(false);
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-3">
                     <div>
                       <div className="flex items-center gap-2">
@@ -77,7 +88,7 @@ export function CustomerManageFiltersDialog({
                       <Badge variant="secondary" className="mt-1">{getFilterCount(filter)} customers</Badge>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button variant="ghost" size="icon" onClick={() => { onEdit(filter); onOpenChange(false); }}>
                       <Edit className="h-4 w-4" />
                     </Button>
