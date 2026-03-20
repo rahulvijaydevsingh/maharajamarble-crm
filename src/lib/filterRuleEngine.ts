@@ -1,6 +1,6 @@
 export interface AdvancedRule {
   field: string;
-  operator: "equals" | "not_equals" | "contains" | "not_contains" | "greater_than" | "less_than" | "is_true" | "is_false";
+  operator: "equals" | "not_equals" | "contains" | "not_contains" | "greater_than" | "greater_than_or_equal" | "less_than" | "less_than_or_equal" | "is_true" | "is_false";
   value: string;
   logic?: "AND" | "OR";
 }
@@ -56,8 +56,12 @@ export function evaluateRule(record: Record<string, any>, rule: AdvancedRule, co
       return !String(fieldValue ?? "").toLowerCase().includes(String(rule.value ?? "").toLowerCase());
     case "greater_than":
       return parseFloat(String(fieldValue ?? 0)) > parseFloat(String(rule.value ?? 0));
+    case "greater_than_or_equal":
+      return parseFloat(String(fieldValue ?? 0)) >= parseFloat(String(rule.value ?? 0));
     case "less_than":
       return parseFloat(String(fieldValue ?? 0)) < parseFloat(String(rule.value ?? 0));
+    case "less_than_or_equal":
+      return parseFloat(String(fieldValue ?? 0)) <= parseFloat(String(rule.value ?? 0));
     case "is_true":
       return fieldValue === true || fieldValue === "true" || fieldValue === 1;
     case "is_false":
