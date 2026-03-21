@@ -314,34 +314,40 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
 
   // Build staff-based assignee filter (same pattern as Tasks)
-  const resolveAssignedToStaff = useMemo(() => {
-    const lookup = new Map<string, string>();
-    for (const s of staffMembers) {
-      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
-      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
-    }
-    return lookup;
-  }, [staffMembers]);
-
   const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
-    const assignedStaffKeys = new Set<string>();
-    for (const lead of leads) {
-      const key = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase());
-      if (key) assignedStaffKeys.add(key);
-    }
     const displayMap = new Map<string, string>();
     const options: string[] = [];
-    for (const s of staffMembers) {
-      const canonicalKey = s.email || s.name;
-      if (assignedStaffKeys.has(canonicalKey)) {
-        const label = getStaffDisplayName(canonicalKey, staffMembers);
-        displayMap.set(canonicalKey, label);
-        options.push(canonicalKey);
-      }
+
+    // Collect every unique assigned_to value that appears in leads
+    const rawValues = new Set<string>();
+    for (const lead of leads) {
+      if (lead.assigned_to) rawValues.add(lead.assigned_to);
     }
-    options.sort((a, b) => (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b));
+
+    // For each raw value, find the best display name
+    for (const rawValue of rawValues) {
+      const lower = rawValue.toLowerCase();
+
+      // Try to find a matching staff member by email OR name
+      const staffMatch = staffMembers.find(
+        s =>
+          (s.email && s.email.toLowerCase() === lower) ||
+          (s.name && s.name.toLowerCase() === lower)
+      );
+
+      const displayName = staffMatch?.name || rawValue;
+      // Key stays as rawValue (how it's stored in DB) for filtering to work
+      displayMap.set(rawValue, displayName);
+      options.push(rawValue);
+    }
+
+    // Sort by display name alphabetically
+    options.sort((a, b) =>
+      (displayMap.get(a) || a).localeCompare(displayMap.get(b) || b)
+    );
+
     return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
-  }, [leads, staffMembers, resolveAssignedToStaff]);
+  }, [leads, staffMembers]);
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
@@ -354,8 +360,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         (lead.notes || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(lead.status);
-      const resolvedAssignee = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
-      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
+      const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(lead.assigned_to);
       const sourceMatch = sourceFilter.length === 0 || sourceFilter.includes(lead.source);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(lead.priority.toString());
       const materialsMatch = materialsFilter.length === 0 || materialsFilter.some(material => 
@@ -436,8 +441,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     const config = filter.filter_config;
     return leads.filter(lead => {
       const statusMatch = config.statusFilter.length === 0 || config.statusFilter.includes(lead.status);
-      const resolvedAssignee = resolveAssignedToStaff.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
-      const assignedMatch = config.assignedToFilter.length === 0 || config.assignedToFilter.includes(resolvedAssignee);
+      const assignedMatch = config.assignedToFilter.length === 0 || config.assignedToFilter.includes(lead.assigned_to);
       const sourceMatch = config.sourceFilter.length === 0 || config.sourceFilter.includes(lead.source);
       const priorityMatch = config.priorityFilter.length === 0 || config.priorityFilter.includes(lead.priority.toString());
       const materialsMatch = config.materialsFilter.length === 0 || config.materialsFilter.some(material => 
