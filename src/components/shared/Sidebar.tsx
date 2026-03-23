@@ -191,6 +191,7 @@ export function SidebarNav() {
       { name: "My Leave", icon: CalendarDays, path: "/hr/leave" },
     ];
     if (showAdminNav) {
+      items.push({ name: "Team Attendance", icon: Users, path: "/hr/admin-attendance" });
       items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
       items.push({ name: "Payroll", icon: Wallet, path: "/hr/payroll" });
     }
