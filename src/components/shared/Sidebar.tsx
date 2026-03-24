@@ -192,6 +192,7 @@ export function SidebarNav() {
     ];
     if (showAdminNav) {
       items.push({ name: "Team Attendance", icon: Users, path: "/hr/admin-attendance" });
+      items.push({ name: "Attendance Grid", icon: CalendarDays, path: "/hr/attendance-grid" });
       items.push({ name: "Leave Approvals", icon: CheckSquare, path: "/hr/leave-approvals" });
       items.push({ name: "Payroll", icon: Wallet, path: "/hr/payroll" });
     }
