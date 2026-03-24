@@ -4,11 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Clock, CheckCircle2, AlertTriangle, RefreshCw, Users } from "lucide-react";
+import { Clock, CheckCircle2, AlertTriangle, RefreshCw, Users, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 
 interface StaffAttendanceRow {
   staff_id: string;
@@ -29,6 +35,13 @@ export default function HRAdminAttendance() {
   const [rows, setRows] = useState<StaffAttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
+  const { toast } = useToast();
+  const [editRow, setEditRow] = useState<StaffAttendanceRow | null>(null);
+  const [editStatus, setEditStatus] = useState("present");
+  const [editClockIn, setEditClockIn] = useState("");
+  const [editClockOut, setEditClockOut] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Redirect non-admins
   useEffect(() => {
@@ -77,6 +90,47 @@ export default function HRAdminAttendance() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const openEdit = (row: StaffAttendanceRow) => {
+    setEditRow(row);
+    setEditStatus(row.status === "not_marked" ? "present" : row.status);
+    setEditClockIn(row.clock_in ? new Date(row.clock_in).toTimeString().slice(0, 5) : "");
+    setEditClockOut(row.clock_out ? new Date(row.clock_out).toTimeString().slice(0, 5) : "");
+    setEditNote("");
+  };
+
+  const saveEdit = async () => {
+    if (!editRow) return;
+    setSaving(true);
+    const today = new Date().toISOString().split("T")[0];
+    const toISO = (timeStr: string) => timeStr ? new Date(`${today}T${timeStr}:00`).toISOString() : null;
+    const clockInISO = toISO(editClockIn);
+    const clockOutISO = toISO(editClockOut);
+    let totalHours = null;
+    if (clockInISO && clockOutISO) {
+      totalHours = (new Date(clockOutISO).getTime() - new Date(clockInISO).getTime()) / 3600000;
+    }
+    const payload = {
+      status: editStatus,
+      clock_in: clockInISO,
+      clock_out: clockOutISO,
+      total_hours: totalHours,
+      notes: editNote || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from("attendance_records")
+      .upsert({ staff_id: editRow.staff_id, date: today, ...payload },
+        { onConflict: "staff_id,date" });
+    setSaving(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Saved", description: `Attendance updated for ${editRow.full_name}` });
+      setEditRow(null);
+      fetchData();
+    }
+  };
 
   // Summary counts
   const present = rows.filter(r => r.status === "present").length;
@@ -146,11 +200,12 @@ export default function HRAdminAttendance() {
                   <TableHead>Clock Out</TableHead>
                   <TableHead>Hours</TableHead>
                   <TableHead>GPS</TableHead>
+                  <TableHead>Edit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-12">
+                  <TableRow><TableCell colSpan={7} className="text-center py-12">
                     <Clock className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                   </TableCell></TableRow>
                 ) : rows.map(row => (
@@ -178,6 +233,11 @@ export default function HRAdminAttendance() {
                         ? <CheckCircle2 className="h-4 w-4 text-green-500" />
                         : <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -185,6 +245,51 @@ export default function HRAdminAttendance() {
           </CardContent>
         </Card>
       </div>
+      <Dialog open={!!editRow} onOpenChange={open => !open && setEditRow(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Attendance — {editRow?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Status</Label>
+              <Select value={editStatus} onValueChange={setEditStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="present">Present</SelectItem>
+                  <SelectItem value="absent">Absent</SelectItem>
+                  <SelectItem value="leave">Leave</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Clock In Time</Label>
+                <Input type="time" value={editClockIn} onChange={e => setEditClockIn(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>Clock Out Time</Label>
+                <Input type="time" value={editClockOut} onChange={e => setEditClockOut(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Reason / Note</Label>
+              <Textarea
+                placeholder="e.g. GPS issue, forgot to clock in..."
+                value={editNote}
+                onChange={e => setEditNote(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditRow(null)}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={saving}>
+              {saving ? "Saving..." : "Save Correction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
