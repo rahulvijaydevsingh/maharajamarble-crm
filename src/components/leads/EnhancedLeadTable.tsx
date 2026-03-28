@@ -197,7 +197,6 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { addTask } = useTasks();
-  const { user } = useAuth();
   
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
     return (sessionStorage.getItem("leadViewMode") as "list" | "kanban") || "list";
@@ -1224,18 +1223,15 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           let errorCount = 0;
           const BATCH_SIZE = 10;
           try {
-            const assignedMember = staffMembers.find(m => m.name === taskData.assigned_to || m.id === taskData.assigned_to);
             for (let i = 0; i < selectedLeads.length; i += BATCH_SIZE) {
               const batch = selectedLeads.slice(i, i + BATCH_SIZE);
               const results = await Promise.allSettled(
                 batch.map(async (leadId) => {
                   const createdTask = await addTask({
                     ...taskData,
-                    assigned_to: assignedMember?.email || assignedMember?.name || taskData.assigned_to,
                     lead_id: leadId,
                     related_entity_type: "lead",
                     related_entity_id: leadId,
-                    created_by: user?.email || "unknown",
                   });
                   if (subtasks.length > 0 && createdTask) {
                     const { supabase } = await import("@/integrations/supabase/client");
