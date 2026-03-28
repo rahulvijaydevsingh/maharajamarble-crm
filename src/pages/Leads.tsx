@@ -34,7 +34,7 @@ const Leads = () => {
   const { canCreate } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { logStaffAction } = useStaffActivityLog();
-  const { role, isAdmin } = useAuth();
+  const { role, isAdmin, user } = useAuth();
   const canSeeRecycleBin = isAdmin() || role === "manager";
   const canSeeArchive = isAdmin() || role === "manager";
   const handleAddLead = async (formData: any, generatedTask: any) => {
