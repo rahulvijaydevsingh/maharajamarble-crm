@@ -509,8 +509,16 @@ export function EnhancedTaskTable({
     return tasks.map(task => {
       let computedStatus = task.status;
       if (task.status !== 'Completed' && task.due_date) {
-        const dueDate = parseISO(task.due_date);
-        if (isPast(dueDate) && !isToday(dueDate)) {
+        let dueDateTime: Date;
+        if (task.due_time) {
+          const [hours, minutes] = task.due_time.split(":").map(Number);
+          dueDateTime = parseISO(task.due_date);
+          dueDateTime.setHours(hours, minutes, 59, 999);
+        } else {
+          dueDateTime = parseISO(task.due_date);
+          dueDateTime.setHours(23, 59, 59, 999);
+        }
+        if (task.status !== 'Completed' && isPast(dueDateTime)) {
           computedStatus = 'Overdue';
         }
       }
