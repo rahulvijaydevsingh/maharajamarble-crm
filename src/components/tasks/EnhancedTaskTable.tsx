@@ -506,16 +506,10 @@ export function EnhancedTaskTable({
 
   // Transform tasks to include computed status
   const transformedTasks = useMemo(() => {
-    return tasks.map(task => {
-      let computedStatus = task.status;
-      if (task.status !== 'Completed' && task.due_date) {
-        const dueDate = parseISO(task.due_date);
-        if (isPast(dueDate) && !isToday(dueDate)) {
-          computedStatus = 'Overdue';
-        }
-      }
-      return { ...task, computedStatus };
-    });
+    return tasks.map(task => ({
+      ...task,
+      computedStatus: task.calculatedStatus || task.status
+    }));
   }, [tasks]);
 
   // Get unique values for filters

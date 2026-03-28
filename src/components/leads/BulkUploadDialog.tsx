@@ -51,6 +51,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useTasks } from "@/hooks/useTasks";
 import { 
@@ -147,6 +148,7 @@ export function BulkUploadDialog({
   onLeadsCreated,
 }: BulkUploadDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
   const { getFieldOptions } = useControlPanelSettings();
@@ -502,6 +504,14 @@ export function BulkUploadDialog({
           ? materialsRaw.split(",").map((m: string) => m.trim()).filter(Boolean)
           : [];
 
+        // Resolve assigned staff to email
+        const assignedToRaw = getColumnValue(row, ["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]);
+        const matchedStaff = staffMembers.find(m =>
+          m.name?.toLowerCase() === assignedToRaw?.toLowerCase() ||
+          m.email?.toLowerCase() === assignedToRaw?.toLowerCase()
+        );
+        const assignedToEmail = matchedStaff?.email || matchedStaff?.name || assignedToRaw || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned";
+
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
 
@@ -513,7 +523,7 @@ export function BulkUploadDialog({
           address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
           status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
-          assigned_to: getColumnValue(row, ["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]) || staffMembers[0]?.name || "Unassigned",
+          assigned_to: assignedToEmail,
           materials,
           notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
           construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
@@ -603,6 +613,25 @@ export function BulkUploadDialog({
           console.error("Insert error:", error);
         } else {
           imported++;
+
+          // Create auto-task for Excel import
+          if (insertedLead?.id) {
+            try {
+              await addTask({
+                title: `Follow-up: ${lead.name}`,
+                description: lead.notes || "Initial follow-up for imported lead",
+                type: "Follow-up Call",
+                priority: lead.priority === 1 ? "High" : lead.priority === 2 ? "High" : lead.priority === 3 ? "Medium" : "Low",
+                status: "Pending",
+                assigned_to: lead.assigned_to,
+                due_date: lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd"),
+                lead_id: insertedLead.id,
+                created_by: user?.email || "unknown",
+              });
+            } catch (taskError) {
+              console.error("Auto-task creation failed for imported lead:", taskError);
+            }
+          }
 
           if (excelAttachmentPath && insertedLead?.id) {
             try {
@@ -863,11 +892,11 @@ export function BulkUploadDialog({
                 ? "Medium"
                 : "Low",
             status: "Pending",
-            assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
+            assigned_to: assignedMember?.email || assignedMember?.name || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned",
             due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
             due_time: lead.nextActionTime || "10:00",
             lead_id: insertedLead.id,
-            created_by: "Photo Upload",
+            created_by: user?.email || "Photo Upload",
           });
         } catch (taskError) {
           console.error("Task creation failed for photo lead:", taskError);
