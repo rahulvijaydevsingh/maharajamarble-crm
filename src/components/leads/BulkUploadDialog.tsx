@@ -53,7 +53,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useTasks } from "@/hooks/useTasks";
-import { useAuth } from "@/contexts/AuthContext";
 import { 
   CONSTRUCTION_STAGES, 
   MATERIAL_INTERESTS, 
@@ -150,7 +149,6 @@ export function BulkUploadDialog({
   const { toast } = useToast();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
-  const { user } = useAuth();
   const { getFieldOptions } = useControlPanelSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -507,10 +505,6 @@ export function BulkUploadDialog({
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
 
-        const assignedToRaw = getColumnValue(row, ["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]);
-        const matchedStaff = staffMembers.find(m => m.name === assignedToRaw || m.email === assignedToRaw);
-        const assignedTo = matchedStaff?.email || matchedStaff?.name || assignedToRaw || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned";
-
         parsed.push({
           name,
           phone,
@@ -519,7 +513,7 @@ export function BulkUploadDialog({
           address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
           status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
-          assigned_to: assignedTo,
+          assigned_to: getColumnValue(row, ["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]) || staffMembers[0]?.name || "Unassigned",
           materials,
           notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
           construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
@@ -599,7 +593,7 @@ export function BulkUploadDialog({
           notes: lead.notes || null,
           construction_stage: lead.construction_stage || null,
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
-          created_by: user?.email || "unknown",
+          // created_by omitted - database default get_current_user_email() handles it for RLS compliance
         })
         .select('id')
         .single();
@@ -832,10 +826,10 @@ export function BulkUploadDialog({
           : (lead.otherMaterial ? [lead.otherMaterial] : null),
         status: "new",
         priority: lead.followUpPriority === "urgent" ? 1 : lead.followUpPriority === "normal" ? 3 : 5,
-        assigned_to: assignedMember?.email || assignedMember?.name || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned",
+        assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
         notes: lead.initialNote ? `${lead.initialNote}${lead.referredBy ? ` | Referred by: ${lead.referredBy}` : ''}` : (lead.referredBy ? `Referred by: ${lead.referredBy}` : null),
         next_follow_up: `${format(lead.nextActionDate, "yyyy-MM-dd")}T${lead.nextActionTime || '10:00'}:00`,
-        created_by: user?.email || "unknown",
+        // created_by omitted - database default get_current_user_email() handles it for RLS compliance
         })
         .select("id")
         .single();
@@ -869,11 +863,11 @@ export function BulkUploadDialog({
                 ? "Medium"
                 : "Low",
             status: "Pending",
-            assigned_to: assignedMember?.email || assignedMember?.name || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned",
+            assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
             due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
             due_time: lead.nextActionTime || "10:00",
             lead_id: insertedLead.id,
-            created_by: user?.email || "unknown",
+            created_by: "Photo Upload",
           });
         } catch (taskError) {
           console.error("Task creation failed for photo lead:", taskError);

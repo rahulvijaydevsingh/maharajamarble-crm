@@ -34,7 +34,7 @@ const Leads = () => {
   const { canCreate } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { logStaffAction } = useStaffActivityLog();
-  const { role, isAdmin, user } = useAuth();
+  const { role, isAdmin } = useAuth();
   const canSeeRecycleBin = isAdmin() || role === "manager";
   const canSeeArchive = isAdmin() || role === "manager";
   const handleAddLead = async (formData: any, generatedTask: any) => {
@@ -129,18 +129,16 @@ const Leads = () => {
 
       // Create associated task
       if (generatedTask && newLead) {
-        const assignedMember = staffMembers.find(m => m.id === formData.assignedTo || m.name === formData.assignedTo);
         await addTask({
           title: generatedTask.title,
           description: generatedTask.description,
           type: "Follow-up Call",
           priority: generatedTask.priority === "high" ? "High" : generatedTask.priority === "medium" ? "Medium" : "Low",
           status: "Pending",
-          assigned_to: assignedMember?.email || assignedMember?.name || formData.assignedTo,
+          assigned_to: generatedTask.assignedTo,
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
-          created_by: user?.email || "unknown",
         });
       }
 
