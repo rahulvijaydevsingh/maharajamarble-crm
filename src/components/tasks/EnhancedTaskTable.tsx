@@ -563,7 +563,9 @@ export function EnhancedTaskTable({
       const matchesSearch = !searchTerm || searchTerm.length < 2 || 
         task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (task.lead?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.description || "").toLowerCase().includes(searchTerm.toLowerCase());
+        (task.lead?.phone || "").includes(searchTerm) ||
+        (task.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (task.assigned_to || "").toLowerCase().includes(searchTerm.toLowerCase());
       
       // Multi-select filters
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(task.type);

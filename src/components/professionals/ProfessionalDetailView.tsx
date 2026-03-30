@@ -79,6 +79,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { format, isPast, isToday, isTomorrow, addHours, addDays } from 'date-fns';
+import { calculateTaskStatus, TASK_STATUS_CONFIG } from '@/lib/taskStatusService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PROFESSIONAL_STATUSES } from '@/constants/professionalConstants';
@@ -376,7 +377,12 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
     switch (filter) {
       case 'open': filtered = filtered.filter(t => t.status !== 'Completed'); break;
       case 'completed': filtered = filtered.filter(t => t.status === 'Completed'); break;
-      case 'overdue': filtered = filtered.filter(t => t.status !== 'Completed' && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date))); break;
+      case 'overdue':
+        filtered = filtered.filter(t => {
+          const status = calculateTaskStatus(t);
+          return status === 'Overdue';
+        });
+        break;
     }
     return filtered.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, professional.id, filter]);
@@ -390,11 +396,11 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
     await updateTask(taskId, { status: 'Pending', completed_at: null });
   };
 
-  const getDueDateStyle = (dueDate: string, status: string) => {
-    if (status === 'Completed') return 'text-muted-foreground';
-    const date = new Date(dueDate);
-    if (isPast(date) && !isToday(date)) return 'text-red-600 font-medium';
-    if (isToday(date)) return 'text-orange-600 font-medium';
+  const getDueDateStyle = (task: any) => {
+    const status = calculateTaskStatus(task);
+    if (task.status === 'Completed') return 'text-muted-foreground';
+    if (status === 'Overdue') return 'text-red-600 font-medium';
+    if (isToday(new Date(task.due_date))) return 'text-orange-600 font-medium';
     return '';
   };
 
@@ -456,8 +462,9 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
             </TableHeader>
             <TableBody>
               {professionalTasks.map((task) => {
+                const computedStatus = calculateTaskStatus(task);
                 const priorityConfig = priorityStyles[task.priority] || { label: task.priority, className: 'bg-gray-100 text-gray-700' };
-                const statusConfig = statusStyles[task.status] || { label: task.status, className: 'bg-gray-100 text-gray-700' };
+                const statusConfig = TASK_STATUS_CONFIG[computedStatus] || { label: task.status, bgColor: 'bg-gray-100 text-gray-700' };
                 return (
                   <TableRow key={task.id}>
                     <TableCell>
@@ -477,14 +484,14 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
                         {task.description && task.description.length > 40 && (<TooltipContent className="max-w-xs"><p>{task.description}</p></TooltipContent>)}
                       </Tooltip></TooltipProvider>
                     </TableCell>
-                    <TableCell className={getDueDateStyle(task.due_date, task.status)}>
+                    <TableCell className={getDueDateStyle(task)}>
                       <div className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{format(new Date(task.due_date), 'dd MMM yyyy')}</div>
                     </TableCell>
                     <TableCell>
                       {task.due_time ? (<div className="flex items-center gap-1 text-muted-foreground"><Clock className="h-3.5 w-3.5" />{task.due_time}</div>) : '-'}
                     </TableCell>
                     <TableCell><Badge variant="secondary" className={priorityConfig.className}>{priorityConfig.label}</Badge></TableCell>
-                    <TableCell><Badge variant="secondary" className={statusConfig.className}>{statusConfig.label}</Badge></TableCell>
+                    <TableCell><Badge variant="secondary" className={statusConfig.bgColor}>{statusConfig.label}</Badge></TableCell>
                     <TableCell className="text-sm">{getStaffDisplayName(task.assigned_to, staffMembers)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(new Date(task.created_at), 'dd MMM yyyy')}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(new Date(task.updated_at), 'dd MMM yyyy')}</TableCell>
