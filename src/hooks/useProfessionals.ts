@@ -27,6 +27,9 @@ export interface Professional {
   created_at: string;
   updated_at: string;
   site_plus_code?: string | null;
+  verified?: boolean;
+  verified_at?: string | null;
+  verified_by?: string | null;
 }
 
 export interface ProfessionalInsert {
@@ -50,6 +53,9 @@ export interface ProfessionalInsert {
   last_follow_up?: string | null;
   next_follow_up?: string | null;
   site_plus_code?: string | null;
+  verified?: boolean;
+  verified_at?: string | null;
+  verified_by?: string | null;
 }
 
 async function getSessionUser() {

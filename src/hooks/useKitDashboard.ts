@@ -56,8 +56,8 @@
          const sub = touch.subscription as unknown as (KitSubscription & { preset: KitPreset | null }) | null;
          if (!sub || sub.status !== 'active') continue;
  
-         // Filter by assignee if provided
-         if (assignedTo && touch.assigned_to !== assignedTo) continue;
+         // Removed assignee filter — show all active touches
+         // if (assignedTo && touch.assigned_to !== assignedTo) continue;
  
          // Get entity name based on type
          let entityName = 'Unknown';
