@@ -23,10 +23,12 @@ import {
 import { useConversations, useUnreadCounts } from "@/hooks/useChat";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 
 export function NotificationDropdown() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   const [open, setOpen] = useState(false);
   
   // Reminders
@@ -76,6 +78,8 @@ export function NotificationDropdown() {
       navigate(`/leads?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
     } else if (reminder.entity_type === 'customer') {
       navigate(`/customers?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
+    } else if (reminder.entity_type === 'task') {
+      openTask(reminder.entity_id);
     }
   };
 
