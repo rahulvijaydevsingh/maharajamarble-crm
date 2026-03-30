@@ -29,7 +29,7 @@ export function usePendingTasksByLead() {
       const { data, error } = await supabase
         .from("tasks")
         .select("id, title, due_date, due_time, assigned_to, priority, status, lead_id")
-        .in("status", ["Pending", "In Progress", "Not Started"])
+        .neq("status", "Completed")
         .not("lead_id", "is", null);
 
       if (error) throw error;
