@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useProfessionals, Professional, ProfessionalInsert } from "@/hooks/useProfessionals";
 import { useProfessionalForm } from "@/hooks/useProfessionalForm";
+import { useLogActivity } from "@/hooks/useActivityLog";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { Plus, Minus, Loader2, AlertTriangle } from "lucide-react";
@@ -33,6 +34,7 @@ interface AddProfessionalDialogProps {
 
 export function AddProfessionalDialog({ open, onOpenChange, editingProfessional }: AddProfessionalDialogProps) {
   const { addProfessional, updateProfessional } = useProfessionals();
+  const { logActivity } = useLogActivity();
   const { getFieldOptions, loading: optionsLoading } = useControlPanelSettings();
   const { staffMembers } = useActiveStaff();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -176,6 +178,27 @@ export function AddProfessionalDialog({ open, onOpenChange, editingProfessional 
 
       if (editingProfessional) {
         await updateProfessional(editingProfessional.id, data);
+
+        // Log assigned_to change if it changed
+        if (data.assigned_to && data.assigned_to !== editingProfessional.assigned_to) {
+          try {
+            await logActivity({
+              activity_type: "assignment_changed" as any,
+              activity_category: "professional" as any,
+              title: `Assigned To changed`,
+              description: `Professional reassigned from ${editingProfessional.assigned_to} to ${data.assigned_to}`,
+              metadata: {
+                professional_id: editingProfessional.id,
+                old_assigned_to: editingProfessional.assigned_to,
+                new_assigned_to: data.assigned_to,
+              },
+              related_entity_type: "professional",
+              related_entity_id: editingProfessional.id
+            });
+          } catch (logError) {
+            console.error("Failed to log reassignment activity:", logError);
+          }
+        }
       } else {
         await addProfessional(data);
       }
