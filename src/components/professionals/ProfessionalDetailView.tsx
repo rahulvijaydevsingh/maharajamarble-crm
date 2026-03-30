@@ -810,7 +810,15 @@ function ProfessionalQuotationsTab({ professional }: { professional: Professiona
 }
 
 // ---- Mark as Verified Button ----
-function MarkAsVerifiedButton({ professionalId, onVerified }: { professionalId: string; onVerified: () => void }) {
+function MarkAsVerifiedButton({
+  professionalId,
+  onVerified,
+  updateProfessional
+}: {
+  professionalId: string;
+  onVerified: () => void;
+  updateProfessional: (id: string, updates: any) => Promise<any>;
+}) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -818,15 +826,11 @@ function MarkAsVerifiedButton({ professionalId, onVerified }: { professionalId: 
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('professionals')
-        .update({
-          verified: true,
-          verified_at: new Date().toISOString(),
-          verified_by: user?.id,
-        } as any)
-        .eq('id', professionalId);
-      if (error) throw error;
+      await updateProfessional(professionalId, {
+        verified: true,
+        verified_at: new Date().toISOString(),
+        verified_by: user?.id,
+      });
       toast({ title: 'Professional marked as verified' });
       onVerified();
     } catch {
@@ -857,20 +861,26 @@ export function ProfessionalDetailView({
   const [liftedAddTaskOpen, setLiftedAddTaskOpen] = useState(false);
   const [liftedAddReminderOpen, setLiftedAddReminderOpen] = useState(false);
   const [liftedAddQuotationOpen, setLiftedAddQuotationOpen] = useState(false);
-  const { professionals } = useProfessionals();
-
-  const currentProfessional = professionals.find(p => p.id === professional?.id) || professional;
+  const { professionals, updateProfessional } = useProfessionals();
+  const [localProfessional, setLocalProfessional] = useState<Professional | null>(professional);
 
   useEffect(() => {
+    const p = professionals.find(p => p.id === professional?.id) || professional;
+    setLocalProfessional(p);
     if (professional) {
       setActiveTab(initialTab || 'profile');
     }
-  }, [professional?.id, initialTab]);
+  }, [professional?.id, initialTab, professionals, professional]);
 
-  if (!currentProfessional) return null;
+  if (!localProfessional) return null;
 
-  const displayName = currentProfessional.name || currentProfessional.firm_name || currentProfessional.phone;
-  const statusConfig = PROFESSIONAL_STATUSES[currentProfessional.status] || { label: currentProfessional.status, className: '' };
+  const displayName = localProfessional.name || localProfessional.firm_name || localProfessional.phone;
+  const statusConfig = PROFESSIONAL_STATUSES[localProfessional.status] || { label: localProfessional.status, className: '' };
+
+  const handleVerified = () => {
+    setLocalProfessional(prev => prev ? { ...prev, verified: true } : prev);
+    onOpenChange(false);
+  };
 
   return (
     <>
@@ -885,7 +895,7 @@ export function ProfessionalDetailView({
             <div className="flex items-center gap-3 min-w-0">
               <h2 className="text-lg md:text-xl font-semibold truncate">{displayName}</h2>
               <Badge variant="secondary" className={statusConfig.className}>{statusConfig.label}</Badge>
-              {(currentProfessional as any).verified ? (
+              {localProfessional.verified ? (
                 <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
                   <UserCheck className="h-3 w-3 mr-1" />Verified
                 </Badge>
@@ -895,16 +905,20 @@ export function ProfessionalDetailView({
                 </Badge>
               )}
               <span className="text-sm text-muted-foreground capitalize hidden md:inline">
-                {currentProfessional.professional_type.replace('_', ' ')}
+                {localProfessional.professional_type.replace('_', ' ')}
               </span>
             </div>
 
             <div className="flex items-center gap-2">
-              {!(currentProfessional as any).verified && (
-                <MarkAsVerifiedButton professionalId={currentProfessional.id} onVerified={() => onOpenChange(false)} />
+              {!localProfessional.verified && (
+                <MarkAsVerifiedButton
+                  professionalId={localProfessional.id}
+                  onVerified={handleVerified}
+                  updateProfessional={updateProfessional}
+                />
               )}
               {onEdit && (
-                <Button variant="outline" size="sm" onClick={() => onEdit(currentProfessional)}>
+                <Button variant="outline" size="sm" onClick={() => onEdit(localProfessional)}>
                   <Edit className="h-4 w-4 mr-1" />
                   <span className="hidden md:inline">Edit</span>
                 </Button>
@@ -919,13 +933,13 @@ export function ProfessionalDetailView({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="z-[80]">
                   {onEdit && (
-                    <DropdownMenuItem onClick={() => onEdit(currentProfessional)}>
+                    <DropdownMenuItem onClick={() => onEdit(localProfessional)}>
                       <Edit className="h-4 w-4 mr-2" />Edit Professional
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
                   {onDelete && (
-                    <DropdownMenuItem className="text-destructive" onClick={() => onDelete(currentProfessional.id)}>
+                    <DropdownMenuItem className="text-destructive" onClick={() => onDelete(localProfessional.id)}>
                       <Trash2 className="h-4 w-4 mr-2" />Delete Professional
                     </DropdownMenuItem>
                   )}
@@ -971,35 +985,35 @@ export function ProfessionalDetailView({
 
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
               <TabsContent value="profile" className="m-0 h-full">
-                <ProfessionalProfileTab professional={currentProfessional} onEdit={() => onEdit?.(currentProfessional)} />
+                <ProfessionalProfileTab professional={localProfessional} onEdit={() => onEdit?.(localProfessional)} />
               </TabsContent>
               <TabsContent value="tasks" className="m-0 h-full">
-                <ProfessionalTasksTab professional={currentProfessional} />
+                <ProfessionalTasksTab professional={localProfessional} />
               </TabsContent>
               <TabsContent value="quotations" className="m-0 h-full">
-                <ProfessionalQuotationsTab professional={currentProfessional} />
+                <ProfessionalQuotationsTab professional={localProfessional} />
               </TabsContent>
               <TabsContent value="attachments" className="m-0 h-full">
-                <EntityAttachmentsTab entityType="professional" entityId={currentProfessional.id} />
+                <EntityAttachmentsTab entityType="professional" entityId={localProfessional.id} />
               </TabsContent>
               <TabsContent value="reminders" className="m-0 h-full">
-                <ProfessionalRemindersTab professional={currentProfessional} />
+                <ProfessionalRemindersTab professional={localProfessional} />
               </TabsContent>
               <TabsContent value="notes" className="m-0 h-full">
-                <ProfessionalNotesTab professional={currentProfessional} />
+                <ProfessionalNotesTab professional={localProfessional} />
               </TabsContent>
               <TabsContent value="activity" className="m-0 h-full">
-                <ProfessionalActivityTab professional={currentProfessional} />
+                <ProfessionalActivityTab professional={localProfessional} />
               </TabsContent>
               <TabsContent value="kit" className="m-0 h-full">
                 <KitProfileTab
                   entityType="professional"
-                  entityId={currentProfessional.id}
+                  entityId={localProfessional.id}
                   entityName={displayName}
-                  defaultAssignee={currentProfessional.assigned_to}
-                  entityPhone={currentProfessional.phone || undefined}
-                  entityLocation={currentProfessional.site_plus_code || undefined}
-                  entityAddress={currentProfessional.address || undefined}
+                  defaultAssignee={localProfessional.assigned_to}
+                  entityPhone={localProfessional.phone || undefined}
+                  entityLocation={localProfessional.site_plus_code || undefined}
+                  entityAddress={localProfessional.address || undefined}
                 />
               </TabsContent>
             </div>

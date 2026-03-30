@@ -130,7 +130,7 @@ export function AddProfessionalDialog({ open, onOpenChange, editingProfessional 
         handleReset();
       }
     }
-  }, [editingProfessional, open, setInitialValues]);
+  }, [editingProfessional?.id, editingProfessional?.assigned_to, editingProfessional?.verified, open, setInitialValues]);
 
   const handleReset = () => {
     setFormData({
