@@ -587,7 +587,7 @@ export function EnhancedTaskTable({
         task.related_entity_id === relatedToFilter;
       
       const advancedMatch = activeAdvancedRules.length === 0 ||
-        evaluateRules(task as Record<string, any>, activeAdvancedRules);
+        evaluateRules({ ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>, activeAdvancedRules);
       return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && dueDateMatch && createdDateMatch && matchesRelatedTo && advancedMatch;
     });
 
