@@ -62,7 +62,7 @@ const Leads = () => {
         material_interests: formData.materialInterests,
         source: formData.leadSource,
         referred_by: formData.referredBy,
-        assigned_to: staffMembers.find(m => m.id === formData.assignedTo)?.email || formData.assignedTo,
+        assigned_to: staffMembers.find(m => m.id === formData.assignedTo)?.name || formData.assignedTo,
         status: "new",
         priority: formData.followUpPriority === "urgent" ? 1 : formData.followUpPriority === "normal" ? 3 : 5,
         notes: formData.initialNote || null,
@@ -135,7 +135,7 @@ const Leads = () => {
           m.name === generatedTask.assignedTo ||
           m.email === generatedTask.assignedTo
         );
-        const assignedToEmail = matchedStaff?.email || generatedTask.assignedTo;
+        const assignedToName = matchedStaff?.name || generatedTask.assignedTo;
 
         await addTask({
           title: generatedTask.title,
@@ -143,7 +143,7 @@ const Leads = () => {
           type: "Follow-up Call",
           priority: generatedTask.priority === "high" ? "High" : generatedTask.priority === "medium" ? "Medium" : "Low",
           status: "Pending",
-          assigned_to: assignedToEmail,
+          assigned_to: assignedToName,
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,

@@ -587,7 +587,7 @@ export function EnhancedTaskTable({
         task.related_entity_id === relatedToFilter;
       
       const advancedMatch = activeAdvancedRules.length === 0 ||
-        evaluateRules(task as Record<string, any>, activeAdvancedRules);
+        evaluateRules({ ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>, activeAdvancedRules);
       return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && dueDateMatch && createdDateMatch && matchesRelatedTo && advancedMatch;
     });
 
@@ -623,7 +623,7 @@ export function EnhancedTaskTable({
       // Use sourceFilter to store task types for tasks entity
       const typeMatch = (config.sourceFilter?.length || 0) === 0 || config.sourceFilter?.includes(task.type);
       const advancedMatch = ((config as any).advancedRules?.length || 0) === 0 ||
-        evaluateRules(task as Record<string, any>, (config as any).advancedRules || []);
+        evaluateRules({ ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>, (config as any).advancedRules || []);
       return priorityMatch && assigneeMatch && statusMatch && typeMatch && advancedMatch;
     }).length;
   };
@@ -1693,7 +1693,7 @@ export function EnhancedTaskTable({
         onUpdate={updateFilter}
         editingFilter={editingFilter}
         uniqueTypes={uniqueTypes}
-        uniqueAssignedTo={uniqueAssignees.map(a => a.label)}
+        uniqueAssignedTo={uniqueAssignees.map(a => a.value)}
       />
 
       {/* Manage Filters Dialog */}

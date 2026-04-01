@@ -7,11 +7,13 @@ import { Bell, Clock, Check, ChevronRight, AlertCircle } from "lucide-react";
 import { format, parseISO, isPast, isToday, isTomorrow, differenceInHours } from "date-fns";
 import { useReminders } from "@/hooks/useReminders";
 import { useNavigate } from "react-router-dom";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 import { cn } from "@/lib/utils";
 
 export function RemindersWidget() {
   const { reminders, loading, dismissReminder } = useReminders();
   const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   
   const activeReminders = reminders.filter(r => !r.is_dismissed);
   const sortedReminders = activeReminders.sort((a, b) => 
@@ -45,6 +47,8 @@ export function RemindersWidget() {
       navigate(`/leads?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
     } else if (reminder.entity_type === 'customer') {
       navigate(`/customers?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
+    } else if (reminder.entity_type === 'task') {
+      openTask(reminder.entity_id);
     }
   };
 

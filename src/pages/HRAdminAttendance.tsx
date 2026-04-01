@@ -55,8 +55,7 @@ export default function HRAdminAttendance() {
     // Get all staff profiles
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name, email, role")
-      .neq("role", "sales_viewer")
+      .select("id, full_name, email")
       .order("full_name");
 
     // Get today's attendance for all staff

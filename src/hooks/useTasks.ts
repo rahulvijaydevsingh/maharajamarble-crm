@@ -211,7 +211,7 @@ export function useTasks() {
         .single();
 
       if (error) throw error;
-      setTasks((prev) => [...prev, data]);
+      setTasks((prev) => [...prev, { ...data, calculatedStatus: calculateTaskStatus(data) }]);
 
       // Always log creation (this fixes missing logs after remix and ensures consistency)
       try {

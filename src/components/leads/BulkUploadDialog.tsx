@@ -510,7 +510,7 @@ export function BulkUploadDialog({
           m.name?.toLowerCase() === assignedToRaw?.toLowerCase() ||
           m.email?.toLowerCase() === assignedToRaw?.toLowerCase()
         );
-        const assignedToEmail = matchedStaff?.email || matchedStaff?.name || assignedToRaw || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned";
+        const assignedToName = matchedStaff?.name || assignedToRaw || staffMembers[0]?.name || "Unassigned";
 
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
@@ -523,7 +523,7 @@ export function BulkUploadDialog({
           address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
           status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
-          assigned_to: assignedToEmail,
+          assigned_to: assignedToName,
           materials,
           notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
           construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
@@ -892,7 +892,7 @@ export function BulkUploadDialog({
                 ? "Medium"
                 : "Low",
             status: "Pending",
-            assigned_to: assignedMember?.email || assignedMember?.name || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned",
+            assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
             due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
             due_time: lead.nextActionTime || "10:00",
             lead_id: insertedLead.id,
