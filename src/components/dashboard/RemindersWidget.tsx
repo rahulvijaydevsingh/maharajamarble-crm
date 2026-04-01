@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 export function RemindersWidget() {
   const { reminders, loading, dismissReminder } = useReminders();
   const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   
   const activeReminders = reminders.filter(r => !r.is_dismissed);
   const sortedReminders = activeReminders.sort((a, b) => 
