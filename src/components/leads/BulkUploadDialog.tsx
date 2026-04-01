@@ -510,7 +510,7 @@ export function BulkUploadDialog({
           m.name?.toLowerCase() === assignedToRaw?.toLowerCase() ||
           m.email?.toLowerCase() === assignedToRaw?.toLowerCase()
         );
-        const assignedToEmail = matchedStaff?.email || matchedStaff?.name || assignedToRaw || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned";
+        const assignedToName = matchedStaff?.name || assignedToRaw || staffMembers[0]?.name || "Unassigned";
 
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
