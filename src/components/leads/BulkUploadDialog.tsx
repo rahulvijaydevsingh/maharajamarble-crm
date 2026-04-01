@@ -523,7 +523,7 @@ export function BulkUploadDialog({
           address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
           status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
-          assigned_to: assignedToEmail,
+          assigned_to: assignedToName,
           materials,
           notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
           construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
