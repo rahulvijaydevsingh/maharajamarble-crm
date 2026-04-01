@@ -20,7 +20,7 @@ const Professionals = () => {
 
   // Handle URL deep-linking
   useEffect(() => {
-    const selectedId = searchParams.get("selected");
+    const selectedId = searchParams.get("selected") || searchParams.get("view");
     const tab = searchParams.get("tab");
     if (selectedId && professionals.length > 0) {
       const found = professionals.find(p => p.id === selectedId);

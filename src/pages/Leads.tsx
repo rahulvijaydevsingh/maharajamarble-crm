@@ -135,7 +135,7 @@ const Leads = () => {
           m.name === generatedTask.assignedTo ||
           m.email === generatedTask.assignedTo
         );
-        const assignedToEmail = matchedStaff?.email || generatedTask.assignedTo;
+        const assignedToName = matchedStaff?.name || generatedTask.assignedTo;
 
         await addTask({
           title: generatedTask.title,
@@ -143,7 +143,7 @@ const Leads = () => {
           type: "Follow-up Call",
           priority: generatedTask.priority === "high" ? "High" : generatedTask.priority === "medium" ? "Medium" : "Low",
           status: "Pending",
-          assigned_to: assignedToEmail,
+          assigned_to: assignedToName,
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,

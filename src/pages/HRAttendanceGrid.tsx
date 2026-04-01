@@ -33,7 +33,7 @@ export default function HRAttendanceGrid() {
     const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
 
     const [{ data: profiles }, { data: records }] = await Promise.all([
-      supabase.from("profiles").select("id, full_name, email").neq("role", "sales_viewer").order("full_name"),
+      supabase.from("profiles").select("id, full_name, email").order("full_name"),
       supabase.from("attendance_records").select("staff_id, date, status")
         .gte("date", startDate).lte("date", endDate),
     ]);

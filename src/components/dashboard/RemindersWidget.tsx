@@ -47,6 +47,8 @@ export function RemindersWidget() {
       navigate(`/leads?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
     } else if (reminder.entity_type === 'customer') {
       navigate(`/customers?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
+    } else if (reminder.entity_type === 'task') {
+      openTask(reminder.entity_id);
     }
   };
 

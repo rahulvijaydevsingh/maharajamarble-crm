@@ -892,7 +892,7 @@ export function BulkUploadDialog({
                 ? "Medium"
                 : "Low",
             status: "Pending",
-            assigned_to: assignedMember?.email || assignedMember?.name || staffMembers[0]?.email || staffMembers[0]?.name || "Unassigned",
+            assigned_to: assignedMember?.name || staffMembers[0]?.name || "Unassigned",
             due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
             due_time: lead.nextActionTime || "10:00",
             lead_id: insertedLead.id,
