@@ -62,7 +62,7 @@ const Leads = () => {
         material_interests: formData.materialInterests,
         source: formData.leadSource,
         referred_by: formData.referredBy,
-        assigned_to: staffMembers.find(m => m.id === formData.assignedTo)?.email || formData.assignedTo,
+        assigned_to: staffMembers.find(m => m.id === formData.assignedTo)?.name || formData.assignedTo,
         status: "new",
         priority: formData.followUpPriority === "urgent" ? 1 : formData.followUpPriority === "normal" ? 3 : 5,
         notes: formData.initialNote || null,
