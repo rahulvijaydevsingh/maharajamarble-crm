@@ -293,8 +293,12 @@ export function TaskSavedFilterDialog({
         return PRIORITY_OPTIONS;
       case "type":
         return [...TYPE_OPTIONS, ...uniqueTypes.filter(t => !TYPE_OPTIONS.find(o => o.value === t)).map(t => ({ value: t, label: t }))];
-      case "assigned_to":
+      case "assigned_to": {
+        // uniqueAssignedTo now contains raw names; build display labels
+        const staffDisplayMap: Record<string, string> = {};
+        uniqueAssignedTo.forEach(name => { staffDisplayMap[name] = name; });
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
+      }
       case "recurrence_frequency":
         return RECURRENCE_OPTIONS;
       case "subtasks_status":

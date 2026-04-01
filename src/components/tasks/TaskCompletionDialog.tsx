@@ -373,6 +373,21 @@ export function TaskCompletionDialog({
           new_task_title: `Follow-up: ${task.title}`,
           due_date: nextDueDate,
         });
+
+        // Auto-close parent task when follow-up is created (even if closeTask wasn't checked)
+        if (!closeTask) {
+          await updateTask(task.id, {
+            status: "Completed",
+            completed_at: new Date().toISOString(),
+            closed_at: new Date().toISOString(),
+            closed_by: user?.id,
+            completion_notes: notes.trim() || `Follow-up created: Follow-up: ${task.title}`,
+          });
+          await logTaskActivity(task.id, "closed", {
+            closed_by: user?.id,
+            reason: "Auto-closed: follow-up task created",
+          });
+        }
       }
 
       // 5) Log to lead activity_log if lead_id exists
