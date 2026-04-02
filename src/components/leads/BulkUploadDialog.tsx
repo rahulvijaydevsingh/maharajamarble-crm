@@ -896,7 +896,7 @@ export function BulkUploadDialog({
             due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
             due_time: lead.nextActionTime || "10:00",
             lead_id: insertedLead.id,
-            created_by: user?.email || "Photo Upload",
+            created_by: profile?.full_name || user?.email || "Photo Upload",
           });
         } catch (taskError) {
           console.error("Task creation failed for photo lead:", taskError);

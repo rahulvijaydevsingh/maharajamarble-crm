@@ -147,7 +147,7 @@ const Leads = () => {
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
-          created_by: user?.email || "unknown",
+          created_by: profile?.full_name || user?.email || "unknown",
         });
       }
 

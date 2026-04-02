@@ -42,7 +42,7 @@
            description: preset.description || null,
            touch_sequence: preset.touch_sequence as unknown as Json,
            default_cycle_behavior: preset.default_cycle_behavior,
-           created_by: user?.email || 'system',
+           created_by: profile?.full_name || user?.email || 'system',
          }])
          .select()
          .single();

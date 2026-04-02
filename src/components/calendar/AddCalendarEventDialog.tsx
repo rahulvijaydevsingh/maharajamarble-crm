@@ -169,7 +169,7 @@ export function AddCalendarEventDialog({
           entity_type: "task",
           entity_id: crypto.randomUUID(), // placeholder
           assigned_to: data.assignedTo,
-          created_by: user?.email || "System",
+          created_by: profile?.full_name || user?.email || "System",
         });
 
         if (reminderError) throw reminderError;

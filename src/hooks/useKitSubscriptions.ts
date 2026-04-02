@@ -115,7 +115,7 @@ export function useKitSubscriptions(entityType?: KitEntityType, entityId?: strin
           assigned_to: assignedTo,
           max_cycles: maxCycles || null,
           skip_weekends: skipWeekends,
-          created_by: user?.email || 'system',
+          created_by: profile?.full_name || user?.email || 'system',
           custom_touch_sequence: customSequence && !presetId ? customSequence as any : null,
         })
         .select()
