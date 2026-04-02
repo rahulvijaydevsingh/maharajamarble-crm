@@ -388,6 +388,31 @@ export function TaskCompletionDialog({
             reason: "Auto-closed: follow-up task created",
           });
         }
+
+        // Log follow-up creation to lead timeline
+        if (task.lead_id && newTask) {
+          try {
+            await supabase.from("activity_log").insert({
+              lead_id: task.lead_id,
+              activity_type: "task_created",
+              activity_category: "task",
+              user_id: user?.id || null,
+              user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
+              title: `Follow-up Task Created: Follow-up: ${task.title}`,
+              metadata: {
+                task_id: newTask.id,
+                parent_task_id: task.id,
+                parent_task_title: task.title,
+                due_date: nextDueDate,
+                assigned_to: task.assigned_to,
+              } as any,
+              related_entity_type: "task",
+              related_entity_id: newTask.id,
+              is_manual: false,
+              is_editable: false,
+            });
+          } catch (e) { console.warn("Failed to log follow-up to lead activity:", e); }
+        }
       }
 
       // 5) Log to lead activity_log if lead_id exists
