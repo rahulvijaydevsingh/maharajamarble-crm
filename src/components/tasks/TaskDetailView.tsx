@@ -233,8 +233,18 @@ export function TaskDetailView({
           .maybeSingle();
         if (!cancelled && data) setParentTask({ id: data.id, title: data.title });
         else if (!cancelled) setParentTask(null);
+
+        // Fetch parent's activity log
+        const { data: parentActivity } = await (supabase
+          .from("task_activity_log" as any)
+          .select("*")
+          .eq("task_id", task.parent_task_id)
+          .order("created_at", { ascending: true })
+          .limit(50) as any);
+        if (!cancelled) setParentActivityEntries(parentActivity || []);
       } else {
         setParentTask(null);
+        setParentActivityEntries([]);
       }
 
       // Children
