@@ -626,7 +626,7 @@ export function BulkUploadDialog({
                 assigned_to: lead.assigned_to,
                 due_date: lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd"),
                 lead_id: insertedLead.id,
-                created_by: user?.email || "unknown",
+                created_by: profile?.full_name || user?.email || "unknown",
               });
             } catch (taskError) {
               console.error("Auto-task creation failed for imported lead:", taskError);
