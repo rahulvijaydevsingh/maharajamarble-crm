@@ -211,7 +211,7 @@ export function KitProfileTab({
                   entity_type: entityType,
                   entity_id: entityId,
                   assigned_to: touch.assigned_to || assignedTo,
-                  created_by: user?.email || 'System',
+                    created_by: profile?.full_name || user?.email || 'System',
                 });
                 createdReminderId = reminder?.id || null;
               }
