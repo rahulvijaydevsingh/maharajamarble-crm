@@ -154,7 +154,7 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const getActivityContext = (task: Partial<TaskInsert> & { lead_id?: string | null; related_entity_type?: string | null; related_entity_id?: string | null }) => {
     const leadId = task.lead_id || null;
