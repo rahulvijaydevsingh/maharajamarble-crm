@@ -65,7 +65,7 @@ export function KitProfileTab({
   const [addTouchOpen, setAddTouchOpen] = useState(false);
   const [editingTouch, setEditingTouch] = useState<KitTouch | null>(null);
   
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { staffMembers } = useActiveStaff();
   const { addTask } = useTasks();
   const { addReminder } = useReminders();

@@ -93,7 +93,7 @@ export function AddCalendarEventDialog({
 }: AddCalendarEventDialogProps) {
   const [saving, setSaving] = useState(false);
   const { staffMembers } = useActiveStaff();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const eventTypes = getAllEventTypes();
 
   const defaultTime = initialTime

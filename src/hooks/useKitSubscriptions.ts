@@ -32,7 +32,7 @@ function adjustForWeekend(date: Date, skipWeekends: boolean): Date {
 
 export function useKitSubscriptions(entityType?: KitEntityType, entityId?: string) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
 
   // Fetch subscription for a specific entity

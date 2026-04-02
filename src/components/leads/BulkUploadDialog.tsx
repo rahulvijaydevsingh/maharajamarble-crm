@@ -148,7 +148,7 @@ export function BulkUploadDialog({
   onLeadsCreated,
 }: BulkUploadDialogProps) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
   const { getFieldOptions } = useControlPanelSettings();

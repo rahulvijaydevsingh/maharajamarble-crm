@@ -7,7 +7,7 @@
  
  export function useKitPresets() {
    const { toast } = useToast();
-   const { user } = useAuth();
+   const { user, profile } = useAuth();
    const queryClient = useQueryClient();
  
    const presetsQuery = useQuery({
