@@ -66,7 +66,7 @@ export function TaskCompletionDialog({
   addTask,
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { templates, hasTemplates, loading: templatesLoading } = useTaskCompletionTemplates(task?.type || null);
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
