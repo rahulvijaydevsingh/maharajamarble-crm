@@ -141,6 +141,29 @@ function evaluateAllConditions(
   return conditions.every((c) => evaluateCondition(c, newRow, oldRow, operation));
 }
 
+// Helper: resolve a profile by full_name (new standard) or email (legacy)
+async function resolveProfileByNameOrEmail(
+  supabase: any,
+  value: string
+): Promise<{ id: string; email: string } | null> {
+  if (!value) return null;
+  // Try by full_name first (new standard)
+  const { data: byName } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .eq("full_name", value)
+    .maybeSingle();
+  if (byName) return { id: byName.id, email: byName.email };
+  // Fallback: try by email (old records)
+  const { data: byEmail } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .eq("email", value)
+    .maybeSingle();
+  if (byEmail) return { id: byEmail.id, email: byEmail.email };
+  return null;
+}
+
 async function executeAction(
   supabase: ReturnType<typeof createClient>,
   action: AutomationAction,
