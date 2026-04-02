@@ -93,7 +93,7 @@ export function AddCalendarEventDialog({
 }: AddCalendarEventDialogProps) {
   const [saving, setSaving] = useState(false);
   const { staffMembers } = useActiveStaff();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const eventTypes = getAllEventTypes();
 
   const defaultTime = initialTime
@@ -145,7 +145,7 @@ export function AddCalendarEventDialog({
           priority: data.priority,
           status: "Pending",
           assigned_to: data.assignedTo,
-          created_by: user?.email || "System",
+          created_by: profile?.full_name || user?.email || "System",
         });
 
         if (taskError) throw taskError;
@@ -169,7 +169,7 @@ export function AddCalendarEventDialog({
           entity_type: "task",
           entity_id: crypto.randomUUID(), // placeholder
           assigned_to: data.assignedTo,
-          created_by: user?.email || "System",
+          created_by: profile?.full_name || user?.email || "System",
         });
 
         if (reminderError) throw reminderError;

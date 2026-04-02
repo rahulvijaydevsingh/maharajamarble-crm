@@ -66,7 +66,7 @@ export function TaskCompletionDialog({
   addTask,
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { templates, hasTemplates, loading: templatesLoading } = useTaskCompletionTemplates(task?.type || null);
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -228,7 +228,7 @@ export function TaskCompletionDialog({
         activity_type: "task_outcome_recorded",
         activity_category: "task",
         user_id: user?.id || null,
-        user_name: user?.email?.split("@")[0] || "System",
+        user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
         title,
         metadata: metadata as any,
         is_manual: false,
@@ -387,6 +387,31 @@ export function TaskCompletionDialog({
             closed_by: user?.id,
             reason: "Auto-closed: follow-up task created",
           });
+        }
+
+        // Log follow-up creation to lead timeline
+        if (task.lead_id && newTask) {
+          try {
+            await supabase.from("activity_log").insert({
+              lead_id: task.lead_id,
+              activity_type: "task_created",
+              activity_category: "task",
+              user_id: user?.id || null,
+              user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
+              title: `Follow-up Task Created: Follow-up: ${task.title}`,
+              metadata: {
+                task_id: newTask.id,
+                parent_task_id: task.id,
+                parent_task_title: task.title,
+                due_date: nextDueDate,
+                assigned_to: task.assigned_to,
+              } as any,
+              related_entity_type: "task",
+              related_entity_id: newTask.id,
+              is_manual: false,
+              is_editable: false,
+            });
+          } catch (e) { console.warn("Failed to log follow-up to lead activity:", e); }
         }
       }
 

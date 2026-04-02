@@ -148,7 +148,7 @@ export function BulkUploadDialog({
   onLeadsCreated,
 }: BulkUploadDialogProps) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
   const { getFieldOptions } = useControlPanelSettings();
@@ -626,7 +626,7 @@ export function BulkUploadDialog({
                 assigned_to: lead.assigned_to,
                 due_date: lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd"),
                 lead_id: insertedLead.id,
-                created_by: user?.email || "unknown",
+                created_by: profile?.full_name || user?.email || "unknown",
               });
             } catch (taskError) {
               console.error("Auto-task creation failed for imported lead:", taskError);
@@ -896,7 +896,7 @@ export function BulkUploadDialog({
             due_date: format(lead.nextActionDate, "yyyy-MM-dd"),
             due_time: lead.nextActionTime || "10:00",
             lead_id: insertedLead.id,
-            created_by: user?.email || "Photo Upload",
+            created_by: profile?.full_name || user?.email || "Photo Upload",
           });
         } catch (taskError) {
           console.error("Task creation failed for photo lead:", taskError);

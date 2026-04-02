@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { getStaffDisplayName } from "@/lib/kitHelpers";
 import {
   Dialog,
   DialogContent,
@@ -179,6 +181,7 @@ export function TaskSavedFilterDialog({
   uniqueTypes,
   uniqueAssignedTo,
 }: TaskSavedFilterDialogProps) {
+  const { staffMembers } = useActiveStaff();
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -294,10 +297,8 @@ export function TaskSavedFilterDialog({
       case "type":
         return [...TYPE_OPTIONS, ...uniqueTypes.filter(t => !TYPE_OPTIONS.find(o => o.value === t)).map(t => ({ value: t, label: t }))];
       case "assigned_to": {
-        // uniqueAssignedTo now contains raw names; build display labels
-        const staffDisplayMap: Record<string, string> = {};
-        uniqueAssignedTo.forEach(name => { staffDisplayMap[name] = name; });
-        return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
+        // uniqueAssignedTo contains raw names; display with role prefix
+        return uniqueAssignedTo.map((a) => ({ value: a, label: getStaffDisplayName(a, staffMembers) || a }));
       }
       case "recurrence_frequency":
         return RECURRENCE_OPTIONS;

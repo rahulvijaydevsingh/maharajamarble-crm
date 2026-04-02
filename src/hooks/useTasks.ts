@@ -154,7 +154,7 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const getActivityContext = (task: Partial<TaskInsert> & { lead_id?: string | null; related_entity_type?: string | null; related_entity_id?: string | null }) => {
     const leadId = task.lead_id || null;
@@ -197,7 +197,7 @@ export function useTasks() {
     try {
       const taskData = {
         ...task,
-        created_by: (task.created_by && task.created_by !== "Current User") ? task.created_by : (user?.email || "unknown"),
+        created_by: (task.created_by && task.created_by !== "Current User") ? task.created_by : (profile?.full_name || user?.email || "unknown"),
         original_due_date: task.original_due_date || task.due_date,
       };
 
@@ -452,6 +452,43 @@ export function useTasks() {
         due_time: newDueTime,
         snoozed_until: snoozedUntil.toISOString(),
       });
+
+      // Log to task_activity_log
+      try {
+        await (supabase.from("task_activity_log" as any).insert as any)({
+          task_id: id,
+          event_type: "snoozed",
+          metadata: {
+            snoozed_until: snoozedUntil.toISOString(),
+            hours_added: hoursToAdd,
+            original_due_date: task.due_date,
+          },
+        });
+      } catch (e) { console.warn("Failed to log snooze to task activity:", e); }
+
+      // Log to lead activity_log if task has lead_id
+      try {
+        if (task.lead_id) {
+          await supabase.from("activity_log").insert({
+            lead_id: task.lead_id,
+            activity_type: "task_snoozed",
+            activity_category: "task",
+            user_id: user?.id || null,
+            user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
+            title: `Task Snoozed: ${task.title} — until ${snoozedUntil.toLocaleDateString()}`,
+            metadata: {
+              task_id: task.id,
+              snoozed_until: snoozedUntil.toISOString(),
+              original_due_date: task.due_date,
+              hours_added: hoursToAdd,
+            } as any,
+            related_entity_type: "task",
+            related_entity_id: task.id,
+            is_manual: false,
+            is_editable: false,
+          });
+        }
+      } catch (e) { console.warn("Failed to log snooze to lead activity:", e); }
 
       toast({ title: "Task snoozed" });
     } catch (error: any) {

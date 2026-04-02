@@ -34,7 +34,7 @@ const Leads = () => {
   const { canCreate } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { logStaffAction } = useStaffActivityLog();
-  const { role, isAdmin, user } = useAuth();
+  const { role, isAdmin, user, profile } = useAuth();
   const canSeeRecycleBin = isAdmin() || role === "manager";
   const canSeeArchive = isAdmin() || role === "manager";
   const handleAddLead = async (formData: any, generatedTask: any) => {
@@ -147,7 +147,7 @@ const Leads = () => {
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
-          created_by: user?.email || "unknown",
+          created_by: profile?.full_name || user?.email || "unknown",
         });
       }
 

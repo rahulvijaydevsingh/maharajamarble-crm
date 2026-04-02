@@ -545,11 +545,11 @@ export function EnhancedTaskTable({
     const displayMap = new Map<string, string>(); // email → display name
     const options: { value: string; label: string }[] = [];
     for (const s of staffMembers) {
-      const canonicalKey = s.email || s.name;
-      if (assignedStaffEmails.has(canonicalKey)) {
-        const label = getStaffDisplayName(s.email || s.name, staffMembers);
+      const canonicalKey = s.name || s.email;
+      if (assignedStaffEmails.has(s.email || s.name) || assignedStaffEmails.has(s.name)) {
+        const label = getStaffDisplayName(s.name || s.email, staffMembers);
         displayMap.set(canonicalKey, label);
-        options.push({ value: canonicalKey, label });
+        options.push({ value: s.name || s.email, label });
       }
     }
     options.sort((a, b) => a.label.localeCompare(b.label));

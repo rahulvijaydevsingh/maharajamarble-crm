@@ -141,6 +141,29 @@ function evaluateAllConditions(
   return conditions.every((c) => evaluateCondition(c, newRow, oldRow, operation));
 }
 
+// Helper: resolve a profile by full_name (new standard) or email (legacy)
+async function resolveProfileByNameOrEmail(
+  supabase: any,
+  value: string
+): Promise<{ id: string; email: string } | null> {
+  if (!value) return null;
+  // Try by full_name first (new standard)
+  const { data: byName } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .eq("full_name", value)
+    .maybeSingle();
+  if (byName) return { id: byName.id, email: byName.email };
+  // Fallback: try by email (old records)
+  const { data: byEmail } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .eq("email", value)
+    .maybeSingle();
+  if (byEmail) return { id: byEmail.id, email: byEmail.email };
+  return null;
+}
+
 async function executeAction(
   supabase: ReturnType<typeof createClient>,
   action: AutomationAction,
@@ -162,48 +185,42 @@ async function executeAction(
 
         
 
-        // Find user IDs to notify
-        let userIds: string[] = [];
+        // Find user IDs to notify — store as { id (UUID), email } for correct notification user_id
+        let resolvedProfiles: { id: string; email: string }[] = [];
 
         if (specificUsers) {
-          const emails = specificUsers.split(",").map((e: string) => e.trim());
-          for (const email of emails) {
-            const { data: profile, error: profileErr } = await supabase
-              .from("profiles")
-              .select("id")
-              .eq("email", email)
-              .maybeSingle();
-            if (profile) userIds.push(email);
+          const entries = specificUsers.split(",").map((e: string) => e.trim());
+          for (const entry of entries) {
+            const resolved = await resolveProfileByNameOrEmail(supabase, entry);
+            if (resolved) resolvedProfiles.push(resolved);
           }
         }
 
         if (recipients?.includes("trigger.assigned_to") && newRow.assigned_to) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("email", String(newRow.assigned_to))
-            .maybeSingle();
-          if (profile) userIds.push(String(newRow.assigned_to));
+          const resolved = await resolveProfileByNameOrEmail(supabase, String(newRow.assigned_to));
+          if (resolved) resolvedProfiles.push(resolved);
         }
 
         if (recipients?.includes("trigger.created_by") && newRow.created_by) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("email", String(newRow.created_by))
-            .maybeSingle();
-          if (profile) userIds.push(String(newRow.created_by));
+          const resolved = await resolveProfileByNameOrEmail(supabase, String(newRow.created_by));
+          if (resolved) resolvedProfiles.push(resolved);
         }
 
-        userIds = [...new Set(userIds)];
+        // Deduplicate by email
+        const seen = new Set<string>();
+        resolvedProfiles = resolvedProfiles.filter(p => {
+          if (seen.has(p.email)) return false;
+          seen.add(p.email);
+          return true;
+        });
         
 
-        if (userIds.length === 0) {
+        if (resolvedProfiles.length === 0) {
           return { status: "failed", error: "No valid recipients found" };
         }
 
-        const notifications = userIds.map((uid) => ({
-          user_id: uid,
+        const notifications = resolvedProfiles.map((p) => ({
+          user_id: p.email,
           title,
           message,
           type: "automation",
@@ -215,7 +232,7 @@ async function executeAction(
 
         const { data: insertedData, error } = await supabase.from("notifications").insert(notifications).select();
         if (error) return { status: "failed", error: error.message };
-        return { status: "success", details: `Notified ${userIds.length} user(s)` };
+        return { status: "success", details: `Notified ${resolvedProfiles.length} user(s)` };
       }
 
       case "create_task": {

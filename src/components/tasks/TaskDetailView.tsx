@@ -38,7 +38,8 @@ import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 
 import { format } from "date-fns";
-import { CheckCircle2, Copy, Pencil, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Copy, Pencil, Trash2, X } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type RelatedPerson =
   | { type: "lead"; id: string; name: string; phone: string | null }
@@ -83,6 +84,8 @@ export function TaskDetailView({
   // Parent task & follow-up children
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
   const [followUpTasks, setFollowUpTasks] = useState<{ id: string; title: string; status: string; due_date: string }[]>([]);
+  const [parentActivityEntries, setParentActivityEntries] = useState<any[]>([]);
+  const [parentHistoryOpen, setParentHistoryOpen] = useState(false);
 
   // Related modals
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
@@ -230,8 +233,18 @@ export function TaskDetailView({
           .maybeSingle();
         if (!cancelled && data) setParentTask({ id: data.id, title: data.title });
         else if (!cancelled) setParentTask(null);
+
+        // Fetch parent's activity log
+        const { data: parentActivity } = await (supabase
+          .from("task_activity_log" as any)
+          .select("*")
+          .eq("task_id", task.parent_task_id)
+          .order("created_at", { ascending: true })
+          .limit(50) as any);
+        if (!cancelled) setParentActivityEntries(parentActivity || []);
       } else {
         setParentTask(null);
+        setParentActivityEntries([]);
       }
 
       // Children
@@ -445,17 +458,36 @@ export function TaskDetailView({
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
-                  {/* Parent Task Banner */}
+                  {/* Parent Task Banner + Activity History */}
                   {parentTask && (
-                    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
-                      <span className="text-muted-foreground">Follow-up to:</span>
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-sm"
-                        onClick={() => setChainTaskId(parentTask.id)}
-                      >
-                        {parentTask.title}
-                      </Button>
+                    <div className="rounded-md border border-border bg-muted/40 p-3 text-sm space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Follow-up to:</span>
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-sm"
+                          onClick={() => setChainTaskId(parentTask.id)}
+                        >
+                          {parentTask.title}
+                        </Button>
+                      </div>
+                      {parentActivityEntries.length > 0 && (
+                        <Collapsible open={parentHistoryOpen} onOpenChange={setParentHistoryOpen}>
+                          <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                            <ChevronDown className={`h-3 w-3 transition-transform ${parentHistoryOpen ? "rotate-180" : ""}`} />
+                            <span>View parent history — {parentActivityEntries.length} event(s)</span>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2 opacity-60">
+                            <TaskActivityTimeline
+                              entries={parentActivityEntries}
+                              loading={false}
+                              hasMore={false}
+                              onLoadMore={() => {}}
+                              onOpenTask={(id) => setChainTaskId(id)}
+                            />
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
                     </div>
                   )}
 

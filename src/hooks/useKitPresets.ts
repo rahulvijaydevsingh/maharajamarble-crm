@@ -7,7 +7,7 @@
  
  export function useKitPresets() {
    const { toast } = useToast();
-   const { user } = useAuth();
+   const { user, profile } = useAuth();
    const queryClient = useQueryClient();
  
    const presetsQuery = useQuery({
@@ -42,7 +42,7 @@
            description: preset.description || null,
            touch_sequence: preset.touch_sequence as unknown as Json,
            default_cycle_behavior: preset.default_cycle_behavior,
-           created_by: user?.email || 'system',
+           created_by: profile?.full_name || user?.email || 'system',
          }])
          .select()
          .single();
