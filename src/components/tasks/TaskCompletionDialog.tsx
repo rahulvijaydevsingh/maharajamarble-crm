@@ -228,7 +228,7 @@ export function TaskCompletionDialog({
         activity_type: "task_outcome_recorded",
         activity_category: "task",
         user_id: user?.id || null,
-        user_name: user?.email?.split("@")[0] || "System",
+        user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
         title,
         metadata: metadata as any,
         is_manual: false,
