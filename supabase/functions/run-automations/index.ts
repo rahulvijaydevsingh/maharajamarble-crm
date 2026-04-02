@@ -232,7 +232,7 @@ async function executeAction(
 
         const { data: insertedData, error } = await supabase.from("notifications").insert(notifications).select();
         if (error) return { status: "failed", error: error.message };
-        return { status: "success", details: `Notified ${userIds.length} user(s)` };
+        return { status: "success", details: `Notified ${resolvedProfiles.length} user(s)` };
       }
 
       case "create_task": {
