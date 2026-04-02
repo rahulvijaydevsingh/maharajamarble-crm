@@ -35,6 +35,7 @@ export interface AdvancedRule {
 export interface Context {
   getLeadTasks?: (leadId: string) => { total: number; overdue: number; dueToday: number; upcoming: number };
   getCustomerTasks?: (customerId: string) => { total: number; overdue: number; dueToday: number; upcoming: number };
+  staffMembers?: any[];
 }
 
 function isEmpty(v: any): boolean {
@@ -171,6 +172,16 @@ export function evaluateRule(record: Record<string, any>, rule: AdvancedRule, co
     return record.parent_task_id != null;
   } else {
     fieldValue = record[rule.field];
+  }
+
+  // Backward compatibility for assigned_to (matches by name OR email)
+  if (rule.field === "assigned_to" && (rule.operator === "equals" || rule.operator === "not_equals") && context?.staffMembers) {
+    const isMatch = fieldValue === rule.value ||
+      context.staffMembers.some(s =>
+        (s.name === fieldValue || s.email === fieldValue) &&
+        (s.name === rule.value || s.email === rule.value)
+      );
+    return rule.operator === "equals" ? !!isMatch : !isMatch;
   }
 
   const dateOps: FilterOperator[] = [

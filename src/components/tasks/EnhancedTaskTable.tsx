@@ -84,6 +84,7 @@ import { format, isToday, isPast, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useTasks, Task } from "@/hooks/useTasks";
+import { calculateTaskStatus } from "@/lib/taskStatusService";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
 import { useProfessionals, Professional } from "@/hooks/useProfessionals";
@@ -508,7 +509,7 @@ export function EnhancedTaskTable({
   const transformedTasks = useMemo(() => {
     return tasks.map(task => ({
       ...task,
-      computedStatus: task.calculatedStatus || task.status
+      computedStatus: task.calculatedStatus || calculateTaskStatus(task) || task.status
     }));
   }, [tasks]);
 
@@ -519,16 +520,16 @@ export function EnhancedTaskTable({
 
   // Build staff-based assignee filter: resolve all assigned_to values to staff profiles
   const resolveAssignedToStaff = useMemo(() => {
-    // Create a lookup: any possible assigned_to value → staff email (canonical key)
+    // Create a lookup: any possible assigned_to value → staff name (canonical key)
     const lookup = new Map<string, string>();
     for (const s of staffMembers) {
       // Match by email
-      if (s.email) lookup.set(s.email.toLowerCase(), s.email);
+      if (s.email) lookup.set(s.email.toLowerCase(), s.name || s.email);
       // Match by name
-      if (s.name) lookup.set(s.name.toLowerCase(), s.email || s.name);
+      if (s.name) lookup.set(s.name.toLowerCase(), s.name || s.email);
       // Match by "Role - Name" format (what getStaffDisplayName produces)
-      const displayName = getStaffDisplayName(s.email || s.name, staffMembers);
-      if (displayName) lookup.set(displayName.toLowerCase(), s.email || s.name);
+      const displayName = getStaffDisplayName(s.name || s.email, staffMembers);
+      if (displayName) lookup.set(displayName.toLowerCase(), s.name || s.email);
     }
     return lookup;
   }, [staffMembers]);
@@ -570,8 +571,15 @@ export function EnhancedTaskTable({
       // Multi-select filters
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(task.type);
       const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(task.priority);
-      const resolvedAssignee = resolveAssignedToStaff.get(task.assigned_to.toLowerCase()) || task.assigned_to;
-      const matchesAssignee = selectedAssignees.length === 0 || selectedAssignees.includes(resolvedAssignee);
+
+      const taskAssignedTo = task.assigned_to;
+      const matchesAssignee = selectedAssignees.length === 0 || selectedAssignees.some(ruleValue =>
+        taskAssignedTo === ruleValue ||
+        staffMembers.find(s =>
+          (s.name === taskAssignedTo || s.email === taskAssignedTo) &&
+          (s.name === ruleValue || s.email === ruleValue)
+        )
+      );
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(task.computedStatus);
       
       // Date range filters
@@ -587,7 +595,11 @@ export function EnhancedTaskTable({
         task.related_entity_id === relatedToFilter;
       
       const advancedMatch = activeAdvancedRules.length === 0 ||
-        evaluateRules({ ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>, activeAdvancedRules);
+        evaluateRules(
+          { ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>,
+          activeAdvancedRules,
+          { staffMembers }
+        );
       return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && dueDateMatch && createdDateMatch && matchesRelatedTo && advancedMatch;
     });
 
@@ -617,13 +629,23 @@ export function EnhancedTaskTable({
     const config = filter.filter_config;
     return transformedTasks.filter(task => {
       const priorityMatch = (config.priorityFilter?.length || 0) === 0 || config.priorityFilter?.includes(task.priority);
-      const resolvedAssignee = resolveAssignedToStaff.get(task.assigned_to.toLowerCase()) || task.assigned_to;
-      const assigneeMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter?.includes(resolvedAssignee);
+      const taskAssignedTo = task.assigned_to;
+      const assigneeMatch = (config.assignedToFilter?.length || 0) === 0 || config.assignedToFilter?.some(ruleValue =>
+        taskAssignedTo === ruleValue ||
+        staffMembers.find(s =>
+          (s.name === taskAssignedTo || s.email === taskAssignedTo) &&
+          (s.name === ruleValue || s.email === ruleValue)
+        )
+      );
       const statusMatch = (config.statusFilter?.length || 0) === 0 || config.statusFilter?.includes(task.computedStatus);
       // Use sourceFilter to store task types for tasks entity
       const typeMatch = (config.sourceFilter?.length || 0) === 0 || config.sourceFilter?.includes(task.type);
       const advancedMatch = ((config as any).advancedRules?.length || 0) === 0 ||
-        evaluateRules({ ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>, (config as any).advancedRules || []);
+        evaluateRules(
+          { ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>,
+          (config as any).advancedRules || [],
+          { staffMembers }
+        );
       return priorityMatch && assigneeMatch && statusMatch && typeMatch && advancedMatch;
     }).length;
   };
