@@ -181,6 +181,7 @@ export function TaskSavedFilterDialog({
   uniqueTypes,
   uniqueAssignedTo,
 }: TaskSavedFilterDialogProps) {
+  const { staffMembers } = useActiveStaff();
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
   const [isShared, setIsShared] = useState(false);
