@@ -38,7 +38,8 @@ import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 
 import { format } from "date-fns";
-import { CheckCircle2, Copy, Pencil, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Copy, Pencil, Trash2, X } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type RelatedPerson =
   | { type: "lead"; id: string; name: string; phone: string | null }
