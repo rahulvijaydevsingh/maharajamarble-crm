@@ -84,6 +84,8 @@ export function TaskDetailView({
   // Parent task & follow-up children
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
   const [followUpTasks, setFollowUpTasks] = useState<{ id: string; title: string; status: string; due_date: string }[]>([]);
+  const [parentActivityEntries, setParentActivityEntries] = useState<any[]>([]);
+  const [parentHistoryOpen, setParentHistoryOpen] = useState(false);
 
   // Related modals
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
