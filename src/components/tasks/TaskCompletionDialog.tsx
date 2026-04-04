@@ -143,6 +143,13 @@ export function TaskCompletionDialog({
         "Already purchased elsewhere",
         "Budget not aligned",
       ];
+  if (outcome === "Wrong Number")
+    return [
+      "Wrong number, lead details updated",
+      "Number does not exist",
+      "Incorrect contact details — needs verification",
+      "Called, number belongs to someone else",
+    ];
     return [
       "Spoke with client",
       "Follow-up required",
@@ -830,7 +837,13 @@ export function TaskCompletionDialog({
                       </SelectTrigger>
                       <SelectContent className="z-[80] max-h-[200px]">
                         <SelectItem value="" disabled>Business hours</SelectItem>
-                        {BUSINESS_HOUR_SLOTS.map((slot) => (
+                        {BUSINESS_HOUR_SLOTS.filter((slot) => {
+                          const datePart = customReminderAt
+                            ? customReminderAt.split("T")[0]
+                            : format(new Date(), "yyyy-MM-dd");
+                          const isToday = datePart === format(new Date(), "yyyy-MM-dd");
+                          return !isToday || slot.value >= format(new Date(), "HH:mm");
+                        }).map((slot) => (
                           <SelectItem key={slot.value} value={slot.value}>
                             {slot.label}
                           </SelectItem>
