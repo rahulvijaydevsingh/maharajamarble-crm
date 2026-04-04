@@ -46,6 +46,19 @@ const OUTCOME_OPTIONS = [
   { value: "Rescheduled by Client", kind: "unsuccessful" as const },
 ];
 
+const BUSINESS_HOUR_SLOTS = (() => {
+  const slots: { label: string; value: string }[] = [];
+  for (let h = 9; h <= 19; h++) {
+    for (const m of [0, 30]) {
+      if (h === 19 && m === 30) break;
+      const label = `${h > 12 ? h - 12 : h}:${m === 0 ? "00" : "30"} ${h >= 12 ? "PM" : "AM"}`;
+      const value = `${String(h).padStart(2, "0")}:${m === 0 ? "00" : "30"}`;
+      slots.push({ label, value });
+    }
+  }
+  return slots;
+})();
+
 function outcomeKind(outcome: string | null) {
   return OUTCOME_OPTIONS.find((o) => o.value === outcome)?.kind ?? null;
 }
@@ -90,6 +103,60 @@ export function TaskCompletionDialog({
 
   const [rescheduleReason, setRescheduleReason] = useState<string>("");
 
+  const rescheduleReasonSuggestions = useMemo(() => {
+    if (outcome === "No Answer")
+      return ["No phone answer", "Phone switched off", "Busy tone", "Went to voicemail"];
+    if (outcome === "Call Back Later")
+      return ["Client requested callback", "Not available right now", "In a meeting", "Asked to call tomorrow"];
+    if (outcome === "Not Interested")
+      return ["Not interested at this time", "Already purchased elsewhere", "Budget constraints"];
+    if (outcome === "Rescheduled by Client")
+      return ["Client rescheduled", "Site visit postponed", "Decision pending"];
+    return ["Follow-up required", "Client unavailable", "Timing not right"];
+  }, [outcome]);
+
+  const notesSuggestions = useMemo(() => {
+    if (outcome === "No Answer")
+      return [
+        "Called, no answer",
+        "Phone switched off",
+        "Left a WhatsApp message",
+        "Tried calling twice, no response",
+      ];
+    if (outcome === "Successful")
+      return [
+        "Client interested, follow-up scheduled",
+        "Shared product details and pricing",
+        "Client visited showroom",
+        "Quotation discussed and sent",
+        "Sample requested",
+      ];
+    if (outcome === "Call Back Later")
+      return [
+        "Client asked to call back",
+        "Shared details via WhatsApp, awaiting response",
+        "Client in meeting, will call later",
+      ];
+    if (outcome === "Not Interested")
+      return [
+        "Client not interested at this time",
+        "Already purchased elsewhere",
+        "Budget not aligned",
+      ];
+  if (outcome === "Wrong Number")
+    return [
+      "Wrong number, lead details updated",
+      "Number does not exist",
+      "Incorrect contact details — needs verification",
+      "Called, number belongs to someone else",
+    ];
+    return [
+      "Spoke with client",
+      "Follow-up required",
+      "Sent details via WhatsApp",
+    ];
+  }, [outcome]);
+
   const [errors, setErrors] = useState<{
     outcome?: string;
     nextAction?: string;
@@ -122,7 +189,7 @@ export function TaskCompletionDialog({
   }, [selectedTemplate]);
 
   const isUnsuccessful = outcomeKind(outcome) === "unsuccessful";
-  const minNotes = 50;
+  const minNotes = 30;
 
   const nextActionOptions = useMemo(() => {
     return [
@@ -579,13 +646,48 @@ export function TaskCompletionDialog({
 
                 <div className="space-y-2">
                   <Label>Next Time *</Label>
-                  <Input
-                    type="time"
-                    value={nextTime}
-                    min={minTimeForToday}
-                    onChange={(e) => { setNextTime(e.target.value); setErrors((p) => ({ ...p, nextTime: undefined })); }}
-                    className={cn(errors.nextTime && "border-destructive")}
-                  />
+                  {/* Business hours quick-select */}
+                  <div className="rounded-md border border-border p-2 bg-muted/20">
+                    <p className="text-xs text-muted-foreground mb-2 font-medium">
+                      Business Hours (tap to select)
+                    </p>
+                    <div className="grid grid-cols-4 gap-1 max-h-[140px] overflow-y-auto pr-1">
+                      {BUSINESS_HOUR_SLOTS.filter(slot =>
+                        !minTimeForToday || slot.value >= minTimeForToday
+                      ).map((slot) => (
+                        <button
+                          key={slot.value}
+                          type="button"
+                          onClick={() => {
+                            setNextTime(slot.value);
+                            setErrors((p) => ({ ...p, nextTime: undefined }));
+                          }}
+                          className={cn(
+                            "text-xs py-1 px-1 rounded border text-center transition-colors cursor-pointer",
+                            nextTime === slot.value
+                              ? "bg-primary text-primary-foreground border-primary font-medium"
+                              : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {slot.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Manual override input */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Custom time:</span>
+                    <Input
+                      type="time"
+                      value={nextTime}
+                      min={minTimeForToday}
+                      onChange={(e) => {
+                        setNextTime(e.target.value);
+                        setErrors((p) => ({ ...p, nextTime: undefined }));
+                      }}
+                      className={cn("h-8 text-sm", errors.nextTime && "border-destructive")}
+                    />
+                  </div>
                   {errors.nextTime && <p className="text-sm text-destructive">{errors.nextTime}</p>}
                 </div>
               </div>
@@ -594,39 +696,176 @@ export function TaskCompletionDialog({
               {nextAction === "reschedule" && (
                 <div className="space-y-2">
                   <Label>Reschedule Reason *</Label>
+                  {/* Quick-fill chips — outcome-aware */}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {rescheduleReasonSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => {
+                          const newVal = rescheduleReason === suggestion ? "" : suggestion;
+                          setRescheduleReason(newVal);
+                          setErrors((p) => ({ ...p, rescheduleReason: undefined }));
+                        }}
+                        className={cn(
+                          "text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer",
+                          rescheduleReason === suggestion
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted hover:bg-muted/80 border-border text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
                   <Textarea
                     value={rescheduleReason}
-                    onChange={(e) => { setRescheduleReason(e.target.value); setErrors((p) => ({ ...p, rescheduleReason: undefined })); }}
+                    onChange={(e) => {
+                      setRescheduleReason(e.target.value);
+                      setErrors((p) => ({ ...p, rescheduleReason: undefined }));
+                    }}
                     className={cn(errors.rescheduleReason && "border-destructive")}
-                    placeholder="Why is this task being rescheduled?"
+                    placeholder="Or type a custom reason..."
                     rows={2}
                   />
-                  {errors.rescheduleReason && <p className="text-sm text-destructive">{errors.rescheduleReason}</p>}
+                  {errors.rescheduleReason && (
+                    <p className="text-sm text-destructive">{errors.rescheduleReason}</p>
+                  )}
                 </div>
               )}
 
-              {/* Reminder fields for follow-up/reschedule */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Reminder section */}
+              <div className="rounded-md border border-border p-3 bg-muted/20 space-y-3">
+                <p className="text-sm font-medium">Reminder Settings</p>
+
+                {/* Auto reminder — quick chips */}
                 <div className="space-y-2">
-                  <Label>Auto Reminder (hours before)</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="168"
-                    placeholder="e.g. 2"
-                    value={reminderOffsetHours}
-                    onChange={(e) => setReminderOffsetHours(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">Leave blank for no auto-reminder</p>
+                  <Label className="text-xs text-muted-foreground">
+                    Auto Reminder — how long before the scheduled time?
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "1 hour", hours: "1" },
+                      { label: "2 hours", hours: "2" },
+                      { label: "3 hours", hours: "3" },
+                      { label: "1 day", hours: "24" },
+                      { label: "2 days", hours: "48" },
+                      { label: "None", hours: "" },
+                    ].map(({ label, hours }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setReminderOffsetHours(hours)}
+                        className={cn(
+                          "text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer",
+                          reminderOffsetHours === hours
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {reminderOffsetHours && reminderOffsetHours !== "" && (
+                    <p className="text-xs text-muted-foreground">
+                      Reminder will fire {
+                        reminderOffsetHours === "1" ? "1 hour" :
+                        reminderOffsetHours === "24" ? "1 day" :
+                        reminderOffsetHours === "48" ? "2 days" :
+                        `${reminderOffsetHours} hours`
+                      } before the scheduled time.
+                    </p>
+                  )}
                 </div>
+
+                {/* Custom reminder — date + business hours time picker */}
                 <div className="space-y-2">
-                  <Label>Custom Reminder At</Label>
-                  <Input
-                    type="datetime-local"
-                    value={customReminderAt}
-                    onChange={(e) => setCustomReminderAt(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">Specific date/time for reminder</p>
+                  <Label className="text-xs text-muted-foreground">
+                    Or set a specific reminder date and time
+                  </Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Date part */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "w-full justify-start text-left font-normal text-sm h-8",
+                            !customReminderAt && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-3 w-3" />
+                          {customReminderAt
+                            ? format(new Date(customReminderAt), "MMM d, yyyy")
+                            : "Pick date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[80]" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={customReminderAt ? new Date(customReminderAt) : undefined}
+                          onSelect={(d) => {
+                            if (!d) { setCustomReminderAt(""); return; }
+                            const existingTime = customReminderAt
+                              ? customReminderAt.split("T")[1] || "09:00"
+                              : "09:00";
+                            setCustomReminderAt(
+                              `${format(d, "yyyy-MM-dd")}T${existingTime}`
+                            );
+                          }}
+                          initialFocus
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                          className="pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Time part — business hours quick-select */}
+                    <Select
+                      value={customReminderAt ? customReminderAt.split("T")[1]?.slice(0,5) || "" : ""}
+                      onValueChange={(t) => {
+                        const datePart = customReminderAt
+                          ? customReminderAt.split("T")[0]
+                          : format(new Date(), "yyyy-MM-dd");
+                        setCustomReminderAt(`${datePart}T${t}`);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Pick time" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[80] max-h-[200px]">
+                        <SelectItem value="" disabled>Business hours</SelectItem>
+                        {BUSINESS_HOUR_SLOTS.filter((slot) => {
+                          const datePart = customReminderAt
+                            ? customReminderAt.split("T")[0]
+                            : format(new Date(), "yyyy-MM-dd");
+                          const isToday = datePart === format(new Date(), "yyyy-MM-dd");
+                          return !isToday || slot.value >= format(new Date(), "HH:mm");
+                        }).map((slot) => (
+                          <SelectItem key={slot.value} value={slot.value}>
+                            {slot.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {customReminderAt && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        Reminder set for {format(new Date(customReminderAt), "PPP 'at' h:mm a")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setCustomReminderAt("")}
+                        className="text-xs text-destructive hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -635,14 +874,43 @@ export function TaskCompletionDialog({
           {/* Notes */}
           <div className="space-y-2">
             <Label>Completion Notes *</Label>
+            {/* Quick-fill chips */}
+            <div className="flex flex-wrap gap-2 mb-2">
+              {notesSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => {
+                    const newVal = notes === suggestion ? "" : suggestion;
+                    setNotes(newVal);
+                    setErrors((p) => ({ ...p, notes: undefined }));
+                  }}
+                  className={cn(
+                    "text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer",
+                    notes === suggestion
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted hover:bg-muted/80 border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
             <Textarea
               value={notes}
-              onChange={(e) => { setNotes(e.target.value); setErrors((p) => ({ ...p, notes: undefined })); }}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                setErrors((p) => ({ ...p, notes: undefined }));
+              }}
               className={cn(errors.notes && "border-destructive")}
-              placeholder="Write what happened, what you learned, and the next step..."
+              placeholder="Write what happened, or pick a quick note above and edit it..."
+              rows={3}
             />
             <div className="flex items-center justify-between">
-              <p className={cn("text-xs", notes.trim().length < minNotes ? "text-destructive" : "text-muted-foreground")}>
+              <p className={cn(
+                "text-xs",
+                notes.trim().length < minNotes ? "text-destructive" : "text-muted-foreground"
+              )}>
                 {notes.trim().length}/{minNotes} minimum
               </p>
               {saving && (
