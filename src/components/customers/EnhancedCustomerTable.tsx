@@ -731,7 +731,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     switch (columnKey) {
       case "name":
         return (
-          <div className="group flex items-center gap-2 min-w-[160px] h-[40px]" onClick={(e) => e.stopPropagation()}>
+          <div className="group/namecell flex items-center gap-2 min-w-[160px] h-[40px]" onClick={(e) => e.stopPropagation()}>
             <span
               className="font-medium truncate cursor-pointer hover:underline text-foreground"
               onClick={() => handleViewCustomer(customer)}
@@ -739,7 +739,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
             >
               {customer.name}
             </span>
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+            <div className="flex items-center gap-0.5 opacity-0 group-hover/namecell:opacity-100 transition-opacity duration-150 shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
