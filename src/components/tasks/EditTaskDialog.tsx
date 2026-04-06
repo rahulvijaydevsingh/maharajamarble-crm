@@ -150,7 +150,9 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave }: EditTas
         type: taskData.type || "",
         priority: taskData.priority || "",
         assignedTo: taskData.assigned_to || taskData.assignedTo || "",
-        status: taskData.status ? taskData.status.charAt(0).toUpperCase() + taskData.status.slice(1) : "",
+        status: TASK_STATUSES.find(
+          (s) => s.toLowerCase() === taskData.status?.toLowerCase()
+        ) || taskData.status || "",
         dueDate: taskData.due_date ? new Date(taskData.due_date + 'T00:00:00') : undefined,
         dueTime: taskData.due_time || "",
         description: taskData.description || "",
