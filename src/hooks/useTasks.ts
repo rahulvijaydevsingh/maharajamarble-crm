@@ -246,7 +246,9 @@ export function useTasks() {
         if (user) {
           await logToStaffActivity("create_task", user.email || "", user.id, `Created task: ${data.title}`, "task", data.id);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Staff activity log is non-critical — failure is acceptable
+      }
 
       return data;
     } catch (error: any) {
@@ -324,7 +326,9 @@ export function useTasks() {
           const actType = updates.status === "Completed" ? "task_completed" : "update_task";
           await logToStaffActivity(actType, user.email || "", user.id, `${actType === "task_completed" ? "Completed" : "Updated"} task: ${data.title}`, "task", data.id);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Staff activity log is non-critical — failure is acceptable
+      }
 
       return data;
     } catch (error: any) {
@@ -464,7 +468,7 @@ export function useTasks() {
             original_due_date: task.due_date,
           },
         });
-      } catch (e) { console.warn("Failed to log snooze to task activity:", e); }
+      } catch (e: any) { console.error('[useTasks/snoozeTask] Failed to log snooze to task_activity_log:', e?.message || e); }
 
       // Log to lead activity_log if task has lead_id
       try {
@@ -488,7 +492,7 @@ export function useTasks() {
             is_editable: false,
           });
         }
-      } catch (e) { console.warn("Failed to log snooze to lead activity:", e); }
+      } catch (e: any) { console.error('[useTasks/snoozeTask] Failed to log snooze to lead activity_log:', e?.message || e); }
 
       toast({ title: "Task snoozed" });
     } catch (error: any) {
@@ -541,7 +545,9 @@ export function useTasks() {
         if (user) {
           await logToStaffActivity("task_deleted", user.email || "", user.id, `Deleted task: ${taskToDelete?.title || id}`, "task", id);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Staff activity log is non-critical — failure is acceptable
+      }
     } catch (error: any) {
       toast({
         title: "Error deleting task",

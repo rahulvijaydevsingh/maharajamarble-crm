@@ -41,12 +41,32 @@ export function useDashboardStats() {
       const startLastMonth = startOfMonth(subMonths(now, 1));
       const endLastMonth = endOfMonth(subMonths(now, 1));
 
-      // Fetch leads
-      const { data: leads, error: leadsError } = await supabase
-        .from("leads")
-        .select("id, created_at, source, is_converted");
+      // Fetch data in parallel
+      const [
+        { data: leads, error: leadsError },
+        { data: tasks, error: tasksError },
+        { data: customers, error: customersError },
+        { data: reminders, error: remindersError },
+      ] = await Promise.all([
+        supabase
+          .from("leads")
+          .select("id, created_at, source, is_converted"),
+        supabase
+          .from("tasks")
+          .select("id, status, due_date"),
+        supabase
+          .from("customers")
+          .select("id, status, created_at"),
+        supabase
+          .from("reminders")
+          .select("id, is_dismissed, reminder_datetime")
+          .eq("is_dismissed", false),
+      ]);
       
       if (leadsError) throw leadsError;
+      if (tasksError) throw tasksError;
+      if (customersError) throw customersError;
+      if (remindersError) throw remindersError;
 
       const totalLeads = leads?.length || 0;
       const leadsThisMonth = leads?.filter(l => {
@@ -81,13 +101,6 @@ export function useDashboardStats() {
         .sort((a, b) => b.value - a.value)
         .slice(0, 5);
 
-      // Fetch tasks
-      const { data: tasks, error: tasksError } = await supabase
-        .from("tasks")
-        .select("id, status, due_date");
-      
-      if (tasksError) throw tasksError;
-
       const today = format(now, "yyyy-MM-dd");
       const pendingTasks = tasks?.filter(t => 
         t.status !== "Completed" && 
@@ -99,13 +112,6 @@ export function useDashboardStats() {
         isBefore(parseISO(t.due_date), now) && 
         t.due_date !== today
       ).length || 0;
-
-      // Fetch customers
-      const { data: customers, error: customersError } = await supabase
-        .from("customers")
-        .select("id, status, created_at");
-      
-      if (customersError) throw customersError;
 
       const activeCustomers = customers?.filter(c => c.status === "active").length || 0;
       
@@ -122,14 +128,6 @@ export function useDashboardStats() {
       const customersTrend = customersLastMonth > 0 
         ? Math.round(((customersThisMonth - customersLastMonth) / customersLastMonth) * 100)
         : customersThisMonth > 0 ? 100 : 0;
-
-      // Fetch reminders
-      const { data: reminders, error: remindersError } = await supabase
-        .from("reminders")
-        .select("id, is_dismissed, reminder_datetime")
-        .eq("is_dismissed", false);
-      
-      if (remindersError) throw remindersError;
 
       const upcomingReminders = reminders?.filter(r => 
         isAfter(parseISO(r.reminder_datetime), now) || 
