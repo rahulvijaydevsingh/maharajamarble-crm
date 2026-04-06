@@ -567,7 +567,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={templatesLoading ? "Loading templates..." : "Select a template"} />
                 </SelectTrigger>
-                <SelectContent className="z-[100]">
+<SelectContent>
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
