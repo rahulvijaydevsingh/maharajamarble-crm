@@ -63,8 +63,8 @@ Generated: 2025-05-14
 ## Area 5 — Mock Data in Production
 | File | Line / Function | Severity | Issue Summary |
 |------|----------------|----------|---------------|
-| src/constants/leadConstants.ts | 161 | WARN | `MOCK_PROFESSIONALS` present in production constant file. |
-| src/constants/leadConstants.ts | 196 | WARN | `MOCK_EXISTING_RECORDS` present in production constant file. |
+| src/constants/leadConstants.ts | 106 | WARN | `MOCK_PROFESSIONALS` present in production constant file. |
+| src/constants/leadConstants.ts | 150 | WARN | `MOCK_EXISTING_RECORDS` present in production constant file. |
 | src/constants/leadConstants.ts | 167-191 | WARN | Hardcoded phone numbers starting with 9876543 found in `MOCK_PROFESSIONALS`. |
 | src/constants/leadConstants.ts | 197-199 | WARN | Hardcoded phone numbers starting with 9876543 found in `MOCK_EXISTING_RECORDS`. |
 
@@ -77,9 +77,9 @@ Generated: 2025-05-14
 | File | Line / Function | Severity | Issue Summary |
 |------|----------------|----------|---------------|
 | supabase/functions/run-automations/index.ts | 148 / `resolveProfileByNameOrEmail` | INFO | Correct: dual lookup by `full_name` or `email` implemented. |
-| supabase/functions/run-automations/index.ts | 200 / `executeAction` | BLOCKER | Notification `user_id` set to `p.email` instead of UUID. |
-| supabase/functions/run-automations/index.ts | 632 / `Deno.serve` | WARN | Missing infinite loop protection: No check to see if automation was triggered by another automation. |
-| supabase/functions/run-automations/index.ts | 316 / `executeAction` | WARN | Template variable sanitization missing: `resolvedNote` uses raw `.replace()` without escaping. |
+| supabase/functions/run-automations/index.ts | 223 / `executeAction` | BLOCKER | Notification `user_id` set to `p.email` instead of UUID. |
+| supabase/functions/run-automations/index.ts | N/A | WARN | Missing infinite loop protection: No check to see if automation was triggered by another automation. |
+| supabase/functions/run-automations/index.ts | 365 / `executeAction` | WARN | Template variable sanitization missing: `resolvedNote` uses raw `.replace()` without escaping. |
 
 ## Area 8 — Component Complexity
 | File | Line / Function | Severity | Issue Summary |
