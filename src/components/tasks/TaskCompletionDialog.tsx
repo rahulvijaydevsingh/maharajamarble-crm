@@ -839,7 +839,7 @@ export function TaskCompletionDialog({
                       <SelectTrigger className="h-8 text-sm">
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
-                      <SelectContent className="z-[100] max-h-[200px]">
+<SelectContent className="max-h-[200px]">
                         <SelectItem value="" disabled>Business hours</SelectItem>
                         {BUSINESS_HOUR_SLOTS.filter((slot) => {
                           const datePart = customReminderAt
