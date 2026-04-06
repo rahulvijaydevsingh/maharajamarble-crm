@@ -806,7 +806,7 @@ export function TaskCompletionDialog({
                             : "Pick date"}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[100]" align="start">
+<PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
                           selected={customReminderAt ? new Date(customReminderAt) : undefined}
