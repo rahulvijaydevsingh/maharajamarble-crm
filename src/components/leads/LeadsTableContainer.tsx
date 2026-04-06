@@ -220,28 +220,31 @@ export function LeadsTableContainer({
     switch (columnKey) {
       case "name":
         return (
-          <div className="relative h-[40px] flex items-center font-medium min-w-[160px]">
-            <span className="absolute inset-0 flex items-center">{lead.name}</span>
-            <div className="absolute inset-0 flex items-center opacity-0 hover:opacity-100 bg-background/90 transition-opacity">
-              <span className="mr-2">{lead.name}</span>
-              <div className="flex items-center gap-1">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => handleViewLead(lead)}
-                >
-                  View
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => handleEditLeadClick(lead)}
-                >
-                  Edit
-                </Button>
-              </div>
+          <div className="group flex items-center gap-2 min-w-[160px] h-[40px]">
+            <span
+              className="font-medium truncate cursor-pointer hover:underline text-foreground"
+              onClick={() => handleViewLead(lead)}
+              title={lead.name}
+            >
+              {lead.name}
+            </span>
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={(e) => { e.stopPropagation(); handleViewLead(lead); }}
+              >
+                View
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={(e) => { e.stopPropagation(); handleEditLeadClick(lead); }}
+              >
+                Edit
+              </Button>
             </div>
           </div>
         );
