@@ -605,7 +605,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.nextAction && "border-destructive")}>
                   <SelectValue placeholder="Select next action" />
                 </SelectTrigger>
-                <SelectContent className="z-[100]">
+<SelectContent>
                   {nextActionOptions.map((a) => (
                     <SelectItem key={a.value} value={a.value} disabled={a.disabled}>{a.label}</SelectItem>
                   ))}
