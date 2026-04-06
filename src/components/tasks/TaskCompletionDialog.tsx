@@ -282,8 +282,8 @@ export function TaskCompletionDialog({
         metadata,
         notes: null,
       });
-    } catch (e) {
-      console.warn("Failed to log task activity:", e);
+    } catch (e: any) {
+      console.error('[TaskCompletionDialog/logTaskActivity] Failed to insert to task_activity_log:', e?.message || e);
     }
   };
 
@@ -303,8 +303,8 @@ export function TaskCompletionDialog({
         related_entity_type: "task",
         related_entity_id: taskId,
       });
-    } catch (e) {
-      console.warn("Failed to log lead activity:", e);
+    } catch (e: any) {
+      console.error('[TaskCompletionDialog/logLeadActivity] Failed to insert to activity_log:', e?.message || e);
     }
   };
 
@@ -405,7 +405,9 @@ export function TaskCompletionDialog({
           if (user) {
             await logToStaffActivity("task_rescheduled", user.email || "", user.id, `Rescheduled task: ${task.title} to ${nextDueDate}`, "task", task.id);
           }
-        } catch (_) {}
+        } catch (_) {
+          // Staff activity log is non-critical — failure is acceptable
+        }
       }
 
       // 4b) Follow-up: create NEW task
@@ -478,7 +480,7 @@ export function TaskCompletionDialog({
               is_manual: false,
               is_editable: false,
             });
-          } catch (e) { console.warn("Failed to log follow-up to lead activity:", e); }
+          } catch (e: any) { console.error('[TaskCompletionDialog/handleSubmit/follow_up] Failed to log follow-up creation to activity_log:', e?.message || e); }
         }
       }
 
@@ -498,7 +500,9 @@ export function TaskCompletionDialog({
             : `Recorded outcome for task: ${task.title} (${outcome})`;
           await logToStaffActivity(closeTask ? "task_closed" : "task_outcome_recorded", user.email || "", user.id, desc, "task", task.id);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Staff activity log is non-critical — failure is acceptable
+      }
 
       toast({
         title: closeTask ? "Task closed" : "Outcome saved",
