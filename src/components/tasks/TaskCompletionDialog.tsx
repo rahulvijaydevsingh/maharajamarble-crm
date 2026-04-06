@@ -533,7 +533,7 @@ export function TaskCompletionDialog({
   if (!task) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="z-[90]">
+<DialogContent className="z-[90]" overlayClassName="z-[90]">
           <DialogHeader>
             <DialogTitle>Complete Task</DialogTitle>
             <DialogDescription>No task selected.</DialogDescription>
