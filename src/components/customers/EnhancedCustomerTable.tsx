@@ -731,35 +731,33 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     switch (columnKey) {
       case "name":
         return (
-          <div className="relative h-[40px] flex items-center font-medium min-w-[160px]" onClick={(e) => e.stopPropagation()}>
-            <span className="absolute inset-0 flex items-center truncate pr-2">{customer.name}</span>
-            <div className="absolute inset-0 flex items-center opacity-0 hover:opacity-100 bg-background/90 transition-opacity">
-              <span 
-                className="mr-2 cursor-pointer hover:text-primary hover:underline truncate"
-                onClick={() => handleViewCustomer(customer)}
+          <div className="group flex items-center gap-2 min-w-[160px] h-[40px]" onClick={(e) => e.stopPropagation()}>
+            <span
+              className="font-medium truncate cursor-pointer hover:underline text-foreground"
+              onClick={() => handleViewCustomer(customer)}
+              title={customer.name}
+            >
+              {customer.name}
+            </span>
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={(e) => { e.stopPropagation(); handleViewCustomer(customer); }}
               >
-                {customer.name}
-              </span>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => handleViewCustomer(customer)}
+                View
+              </Button>
+              {canEdit("customers") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                  onClick={(e) => { e.stopPropagation(); handleEditCustomer(customer); }}
                 >
-                  View
+                  Edit
                 </Button>
-                {canEdit("customers") && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => handleEditCustomer(customer)}
-                  >
-                    Edit
-                  </Button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         );
