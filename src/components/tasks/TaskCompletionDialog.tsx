@@ -635,7 +635,7 @@ export function TaskCompletionDialog({
                         {nextDate ? format(nextDate, "PPP") : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 z-[100]" align="start">
+<PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
                         selected={nextDate}
