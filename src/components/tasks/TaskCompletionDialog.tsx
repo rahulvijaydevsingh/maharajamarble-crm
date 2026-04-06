@@ -587,7 +587,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.outcome && "border-destructive")}>
                   <SelectValue placeholder="Select outcome" />
                 </SelectTrigger>
-                <SelectContent className="z-[100]">
+<SelectContent>
                   {OUTCOME_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>
                   ))}
