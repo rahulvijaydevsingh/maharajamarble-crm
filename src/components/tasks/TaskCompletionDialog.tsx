@@ -533,7 +533,7 @@ export function TaskCompletionDialog({
   if (!task) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="z-[70]">
+        <DialogContent className="z-[90]">
           <DialogHeader>
             <DialogTitle>Complete Task</DialogTitle>
             <DialogDescription>No task selected.</DialogDescription>
@@ -548,7 +548,7 @@ export function TaskCompletionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto z-[70]">
+      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto z-[90]">
         <DialogHeader>
           <DialogTitle>{closeTask ? "Close Task" : "Record Outcome"}</DialogTitle>
           <DialogDescription>
@@ -567,7 +567,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={templatesLoading ? "Loading templates..." : "Select a template"} />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[100]">
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
@@ -587,7 +587,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.outcome && "border-destructive")}>
                   <SelectValue placeholder="Select outcome" />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[100]">
                   {OUTCOME_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>
                   ))}
@@ -605,7 +605,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.nextAction && "border-destructive")}>
                   <SelectValue placeholder="Select next action" />
                 </SelectTrigger>
-                <SelectContent className="z-[80]">
+                <SelectContent className="z-[100]">
                   {nextActionOptions.map((a) => (
                     <SelectItem key={a.value} value={a.value} disabled={a.disabled}>{a.label}</SelectItem>
                   ))}
@@ -635,7 +635,7 @@ export function TaskCompletionDialog({
                         {nextDate ? format(nextDate, "PPP") : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 z-[80]" align="start">
+                    <PopoverContent className="w-auto p-0 z-[100]" align="start">
                       <Calendar
                         mode="single"
                         selected={nextDate}
@@ -806,7 +806,7 @@ export function TaskCompletionDialog({
                             : "Pick date"}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[80]" align="start">
+                      <PopoverContent className="w-auto p-0 z-[100]" align="start">
                         <Calendar
                           mode="single"
                           selected={customReminderAt ? new Date(customReminderAt) : undefined}
@@ -839,7 +839,7 @@ export function TaskCompletionDialog({
                       <SelectTrigger className="h-8 text-sm">
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
-                      <SelectContent className="z-[80] max-h-[200px]">
+                      <SelectContent className="z-[100] max-h-[200px]">
                         <SelectItem value="" disabled>Business hours</SelectItem>
                         {BUSINESS_HOUR_SLOTS.filter((slot) => {
                           const datePart = customReminderAt
