@@ -16,6 +16,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -840,7 +841,9 @@ export function TaskCompletionDialog({
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
 <SelectContent className="max-h-[200px]">
-                        <SelectItem value="" disabled>Business hours</SelectItem>
+                        <SelectLabel className="text-xs text-muted-foreground px-2 py-1">
+                          Business hours
+                        </SelectLabel>
                         {BUSINESS_HOUR_SLOTS.filter((slot) => {
                           const datePart = customReminderAt
                             ? customReminderAt.split("T")[0]
