@@ -22,7 +22,7 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
+  AlertDialogContent className="z-[110]",
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -332,6 +332,8 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
       )}
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onTaskCreate={handleTaskCreate}
@@ -343,18 +345,16 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
             type: 'customer' as const,
           },
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100]"
       />
 
       {selectedTask && (
         <EditTaskDialog
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
           onSave={handleEditSave}
-          contentClassName="z-[100]"
-          overlayClassName="z-[100]"
         />
       )}
 
@@ -375,7 +375,7 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
-        </AlertDialogContent>
+        </AlertDialogContent className="z-[110]">
       </AlertDialog>
 
       <TaskCompletionDialog

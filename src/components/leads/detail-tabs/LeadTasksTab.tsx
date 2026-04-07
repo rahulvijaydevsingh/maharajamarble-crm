@@ -346,6 +346,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
       )}
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onTaskCreate={handleTaskCreate}
@@ -357,18 +359,16 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
             type: 'lead' as const,
           },
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100]"
       />
 
       {selectedTask && (
         <EditTaskDialog
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
           onSave={handleEditSave}
-          contentClassName="z-[100]"
-          overlayClassName="z-[100]"
         />
       )}
 

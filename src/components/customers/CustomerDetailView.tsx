@@ -512,8 +512,8 @@ export function CustomerDetailView({
           client_address: customer.address || undefined,
           client_type: 'customer' as const,
         }}
-      contentClassName="z-[100]"
-      overlayClassName="z-[100] bg-transparent"
+        contentClassName="z-[100]"
+        overlayClassName="z-[79] bg-transparent"
       />
 
       <AddReminderDialog
@@ -521,11 +521,13 @@ export function CustomerDetailView({
         onOpenChange={setAddReminderOpen}
         onSave={handleAddReminderSave}
         entityName={customer.name}
-      contentClassName="z-[100]"
-      overlayClassName="z-[100] bg-transparent"
+        contentClassName="z-[100]"
+        overlayClassName="z-[79] bg-transparent"
       />
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100] bg-transparent"
         open={addTaskOpen}
         onOpenChange={setAddTaskOpen}
         onTaskCreate={() => setAddTaskOpen(false)}
@@ -537,8 +539,6 @@ export function CustomerDetailView({
             type: 'customer' as const,
           },
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100] bg-transparent"
       />
     </>
   );

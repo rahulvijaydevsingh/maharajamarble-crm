@@ -579,6 +579,8 @@ export function LeadDetailView({
       />
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addTaskOpen}
         onOpenChange={setAddTaskOpen}
         onTaskCreate={() => {
@@ -592,8 +594,6 @@ export function LeadDetailView({
             type: 'lead' as const,
           },
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100]"
       />
 
       <MarkAsLostDialog

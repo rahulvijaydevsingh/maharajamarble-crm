@@ -73,14 +73,7 @@ interface EditTaskDialogProps {
   overlayClassName?: string;
 }
 
-export function EditTaskDialog({
-  open,
-  onOpenChange,
-  taskData,
-  onSave,
-  contentClassName,
-  overlayClassName,
-}: EditTaskDialogProps) {
+export function EditTaskDialog({ open, onOpenChange, taskData, onSave, contentClassName, overlayClassName }: EditTaskDialogProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const { updateTask, snoozeTask, toggleStar } = useTasks();
@@ -599,11 +592,7 @@ export function EditTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className={cn("max-w-2xl max-h-[90vh] overflow-y-auto z-[100]", contentClassName)}
-        hideOverlay={!!overlayClassName}
-        overlayClassName={overlayClassName}
-      >
+      <DialogContent className={cn("max-w-2xl max-h-[90vh] overflow-y-auto z-[100]", contentClassName)} overlayClassName={overlayClassName} hideOverlay={!overlayClassName}>
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">

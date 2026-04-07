@@ -514,6 +514,8 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
       )}
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onTaskCreate={async () => { setAddDialogOpen(false); await refetch(); }}
@@ -525,18 +527,16 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
             type: 'professional' as const,
           },
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100]"
       />
 
       {selectedTask && (
         <EditTaskDialog
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
           onSave={async () => { setEditDialogOpen(false); setSelectedTask(null); await refetch(); }}
-          contentClassName="z-[100]"
-          overlayClassName="z-[100]"
         />
       )}
 
