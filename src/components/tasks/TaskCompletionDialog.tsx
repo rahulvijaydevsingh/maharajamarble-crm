@@ -841,7 +841,7 @@ export function TaskCompletionDialog({
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
 <SelectContent className="max-h-[200px]">
-                        <SelectLabel className="text-xs text-muted-foreground px-2 py-1">
+                        <SelectLabel>
                           Business hours
                         </SelectLabel>
                         {BUSINESS_HOUR_SLOTS.filter((slot) => {
