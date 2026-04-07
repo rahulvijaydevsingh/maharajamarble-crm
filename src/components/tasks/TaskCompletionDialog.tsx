@@ -840,7 +840,8 @@ export function TaskCompletionDialog({
                       <SelectTrigger className="h-8 text-sm">
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
-<SelectContent className="max-h-[200px]">
+                    <SelectContent className="max-h-[200px]">
+                      <SelectGroup>
                         <SelectLabel>
                           Business hours
                         </SelectLabel>
@@ -855,7 +856,8 @@ export function TaskCompletionDialog({
                             {slot.label}
                           </SelectItem>
                         ))}
-                      </SelectContent>
+                      </SelectGroup>
+                    </SelectContent>
                     </Select>
                   </div>
 
