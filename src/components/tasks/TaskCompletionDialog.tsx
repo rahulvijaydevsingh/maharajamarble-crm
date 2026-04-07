@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectLabel,
   SelectTrigger,
@@ -841,10 +842,11 @@ export function TaskCompletionDialog({
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
 <SelectContent className="max-h-[200px]">
-                        <SelectLabel>
-                          Business hours
-                        </SelectLabel>
-                        {BUSINESS_HOUR_SLOTS.filter((slot) => {
+  <SelectGroup>
+  <SelectLabel>
+    Business hours
+  </SelectLabel>
+  {BUSINESS_HOUR_SLOTS.filter((slot) => {
                           const datePart = customReminderAt
                             ? customReminderAt.split("T")[0]
                             : format(new Date(), "yyyy-MM-dd");
@@ -855,7 +857,8 @@ export function TaskCompletionDialog({
                             {slot.label}
                           </SelectItem>
                         ))}
-                      </SelectContent>
+  </SelectGroup>
+      </SelectContent>
                     </Select>
                   </div>
 
