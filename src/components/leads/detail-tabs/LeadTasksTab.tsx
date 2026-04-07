@@ -357,6 +357,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
             type: 'lead' as const,
           },
         }}
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       {selectedTask && (
@@ -365,11 +367,13 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
           onSave={handleEditSave}
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
         />
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="z-[100]">
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>

@@ -343,6 +343,8 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
             type: 'customer' as const,
           },
         }}
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       {selectedTask && (
@@ -351,11 +353,13 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
           onSave={handleEditSave}
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
         />
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>

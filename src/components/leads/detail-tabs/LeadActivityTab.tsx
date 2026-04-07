@@ -310,7 +310,7 @@ export function LeadActivityTab({ lead, onSwitchToTasksTab, onSwitchToRemindersT
 
       {/* Edit Activity Dialog */}
       <Dialog open={!!activityToEdit} onOpenChange={(open) => { if (!open) setActivityToEdit(null); }}>
-        <DialogContent className="sm:max-w-[425px] z-[80]">
+        <DialogContent className="sm:max-w-[425px] z-[100]">
           <DialogHeader>
             <DialogTitle>Edit Activity</DialogTitle>
             <DialogDescription>Update the activity title and description.</DialogDescription>

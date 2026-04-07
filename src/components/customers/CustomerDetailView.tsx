@@ -310,7 +310,7 @@ export function CustomerDetailView({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[70]">
+        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90]">
           <VisuallyHidden>
             <DialogTitle>Edit Customer: {customer.name}</DialogTitle>
           </VisuallyHidden>
@@ -329,7 +329,7 @@ export function CustomerDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
           <VisuallyHidden>
             <DialogTitle>Customer Details: {customer.name}</DialogTitle>
           </VisuallyHidden>
@@ -376,7 +376,7 @@ export function CustomerDetailView({
                     <MoreHorizontal className="h-4 w-4 ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[80]">
+                <DropdownMenuContent align="end" className="z-[100]">
                   <DropdownMenuItem onClick={handleEditClick}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Customer
@@ -512,8 +512,8 @@ export function CustomerDetailView({
           client_address: customer.address || undefined,
           client_type: 'customer' as const,
         }}
-        contentClassName="z-[80]"
-        overlayClassName="z-[79] bg-transparent"
+      contentClassName="z-[100]"
+      overlayClassName="z-[100] bg-transparent"
       />
 
       <AddReminderDialog
@@ -521,8 +521,8 @@ export function CustomerDetailView({
         onOpenChange={setAddReminderOpen}
         onSave={handleAddReminderSave}
         entityName={customer.name}
-        contentClassName="z-[80]"
-        overlayClassName="z-[79] bg-transparent"
+      contentClassName="z-[100]"
+      overlayClassName="z-[100] bg-transparent"
       />
 
       <AddTaskDialog
@@ -537,6 +537,8 @@ export function CustomerDetailView({
             type: 'customer' as const,
           },
         }}
+        contentClassName="z-[100]"
+        overlayClassName="z-[100] bg-transparent"
       />
     </>
   );

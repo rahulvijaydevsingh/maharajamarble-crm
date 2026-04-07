@@ -535,7 +535,7 @@ export function TaskCompletionDialog({
   if (!task) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-<DialogContent className="z-[90]" overlayClassName="z-[90]">
+        <DialogContent className="z-[100]" overlayClassName="z-[100]">
           <DialogHeader>
             <DialogTitle>Complete Task</DialogTitle>
             <DialogDescription>No task selected.</DialogDescription>
@@ -550,7 +550,7 @@ export function TaskCompletionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-<DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto z-[90]" overlayClassName="z-[90]">
+      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto z-[100]" overlayClassName="z-[100]">
         <DialogHeader>
           <DialogTitle>{closeTask ? "Close Task" : "Record Outcome"}</DialogTitle>
           <DialogDescription>

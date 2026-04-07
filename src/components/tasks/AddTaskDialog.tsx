@@ -76,9 +76,21 @@ interface AddTaskDialogProps {
   bulkMode?: boolean;
   bulkLeadCount?: number;
   onBulkTaskSubmit?: (taskData: any, subtasks: Subtask[]) => void;
+  contentClassName?: string;
+  overlayClassName?: string;
 }
 
-export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData, bulkMode, bulkLeadCount, onBulkTaskSubmit }: AddTaskDialogProps) {
+export function AddTaskDialog({
+  open,
+  onOpenChange,
+  onTaskCreate,
+  prefilledData,
+  bulkMode,
+  bulkLeadCount,
+  onBulkTaskSubmit,
+  contentClassName,
+  overlayClassName,
+}: AddTaskDialogProps) {
   const { toast } = useToast();
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
@@ -368,7 +380,11 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]" hideOverlay>
+      <DialogContent
+        className={cn("sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]", contentClassName)}
+        hideOverlay={!!overlayClassName}
+        overlayClassName={overlayClassName}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {bulkMode ? `Create Tasks for ${bulkLeadCount} Leads` : "Add New Task"}

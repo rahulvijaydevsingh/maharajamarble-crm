@@ -525,6 +525,8 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
             type: 'professional' as const,
           },
         }}
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       {selectedTask && (
@@ -533,11 +535,13 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
           onSave={async () => { setEditDialogOpen(false); setSelectedTask(null); await refetch(); }}
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
         />
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="z-[100]">
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>
@@ -717,8 +721,8 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
         onOpenChange={setAddDialogOpen}
         onSave={handleAddReminder}
         entityName={professional.name || professional.firm_name || professional.phone}
-        contentClassName="z-[80]"
-        overlayClassName="z-[80]"
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
     </div>
   );
@@ -802,8 +806,8 @@ function ProfessionalQuotationsTab({ professional }: { professional: Professiona
           client_id: professional.id,
           client_type: 'customer',
         }}
-        contentClassName="z-[80]"
-        overlayClassName="z-[80]"
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
     </div>
   );
@@ -885,7 +889,7 @@ export function ProfessionalDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
+        <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
           <VisuallyHidden>
             <DialogTitle>Professional Details: {displayName}</DialogTitle>
           </VisuallyHidden>
@@ -931,7 +935,7 @@ export function ProfessionalDetailView({
                     <MoreHorizontal className="h-4 w-4 md:ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[80]">
+                <DropdownMenuContent align="end" className="z-[100]">
                   {onEdit && (
                     <DropdownMenuItem onClick={() => onEdit(localProfessional)}>
                       <Edit className="h-4 w-4 mr-2" />Edit Professional
