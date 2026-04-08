@@ -322,7 +322,7 @@ export function LeadDetailView({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[70]">
+        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90]">
           <VisuallyHidden>
             <DialogTitle>Edit Lead: {currentLead.name}</DialogTitle>
           </VisuallyHidden>
@@ -342,7 +342,7 @@ export function LeadDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[70]">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
           <VisuallyHidden>
             <DialogTitle>Lead Details: {currentLead.name}</DialogTitle>
           </VisuallyHidden>
@@ -404,7 +404,7 @@ export function LeadDetailView({
                     <MoreHorizontal className="h-4 w-4 ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[80]">
+                <DropdownMenuContent align="end" className="z-[100]">
                   <DropdownMenuItem onClick={handleEditClick}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Lead
@@ -565,8 +565,8 @@ export function LeadDetailView({
           client_id: currentLead.id,
           client_type: 'lead',
         }}
-        contentClassName="z-[80]"
-        overlayClassName="z-[80]"
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       <AddReminderDialog
@@ -574,11 +574,13 @@ export function LeadDetailView({
         onOpenChange={setAddReminderOpen}
         onSave={handleAddReminderSave}
         entityName={currentLead.name}
-        contentClassName="z-[80]"
-        overlayClassName="z-[80]"
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addTaskOpen}
         onOpenChange={setAddTaskOpen}
         onTaskCreate={() => {

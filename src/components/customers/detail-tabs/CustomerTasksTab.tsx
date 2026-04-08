@@ -332,6 +332,8 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
       )}
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onTaskCreate={handleTaskCreate}
@@ -347,6 +349,8 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
 
       {selectedTask && (
         <EditTaskDialog
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
@@ -355,7 +359,7 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>

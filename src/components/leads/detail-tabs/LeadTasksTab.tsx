@@ -346,6 +346,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
       )}
 
       <AddTaskDialog
+        contentClassName="z-[100]"
+        overlayClassName="z-[100]"
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onTaskCreate={handleTaskCreate}
@@ -361,6 +363,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
 
       {selectedTask && (
         <EditTaskDialog
+          contentClassName="z-[100]"
+          overlayClassName="z-[100]"
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           taskData={selectedTask}
@@ -369,7 +373,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="z-[100]">
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>
