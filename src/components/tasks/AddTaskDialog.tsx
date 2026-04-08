@@ -370,7 +370,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]", contentClassName)} overlayClassName={overlayClassName} hideOverlay={!overlayClassName}>
+      <DialogContent className={cn("sm:max-w-[700px] max-h-[90vh] overflow-y-auto z-[100]", contentClassName)} overlayClassName={overlayClassName} hideOverlay={!!overlayClassName}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {bulkMode ? `Create Tasks for ${bulkLeadCount} Leads` : "Add New Task"}

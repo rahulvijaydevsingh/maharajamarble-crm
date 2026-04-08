@@ -22,7 +22,7 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent className="z-[110]",
+  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -375,7 +375,7 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
-        </AlertDialogContent className="z-[110]">
+        </AlertDialogContent>
       </AlertDialog>
 
       <TaskCompletionDialog
