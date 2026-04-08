@@ -63,6 +63,7 @@ interface CustomerDetailViewProps {
   onDelete?: (id: string) => void;
   initialEditMode?: boolean;
   initialTab?: string;
+  contentClassName?: string;
 }
 
 export function CustomerDetailView({
@@ -74,6 +75,7 @@ export function CustomerDetailView({
   onDelete,
   initialEditMode = false,
   initialTab,
+  contentClassName,
 }: CustomerDetailViewProps) {
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(initialEditMode);
@@ -310,7 +312,7 @@ export function CustomerDetailView({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90]">
+        <DialogContent className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}>
           <VisuallyHidden>
             <DialogTitle>Edit Customer: {customer.name}</DialogTitle>
           </VisuallyHidden>
@@ -329,7 +331,7 @@ export function CustomerDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
+        <DialogContent className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}>
           <VisuallyHidden>
             <DialogTitle>Customer Details: {customer.name}</DialogTitle>
           </VisuallyHidden>
