@@ -226,20 +226,22 @@ export function LeadActivityTab({ lead, onSwitchToTasksTab, onSwitchToRemindersT
             )}
           </div>
         ) : (
-          <div className="relative">
-            <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
+          <div className="relative border-l border-border ml-[4px]">
 
             {Object.entries(groupedActivities).map(([groupName, groupActivities]) => (
-              <div key={groupName} className="space-y-6">
-                {dateGrouping !== 'all' && groupName !== 'All Activities' && (
-                  <div className="sticky top-0 z-10 bg-background py-2">
-                    <h4 className="text-sm font-semibold text-muted-foreground border-b pb-2">
+              <div key={groupName}>
+                {groupName !== 'All Activities' && (
+                  <div className="flex items-center gap-2 -ml-[5px] py-2">
+                    <div className="h-[11px] w-[11px] rounded-full bg-background border border-border shrink-0 flex items-center justify-center">
+                      <div className="h-[5px] w-[5px] rounded-full bg-muted-foreground" />
+                    </div>
+                    <span className="text-xs font-medium text-muted-foreground">
                       {groupName}
-                    </h4>
+                    </span>
                   </div>
                 )}
-                
-                <div className="space-y-6">
+
+                <div className="space-y-2 pl-4 pb-2">
                   {groupActivities.map((activity) => (
                     <ActivityLogItem
                       key={activity.id}
