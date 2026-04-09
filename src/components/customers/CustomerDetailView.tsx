@@ -64,6 +64,7 @@ interface CustomerDetailViewProps {
   initialEditMode?: boolean;
   initialTab?: string;
   contentClassName?: string;
+  overlayClassName?: string;
 }
 
 export function CustomerDetailView({
@@ -76,6 +77,7 @@ export function CustomerDetailView({
   initialEditMode = false,
   initialTab,
   contentClassName,
+  overlayClassName,
 }: CustomerDetailViewProps) {
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(initialEditMode);
@@ -312,7 +314,10 @@ export function CustomerDetailView({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}>
+        <DialogContent
+          className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}
+          overlayClassName={overlayClassName}
+        >
           <VisuallyHidden>
             <DialogTitle>Edit Customer: {customer.name}</DialogTitle>
           </VisuallyHidden>
@@ -331,7 +336,10 @@ export function CustomerDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}>
+        <DialogContent
+          className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}
+          overlayClassName={overlayClassName}
+        >
           <VisuallyHidden>
             <DialogTitle>Customer Details: {customer.name}</DialogTitle>
           </VisuallyHidden>

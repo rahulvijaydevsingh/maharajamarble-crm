@@ -685,6 +685,7 @@ export function TaskDetailView({
           if (!o) setSelectedLead(null);
         }}
         contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       <CustomerDetailView
@@ -695,6 +696,7 @@ export function TaskDetailView({
           if (!o) setSelectedCustomer(null);
         }}
         contentClassName="z-[100]"
+        overlayClassName="z-[100]"
       />
 
       {/* Chain navigation - open another task */}
