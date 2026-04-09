@@ -70,6 +70,8 @@ interface LeadDetailViewProps {
   initialTab?: string;
   highlightTaskId?: string | null;
   highlightReminderId?: string | null;
+  contentClassName?: string;
+  overlayClassName?: string;
 }
 
 const statusStyles: Record<string, { label: string; className: string }> = {
@@ -92,6 +94,8 @@ export function LeadDetailView({
   initialTab,
   highlightTaskId,
   highlightReminderId,
+  contentClassName,
+  overlayClassName,
 }: LeadDetailViewProps) {
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(false);
@@ -322,7 +326,10 @@ export function LeadDetailView({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90]">
+        <DialogContent
+          className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}
+          overlayClassName={overlayClassName}
+        >
           <VisuallyHidden>
             <DialogTitle>Edit Lead: {currentLead.name}</DialogTitle>
           </VisuallyHidden>
@@ -342,7 +349,10 @@ export function LeadDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
+        <DialogContent
+          className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}
+          overlayClassName={overlayClassName}
+        >
           <VisuallyHidden>
             <DialogTitle>Lead Details: {currentLead.name}</DialogTitle>
           </VisuallyHidden>
