@@ -263,7 +263,7 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!activityToDelete} onOpenChange={() => setActivityToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Activity Entry</AlertDialogTitle>
             <AlertDialogDescription>
