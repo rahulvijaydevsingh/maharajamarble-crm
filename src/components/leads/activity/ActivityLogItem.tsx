@@ -1,21 +1,17 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { 
-  Calendar, 
-  Clock,
   Edit, 
   Trash2,
   ExternalLink,
   CheckSquare,
-  Bell
+  Bell,
 } from "lucide-react";
 import { format } from "date-fns";
 import { 
-  getActivityIcon, 
   getActivityColors,
-  ACTIVITY_TYPE_LABELS
+  ACTIVITY_TYPE_LABELS,
 } from "@/constants/activityLogConstants";
 import { ActivityLogEntry } from "@/hooks/useActivityLog";
 import {
@@ -42,236 +38,245 @@ export function ActivityLogItem({
   onEdit, 
   onDelete,
   onViewTask,
-  onViewReminder
+  onViewReminder,
 }: ActivityLogItemProps) {
   const navigate = useNavigate();
   const { staffMembers } = useActiveStaff();
-  const Icon = getActivityIcon(activity.activity_type);
-  const colors = getActivityColors(activity.activity_type);
-  const typeLabel = ACTIVITY_TYPE_LABELS[activity.activity_type] || activity.title;
+  const typeLabel =
+    ACTIVITY_TYPE_LABELS[activity.activity_type] || activity.title;
 
-  const getUserInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  };
-
-  const isSystemActivity = activity.user_name === 'System' || !activity.user_id;
+  const isSystemActivity =
+    activity.user_name === "System" || !activity.user_id;
 
   const ts = new Date(activity.activity_timestamp);
-  const formattedDate = format(ts, "dd MMM yyyy");
-  const formattedTime = format(ts, "hh:mm a");
+  const formattedDateTime = format(ts, "dd MMM yyyy · hh:mm a");
 
-  const cardTone = (() => {
-    // Tone by category, using semantic tokens only
-    switch (activity.activity_category) {
-      case 'status_change':
-        return 'border-primary/20 bg-primary/5';
-      case 'task':
-        return 'border-secondary/40 bg-secondary/20';
-      case 'quotation':
-        return 'border-accent/40 bg-accent/20';
-      case 'communication':
-        return 'border-accent/40 bg-accent/20';
-      case 'attachment':
-        return 'border-border bg-muted/20';
-      case 'note':
-        return 'border-border bg-muted/20';
-      case 'reminder':
-        return 'border-border bg-muted/20';
-      case 'automation':
-        return 'border-accent/40 bg-accent/20';
-      case 'field_update':
-        return 'border-primary/20 bg-primary/5';
-      default:
-        return 'border-border bg-background';
-    }
-  })();
+  const displayName = isSystemActivity
+    ? "System"
+    : getStaffDisplayName(activity.user_name, staffMembers);
 
-  // Handle view related entity click
+  const taskId = activity.metadata?.task_id;
+  const reminderId = activity.metadata?.reminder_id;
+
   const handleViewRelatedEntity = () => {
     if (!activity.related_entity_type || !activity.related_entity_id) return;
-
-    if (activity.related_entity_type === 'task' && onViewTask) {
+    if (activity.related_entity_type === "task" && onViewTask) {
       onViewTask(activity.related_entity_id);
-    } else if (activity.related_entity_type === 'reminder' && onViewReminder) {
+    } else if (
+      activity.related_entity_type === "reminder" &&
+      onViewReminder
+    ) {
       onViewReminder(activity.related_entity_id);
-    } else if (activity.related_entity_type === 'lead') {
+    } else if (activity.related_entity_type === "lead") {
       navigate(`/leads?view=${activity.related_entity_id}`);
-    } else if (activity.related_entity_type === 'customer') {
+    } else if (activity.related_entity_type === "customer") {
       navigate(`/customers?view=${activity.related_entity_id}`);
-    } else if (activity.related_entity_type === 'professional') {
+    } else if (activity.related_entity_type === "professional") {
       navigate(`/professionals?view=${activity.related_entity_id}`);
-    } else if (activity.related_entity_type === 'quotation') {
+    } else if (activity.related_entity_type === "quotation") {
       navigate(`/quotations?view=${activity.related_entity_id}`);
     }
   };
 
-  // Get task/reminder info from metadata
-  const taskId = activity.metadata?.task_id;
-  const reminderId = activity.metadata?.reminder_id;
+  /* ── dot colour driven by category ── */
+  const dotColor = (() => {
+    switch (activity.activity_category) {
+      case "status_change":  return "bg-primary";
+      case "task":           return "bg-violet-500";
+      case "quotation":      return "bg-accent";
+      case "communication":  return "bg-blue-500";
+      case "attachment":     return "bg-muted-foreground";
+      case "note":           return "bg-amber-500";
+      case "reminder":       return "bg-muted-foreground";
+      case "automation":     return "bg-orange-500";
+      case "field_update":   return "bg-primary";
+      default:               return "bg-border";
+    }
+  })();
+
+  /* ── badge colour by category ── */
+  const badgeClass = (() => {
+    switch (activity.activity_category) {
+      case "status_change":  return "bg-primary/10 text-primary border-primary/20";
+      case "task":           return "bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-800";
+      case "quotation":      return "bg-accent/20 text-accent-foreground border-accent/30";
+      case "communication":  return "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800";
+      case "note":           return "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800";
+      case "automation":     return "bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800";
+      default:               return "bg-muted text-muted-foreground border-border";
+    }
+  })();
+
+  /* quick-action links that appear below the main row when present */
+  const hasQuickLinks =
+    (taskId && onViewTask) ||
+    (reminderId && onViewReminder) ||
+    (activity.related_entity_type &&
+      activity.related_entity_id &&
+      activity.related_entity_type !== "task" &&
+      activity.related_entity_type !== "reminder") ||
+    (activity.attachments && activity.attachments.length > 0);
 
   return (
-    <div className="relative group">
-      <div className={"relative flex gap-4"}>
-        {/* Icon */}
-        <div
-          className={
-            `relative z-10 flex h-10 w-10 items-center justify-center rounded-full ${colors.bg} ${colors.text} shrink-0 ring-1 ring-border`
-          }
-        >
-          <Icon className="h-5 w-5" />
-        </div>
+    /* outer wrapper — the dot sits here, the card is to the right */
+    <div className="relative flex items-start gap-3 group">
 
-        {/* Card */}
-        <div className={`flex-1 min-w-0 rounded-lg border p-4 ${cardTone}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              {/* Date/time */}
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>{formattedDate}</span>
-                <span className="text-muted-foreground/60">•</span>
-                <Clock className="h-3.5 w-3.5" />
-                <span>{formattedTime}</span>
-              </div>
+      {/* Timeline dot — pulled left to sit exactly on the container's left border line */}
+      <div
+        className={`mt-[14px] h-[9px] w-[9px] rounded-full shrink-0 ring-2 ring-background -ml-[20.5px] relative z-10 ${dotColor}`}
+      />
 
-              {/* Title */}
-              <div className="mt-1 flex items-center gap-2 flex-wrap">
-                <h4 className="font-medium text-sm truncate">{typeLabel}</h4>
-                {activity.is_manual && (
-                  <Badge variant="outline" className="text-[10px] py-0 px-1.5">
-                    Manual
-                  </Badge>
-                )}
-              </div>
+      {/* Card */}
+      <div
+        className={`
+          flex-1 min-w-0 rounded-lg border bg-card
+          transition-colors duration-150
+          hover:border-border/80
+        `}
+      >
+        {/* ── Main horizontal row ── */}
+        <div className="flex items-center gap-0 px-3 py-2.5 min-w-0">
 
-              {/* User row */}
-              <div className="mt-2 flex items-center gap-2 flex-wrap text-sm">
-                {!isSystemActivity ? (
-                  <>
-                    <Avatar className="h-5 w-5">
-                      <AvatarFallback className="text-[10px]">
-                        {getUserInitials(activity.user_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-muted-foreground">{getStaffDisplayName(activity.user_name, staffMembers)}</span>
-                  </>
-                ) : (
-                  <span className="text-sm text-muted-foreground">System</span>
-                )}
-              </div>
+          {/* Badge */}
+          <span
+            className={`
+              inline-flex items-center text-[11px] font-medium
+              px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0
+              ${badgeClass}
+            `}
+          >
+            {typeLabel}
+            {activity.is_manual && (
+              <span className="ml-1 opacity-60">(manual)</span>
+            )}
+          </span>
 
-              {/* Description */}
-              {activity.description && (
-                <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">
-                  {activity.description}
-                </p>
-              )}
+          {/* Vertical divider */}
+          <div className="mx-3 h-5 w-px bg-border shrink-0" />
 
-              {/* Status/field change chips */}
-              {activity.metadata?.old_value !== undefined && activity.metadata?.new_value !== undefined && (
-                <div className="mt-2 flex items-center gap-2 text-xs">
-                  <Badge variant="outline" className="max-w-[12rem] truncate">
+          {/* Title + description — takes all available space */}
+          <div className="flex-1 min-w-0">
+            <span className="text-[13px] font-medium text-foreground">
+              {activity.title}
+            </span>
+            {activity.description && (
+              <span className="text-[12px] text-muted-foreground ml-2 truncate">
+                {activity.description}
+              </span>
+            )}
+            {/* status change chips inline */}
+            {activity.metadata?.old_value !== undefined &&
+              activity.metadata?.new_value !== undefined && (
+                <span className="ml-2 inline-flex items-center gap-1 text-[11px]">
+                  <span className="border border-border rounded px-1.5 py-0.5 max-w-[8rem] truncate">
                     {String(activity.metadata.old_value)}
-                  </Badge>
+                  </span>
                   <span className="text-muted-foreground">→</span>
-                  <Badge variant="secondary" className="max-w-[12rem] truncate">
+                  <span className="bg-muted rounded px-1.5 py-0.5 max-w-[8rem] truncate">
                     {String(activity.metadata.new_value)}
-                  </Badge>
-                </div>
+                  </span>
+                </span>
               )}
+          </div>
 
-              {/* Attachments */}
-              {activity.attachments && activity.attachments.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {activity.attachments.map((attachment: any, index: number) => (
-                    <Badge key={index} variant="secondary" className="text-xs gap-1">
-                      📎 {attachment.name}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+          {/* Right side: user + datetime — hidden on hover if admin; actions shown instead */}
+          {/* We use a fixed-width container so the card never resizes on hover */}
+          <div className="ml-3 shrink-0 w-[200px] flex justify-end">
 
-              {/* Quick Action Links */}
-              <div className="mt-3 flex flex-wrap gap-3">
-                {taskId && onViewTask && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs text-primary"
-                    onClick={() => onViewTask(taskId)}
-                  >
-                    <CheckSquare className="h-3 w-3 mr-1" />
-                    View Task
-                  </Button>
-                )}
-
-                {reminderId && onViewReminder && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs text-primary"
-                    onClick={() => onViewReminder(reminderId)}
-                  >
-                    <Bell className="h-3 w-3 mr-1" />
-                    View Reminder
-                  </Button>
-                )}
-
-                {activity.related_entity_type &&
-                  activity.related_entity_id &&
-                  activity.related_entity_type !== 'task' &&
-                  activity.related_entity_type !== 'reminder' && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs text-primary"
-                      onClick={handleViewRelatedEntity}
-                    >
-                      View {activity.related_entity_type}
-                      <ExternalLink className="h-3 w-3 ml-1" />
-                    </Button>
-                  )}
-              </div>
+            {/* Default state: user + datetime */}
+            <div className={`flex flex-col items-end gap-0.5 ${isAdmin ? "group-hover:hidden" : ""}`}>
+              <span className="text-[12px] text-muted-foreground whitespace-nowrap">
+                {displayName}
+              </span>
+              <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
+                {formattedDateTime}
+              </span>
             </div>
 
-            {/* Admin actions */}
+            {/* Hover state: edit + delete buttons — same width, no layout shift */}
             {isAdmin && (
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="hidden group-hover:flex items-center gap-1.5">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 text-[11px] gap-1"
                       onClick={() => onEdit?.(activity)}
                     >
-                      <Edit className="h-3.5 w-3.5" />
+                      <Edit className="h-3 w-3" />
+                      Edit
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Edit Activity</TooltipContent>
+                  <TooltipContent>Edit activity</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 text-[11px] gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
                       onClick={() => onDelete?.(activity)}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3 w-3" />
+                      Delete
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Delete Activity</TooltipContent>
+                  <TooltipContent>Delete activity</TooltipContent>
                 </Tooltip>
               </div>
             )}
           </div>
         </div>
+
+        {/* ── Quick-link row (only renders when links exist) ── */}
+        {hasQuickLinks && (
+          <div className="flex flex-wrap gap-3 px-3 pb-2 -mt-0.5">
+            {taskId && onViewTask && (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-[11px] text-primary"
+                onClick={() => onViewTask(taskId)}
+              >
+                <CheckSquare className="h-3 w-3 mr-1" />
+                View Task
+              </Button>
+            )}
+            {reminderId && onViewReminder && (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-[11px] text-primary"
+                onClick={() => onViewReminder(reminderId)}
+              >
+                <Bell className="h-3 w-3 mr-1" />
+                View Reminder
+              </Button>
+            )}
+            {activity.related_entity_type &&
+              activity.related_entity_id &&
+              activity.related_entity_type !== "task" &&
+              activity.related_entity_type !== "reminder" && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-[11px] text-primary"
+                  onClick={handleViewRelatedEntity}
+                >
+                  View {activity.related_entity_type}
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Button>
+              )}
+            {/* attachments */}
+            {activity.attachments && activity.attachments.length > 0 &&
+              activity.attachments.map((attachment: any, index: number) => (
+                <Badge key={index} variant="secondary" className="text-[11px] gap-1">
+                  📎 {attachment.name}
+                </Badge>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );
