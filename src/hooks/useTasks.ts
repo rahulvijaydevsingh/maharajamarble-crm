@@ -330,6 +330,56 @@ export function useTasks() {
         // Staff activity log is non-critical — failure is acceptable
       }
 
+      // KIT ↔ Task sync: completion syncs back to linked kit_touch
+      if (updates.status === 'Completed') {
+        try {
+          const { data: linkedTouch } = await supabase
+            .from('kit_touches')
+            .select('id')
+            .eq('linked_task_id', id)
+            .maybeSingle();
+
+          if (linkedTouch) {
+            await supabase
+              .from('kit_touches')
+              .update({
+                status: 'completed',
+                outcome: (updates as any).completion_outcome || 'completed_via_task',
+                outcome_notes: (updates as any).completion_notes || null,
+                completed_at: new Date().toISOString(),
+              })
+              .eq('id', linkedTouch.id);
+          }
+        } catch (_kitErr) {
+          // KIT sync is non-critical — do not throw
+        }
+      }
+
+      // KIT ↔ Task sync: reschedule (due_date changed) syncs to linked kit_touch
+      if (updates.due_date && updates.status !== 'Completed') {
+        try {
+          const { data: linkedTouch } = await supabase
+            .from('kit_touches')
+            .select('id, reschedule_count')
+            .eq('linked_task_id', id)
+            .maybeSingle();
+
+          if (linkedTouch) {
+            await supabase
+              .from('kit_touches')
+              .update({
+                scheduled_date: updates.due_date,
+                status: 'pending',
+                snoozed_until: null,
+                reschedule_count: (linkedTouch.reschedule_count || 0) + 1,
+              })
+              .eq('id', linkedTouch.id);
+          }
+        } catch (_kitErr) {
+          // KIT sync is non-critical
+        }
+      }
+
       return data;
     } catch (error: any) {
       toast({

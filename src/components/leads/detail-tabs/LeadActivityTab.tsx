@@ -292,7 +292,7 @@ export function LeadActivityTab({ lead, onSwitchToTasksTab, onSwitchToRemindersT
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!activityToDelete} onOpenChange={() => setActivityToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Activity Entry</AlertDialogTitle>
             <AlertDialogDescription>
