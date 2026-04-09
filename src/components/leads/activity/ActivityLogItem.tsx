@@ -179,54 +179,52 @@ export function ActivityLogItem({
               )}
           </div>
 
-          {/* Right side: user + datetime — hidden on hover if admin; actions shown instead */}
-          {/* We use a fixed-width container so the card never resizes on hover */}
-          <div className="ml-3 shrink-0 w-[200px] flex justify-end">
-
-            {/* Default state: user + datetime */}
-            <div className={`flex flex-col items-end gap-0.5 ${isAdmin ? "group-hover:hidden" : ""}`}>
+            {/* Right side: fixed-width column, no layout shift */}
+            <div className="ml-3 shrink-0 w-[200px] flex flex-col items-end gap-1">
+              {/* Name + datetime — always visible, never hidden */}
               <span className="text-[12px] text-muted-foreground whitespace-nowrap">
                 {displayName}
               </span>
               <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
                 {formattedDateTime}
               </span>
-            </div>
 
-            {/* Hover state: edit + delete buttons — same width, no layout shift */}
-            {isAdmin && (
-              <div className="hidden group-hover:flex items-center gap-1.5">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2.5 text-[11px] gap-1"
-                      onClick={() => onEdit?.(activity)}
-                    >
-                      <Edit className="h-3 w-3" />
-                      Edit
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit activity</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2.5 text-[11px] gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => onDelete?.(activity)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Delete
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Delete activity</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
-          </div>
+              {/* Edit + Delete — sit BELOW name/datetime,
+                  invisible by default, fade in on hover.
+                  opacity-0 keeps them in flow so no height shift. */}
+              {isAdmin && (
+                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 mt-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-[11px] gap-1"
+                        onClick={() => onEdit?.(activity)}
+                      >
+                        <Edit className="h-3 w-3" />
+                        Edit
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit activity</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-[11px] gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => onDelete?.(activity)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Delete
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete activity</TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+            </div>
         </div>
 
         {/* ── Quick-link row (only renders when links exist) ── */}
