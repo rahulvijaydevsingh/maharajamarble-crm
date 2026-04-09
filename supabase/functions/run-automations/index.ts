@@ -165,7 +165,7 @@ async function resolveProfileByNameOrEmail(
 }
 
 async function executeAction(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   action: AutomationAction,
   newRow: Record<string, unknown>,
   entityType: string,
@@ -440,7 +440,7 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient<any>(supabaseUrl, serviceRoleKey);
 
     // Fetch active automation rules for this entity type
     const { data: rules, error: rulesError } = await supabase

@@ -61,17 +61,18 @@
  
          // Get entity name based on type
          let entityName = 'Unknown';
-         try {
-           const tableName = sub.entity_type === 'lead' ? 'leads' : sub.entity_type === 'customer' ? 'customers' : 'professionals';
-           const { data: entity } = await supabase
-             .from(tableName)
-             .select('name')
-             .eq('id', sub.entity_id)
-             .single();
-           if (entity) entityName = entity.name;
-         } catch {
-           // Entity may have been deleted
-         }
+        try {
+          const tableName = sub.entity_type === 'lead' ? 'leads' : sub.entity_type === 'customer' ? 'customers' : 'professionals';
+          const { data: entity } = await supabase
+            .from(tableName)
+            .select('name')
+            .eq('id', sub.entity_id)
+            .single();
+          if (!entity) continue; // entity deleted — skip this touch
+          entityName = entity.name;
+        } catch {
+          continue; // entity deleted — skip this touch
+        }
  
          processedTouches.push({
            ...touch,

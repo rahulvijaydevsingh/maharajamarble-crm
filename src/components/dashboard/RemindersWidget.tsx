@@ -42,13 +42,15 @@ export function RemindersWidget() {
   };
 
   const handleReminderClick = (reminder: any) => {
-    // Navigate to the lead or customer detail view with the reminders tab highlighted
-    if (reminder.entity_type === 'lead') {
+    const type = reminder.entity_type?.toLowerCase();
+    if (type === 'lead') {
       navigate(`/leads?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
-    } else if (reminder.entity_type === 'customer') {
+    } else if (type === 'customer') {
       navigate(`/customers?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
-    } else if (reminder.entity_type === 'task') {
+    } else if (type === 'task') {
       openTask(reminder.entity_id);
+    } else if (type === 'professional') {
+      navigate(`/professionals?view=${reminder.entity_id}`);
     }
   };
 

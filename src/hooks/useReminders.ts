@@ -35,7 +35,7 @@ export interface ReminderInsert {
   assigned_to: string;
 }
 
-export function useReminders(entityType?: string, entityId?: string) {
+export function useReminders(entityType?: string, entityId?: string, assignedTo?: string) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -51,6 +51,8 @@ export function useReminders(entityType?: string, entityId?: string) {
 
       if (entityType && entityId) {
         query = query.eq("entity_type", entityType).eq("entity_id", entityId);
+      } else if (assignedTo) {
+        query = query.eq("assigned_to", assignedTo);
       }
 
       const { data, error } = await query;
@@ -183,9 +185,11 @@ export function useReminders(entityType?: string, entityId?: string) {
         "postgres_changes",
         { event: "*", schema: "public", table: "reminders" },
         (payload) => {
-          if (payload.eventType === "INSERT") {
+        if (payload.eventType === "INSERT") {
             const newReminder = payload.new as Reminder;
-            if (!entityType || (newReminder.entity_type === entityType && newReminder.entity_id === entityId)) {
+            const matchesEntity = !entityType || (newReminder.entity_type === entityType && newReminder.entity_id === entityId);
+            const matchesAssignee = !assignedTo || newReminder.assigned_to === assignedTo;
+            if (matchesEntity && matchesAssignee) {
               setReminders((prev) => [...prev, newReminder].sort(
                 (a, b) => new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
               ));
@@ -208,7 +212,7 @@ export function useReminders(entityType?: string, entityId?: string) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [entityType, entityId]);
+  }, [entityType, entityId, assignedTo]);
 
   return {
     reminders,
