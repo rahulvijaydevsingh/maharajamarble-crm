@@ -175,6 +175,24 @@ export function useKitTouches(subscriptionId?: string) {
         .eq('id', touchId);
 
       if (error) throw error;
+
+      // Sync snooze to linked task
+      try {
+        const { data: updatedTouch } = await supabase
+          .from('kit_touches')
+          .select('linked_task_id')
+          .eq('id', touchId)
+          .single();
+
+        if (updatedTouch?.linked_task_id) {
+          await supabase
+            .from('tasks')
+            .update({ snoozed_until: snoozeUntil })
+            .eq('id', updatedTouch.linked_task_id);
+        }
+      } catch (_) {
+        // KIT→Task sync is non-critical
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
@@ -189,7 +207,7 @@ export function useKitTouches(subscriptionId?: string) {
   // Reschedule a touch
   const rescheduleMutation = useMutation({
     mutationFn: async ({ touchId, newDate }: { touchId: string; newDate: string }) => {
-      const { data: touch } = await supabase.from('kit_touches').select('scheduled_date, reschedule_count').eq('id', touchId).single();
+      const { data: touch } = await supabase.from('kit_touches').select('scheduled_date, reschedule_count, linked_task_id').eq('id', touchId).single();
 
       const { error } = await supabase
         .from('kit_touches')
@@ -202,6 +220,18 @@ export function useKitTouches(subscriptionId?: string) {
         .eq('id', touchId);
 
       if (error) throw error;
+
+      // Sync reschedule to linked task
+      try {
+        if (touch?.linked_task_id) {
+          await supabase
+            .from('tasks')
+            .update({ due_date: newDate, snoozed_until: null })
+            .eq('id', touch.linked_task_id);
+        }
+      } catch (_) {
+        // KIT→Task sync is non-critical
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
