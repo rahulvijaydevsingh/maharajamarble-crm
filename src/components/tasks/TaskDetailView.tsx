@@ -347,7 +347,7 @@ export function TaskDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[80]">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[95]">
           <VisuallyHidden>
             <DialogTitle>{task?.title || "Task Details"}</DialogTitle>
           </VisuallyHidden>
@@ -653,7 +653,7 @@ export function TaskDetailView({
           />
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogContent className="z-[100]">
+            <AlertDialogContent className="z-[110]">
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete task</AlertDialogTitle>
                 <AlertDialogDescription>
@@ -684,6 +684,7 @@ export function TaskDetailView({
           setLeadDetailOpen(o);
           if (!o) setSelectedLead(null);
         }}
+        contentClassName="z-[100]"
       />
 
       <CustomerDetailView
@@ -693,6 +694,7 @@ export function TaskDetailView({
           setCustomerDetailOpen(o);
           if (!o) setSelectedCustomer(null);
         }}
+        contentClassName="z-[100]"
       />
 
       {/* Chain navigation - open another task */}
