@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Check, Clock, AlertCircle, X, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,13 +26,20 @@ import { cn } from "@/lib/utils";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 
 export function NotificationDropdown() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
   const [open, setOpen] = useState(false);
   
-  // Reminders
-  const { reminders, dismissReminder, snoozeReminder } = useReminders();
+  // Force re-render every 60s so overdue badge count updates
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => forceUpdate(n => n + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Reminders — filtered by current user
+  const { reminders, dismissReminder, snoozeReminder } = useReminders(undefined, undefined, profile?.full_name);
   const activeReminders = reminders.filter(r => !r.is_dismissed).slice(0, 10);
   
   // Notifications - query by email since automation engine stores email as user_id
@@ -74,12 +81,15 @@ export function NotificationDropdown() {
 
   const handleReminderClick = (reminder: any) => {
     setOpen(false);
-    if (reminder.entity_type === 'lead') {
+    const type = reminder.entity_type?.toLowerCase();
+    if (type === 'lead') {
       navigate(`/leads?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
-    } else if (reminder.entity_type === 'customer') {
+    } else if (type === 'customer') {
       navigate(`/customers?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
-    } else if (reminder.entity_type === 'task') {
+    } else if (type === 'task') {
       openTask(reminder.entity_id);
+    } else if (type === 'professional') {
+      navigate(`/professionals?view=${reminder.entity_id}`);
     }
   };
 

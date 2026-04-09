@@ -104,6 +104,6 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("log-login error:", e);
-    return jsonResponse({ error: e.message }, { status: 500 });
+    return jsonResponse({ error: (e as Error).message }, { status: 500 });
   }
 });
