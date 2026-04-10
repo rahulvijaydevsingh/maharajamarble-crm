@@ -193,7 +193,7 @@ export function ActivityLogItem({
                   invisible by default, fade in on hover.
                   opacity-0 keeps them in flow so no height shift. */}
               {isAdmin && (
-                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 mt-0.5">
+                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 invisible group-hover:visible transition-opacity duration-150 mt-0.5">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
