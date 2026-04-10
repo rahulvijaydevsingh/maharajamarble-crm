@@ -99,7 +99,7 @@ export function ActivityLogFilters({
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuContent align="end" className="w-64 z-[95]">
             <DropdownMenuLabel>Filter by Activity Type</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {ACTIVITY_FILTER_CATEGORIES.map((category) => (
