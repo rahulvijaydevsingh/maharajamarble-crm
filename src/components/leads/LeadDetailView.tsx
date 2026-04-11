@@ -422,7 +422,7 @@ export function LeadDetailView({
                     <MoreHorizontal className="h-4 w-4 ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[100]">
+                <DropdownMenuContent align="end" className="z-[130]">
                   <DropdownMenuItem onClick={handleEditClick}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Lead

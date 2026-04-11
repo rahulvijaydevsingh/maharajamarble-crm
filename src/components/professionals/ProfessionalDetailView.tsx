@@ -944,7 +944,7 @@ export function ProfessionalDetailView({
                     <MoreHorizontal className="h-4 w-4 md:ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[100]">
+                <DropdownMenuContent align="end" className="z-[130]">
                   {onEdit && (
                     <DropdownMenuItem onClick={() => onEdit(localProfessional)}>
                       <Edit className="h-4 w-4 mr-2" />Edit Professional

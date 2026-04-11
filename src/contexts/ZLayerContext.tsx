@@ -9,7 +9,7 @@ import React, {
 
 const BASE_Z = 80;
 const STEP = 5;
-const MAX_DEPTH = 4;
+const MAX_DEPTH = 6;
 
 interface LayerEntry {
   panelId: string;
