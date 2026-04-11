@@ -76,7 +76,7 @@ export function useZLayer(
     return () => {
       ctx.releaseLayer(panelId);
     };
-  }, [panelId, open, ctx, type]);
+  }, [panelId, open, type]);
 
   if (!ctx || !panelId) return { zIndex: BASE_Z };
   return { zIndex: ctx.getZIndex(panelId) };
