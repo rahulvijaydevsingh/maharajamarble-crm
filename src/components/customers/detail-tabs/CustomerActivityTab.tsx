@@ -265,7 +265,7 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!activityToDelete} onOpenChange={() => setActivityToDelete(null)}>
-        <AlertDialogContent className="z-[110]">
+        <AlertDialogContent className="z-[130]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Activity Entry</AlertDialogTitle>
             <AlertDialogDescription>
@@ -283,7 +283,7 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
 
       {/* Edit Activity Dialog */}
       <Dialog open={!!activityToEdit} onOpenChange={(open) => { if (!open) setActivityToEdit(null); }}>
-        <DialogContent className="sm:max-w-[425px] z-[100]">
+        <DialogContent className="sm:max-w-[425px] z-[120]">
           <DialogHeader>
             <DialogTitle>Edit Activity</DialogTitle>
             <DialogDescription>Update the activity title and description.</DialogDescription>

@@ -36,6 +36,7 @@ import { TaskActivityTimeline } from "@/components/tasks/TaskActivityTimeline";
 import { LeadDetailView } from "@/components/leads/LeadDetailView";
 import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
+import { useZLayer } from '@/contexts/ZLayerContext';
 
 import { format } from "date-fns";
 import { CheckCircle2, ChevronDown, Copy, Pencil, Trash2, X } from "lucide-react";
@@ -72,6 +73,11 @@ export function TaskDetailView({
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { staffMembers } = useActiveStaff();
+  const { zIndex } = useZLayer(
+    taskId ? `task-${taskId}` : '',
+    'task_panel',
+    !!open
+  );
 
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
@@ -347,7 +353,10 @@ export function TaskDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[95]">
+        <DialogContent
+          className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
+          style={{ zIndex }}
+        >
           <VisuallyHidden>
             <DialogTitle>{task?.title || "Task Details"}</DialogTitle>
           </VisuallyHidden>
@@ -684,8 +693,6 @@ export function TaskDetailView({
           setLeadDetailOpen(o);
           if (!o) setSelectedLead(null);
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100]"
       />
 
       <CustomerDetailView
@@ -695,8 +702,6 @@ export function TaskDetailView({
           setCustomerDetailOpen(o);
           if (!o) setSelectedCustomer(null);
         }}
-        contentClassName="z-[100]"
-        overlayClassName="z-[100]"
       />
 
       {/* Chain navigation - open another task */}

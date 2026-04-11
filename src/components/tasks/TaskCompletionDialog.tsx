@@ -642,6 +642,7 @@ export function TaskCompletionDialog({
                         mode="single"
                         selected={nextDate}
                         onSelect={(d) => { setNextDate(d || undefined); setErrors((p) => ({ ...p, nextDate: undefined })); }}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                         initialFocus
                         className="pointer-events-auto"
                       />

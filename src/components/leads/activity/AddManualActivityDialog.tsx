@@ -168,7 +168,7 @@ export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] z-[120]">
         <DialogHeader>
           <DialogTitle>Add Activity Entry</DialogTitle>
           <DialogDescription>

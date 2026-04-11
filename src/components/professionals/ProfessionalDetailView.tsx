@@ -95,6 +95,7 @@ import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDialog';
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
+import { useZLayer } from '@/contexts/ZLayerContext';
 
 interface ProfessionalDetailViewProps {
   professional: Professional | null;
@@ -861,6 +862,11 @@ export function ProfessionalDetailView({
   onDelete,
   initialTab,
 }: ProfessionalDetailViewProps) {
+  const { zIndex } = useZLayer(
+    professional ? `professional-${professional.id}` : '',
+    'entity_panel',
+    !!open
+  );
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [liftedAddTaskOpen, setLiftedAddTaskOpen] = useState(false);
   const [liftedAddReminderOpen, setLiftedAddReminderOpen] = useState(false);
@@ -889,7 +895,10 @@ export function ProfessionalDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
+        <DialogContent
+          className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
+          style={{ zIndex }}
+        >
           <VisuallyHidden>
             <DialogTitle>Professional Details: {displayName}</DialogTitle>
           </VisuallyHidden>
@@ -935,7 +944,7 @@ export function ProfessionalDetailView({
                     <MoreHorizontal className="h-4 w-4 md:ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[100]">
+                <DropdownMenuContent align="end" className="z-[130]">
                   {onEdit && (
                     <DropdownMenuItem onClick={() => onEdit(localProfessional)}>
                       <Edit className="h-4 w-4 mr-2" />Edit Professional
