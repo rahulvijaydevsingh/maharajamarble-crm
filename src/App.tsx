@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { HRModuleProvider } from "@/contexts/HRModuleContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { TaskDetailModalProvider } from "@/contexts/TaskDetailModalContext";
+import { ZLayerProvider } from "@/contexts/ZLayerContext";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import Index from "./pages/Index";
 import Leads from "./pages/Leads";
@@ -42,6 +43,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <ZLayerProvider>
             <TaskDetailModalProvider>
               <Routes>
                 <Route path="/auth" element={<Auth />} />
@@ -71,6 +73,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </TaskDetailModalProvider>
+            </ZLayerProvider>
           </BrowserRouter>
         </TooltipProvider>
         </HRModuleProvider>

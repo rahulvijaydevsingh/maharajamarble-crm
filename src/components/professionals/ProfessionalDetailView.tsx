@@ -95,6 +95,7 @@ import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDialog';
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
+import { useZLayer } from "@/contexts/ZLayerContext";
 
 interface ProfessionalDetailViewProps {
   professional: Professional | null;
@@ -868,6 +869,12 @@ export function ProfessionalDetailView({
   const { professionals, updateProfessional } = useProfessionals();
   const [localProfessional, setLocalProfessional] = useState<Professional | null>(professional);
 
+  const { zIndex } = useZLayer(
+    professional ? `professional-${professional.id}` : '',
+    'entity_panel',
+    !!open
+  );
+
   useEffect(() => {
     const p = professionals.find(p => p.id === professional?.id) || professional;
     setLocalProfessional(p);
@@ -889,7 +896,7 @@ export function ProfessionalDetailView({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90]">
+        <DialogContent className="max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden" style={{ zIndex }}>
           <VisuallyHidden>
             <DialogTitle>Professional Details: {displayName}</DialogTitle>
           </VisuallyHidden>

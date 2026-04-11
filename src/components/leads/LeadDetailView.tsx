@@ -59,6 +59,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { MarkAsLostDialog } from './MarkAsLostDialog';
 import { PendingLostBanner } from './PendingLostBanner';
 import { supabase } from '@/integrations/supabase/client';
+import { useZLayer } from "@/contexts/ZLayerContext";
 
 interface LeadDetailViewProps {
   lead: Lead | null;
@@ -104,6 +105,12 @@ export function LeadDetailView({
   const { leads, updateLead, refetch } = useLeads();
   const { logActivity } = useLogActivity();
   const { toast } = useToast();
+
+  const { zIndex } = useZLayer(
+    lead ? `lead-${lead.id}` : '',
+    'entity_panel',
+    !!open
+  );
 
   // Reminder save handler for sibling dialog
   const { addReminder } = useReminders('lead', lead?.id || '');
@@ -327,8 +334,9 @@ export function LeadDetailView({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}
+          className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden ${contentClassName || ''}`}
           overlayClassName={overlayClassName}
+          style={{ zIndex }}
         >
           <VisuallyHidden>
             <DialogTitle>Edit Lead: {currentLead.name}</DialogTitle>
@@ -350,8 +358,9 @@ export function LeadDetailView({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}
+          className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden ${contentClassName || ''}`}
           overlayClassName={overlayClassName}
+          style={{ zIndex }}
         >
           <VisuallyHidden>
             <DialogTitle>Lead Details: {currentLead.name}</DialogTitle>
