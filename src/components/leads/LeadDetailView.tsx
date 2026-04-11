@@ -59,6 +59,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { MarkAsLostDialog } from './MarkAsLostDialog';
 import { PendingLostBanner } from './PendingLostBanner';
 import { supabase } from '@/integrations/supabase/client';
+import { useZLayer } from '@/contexts/ZLayerContext';
 
 interface LeadDetailViewProps {
   lead: Lead | null;
@@ -97,6 +98,11 @@ export function LeadDetailView({
   contentClassName,
   overlayClassName,
 }: LeadDetailViewProps) {
+  const { zIndex } = useZLayer(
+    lead ? `lead-${lead.id}` : '',
+    'entity_panel',
+    !!open
+  );
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(false);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(highlightTaskId || null);
@@ -327,8 +333,9 @@ export function LeadDetailView({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}
+          className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden"
           overlayClassName={overlayClassName}
+          style={{ zIndex }}
         >
           <VisuallyHidden>
             <DialogTitle>Edit Lead: {currentLead.name}</DialogTitle>
@@ -350,8 +357,9 @@ export function LeadDetailView({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}
+          className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
           overlayClassName={overlayClassName}
+          style={{ zIndex }}
         >
           <VisuallyHidden>
             <DialogTitle>Lead Details: {currentLead.name}</DialogTitle>

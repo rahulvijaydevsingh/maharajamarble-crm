@@ -53,6 +53,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { CUSTOMER_STATUSES } from '@/constants/customerConstants';
 import { useToast } from '@/hooks/use-toast';
 import { useReminders } from '@/hooks/useReminders';
+import { useZLayer } from '@/contexts/ZLayerContext';
 
 interface CustomerDetailViewProps {
   customer: Customer | null;
@@ -79,6 +80,11 @@ export function CustomerDetailView({
   contentClassName,
   overlayClassName,
 }: CustomerDetailViewProps) {
+  const { zIndex } = useZLayer(
+    customer ? `customer-${customer.id}` : '',
+    'entity_panel',
+    !!open
+  );
   const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [isEditing, setIsEditing] = useState(initialEditMode);
   const [convertingToLead, setConvertingToLead] = useState(false);
@@ -315,8 +321,9 @@ export function CustomerDetailView({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden z-[90] ${contentClassName || ''}`}
+          className="max-w-5xl h-[90vh] p-0 flex flex-col overflow-hidden"
           overlayClassName={overlayClassName}
+          style={{ zIndex }}
         >
           <VisuallyHidden>
             <DialogTitle>Edit Customer: {customer.name}</DialogTitle>
@@ -337,8 +344,9 @@ export function CustomerDetailView({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden z-[90] ${contentClassName || ''}`}
+          className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
           overlayClassName={overlayClassName}
+          style={{ zIndex }}
         >
           <VisuallyHidden>
             <DialogTitle>Customer Details: {customer.name}</DialogTitle>
