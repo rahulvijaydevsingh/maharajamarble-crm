@@ -87,7 +87,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
   const { logStaffAction } = useStaffActivityLog();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
 
   // Use control panel options, fallback to constants
   const TASK_TYPES = useMemo(() => {
@@ -129,12 +129,12 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
 
   // Set default assignee when staff loads
   useEffect(() => {
-    if (staffMembers.length > 0 && !formData.assignedTo) {
+    if (!authLoading && staffMembers.length > 0 && !formData.assignedTo) {
       const currentUserMember = staffMembers.find(m => m.id === user?.id);
-      const defaultAssignee = profile?.full_name || currentUserMember?.name || staffMembers[0].name;
+      const defaultAssignee = currentUserMember?.name || staffMembers[0].name;
       setFormData(prev => ({ ...prev, assignedTo: defaultAssignee }));
     }
-  }, [staffMembers, profile, user]);
+  }, [staffMembers, user, authLoading, formData.assignedTo]);
 
   const [relatedEntityType, setRelatedEntityType] = useState<string | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<RelatedEntity | null>(null);
