@@ -108,7 +108,7 @@ export function AddCalendarEventDialog({
       time: defaultTime,
       endTime: format(setHours(new Date(), (initialTime || 9) + 1), "HH:mm"),
       allDay: false,
-      assignedTo: user?.email || "",
+      assignedTo: profile?.full_name || user?.email || "",
       priority: "Medium",
       description: "",
       createTask: true,
