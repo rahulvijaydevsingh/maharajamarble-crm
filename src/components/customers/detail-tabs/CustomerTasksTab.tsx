@@ -359,7 +359,7 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
       )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="z-[110]">
+        <AlertDialogContent className="z-[130]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>
