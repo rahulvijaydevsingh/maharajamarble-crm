@@ -285,10 +285,24 @@ async function executeAction(
         };
 
         // Link to trigger entity if configured
-        if (config.link_to_trigger) {
+        if (config.link_to_trigger && entityId) {
           taskData.related_entity_type = entityType;
           taskData.related_entity_id = entityId;
           if (entityType === "leads") taskData.lead_id = entityId;
+
+          // Check for existing open task matching the same title and entity
+          const { data: existingTask } = await supabase
+            .from("tasks")
+            .select("id")
+            .eq("related_entity_id", entityId)
+            .eq("related_entity_type", entityType)
+            .eq("title", taskTitle)
+            .not("status", "in", '("Completed","Cancelled")')
+            .maybeSingle();
+
+          if (existingTask) {
+            return { status: "success", details: "Task already exists — skipped duplicate creation" };
+          }
         }
 
         const { data: task, error } = await supabase.from("tasks").insert(taskData).select("id").maybeSingle();
