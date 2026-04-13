@@ -278,7 +278,7 @@ async function executeAction(
           type: taskType,
           priority,
           assigned_to: assignedTo,
-          created_by: assignedTo,
+          created_by: "system",
           due_date: dueDate,
           status: "Pending",
           is_starred: config.is_starred || false,

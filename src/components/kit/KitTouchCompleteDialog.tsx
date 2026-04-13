@@ -90,7 +90,7 @@
    
    return (
        <Dialog open={open} onOpenChange={onOpenChange}>
-         <DialogContent className="max-w-md z-[100]" hideOverlay>
+         <DialogContent className="max-w-md z-[120]" hideOverlay>
          <DialogHeader>
            <DialogTitle>Log Touch Outcome</DialogTitle>
          </DialogHeader>
