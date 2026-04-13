@@ -220,7 +220,7 @@ async function executeAction(
         }
 
         const notifications = resolvedProfiles.map((p) => ({
-          user_id: p.email,
+          user_id: p.id,
           title,
           message,
           type: "automation",
