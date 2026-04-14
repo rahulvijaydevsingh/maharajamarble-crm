@@ -20,7 +20,7 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: userEmail ? `user_id=eq.${userEmail}` : `user_id=eq.${userId}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ["notifications", userId] });
@@ -51,12 +51,14 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
   return useQuery({
     queryKey: ["notifications", userId, userEmail, unreadOnly],
     queryFn: async () => {
-      // Query by email if available (notifications store email as user_id), fallback to UUID
-      const queryId = userEmail || userId;
+      // Query by both UUID and email to catch legacy + new notifications
+      const orFilter = userEmail
+        ? `user_id.eq.${userId},user_id.eq.${userEmail}`
+        : `user_id.eq.${userId}`;
       let query = supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", queryId)
+        .or(orFilter)
         .eq("is_dismissed", false)
         .order("created_at", { ascending: false })
         .limit(50);
@@ -77,14 +79,16 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
 
 // Get unread count
 export const useUnreadNotificationCount = (userId: string, userEmail?: string) => {
-  const queryId = userEmail || userId;
+  const orFilter = userEmail
+    ? `user_id.eq.${userId},user_id.eq.${userEmail}`
+    : `user_id.eq.${userId}`;
   return useQuery({
-    queryKey: ["notifications-unread-count", queryId],
+    queryKey: ["notifications-unread-count", userId, userEmail],
     queryFn: async () => {
       const { count, error } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", queryId)
+        .or(orFilter)
         .eq("is_read", false)
         .eq("is_dismissed", false);
       

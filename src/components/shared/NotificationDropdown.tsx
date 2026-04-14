@@ -40,7 +40,10 @@ export function NotificationDropdown() {
   
   // Reminders — filtered by current user
   const { reminders, dismissReminder, snoozeReminder } = useReminders(undefined, undefined, profile?.full_name);
-  const activeReminders = reminders.filter(r => !r.is_dismissed).slice(0, 10);
+  const now = new Date();
+  const activeReminders = reminders
+    .filter(r => !r.is_dismissed && (!r.is_snoozed || !r.snooze_until || new Date(r.snooze_until) <= now))
+    .slice(0, 10);
   
   // Notifications - query by email since automation engine stores email as user_id
   const userEmail = user?.email || "";

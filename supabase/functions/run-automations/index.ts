@@ -578,13 +578,20 @@ Deno.serve(async (req) => {
         created_by: "System",
       });
 
-      // Track execution for limits
+      // Track execution for limits — read then increment
+      const { data: existingTracking } = await supabase
+        .from("automation_rule_executions_tracking")
+        .select("execution_count")
+        .eq("rule_id", rule.id)
+        .eq("entity_id", entity_id)
+        .maybeSingle();
+
       await supabase.from("automation_rule_executions_tracking").upsert(
         {
           rule_id: rule.id,
           entity_id: entity_id,
           last_executed: new Date().toISOString(),
-          execution_count: 1,
+          execution_count: (existingTracking?.execution_count || 0) + 1,
         },
         { onConflict: "rule_id,entity_id" }
       );

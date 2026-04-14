@@ -299,6 +299,18 @@ export function LeadDetailView({
       title: 'Lead Marked Lost — Approved',
       description: `Lead approved as Lost. Reason: ${(currentLead as any).lost_reason || 'N/A'}`,
     });
+    // Delayed cleanup for async automation-created tasks
+    const leadId = currentLead.id;
+    setTimeout(async () => {
+      try {
+        await supabase.from('tasks')
+          .update({ status: 'Cancelled', completion_notes: 'Auto-cancelled — Lead marked Lost' } as any)
+          .eq('lead_id', leadId)
+          .eq('created_by', 'system')
+          .not('status', 'in', '("Completed","Cancelled")');
+      } catch (_) { /* non-critical */ }
+    }, 2000);
+
     await refetch();
     toast({ title: "Lead Marked as Lost", description: "Lead moved to archive." });
     onOpenChange(false);
