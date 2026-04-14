@@ -232,7 +232,7 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
                           Snooze
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="end" className="z-[130]">
                         <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addHours(new Date(), 1), '1 hour')}>
                           1 hour
                         </DropdownMenuItem>
@@ -260,7 +260,7 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="end" className="z-[130]">
                         <DropdownMenuItem 
                           className="text-destructive"
                           onClick={() => handleDeleteReminder(reminder)}

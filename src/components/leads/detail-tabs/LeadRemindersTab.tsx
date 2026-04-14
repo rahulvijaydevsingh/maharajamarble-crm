@@ -291,7 +291,7 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
                       Snooze
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="z-[130]">
                     <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addHours(new Date(), 1), '1 hour')}>
                       1 hour
                     </DropdownMenuItem>
@@ -312,7 +312,7 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="z-[130]">
                     <DropdownMenuItem 
                       className="text-destructive"
                       onClick={() => handleDeleteReminder(reminder)}
