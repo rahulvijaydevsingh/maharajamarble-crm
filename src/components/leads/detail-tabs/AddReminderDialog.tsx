@@ -25,7 +25,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format, addHours, addDays, setHours, setMinutes } from "date-fns";
+import { format, addHours, addDays, setHours, setMinutes, startOfToday } from "date-fns";
 import { CalendarIcon, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -232,7 +232,7 @@ export function AddReminderDialog({
                       mode="single"
                       selected={date}
                       onSelect={(d) => d && setDate(d)}
-                      disabled={(d) => d < new Date()}
+                      disabled={(d) => d < startOfToday()}
                       initialFocus
                       className="pointer-events-auto"
                     />
@@ -412,7 +412,7 @@ export function AddReminderDialog({
                               mode="single"
                               selected={endDate}
                               onSelect={setEndDate}
-                              disabled={(d) => d < new Date()}
+                              disabled={(d) => d < startOfToday()}
                               initialFocus
                               className="pointer-events-auto"
                             />
