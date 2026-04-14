@@ -43,10 +43,12 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   const fetchReminders = async () => {
     try {
       setLoading(true);
+      const nowISO = new Date().toISOString();
       let query = supabase
         .from("reminders")
         .select("*")
         .eq("is_dismissed", false)
+        .lte("reminder_datetime", nowISO)
         .order("reminder_datetime", { ascending: true });
 
       if (entityType && entityId) {
