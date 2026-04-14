@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface RelatedEntity {
   id: string;
@@ -86,6 +87,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
   const { logStaffAction } = useStaffActivityLog();
+  const { user, profile, loading: authLoading } = useAuth();
 
   // Use control panel options, fallback to constants
   const TASK_TYPES = useMemo(() => {
@@ -127,10 +129,12 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
 
   // Set default assignee when staff loads
   useEffect(() => {
-    if (staffMembers.length > 0 && !formData.assignedTo) {
-      setFormData(prev => ({ ...prev, assignedTo: staffMembers[0].email || staffMembers[0].id }));
+    if (!authLoading && staffMembers.length > 0 && !formData.assignedTo) {
+      const currentUserMember = staffMembers.find(m => m.id === user?.id);
+      const defaultAssignee = currentUserMember?.name || staffMembers[0].name;
+      setFormData(prev => ({ ...prev, assignedTo: defaultAssignee }));
     }
-  }, [staffMembers]);
+  }, [staffMembers, user, authLoading, formData.assignedTo]);
 
   const [relatedEntityType, setRelatedEntityType] = useState<string | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<RelatedEntity | null>(null);
@@ -474,7 +478,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
               </SelectTrigger>
               <SelectContent className="z-[200]">
                 {staffMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.email || member.id}>
+                  <SelectItem key={member.id} value={member.name}>
                     {(member as any)._display || member.name}
                   </SelectItem>
                 ))}
