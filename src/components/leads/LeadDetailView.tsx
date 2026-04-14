@@ -265,8 +265,8 @@ export function LeadDetailView({
       lost_reason: reasonKey,
       lost_reason_notes: notes || null,
       previous_status: currentLead.status,
+      pending_lost_since: new Date().toISOString(),
     } as any);
-    await supabase.from('leads').update({ pending_lost_since: new Date().toISOString() }).eq('id', currentLead.id);
     await logActivity({
       lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
       title: 'Lost Request Submitted',
