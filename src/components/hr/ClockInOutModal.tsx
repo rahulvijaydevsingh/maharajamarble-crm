@@ -30,6 +30,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cancelledRef = useRef(false);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -41,6 +42,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
   // Request permissions when modal opens
   useEffect(() => {
     if (!open) {
+      cancelledRef.current = true;
       setStep(1);
       setGpsStatus("requesting");
       setCameraStatus("requesting");
@@ -50,26 +52,61 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
       return;
     }
 
-    // Request GPS
+    cancelledRef.current = false;
+
+    const requestCamera = async () => {
+      if (cancelledRef.current) return;
+      setCameraStatus("requesting");
+      try {
+        // Try front camera first
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+        });
+        if (!cancelledRef.current) {
+          streamRef.current = stream;
+          setCameraStatus("acquired");
+        } else {
+          stream.getTracks().forEach((t) => t.stop());
+        }
+      } catch {
+        // Fallback: try any camera without facingMode constraint
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (!cancelledRef.current) {
+            streamRef.current = stream;
+            setCameraStatus("acquired");
+          } else {
+            stream.getTracks().forEach((t) => t.stop());
+          }
+        } catch {
+          if (!cancelledRef.current) setCameraStatus("denied");
+        }
+      }
+    };
+
+    // Request GPS first, then camera after GPS resolves
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGpsStatus("acquired");
+        if (!cancelledRef.current) {
+          setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setGpsStatus("acquired");
+          requestCamera();
+        }
       },
-      () => setGpsStatus("denied"),
+      () => {
+        if (!cancelledRef.current) {
+          setGpsStatus("denied");
+          // Still request camera even if GPS denied
+          requestCamera();
+        }
+      },
       { enableHighAccuracy: true, timeout: 15000 }
     );
 
-    // Request Camera
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "user" } })
-      .then((stream) => {
-        streamRef.current = stream;
-        setCameraStatus("acquired");
-      })
-      .catch(() => setCameraStatus("denied"));
-
-    return () => stopCamera();
+    return () => {
+      cancelledRef.current = true;
+      stopCamera();
+    };
   }, [open, stopCamera]);
 
   // Attach stream to video when entering step 2
@@ -78,6 +115,58 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
       videoRef.current.srcObject = streamRef.current;
     }
   }, [step]);
+
+  const retryPermissions = async () => {
+    setGpsStatus("requesting");
+    setCameraStatus("requesting");
+    setGpsPosition(null);
+    stopCamera();
+
+    const requestCamera = async () => {
+      if (cancelledRef.current) return;
+      setCameraStatus("requesting");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+        });
+        if (!cancelledRef.current) {
+          streamRef.current = stream;
+          setCameraStatus("acquired");
+        } else {
+          stream.getTracks().forEach((t) => t.stop());
+        }
+      } catch {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (!cancelledRef.current) {
+            streamRef.current = stream;
+            setCameraStatus("acquired");
+          } else {
+            stream.getTracks().forEach((t) => t.stop());
+          }
+        } catch {
+          if (!cancelledRef.current) setCameraStatus("denied");
+        }
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!cancelledRef.current) {
+          setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setGpsStatus("acquired");
+          requestCamera();
+        }
+      },
+      () => {
+        if (!cancelledRef.current) {
+          setGpsStatus("denied");
+          requestCamera();
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  };
 
   const handleContinue = () => setStep(2);
 
@@ -211,19 +300,25 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
             </div>
 
             {anyDenied && (
-              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm space-y-1">
+              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm space-y-2">
                 <p className="font-medium">Permission denied</p>
                 <p>
-                  Please enable {gpsStatus === "denied" ? "location" : ""}{gpsStatus === "denied" && cameraStatus === "denied" ? " and " : ""}{cameraStatus === "denied" ? "camera" : ""} access in your browser settings, then reopen this dialog.
+                  Please allow{gpsStatus === "denied" ? " location" : ""}
+                  {gpsStatus === "denied" && cameraStatus === "denied" ? " and" : ""}
+                  {cameraStatus === "denied" ? " camera" : ""} access, then tap Retry below.
                 </p>
-                <a
-                  href="https://support.google.com/chrome/answer/114662"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline text-xs"
+                <p className="text-xs text-muted-foreground">
+                  On mobile: tap the lock/info icon in your browser address bar → Site settings → enable permissions.
+                  On desktop: click the camera/location icon in the address bar.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-1"
+                  onClick={retryPermissions}
                 >
-                  How to enable permissions →
-                </a>
+                  Retry Permissions
+                </Button>
               </div>
             )}
 
