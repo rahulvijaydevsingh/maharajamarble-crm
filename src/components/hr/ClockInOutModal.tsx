@@ -23,8 +23,13 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
   const [step, setStep] = useState<1 | 2>(1);
   const [gpsStatus, setGpsStatus] = useState<PermissionStatus>("requesting");
   const [cameraStatus, setCameraStatus] = useState<PermissionStatus>("requesting");
-  const [gpsPosition, setGpsPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsPosition, setGpsPosition] = useState<{
+    lat: number;
+    lng: number;
+    accuracy?: number;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,6 +44,80 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
     }
   }, []);
 
+  const requestCamera = async () => {
+    if (cancelledRef.current) return;
+    setCameraStatus("requesting");
+    try {
+      // Try front camera first
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+      });
+      if (!cancelledRef.current) {
+        streamRef.current = stream;
+        setCameraStatus("acquired");
+        if (import.meta.env.DEV) {
+          console.log('[ClockInOut] Camera acquired');
+        }
+      } else {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    } catch (err) {
+      // Fallback: try any camera without facingMode constraint
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (!cancelledRef.current) {
+          streamRef.current = stream;
+          setCameraStatus("acquired");
+          if (import.meta.env.DEV) {
+            console.log('[ClockInOut] Camera acquired (fallback)');
+          }
+        } else {
+          stream.getTracks().forEach((t) => t.stop());
+        }
+      } catch (err2) {
+        if (!cancelledRef.current) {
+          setCameraStatus("denied");
+          if (import.meta.env.DEV) {
+            console.warn('[ClockInOut] Camera denied');
+          }
+        }
+      }
+    }
+  };
+
+  const requestGps = async () => {
+    if (cancelledRef.current) return;
+    setGpsStatus("requesting");
+    return new Promise<void>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!cancelledRef.current) {
+            const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+            setGpsPosition({ lat, lng, accuracy });
+            setGpsStatus("acquired");
+
+            if (import.meta.env.DEV) {
+              const sLat = Math.round(lat * 1000) / 1000;
+              const sLng = Math.round(lng * 1000) / 1000;
+              console.log('[ClockInOut] GPS acquired:', { lat: sLat, lng: sLng, accuracy });
+            }
+          }
+          resolve();
+        },
+        (err) => {
+          if (!cancelledRef.current) {
+            setGpsStatus("denied");
+            if (import.meta.env.DEV) {
+              console.warn('[ClockInOut] GPS denied:', err.message);
+            }
+          }
+          resolve();
+        },
+        { enableHighAccuracy: true, timeout: 15000 }
+      );
+    });
+  };
+
   // Request permissions when modal opens
   useEffect(() => {
     if (!open) {
@@ -48,60 +127,20 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
       setCameraStatus("requesting");
       setGpsPosition(null);
       setError(null);
+      setRetrying(false);
       stopCamera();
       return;
     }
 
     cancelledRef.current = false;
 
-    const requestCamera = async () => {
-      if (cancelledRef.current) return;
-      setCameraStatus("requesting");
-      try {
-        // Try front camera first
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-        });
-        if (!cancelledRef.current) {
-          streamRef.current = stream;
-          setCameraStatus("acquired");
-        } else {
-          stream.getTracks().forEach((t) => t.stop());
-        }
-      } catch {
-        // Fallback: try any camera without facingMode constraint
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (!cancelledRef.current) {
-            streamRef.current = stream;
-            setCameraStatus("acquired");
-          } else {
-            stream.getTracks().forEach((t) => t.stop());
-          }
-        } catch {
-          if (!cancelledRef.current) setCameraStatus("denied");
-        }
-      }
+    // Start request flow: GPS then Camera
+    const startFlow = async () => {
+      await requestGps();
+      await requestCamera();
     };
 
-    // Request GPS first, then camera after GPS resolves
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (!cancelledRef.current) {
-          setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          setGpsStatus("acquired");
-          requestCamera();
-        }
-      },
-      () => {
-        if (!cancelledRef.current) {
-          setGpsStatus("denied");
-          // Still request camera even if GPS denied
-          requestCamera();
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
+    startFlow();
 
     return () => {
       cancelledRef.current = true;
@@ -117,55 +156,13 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
   }, [step]);
 
   const retryPermissions = async () => {
-    setGpsStatus("requesting");
-    setCameraStatus("requesting");
+    setRetrying(true);
     setGpsPosition(null);
     stopCamera();
 
-    const requestCamera = async () => {
-      if (cancelledRef.current) return;
-      setCameraStatus("requesting");
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-        });
-        if (!cancelledRef.current) {
-          streamRef.current = stream;
-          setCameraStatus("acquired");
-        } else {
-          stream.getTracks().forEach((t) => t.stop());
-        }
-      } catch {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (!cancelledRef.current) {
-            streamRef.current = stream;
-            setCameraStatus("acquired");
-          } else {
-            stream.getTracks().forEach((t) => t.stop());
-          }
-        } catch {
-          if (!cancelledRef.current) setCameraStatus("denied");
-        }
-      }
-    };
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (!cancelledRef.current) {
-          setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          setGpsStatus("acquired");
-          requestCamera();
-        }
-      },
-      () => {
-        if (!cancelledRef.current) {
-          setGpsStatus("denied");
-          requestCamera();
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
+    await requestGps();
+    await requestCamera();
+    setRetrying(false);
   };
 
   const handleContinue = () => setStep(2);
@@ -291,6 +288,13 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
                 <StatusIcon status={gpsStatus} />
                 <span className="text-xs text-muted-foreground">{statusLabel(gpsStatus)}</span>
               </div>
+
+              {gpsStatus === "acquired" && gpsPosition && (
+                <p className="text-xs text-muted-foreground ml-8">
+                  GPS accuracy: ±{Math.round(gpsPosition.accuracy || 0)}m
+                </p>
+              )}
+
               <div className="flex items-center gap-3 p-3 rounded-lg border">
                 <Camera className="h-5 w-5 text-primary" />
                 <span className="flex-1 text-sm font-medium">Camera</span>
@@ -298,6 +302,38 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
                 <span className="text-xs text-muted-foreground">{statusLabel(cameraStatus)}</span>
               </div>
             </div>
+
+            {gpsStatus !== "requesting" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-1 text-xs"
+                onClick={async () => {
+                  try {
+                    const pos = await new Promise<GeolocationPosition>((res, rej) =>
+                      navigator.geolocation.getCurrentPosition(res, rej, {
+                        enableHighAccuracy: true,
+                        timeout: 10000
+                      })
+                    );
+                    // Log sanitized coords for debugging
+                    const lat = Math.round(pos.coords.latitude * 1000) / 1000;
+                    const lng = Math.round(pos.coords.longitude * 1000) / 1000;
+                    const accuracy = pos.coords.accuracy;
+
+                    if (import.meta.env.DEV) {
+                      console.log('[ClockInOut] GPS test OK:', { lat, lng, accuracy });
+                    }
+                    toast.info(`GPS working ✓: ${lat.toFixed(3)}, ${lng.toFixed(3)}${accuracy ? ` ±${Math.round(accuracy)}m` : ''}`);
+                  } catch (e: any) {
+                    console.warn('[ClockInOut] GPS test failed:', e.message);
+                    toast.error('GPS failed: ' + e.message);
+                  }
+                }}
+              >
+                Test GPS
+              </Button>
+            )}
 
             {anyDenied && (
               <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm space-y-2">
@@ -307,16 +343,19 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
                   {gpsStatus === "denied" && cameraStatus === "denied" ? " and" : ""}
                   {cameraStatus === "denied" ? " camera" : ""} access, then tap Retry below.
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  On mobile: tap the lock/info icon in your browser address bar → Site settings → enable permissions.
-                  On desktop: click the camera/location icon in the address bar.
-                </p>
+                <div className="text-xs text-muted-foreground">
+                  {/Android|iPhone|iPad/i.test(navigator.userAgent)
+                    ? "Tap the lock icon in your address bar → Site settings → enable Location and Camera."
+                    : "Click the camera/location icon in the address bar → Allow."}
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full mt-1"
                   onClick={retryPermissions}
+                  disabled={retrying || gpsStatus === "requesting" || cameraStatus === "requesting"}
                 >
+                  {retrying ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
                   Retry Permissions
                 </Button>
               </div>
@@ -348,6 +387,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3 text-green-500" />
               Location acquired
+              {gpsPosition?.accuracy && ` (±${Math.round(gpsPosition.accuracy)}m)`}
             </div>
 
             {error && (
