@@ -44,7 +44,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
     }
   }, []);
 
-  const requestCamera = async () => {
+  const requestCamera = useCallback(async () => {
     if (cancelledRef.current) return;
     setCameraStatus("requesting");
     try {
@@ -83,9 +83,9 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
         }
       }
     }
-  };
+  }, [setCameraStatus]);
 
-  const requestGps = async () => {
+  const requestGps = useCallback(async () => {
     if (cancelledRef.current) return;
     setGpsStatus("requesting");
     return new Promise<void>((resolve) => {
@@ -116,7 +116,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
         { enableHighAccuracy: true, timeout: 15000 }
       );
     });
-  };
+  }, [setGpsStatus, setGpsPosition]);
 
   // Request permissions when modal opens
   useEffect(() => {
@@ -146,7 +146,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
       cancelledRef.current = true;
       stopCamera();
     };
-  }, [open, stopCamera]);
+  }, [open, stopCamera, requestGps, requestCamera]);
 
   // Attach stream to video when entering step 2
   useEffect(() => {
