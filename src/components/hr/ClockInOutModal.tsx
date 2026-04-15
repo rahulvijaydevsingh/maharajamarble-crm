@@ -6,9 +6,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, MapPin, Camera, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, MapPin, Camera, CheckCircle2, XCircle, AlertTriangle, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+// Detect environment once at module level
+const ENV = {
+  isInIframe: (() => {
+    try {
+      return window.self !== window.top;
+    } catch (e) {
+      return true;
+    }
+  })(),
+  isSecureContext: window.isSecureContext,
+  hasMediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+};
+
+const DIRECT_APP_URL = import.meta.env.VITE_APP_URL || "https://maharajamarble-crm.vercel.app";
 
 interface ClockInOutModalProps {
   open: boolean;
@@ -27,6 +42,9 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [cameraBlockReason, setCameraBlockReason] = useState<string | null>(null);
+  const [gpsBlockReason, setGpsBlockReason] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,6 +57,30 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
     }
   }, []);
 
+  const getCameraBlockReason = (err?: any) => {
+    if (ENV.isInIframe) {
+      return "Camera blocked by iframe embedding. Open the app directly to clock in.";
+    }
+    if (!ENV.isSecureContext) {
+      return "Camera requires a secure (HTTPS) connection. Please check your URL.";
+    }
+    if (!ENV.hasMediaDevices) {
+      return "Camera API not supported or blocked by browser policy.";
+    }
+
+    if (err) {
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        return "Camera permission was denied. Please allow access in your browser settings.";
+      }
+      if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        return "No camera was found on this device.";
+      }
+      return `Camera error: ${err.message || "Unknown error"}`;
+    }
+
+    return null;
+  };
+
   // Request permissions when modal opens
   useEffect(() => {
     if (!open) {
@@ -48,6 +90,8 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
       setCameraStatus("requesting");
       setGpsPosition(null);
       setError(null);
+      setCameraBlockReason(null);
+      setGpsBlockReason(null);
       stopCamera();
       return;
     }
@@ -56,7 +100,16 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
 
     const requestCamera = async () => {
       if (cancelledRef.current) return;
+
       setCameraStatus("requesting");
+
+      // Guard before calling getUserMedia
+      if (!ENV.isSecureContext || !ENV.hasMediaDevices) {
+        setCameraStatus("denied");
+        setCameraBlockReason(getCameraBlockReason());
+        return;
+      }
+
       try {
         // Try front camera first
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -68,7 +121,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
         } else {
           stream.getTracks().forEach((t) => t.stop());
         }
-      } catch {
+      } catch (err) {
         // Fallback: try any camera without facingMode constraint
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -78,8 +131,11 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
           } else {
             stream.getTracks().forEach((t) => t.stop());
           }
-        } catch {
-          if (!cancelledRef.current) setCameraStatus("denied");
+        } catch (fallbackErr) {
+          if (!cancelledRef.current) {
+            setCameraStatus("denied");
+            setCameraBlockReason(getCameraBlockReason(fallbackErr));
+          }
         }
       }
     };
@@ -93,9 +149,14 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
           requestCamera();
         }
       },
-      () => {
+      (err) => {
         if (!cancelledRef.current) {
           setGpsStatus("denied");
+          if (ENV.isInIframe) {
+            setGpsBlockReason("Location blocked by iframe embedding. Open the app directly to clock in.");
+          } else {
+            setGpsBlockReason("Location permission denied. Please enable it in your browser settings and refresh the page.");
+          }
           // Still request camera even if GPS denied
           requestCamera();
         }
@@ -120,11 +181,22 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
     setGpsStatus("requesting");
     setCameraStatus("requesting");
     setGpsPosition(null);
+    setCameraBlockReason(null);
+    setGpsBlockReason(null);
     stopCamera();
 
     const requestCamera = async () => {
       if (cancelledRef.current) return;
+
       setCameraStatus("requesting");
+
+      // Guard before calling getUserMedia
+      if (!ENV.isSecureContext || !ENV.hasMediaDevices) {
+        setCameraStatus("denied");
+        setCameraBlockReason(getCameraBlockReason());
+        return;
+      }
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user" },
@@ -135,7 +207,7 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
         } else {
           stream.getTracks().forEach((t) => t.stop());
         }
-      } catch {
+      } catch (err) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           if (!cancelledRef.current) {
@@ -144,8 +216,11 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
           } else {
             stream.getTracks().forEach((t) => t.stop());
           }
-        } catch {
-          if (!cancelledRef.current) setCameraStatus("denied");
+        } catch (fallbackErr) {
+          if (!cancelledRef.current) {
+            setCameraStatus("denied");
+            setCameraBlockReason(getCameraBlockReason(fallbackErr));
+          }
         }
       }
     };
@@ -158,9 +233,14 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
           requestCamera();
         }
       },
-      () => {
+      (err) => {
         if (!cancelledRef.current) {
           setGpsStatus("denied");
+          if (ENV.isInIframe) {
+            setGpsBlockReason("Location blocked by iframe embedding. Open the app directly to clock in.");
+          } else {
+            setGpsBlockReason("Location permission denied. Please enable it in your browser settings and refresh the page.");
+          }
           requestCamera();
         }
       },
@@ -241,15 +321,18 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
     } catch (err: any) {
       console.error("Capture error:", err);
       setError(err.message || "Something went wrong. Please try again.");
-      // Re-acquire camera for retry
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-        });
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      } catch {
-        // Camera re-acquire failed
+
+      // Guard before re-acquiring camera
+      if (ENV.isSecureContext && ENV.hasMediaDevices) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+          });
+          streamRef.current = stream;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        } catch {
+          // Camera re-acquire failed
+        }
       }
     } finally {
       setSubmitting(false);
@@ -289,7 +372,14 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
                 <MapPin className="h-5 w-5 text-primary" />
                 <span className="flex-1 text-sm font-medium">GPS Location</span>
                 <StatusIcon status={gpsStatus} />
-                <span className="text-xs text-muted-foreground">{statusLabel(gpsStatus)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {statusLabel(gpsStatus)}
+                  {gpsPosition && (
+                    <span className="ml-1 opacity-70">
+                      ({gpsPosition.lat.toFixed(3)}, {gpsPosition.lng.toFixed(3)})
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-lg border">
                 <Camera className="h-5 w-5 text-primary" />
@@ -300,25 +390,52 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
             </div>
 
             {anyDenied && (
-              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm space-y-2">
+              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm space-y-3">
                 <p className="font-medium">Permission denied</p>
-                <p>
-                  Please allow{gpsStatus === "denied" ? " location" : ""}
-                  {gpsStatus === "denied" && cameraStatus === "denied" ? " and" : ""}
-                  {cameraStatus === "denied" ? " camera" : ""} access, then tap Retry below.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  On mobile: tap the lock/info icon in your browser address bar → Site settings → enable permissions.
-                  On desktop: click the camera/location icon in the address bar.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full mt-1"
-                  onClick={retryPermissions}
-                >
-                  Retry Permissions
-                </Button>
+
+                {ENV.isInIframe ? (
+                  <>
+                    <p>
+                      Camera and location access are blocked when the app is embedded.
+                      Please open the app directly to clock in.
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="w-full mt-2 bg-background"
+                      onClick={() => window.open(DIRECT_APP_URL, "_blank")}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open App Directly
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      Please allow{gpsStatus === "denied" ? " location" : ""}
+                      {gpsStatus === "denied" && cameraStatus === "denied" ? " and" : ""}
+                      {cameraStatus === "denied" ? " camera" : ""} access, then tap Retry below.
+                    </p>
+
+                    {(cameraBlockReason || gpsBlockReason) && (
+                      <p className="text-xs font-normal opacity-90 italic">
+                        {cameraBlockReason || gpsBlockReason}
+                      </p>
+                    )}
+
+                    <p className="text-xs text-muted-foreground">
+                      On mobile: tap the lock/info icon in your browser address bar → Site settings → enable permissions.
+                      On desktop: click the camera/location icon in the address bar.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-1 bg-background"
+                      onClick={retryPermissions}
+                    >
+                      Retry Permissions
+                    </Button>
+                  </>
+                )}
               </div>
             )}
 
