@@ -93,9 +93,12 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
 
       // Add to local state if in entity-tab mode OR if it's already due
       if ((entityType && entityId) || isDue) {
-        setReminders((prev) => [...prev, newReminder].sort(
-          (a, b) => new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
-        ));
+        setReminders((prev) => {
+          if (prev.some((r) => r.id === newReminder.id)) return prev;
+          return [...prev, newReminder].sort((a, b) =>
+            a.reminder_datetime.localeCompare(b.reminder_datetime)
+          );
+        });
       }
 
       toast({ title: "Reminder created" });
@@ -207,9 +210,12 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
             const shouldAdd = (entityType && entityId) || isDue;
 
             if (matchesEntity && matchesAssignee && shouldAdd) {
-              setReminders((prev) => [...prev, newReminder].sort(
-                (a, b) => new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
-              ));
+              setReminders((prev) => {
+                if (prev.some((r) => r.id === newReminder.id)) return prev;
+                return [...prev, newReminder].sort((a, b) =>
+                  a.reminder_datetime.localeCompare(b.reminder_datetime)
+                );
+              });
             }
           } else if (payload.eventType === "UPDATE") {
             setReminders((prev) =>
