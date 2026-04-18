@@ -48,8 +48,12 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
         .from("reminders")
         .select("*")
         .eq("is_dismissed", false)
-        .lte("reminder_datetime", nowISO)
         .order("reminder_datetime", { ascending: true });
+
+      // Only filter by datetime if we're NOT in entity-specific tab mode
+      if (!entityType || !entityId) {
+        query = query.lte("reminder_datetime", nowISO);
+      }
 
       if (entityType && entityId) {
         query = query.eq("entity_type", entityType).eq("entity_id", entityId);
@@ -83,9 +87,20 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
         .single();
 
       if (error) throw error;
-      setReminders((prev) => [...prev, data as Reminder].sort(
-        (a, b) => new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
-      ));
+
+      const newReminder = data as Reminder;
+      const isDue = new Date(newReminder.reminder_datetime) <= new Date();
+
+      // Add to local state if in entity-tab mode OR if it's already due
+      if ((entityType && entityId) || isDue) {
+        setReminders((prev) => {
+          if (prev.some((r) => r.id === newReminder.id)) return prev;
+          return [...prev, newReminder].sort((a, b) =>
+            a.reminder_datetime.localeCompare(b.reminder_datetime)
+          );
+        });
+      }
+
       toast({ title: "Reminder created" });
       // Log to staff activity
       try {
@@ -191,10 +206,16 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
             const newReminder = payload.new as Reminder;
             const matchesEntity = !entityType || (newReminder.entity_type === entityType && newReminder.entity_id === entityId);
             const matchesAssignee = !assignedTo || newReminder.assigned_to === assignedTo;
-            if (matchesEntity && matchesAssignee) {
-              setReminders((prev) => [...prev, newReminder].sort(
-                (a, b) => new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
-              ));
+            const isDue = new Date(newReminder.reminder_datetime) <= new Date();
+            const shouldAdd = (entityType && entityId) || isDue;
+
+            if (matchesEntity && matchesAssignee && shouldAdd) {
+              setReminders((prev) => {
+                if (prev.some((r) => r.id === newReminder.id)) return prev;
+                return [...prev, newReminder].sort((a, b) =>
+                  a.reminder_datetime.localeCompare(b.reminder_datetime)
+                );
+              });
             }
           } else if (payload.eventType === "UPDATE") {
             setReminders((prev) =>
