@@ -518,17 +518,20 @@ Deno.serve(async (req) => {
 
       console.log(`[Automation] Rule "${rule.rule_name}" MATCHED! Executing actions...`);
 
-      // Check execution limits
+      // Check execution limits — atomic lock via INSERT (avoids race condition for "8 times" bug)
       if (rule.execution_limit === "once_per_record") {
-        const { data: existing } = await supabase
+        const { error: lockError } = await supabase
           .from("automation_rule_executions_tracking")
-          .select("id")
-          .eq("rule_id", rule.id)
-          .eq("entity_id", entity_id)
-          .maybeSingle();
+          .insert({
+            rule_id: rule.id,
+            entity_id: entity_id,
+            last_executed: new Date().toISOString(),
+            execution_count: 1,
+          });
 
-        if (existing) {
-          console.log(`[Automation] Rule "${rule.rule_name}" already executed for this record`);
+        // Unique constraint violation = already executed for this record — skip
+        if (lockError && (lockError as any).code === "23505") {
+          console.log(`[Automation] Rule "${rule.rule_name}" already executed for this record (lock held)`);
           results.push({ rule_id: rule.id, rule_name: rule.rule_name, matched: true, actions_run: 0 });
           continue;
         }
@@ -578,23 +581,25 @@ Deno.serve(async (req) => {
         created_by: "System",
       });
 
-      // Track execution for limits — read then increment
-      const { data: existingTracking } = await supabase
-        .from("automation_rule_executions_tracking")
-        .select("execution_count")
-        .eq("rule_id", rule.id)
-        .eq("entity_id", entity_id)
-        .maybeSingle();
+      // For non-once_per_record limits, increment execution_count via UPDATE/UPSERT
+      if (rule.execution_limit !== "once_per_record") {
+        const { data: existingTracking } = await supabase
+          .from("automation_rule_executions_tracking")
+          .select("execution_count")
+          .eq("rule_id", rule.id)
+          .eq("entity_id", entity_id)
+          .maybeSingle();
 
-      await supabase.from("automation_rule_executions_tracking").upsert(
-        {
-          rule_id: rule.id,
-          entity_id: entity_id,
-          last_executed: new Date().toISOString(),
-          execution_count: (existingTracking?.execution_count || 0) + 1,
-        },
-        { onConflict: "rule_id,entity_id" }
-      );
+        await supabase.from("automation_rule_executions_tracking").upsert(
+          {
+            rule_id: rule.id,
+            entity_id: entity_id,
+            last_executed: new Date().toISOString(),
+            execution_count: (existingTracking?.execution_count || 0) + 1,
+          },
+          { onConflict: "rule_id,entity_id" }
+        );
+      }
 
       // Update last_triggered on rule
       await supabase.from("automation_rules").update({ last_triggered: new Date().toISOString() }).eq("id", rule.id);
