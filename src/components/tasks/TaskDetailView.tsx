@@ -37,6 +37,10 @@ import { LeadDetailView } from "@/components/leads/LeadDetailView";
 import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 import { useZLayer } from '@/contexts/ZLayerContext';
+import { useReminders } from "@/hooks/useReminders";
+import { AddReminderDialog } from "@/components/leads/detail-tabs/AddReminderDialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Bell, Plus } from "lucide-react";
 
 import { format } from "date-fns";
 import { CheckCircle2, ChevronDown, Copy, Pencil, Trash2, X } from "lucide-react";
@@ -86,6 +90,40 @@ export function TaskDetailView({
   const [editOpen, setEditOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [addReminderOpen, setAddReminderOpen] = useState(false);
+  const [savingReminder, setSavingReminder] = useState(false);
+
+  // Reminders for this task
+  const { reminders: taskReminders, addReminder: addTaskReminder, dismissReminder: dismissTaskReminder, deleteReminder: deleteTaskReminder } = useReminders('task', taskId || undefined);
+
+  const handleAddTaskReminderSave = async (data: {
+    title: string;
+    description: string;
+    reminder_datetime: string;
+    is_recurring: boolean;
+    recurrence_pattern: string | null;
+    recurrence_end_date: string | null;
+    assigned_to: string;
+  }) => {
+    if (!task || savingReminder) return;
+    setSavingReminder(true);
+    try {
+      await addTaskReminder({
+        title: data.title,
+        description: data.description,
+        reminder_datetime: data.reminder_datetime,
+        is_recurring: data.is_recurring,
+        recurrence_pattern: data.recurrence_pattern as "daily" | "weekly" | "monthly" | "yearly" | null,
+        recurrence_end_date: data.recurrence_end_date,
+        entity_type: 'task',
+        entity_id: task.id,
+        assigned_to: data.assigned_to,
+      });
+      setAddReminderOpen(false);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
 
   // Parent task & follow-up children
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
@@ -625,6 +663,47 @@ export function TaskDetailView({
                   )}
 
                   <EntityAttachmentsTab entityType="task" entityId={task.id} title="Attachments" />
+
+                  {/* Reminders */}
+                  <Card>
+                    <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+                      <CardTitle className="flex items-center gap-2">
+                        <Bell className="h-4 w-4" /> Reminders
+                      </CardTitle>
+                      <Button size="sm" variant="outline" onClick={() => setAddReminderOpen(true)}>
+                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Reminder
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {taskReminders.length === 0 ? (
+                        <div className="text-sm text-muted-foreground py-4 text-center">No reminders for this task.</div>
+                      ) : (
+                        taskReminders.map((r) => (
+                          <div key={r.id} className="flex items-start justify-between gap-3 border rounded-md p-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-sm">{r.title}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {format(new Date(r.reminder_datetime), "dd MMM yyyy, HH:mm")} • {r.assigned_to}
+                              </div>
+                              {r.is_snoozed && (
+                                <Badge variant="outline" className="mt-1 text-xs">Snoozed</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => dismissTaskReminder(r.id)}>
+                                Dismiss
+                              </Button>
+                              {canEditTask && (
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => deleteTaskReminder(r.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
 
                 <div className="space-y-6">
@@ -659,6 +738,13 @@ export function TaskDetailView({
             task={task}
             updateTask={updateTask}
             addTask={addTask}
+          />
+
+          <AddReminderDialog
+            open={addReminderOpen}
+            onOpenChange={setAddReminderOpen}
+            onSave={handleAddTaskReminderSave}
+            entityName={task.title}
           />
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

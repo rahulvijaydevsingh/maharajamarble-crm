@@ -1,5 +1,5 @@
 
-// Material Interests - Specific inventory categories
+// Material Interests - Unified inventory categories
 export const MATERIAL_INTERESTS = [
   { value: "italian_marble", label: "Italian Marble" },
   { value: "granite_south", label: "Granite (South)" },
@@ -11,18 +11,27 @@ export const MATERIAL_INTERESTS = [
   { value: "engineered_marble", label: "Engineered Marble" },
   { value: "cladding_stone", label: "Cladding Stone" },
   { value: "wooden_flooring", label: "Wooden Flooring" },
+  { value: "marble_flooring", label: "Marble Flooring" },
+  { value: "kitchen_countertops", label: "Kitchen Countertops" },
+  { value: "granite_stairs", label: "Granite Stairs" },
+  { value: "bathroom_tiles", label: "Bathroom Tiles" },
+  { value: "wall_cladding", label: "Wall Cladding" },
+  { value: "custom_design", label: "Custom Design" },
 ];
 
 // Legacy export for backward compatibility
 export const MATERIALS = MATERIAL_INTERESTS.map(m => m.label);
 
-// Lead Sources with smart date logic
+// Unified Lead Sources (8 canonical values)
 export const LEAD_SOURCES = [
-  { value: "walk_in", label: "Walk-in", autoFollowUpHours: 48 },
-  { value: "field_visit", label: "Field Visit", autoFollowUpHours: 4 },
-  { value: "cold_call", label: "Cold Call", autoFollowUpHours: 24 },
-  { value: "online_enquiry", label: "Online Enquiry", autoFollowUpHours: 24 },
-  { value: "professional_referral", label: "Professional Referral", autoFollowUpHours: 24 },
+  { value: "Walk-in", label: "Walk-in", autoFollowUpHours: 48 },
+  { value: "Referral", label: "Referral", autoFollowUpHours: 24 },
+  { value: "Instagram", label: "Instagram", autoFollowUpHours: 24 },
+  { value: "Facebook", label: "Facebook", autoFollowUpHours: 24 },
+  { value: "Google", label: "Google", autoFollowUpHours: 24 },
+  { value: "JustDial", label: "JustDial", autoFollowUpHours: 24 },
+  { value: "Architect/Designer", label: "Architect/Designer", autoFollowUpHours: 24 },
+  { value: "Other", label: "Other", autoFollowUpHours: 24 },
 ];
 
 // Construction Stages with urgency levels

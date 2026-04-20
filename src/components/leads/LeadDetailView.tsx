@@ -290,26 +290,29 @@ export function LeadDetailView({
       cooling_off_due_date: coolingDate,
     }).eq('id', currentLead.id);
     
-    // Cancel all open tasks on this lead
-    await supabase.from('tasks').update({ status: 'Completed', completion_notes: 'Cancelled — Lead marked Lost' } as any)
-      .eq('lead_id', currentLead.id).not('status', 'eq', 'Completed');
+    const leadId = currentLead.id;
+
+    // First pass — cancel all existing open tasks immediately
+    await supabase.from('tasks')
+      .update({ status: 'Cancelled', completion_notes: 'Cancelled — Lead marked Lost' } as any)
+      .eq('lead_id', leadId)
+      .not('status', 'in', '("Completed","Cancelled")');
     
     await logActivity({
       lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
       title: 'Lead Marked Lost — Approved',
       description: `Lead approved as Lost. Reason: ${(currentLead as any).lost_reason || 'N/A'}`,
     });
-    // Delayed cleanup for async automation-created tasks
-    const leadId = currentLead.id;
-    setTimeout(async () => {
-      try {
-        await supabase.from('tasks')
-          .update({ status: 'Cancelled', completion_notes: 'Auto-cancelled — Lead marked Lost' } as any)
-          .eq('lead_id', leadId)
-          .eq('created_by', 'system')
-          .not('status', 'in', '("Completed","Cancelled")');
-      } catch (_) { /* non-critical */ }
-    }, 2000);
+
+    // Short wait, then second pass to catch any automation-created tasks that arrived async
+    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      await supabase.from('tasks')
+        .update({ status: 'Cancelled', completion_notes: 'Auto-cancelled — Lead marked Lost' } as any)
+        .eq('lead_id', leadId)
+        .eq('created_by', 'system')
+        .not('status', 'in', '("Completed","Cancelled")');
+    } catch (_) { /* non-critical */ }
 
     await refetch();
     toast({ title: "Lead Marked as Lost", description: "Lead moved to archive." });
@@ -318,7 +321,7 @@ export function LeadDetailView({
 
   const handleRejectLost = async () => {
     if (!currentLead) return;
-    const prevStatus = (currentLead as any).previous_status || 'in-progress';
+    const prevStatus = (currentLead as any).previous_status || 'new';
     await supabase.from('leads').update({
       status: prevStatus,
       pending_lost_since: null,
