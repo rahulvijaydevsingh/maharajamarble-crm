@@ -90,6 +90,40 @@ export function TaskDetailView({
   const [editOpen, setEditOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [addReminderOpen, setAddReminderOpen] = useState(false);
+  const [savingReminder, setSavingReminder] = useState(false);
+
+  // Reminders for this task
+  const { reminders: taskReminders, addReminder: addTaskReminder, dismissReminder: dismissTaskReminder, deleteReminder: deleteTaskReminder } = useReminders('task', taskId || undefined);
+
+  const handleAddTaskReminderSave = async (data: {
+    title: string;
+    description: string;
+    reminder_datetime: string;
+    is_recurring: boolean;
+    recurrence_pattern: string | null;
+    recurrence_end_date: string | null;
+    assigned_to: string;
+  }) => {
+    if (!task || savingReminder) return;
+    setSavingReminder(true);
+    try {
+      await addTaskReminder({
+        title: data.title,
+        description: data.description,
+        reminder_datetime: data.reminder_datetime,
+        is_recurring: data.is_recurring,
+        recurrence_pattern: data.recurrence_pattern as "daily" | "weekly" | "monthly" | "yearly" | null,
+        recurrence_end_date: data.recurrence_end_date,
+        entity_type: 'task',
+        entity_id: task.id,
+        assigned_to: data.assigned_to,
+      });
+      setAddReminderOpen(false);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
 
   // Parent task & follow-up children
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
