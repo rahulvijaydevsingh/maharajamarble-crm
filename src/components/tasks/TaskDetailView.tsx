@@ -740,6 +740,13 @@ export function TaskDetailView({
             addTask={addTask}
           />
 
+          <AddReminderDialog
+            open={addReminderOpen}
+            onOpenChange={setAddReminderOpen}
+            onSave={handleAddTaskReminderSave}
+            entityName={task.title}
+          />
+
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogContent className="z-[130]">
               <AlertDialogHeader>
