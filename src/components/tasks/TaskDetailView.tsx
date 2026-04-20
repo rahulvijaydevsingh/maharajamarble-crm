@@ -37,6 +37,10 @@ import { LeadDetailView } from "@/components/leads/LeadDetailView";
 import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 import { useZLayer } from '@/contexts/ZLayerContext';
+import { useReminders } from "@/hooks/useReminders";
+import { AddReminderDialog } from "@/components/leads/detail-tabs/AddReminderDialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Bell, Plus } from "lucide-react";
 
 import { format } from "date-fns";
 import { CheckCircle2, ChevronDown, Copy, Pencil, Trash2, X } from "lucide-react";
