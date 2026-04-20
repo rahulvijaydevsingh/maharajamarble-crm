@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import { useRemindersChannel, RemindersRealtimePayload } from '@/contexts/RemindersContext';
 
 export interface Reminder {
   id: string;
@@ -39,6 +40,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const remindersChannel = useRemindersChannel();
 
   const fetchReminders = async () => {
     try {
@@ -195,46 +197,63 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   useEffect(() => {
     fetchReminders();
 
-    // Subscribe to realtime changes
-    const channel = supabase
-      .channel("reminders-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "reminders" },
-        (payload) => {
-        if (payload.eventType === "INSERT") {
-            const newReminder = payload.new as Reminder;
-            const matchesEntity = !entityType || (newReminder.entity_type === entityType && newReminder.entity_id === entityId);
-            const matchesAssignee = !assignedTo || newReminder.assigned_to === assignedTo;
-            const isDue = new Date(newReminder.reminder_datetime) <= new Date();
-            const shouldAdd = (entityType && entityId) || isDue;
+    // Handler logic shared between context path and fallback path
+    const handlePayload = (payload: RemindersRealtimePayload) => {
+      if (payload.eventType === 'INSERT') {
+        const newReminder = payload.new as Reminder;
+        const matchesEntity =
+          !entityType ||
+          (newReminder.entity_type === entityType &&
+            newReminder.entity_id === entityId);
+        const matchesAssignee =
+          !assignedTo || newReminder.assigned_to === assignedTo;
+        const isDue =
+          new Date(newReminder.reminder_datetime) <= new Date();
+        const shouldAdd = (entityType && entityId) || isDue;
 
-            if (matchesEntity && matchesAssignee && shouldAdd) {
-              setReminders((prev) => {
-                if (prev.some((r) => r.id === newReminder.id)) return prev;
-                return [...prev, newReminder].sort((a, b) =>
-                  a.reminder_datetime.localeCompare(b.reminder_datetime)
-                );
-              });
-            }
-          } else if (payload.eventType === "UPDATE") {
-            setReminders((prev) =>
-              prev.map((reminder) =>
-                reminder.id === payload.new.id ? (payload.new as Reminder) : reminder
-              )
+        if (matchesEntity && matchesAssignee && shouldAdd) {
+          setReminders((prev) => {
+            if (prev.some((r) => r.id === newReminder.id)) return prev;
+            return [...prev, newReminder].sort((a, b) =>
+              a.reminder_datetime.localeCompare(b.reminder_datetime)
             );
-          } else if (payload.eventType === "DELETE") {
-            setReminders((prev) =>
-              prev.filter((reminder) => reminder.id !== payload.old.id)
-            );
-          }
+          });
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+      } else if (payload.eventType === 'UPDATE') {
+        setReminders((prev) =>
+          prev.map((reminder) =>
+            reminder.id === payload.new.id
+              ? (payload.new as Reminder)
+              : reminder
+          )
+        );
+      } else if (payload.eventType === 'DELETE') {
+        setReminders((prev) =>
+          prev.filter((reminder) => reminder.id !== payload.old.id)
+        );
+      }
     };
+
+    if (remindersChannel) {
+      // Use shared context channel — no new Supabase subscription
+      remindersChannel.addListener(handlePayload);
+      return () => {
+        remindersChannel.removeListener(handlePayload);
+      };
+    } else {
+      // Fallback: create own channel (RemindersProvider not in tree)
+      const channel = supabase
+        .channel(`reminders-fallback-${Date.now()}-${Math.random()}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'reminders' },
+          (payload) => handlePayload(payload as RemindersRealtimePayload)
+        )
+        .subscribe();
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [entityType, entityId, assignedTo]);
 
   return {
