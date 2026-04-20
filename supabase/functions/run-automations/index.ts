@@ -449,6 +449,15 @@ Deno.serve(async (req) => {
 
     console.log(`[Automation] Received: ${operation} on ${dbTable}, id=${entity_id}`);
 
+    // Loop protection: skip if this event was triggered by automation itself
+    const metadata = (payload as any).metadata;
+    if (metadata && metadata.source === "automation") {
+      console.log(`[Automation] Skipping — event sourced from automation engine (loop protection)`);
+      return new Response(JSON.stringify({ message: "Skipped: automation-sourced event" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Map DB table name to automation entity_type
     const entityType = TABLE_ENTITY_MAP[dbTable] || dbTable;
 
