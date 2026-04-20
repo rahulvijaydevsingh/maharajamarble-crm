@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LEAD_SOURCES as LEAD_SOURCES_DATA, MATERIAL_INTERESTS as MATERIAL_INTERESTS_DATA } from "@/constants/leadConstants";
 
 interface UnifiedLeadFormProps {
   open: boolean;
@@ -42,15 +43,8 @@ interface UnifiedLeadFormProps {
   onSave: (formData: any) => void;
 }
 
-const LEAD_SOURCES = [
-  "Website", "Social Media", "Referral", "Advertisement", 
-  "Exhibition", "Cold Call", "Email Campaign", "Other"
-];
-
-const MATERIAL_INTERESTS = [
-  "Marble Flooring", "Granite", "Kitchen Countertops", "Quartz",
-  "Granite Stairs", "Bathroom Tiles", "Wall Cladding", "Custom Design"
-];
+const LEAD_SOURCES = LEAD_SOURCES_DATA.map(s => s.label);
+const MATERIAL_INTERESTS = MATERIAL_INTERESTS_DATA.map(m => m.label);
 
 const LEAD_STATUSES = [
   { value: "new", label: "New" },
