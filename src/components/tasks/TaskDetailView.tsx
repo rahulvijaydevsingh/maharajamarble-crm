@@ -663,6 +663,47 @@ export function TaskDetailView({
                   )}
 
                   <EntityAttachmentsTab entityType="task" entityId={task.id} title="Attachments" />
+
+                  {/* Reminders */}
+                  <Card>
+                    <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+                      <CardTitle className="flex items-center gap-2">
+                        <Bell className="h-4 w-4" /> Reminders
+                      </CardTitle>
+                      <Button size="sm" variant="outline" onClick={() => setAddReminderOpen(true)}>
+                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Reminder
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {taskReminders.length === 0 ? (
+                        <div className="text-sm text-muted-foreground py-4 text-center">No reminders for this task.</div>
+                      ) : (
+                        taskReminders.map((r) => (
+                          <div key={r.id} className="flex items-start justify-between gap-3 border rounded-md p-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-sm">{r.title}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {format(new Date(r.reminder_datetime), "dd MMM yyyy, HH:mm")} • {r.assigned_to}
+                              </div>
+                              {r.is_snoozed && (
+                                <Badge variant="outline" className="mt-1 text-xs">Snoozed</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => dismissTaskReminder(r.id)}>
+                                Dismiss
+                              </Button>
+                              {canEditTask && (
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => deleteTaskReminder(r.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
 
                 <div className="space-y-6">
