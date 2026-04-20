@@ -261,6 +261,38 @@ export function useTasks() {
     }
   };
 
+  // Helper: silently advance linked lead from 'new' -> 'in_progress' on meaningful interaction
+  const maybeAdvanceLeadToInProgress = async (
+    task: Partial<Task> | any,
+    updates: Partial<TaskInsert> & { snoozed_until?: string | null }
+  ) => {
+    try {
+      const qualifies =
+        updates.status === "Completed" ||
+        !!updates.snoozed_until ||
+        (!!updates.due_date && updates.status !== "Completed");
+      if (!qualifies) return;
+
+      const leadId =
+        task?.related_entity_type === "lead"
+          ? task?.related_entity_id
+          : task?.lead_id || null;
+      if (!leadId) return;
+
+      const { data: leadRow } = await supabase
+        .from("leads")
+        .select("status")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (leadRow?.status === "new") {
+        await supabase.from("leads").update({ status: "in-progress" }).eq("id", leadId);
+      }
+    } catch (_) {
+      // Silent — never block the parent task operation
+    }
+  };
+
   const updateTask = async (id: string, updates: Partial<TaskInsert> & { completed_at?: string | null; snoozed_until?: string | null }) => {
     try {
       const prevTask = tasks.find((t) => t.id === id) || null;
@@ -282,6 +314,9 @@ export function useTasks() {
 
       if (error) throw error;
       setTasks((prev) => prev.map((task) => (task.id === id ? data : task)));
+
+      // Silently advance linked lead status from 'new' -> 'in-progress' on meaningful interactions
+      void maybeAdvanceLeadToInProgress(data, updates);
 
       try {
         const activityType =
@@ -500,6 +535,9 @@ export function useTasks() {
       // Calculate new due date
       const newDueDate = snoozedUntil.toISOString().split("T")[0];
       const newDueTime = snoozedUntil.toTimeString().slice(0, 5);
+
+      // Silently advance linked lead 'new' -> 'in-progress' (covers the snooze path explicitly)
+      void maybeAdvanceLeadToInProgress(task, { snoozed_until: snoozedUntil.toISOString() });
 
       await updateTask(id, {
         due_date: newDueDate,
