@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export type RemindersRealtimePayload = {
@@ -49,7 +49,7 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
     listenersRef.current.delete(fn);
   };
 
-  const contextValue = React.useMemo(
+  const contextValue = useMemo(
     () => ({ addListener, removeListener }),
     []
   );
