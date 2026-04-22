@@ -4,11 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Clock, CheckCircle2, AlertTriangle, RefreshCw, Users, Pencil, Camera, Trash2, X } from "lucide-react";
+import { Clock, CheckCircle2, AlertTriangle, RefreshCw, Users, Pencil, Camera, Trash2, X, CalendarIcon, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -30,6 +33,10 @@ interface StaffAttendanceRow {
   clock_out_flag: string | null;
   clock_in_photo_url: string | null;
   clock_out_photo_url: string | null;
+  clock_in_latitude: number | null;
+  clock_in_longitude: number | null;
+  clock_out_latitude: number | null;
+  clock_out_longitude: number | null;
 }
 
 // ===== Inline AttendancePhotoModal =====
@@ -43,6 +50,11 @@ interface AttendancePhotoModalProps {
   clockOutTime: string | null;
   clockInFlag: string | null;
   clockOutFlag: string | null;
+  clockInVerified: boolean;
+  clockInLat?: number | null;
+  clockInLng?: number | null;
+  clockOutLat?: number | null;
+  clockOutLng?: number | null;
   canDelete: boolean;
   onClose: () => void;
   onPhotoDeleted: (which: "in" | "out") => void;
@@ -51,6 +63,7 @@ interface AttendancePhotoModalProps {
 function AttendancePhotoModal({
   staffId, staffName, date, clockInPath, clockOutPath,
   clockInTime, clockOutTime, clockInFlag, clockOutFlag,
+  clockInVerified, clockInLat, clockInLng, clockOutLat, clockOutLng,
   canDelete, onClose, onPhotoDeleted,
 }: AttendancePhotoModalProps) {
   const { toast } = useToast();
@@ -129,10 +142,39 @@ function AttendancePhotoModal({
                 <span className="text-xs text-muted-foreground">No photo captured</span>
               )}
             </div>
-            {clockInFlag && (
-              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
-                <AlertTriangle className="h-3 w-3 mr-1" /> GPS flagged: {clockInFlag}
+            {clockInVerified && !clockInFlag ? (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                <CheckCircle2 className="h-3 w-3 mr-1" /> GPS Verified
               </Badge>
+            ) : clockInFlag ? (
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
+                <AlertTriangle className="h-3 w-3 mr-1" /> GPS Flagged: {clockInFlag}
+              </Badge>
+            ) : clockInTime ? (
+              <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 text-xs">
+                – GPS not recorded
+              </Badge>
+            ) : null}
+
+            {clockInLat && clockInLng && (
+              <div className="flex flex-col gap-1 mt-2">
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3" /> Location: {clockInLat.toFixed(4)}, {clockInLng.toFixed(4)}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => window.open(`https://www.google.com/maps?q=${clockInLat},${clockInLng}`, '_blank')}
+                >
+                  📍 View on Maps
+                </Button>
+                {/* NOTE: Lat/lng coordinates are not stored in attendance_records.
+                    They are passed to the edge function and used for verification only.
+                    To add map links, a future migration must add lat and lng columns
+                    to attendance_records and the edge function must be updated to
+                    persist them. See Session 8 known issues. */}
+              </div>
             )}
             {canDelete && inUrl && (
               !confirmIn ? (
@@ -166,10 +208,30 @@ function AttendancePhotoModal({
                 <span className="text-xs text-muted-foreground">No photo captured</span>
               )}
             </div>
-            {clockOutFlag && (
+            {clockOutFlag ? (
               <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
-                <AlertTriangle className="h-3 w-3 mr-1" /> GPS flagged: {clockOutFlag}
+                <AlertTriangle className="h-3 w-3 mr-1" /> GPS Flagged: {clockOutFlag}
               </Badge>
+            ) : clockOutTime ? (
+              <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 text-xs">
+                – GPS not recorded
+              </Badge>
+            ) : null}
+
+            {clockOutLat && clockOutLng && (
+              <div className="flex flex-col gap-1 mt-2">
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3" /> Location: {clockOutLat.toFixed(4)}, {clockOutLng.toFixed(4)}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => window.open(`https://www.google.com/maps?q=${clockOutLat},${clockOutLng}`, '_blank')}
+                >
+                  📍 View on Maps
+                </Button>
+              </div>
             )}
             {canDelete && outUrl && (
               !confirmOut ? (
@@ -203,6 +265,7 @@ export default function HRAdminAttendance() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<StaffAttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const { toast } = useToast();
   const [editRow, setEditRow] = useState<StaffAttendanceRow | null>(null);
@@ -221,9 +284,9 @@ export default function HRAdminAttendance() {
     if (!isAdmin()) navigate("/hr/attendance");
   }, [role, navigate, isAdmin]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (targetDate?: Date) => {
     setLoading(true);
-    const today = new Date().toISOString().split("T")[0];
+    const dateToFetch = format(targetDate || selectedDate, "yyyy-MM-dd");
 
     // Get all staff profiles
     const { data: profiles } = await supabase
@@ -231,11 +294,11 @@ export default function HRAdminAttendance() {
       .select("id, full_name, email")
       .order("full_name");
 
-    // Get today's attendance for all staff
+    // Get attendance for all staff on target date
     const { data: records } = await supabase
       .from("attendance_records")
-      .select("staff_id, status, clock_in, clock_out, total_hours, clock_in_verified, clock_in_flag, clock_out_flag, clock_in_photo_url, clock_out_photo_url")
-      .eq("date", today);
+      .select("staff_id, status, clock_in, clock_out, total_hours, clock_in_verified, clock_in_flag, clock_out_flag, clock_in_photo_url, clock_out_photo_url, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude")
+      .eq("date", dateToFetch);
 
     const recordMap = new Map<string, any>();
     (records || []).forEach(r => recordMap.set(r.staff_id, r));
@@ -256,13 +319,17 @@ export default function HRAdminAttendance() {
         clock_out_flag: rec?.clock_out_flag || null,
         clock_in_photo_url: rec?.clock_in_photo_url || null,
         clock_out_photo_url: rec?.clock_out_photo_url || null,
+        clock_in_latitude: rec?.clock_in_latitude || null,
+        clock_in_longitude: rec?.clock_in_longitude || null,
+        clock_out_latitude: rec?.clock_out_latitude || null,
+        clock_out_longitude: rec?.clock_out_longitude || null,
       };
     });
 
     setRows(merged);
     setLastRefreshed(new Date());
     setLoading(false);
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -277,8 +344,8 @@ export default function HRAdminAttendance() {
   const saveEdit = async () => {
     if (!editRow) return;
     setSaving(true);
-    const today = new Date().toISOString().split("T")[0];
-    const toISO = (timeStr: string) => timeStr ? new Date(`${today}T${timeStr}:00`).toISOString() : null;
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    const toISO = (timeStr: string) => timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : null;
     const clockInISO = toISO(editClockIn);
     const clockOutISO = toISO(editClockOut);
     let totalHours = null;
@@ -295,7 +362,7 @@ export default function HRAdminAttendance() {
     };
     const { error } = await supabase
       .from("attendance_records")
-      .upsert({ staff_id: editRow.staff_id, date: today, ...payload },
+      .upsert({ staff_id: editRow.staff_id, date: dateStr, ...payload },
         { onConflict: "staff_id,date" });
     setSaving(false);
     if (error) {
@@ -325,22 +392,51 @@ export default function HRAdminAttendance() {
   const fmt = (ts: string | null) =>
     ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 
-  const today = new Date().toISOString().split("T")[0];
+  const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Team Attendance</h1>
             <p className="text-sm text-muted-foreground">
-              {format(new Date(), "EEEE, MMMM d, yyyy")} · Refreshed at {fmt(lastRefreshed.toISOString())}
+              Viewing: {format(selectedDate, "EEEE, MMMM d, yyyy")} · Refreshed at {fmt(lastRefreshed.toISOString())}
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-[240px] justify-start text-left font-normal",
+                    !selectedDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                    if (date) {
+                      setSelectedDate(date);
+                      fetchData(date);
+                    }
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Summary Cards */}
@@ -364,7 +460,7 @@ export default function HRAdminAttendance() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" /> All Staff — Today
+              <Users className="h-4 w-4" /> All Staff — {format(selectedDate, "MMM d")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -483,13 +579,18 @@ export default function HRAdminAttendance() {
         <AttendancePhotoModal
           staffId={photoRow.staff_id}
           staffName={photoRow.full_name}
-          date={today}
+          date={dateStr}
           clockInPath={photoRow.clock_in_photo_url}
           clockOutPath={photoRow.clock_out_photo_url}
           clockInTime={photoRow.clock_in}
           clockOutTime={photoRow.clock_out}
           clockInFlag={photoRow.clock_in_flag}
           clockOutFlag={photoRow.clock_out_flag}
+          clockInVerified={photoRow.clock_in_verified}
+          clockInLat={photoRow.clock_in_latitude}
+          clockInLng={photoRow.clock_in_longitude}
+          clockOutLat={photoRow.clock_out_latitude}
+          clockOutLng={photoRow.clock_out_longitude}
           canDelete={canDeletePhotos}
           onClose={() => setPhotoRow(null)}
           onPhotoDeleted={(which) => {

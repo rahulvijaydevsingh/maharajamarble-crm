@@ -13,8 +13,19 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Loader2, Search, Eye, RefreshCw, CalendarIcon, Archive } from "lucide-react";
@@ -59,6 +70,8 @@ export function LeadArchive() {
   const [searchQuery, setSearchQuery] = useState("");
   const [reasonFilter, setReasonFilter] = useState("all");
   const [reengageDateDialogOpen, setReengageDateDialogOpen] = useState(false);
+  const [viewingLead, setViewingLead] = useState<ArchivedLead | null>(null);
+  const [reengageLead, setReengageLead] = useState<ArchivedLead | null>(null);
   const [selectedLead, setSelectedLead] = useState<ArchivedLead | null>(null);
   const [newReengageDate, setNewReengageDate] = useState<Date | undefined>();
 
@@ -101,12 +114,28 @@ export function LeadArchive() {
     return result;
   }, [leads, searchQuery, reasonFilter]);
 
-  const handleReengage = (lead: ArchivedLead) => {
-    // Navigate to leads page and open add dialog with pre-filled data
-    // We'll use query params to signal pre-fill
-    navigate(
-      `/leads?reengage=true&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone)}&email=${encodeURIComponent(lead.email || "")}&address=${encodeURIComponent(lead.address || "")}&previous_lead_id=${lead.id}`
-    );
+  const handleReengage = async (lead: ArchivedLead) => {
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({
+          status: 'new',
+          lost_at: null,
+          lost_reason: null,
+          lost_reason_notes: null,
+          pending_lost_since: null,
+          previous_status: null,
+          cooling_off_due_date: null,
+        })
+        .eq('id', lead.id);
+
+      if (error) throw error;
+      toast({ title: 'Lead Re-engaged', description: `${lead.name} moved back to active leads.` });
+      setReengageLead(null);
+      fetchArchivedLeads();
+    } catch (err: any) {
+      toast({ title: 'Failed to re-engage', description: err.message, variant: 'destructive' });
+    }
   };
 
   const handleSetReengageDate = (lead: ArchivedLead) => {
@@ -239,7 +268,7 @@ export function LeadArchive() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => navigate(`/leads?viewArchived=${lead.id}`)}
+                              onClick={() => setViewingLead(lead)}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -254,7 +283,7 @@ export function LeadArchive() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => handleReengage(lead)}
+                              onClick={() => setReengageLead(lead)}
                             >
                               <RefreshCw className="h-4 w-4" />
                             </Button>
@@ -285,6 +314,92 @@ export function LeadArchive() {
           </Table>
         </div>
       )}
+
+      {/* View Lead Details Dialog */}
+      <Dialog open={!!viewingLead} onOpenChange={(open) => !open && setViewingLead(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Archived Lead Details</DialogTitle>
+          </DialogHeader>
+          {viewingLead && (
+            <div className="grid grid-cols-2 gap-6 py-4">
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lead Name</Label>
+                  <p className="text-sm font-medium">{viewingLead.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Phone</Label>
+                  <p className="text-sm font-medium">{viewingLead.phone}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Email</Label>
+                  <p className="text-sm font-medium">{viewingLead.email || "-"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Address</Label>
+                  <p className="text-sm font-medium">{viewingLead.address || "-"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Assigned To</Label>
+                  <p className="text-sm font-medium">{viewingLead.assigned_to}</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Reason</Label>
+                  <div>
+                    <Badge variant="secondary" className="bg-red-100 text-red-700">
+                      {LOST_REASON_LABELS[viewingLead.lost_reason || ""] || viewingLead.lost_reason || "-"}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Date</Label>
+                  <p className="text-sm font-medium">
+                    {viewingLead.lost_at ? format(new Date(viewingLead.lost_at), "PPP") : "-"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Re-engagement Due</Label>
+                  <p className="text-sm font-medium">
+                    {viewingLead.cooling_off_due_date ? format(new Date(viewingLead.cooling_off_due_date), "PPP") : "-"}
+                  </p>
+                </div>
+                {viewingLead.lost_reason_notes && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Reason Notes</Label>
+                    <p className="text-sm text-muted-foreground mt-1 bg-muted p-2 rounded">{viewingLead.lost_reason_notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingLead(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-engage Confirmation */}
+      <AlertDialog open={!!reengageLead} onOpenChange={(open) => !open && setReengageLead(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Re-engage Lead?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will restore <strong>{reengageLead?.name}</strong> to the active leads list with status <strong>New</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => reengageLead && handleReengage(reengageLead)}>
+              Confirm Re-engage
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Re-engagement Date Dialog */}
       <Dialog open={reengageDateDialogOpen} onOpenChange={setReengageDateDialogOpen}>
