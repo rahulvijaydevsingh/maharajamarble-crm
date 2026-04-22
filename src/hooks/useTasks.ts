@@ -536,9 +536,6 @@ export function useTasks() {
       const newDueDate = snoozedUntil.toISOString().split("T")[0];
       const newDueTime = snoozedUntil.toTimeString().slice(0, 5);
 
-      // Silently advance linked lead 'new' -> 'in-progress' (covers the snooze path explicitly)
-      void maybeAdvanceLeadToInProgress(task, { snoozed_until: snoozedUntil.toISOString() });
-
       await updateTask(id, {
         due_date: newDueDate,
         due_time: newDueTime,
