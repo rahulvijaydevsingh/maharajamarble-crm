@@ -49,8 +49,13 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
     listenersRef.current.delete(fn);
   };
 
+  const contextValue = React.useMemo(
+    () => ({ addListener, removeListener }),
+    []
+  );
+
   return (
-    <RemindersContext.Provider value={{ addListener, removeListener }}>
+    <RemindersContext.Provider value={contextValue}>
       {children}
     </RemindersContext.Provider>
   );
