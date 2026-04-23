@@ -169,11 +169,9 @@ function AttendancePhotoModal({
                 >
                   📍 View on Maps
                 </Button>
-                {/* NOTE: Lat/lng coordinates are not stored in attendance_records.
-                    They are passed to the edge function and used for verification only.
-                    To add map links, a future migration must add lat and lng columns
-                    to attendance_records and the edge function must be updated to
-                    persist them. See Session 8 known issues. */}
+                {/* NOTE: Lat/lng coordinates are now stored in attendance_records
+                    via the latest migration, allowing for visual verification
+                    of staff locations on Google Maps. */}
               </div>
             )}
             {canDelete && inUrl && (

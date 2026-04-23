@@ -223,16 +223,13 @@ async function executeAction(
 
         if (roleRecipients.length > 0) {
           const { data: roleProfiles } = await supabase
-            .from('user_roles')
-            .select('user_id, profiles(id, email)')
+            .from('profiles')
+            .select('id, email')
             .in('role', roleRecipients);
 
           if (roleProfiles) {
-            for (const r of roleProfiles) {
-              const p = r.profiles;
-              if (p) {
-                resolvedProfiles.push({ id: (p as any).id, email: (p as any).email });
-              }
+            for (const p of roleProfiles) {
+              resolvedProfiles.push({ id: p.id, email: p.email });
             }
           }
         }

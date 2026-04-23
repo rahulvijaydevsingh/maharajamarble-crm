@@ -72,6 +72,7 @@ export function LeadArchive() {
   const [reengageDateDialogOpen, setReengageDateDialogOpen] = useState(false);
   const [viewingLead, setViewingLead] = useState<ArchivedLead | null>(null);
   const [reengageLead, setReengageLead] = useState<ArchivedLead | null>(null);
+  const [isReengaging, setIsReengaging] = useState(false);
   const [selectedLead, setSelectedLead] = useState<ArchivedLead | null>(null);
   const [newReengageDate, setNewReengageDate] = useState<Date | undefined>();
 
@@ -115,6 +116,7 @@ export function LeadArchive() {
   }, [leads, searchQuery, reasonFilter]);
 
   const handleReengage = async (lead: ArchivedLead) => {
+    setIsReengaging(true);
     try {
       const { error } = await supabase
         .from('leads')
@@ -135,6 +137,8 @@ export function LeadArchive() {
       fetchArchivedLeads();
     } catch (err: any) {
       toast({ title: 'Failed to re-engage', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsReengaging(false);
     }
   };
 
@@ -394,8 +398,11 @@ export function LeadArchive() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => reengageLead && handleReengage(reengageLead)}>
-              Confirm Re-engage
+            <AlertDialogAction
+              onClick={() => reengageLead && handleReengage(reengageLead)}
+              disabled={isReengaging}
+            >
+              {isReengaging ? 'Re-engaging...' : 'Confirm Re-engage'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
