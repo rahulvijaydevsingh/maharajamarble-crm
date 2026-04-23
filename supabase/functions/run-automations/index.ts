@@ -396,7 +396,43 @@ async function executeAction(
           return { status: "success", details: `Updated ${field} to ${value}` };
         }
 
-        return { status: "failed", error: "Related record updates not yet supported" };
+        // Update a related record by following a foreign-key field on the trigger row
+        // e.g. on tasks: related_entity_type='leads', related_entity_field='lead_id'
+        if (target === "related_record" || target === "related_entity") {
+          const relatedType = String(config.related_entity_type || "");
+          const relatedField = String(config.related_entity_field || "");
+          if (!relatedType || !relatedField) {
+            return { status: "failed", error: "related_entity_type and related_entity_field required" };
+          }
+          const relatedId = newRow[relatedField];
+          if (!relatedId) {
+            return { status: "success", details: `No ${relatedField} on trigger row — skipped` };
+          }
+          const relatedTable = ENTITY_TABLE_MAP[relatedType] || relatedType;
+
+          // Optional guard: only update when current value matches expected_current_value
+          const expectedCurrent = config.expected_current_value;
+          if (expectedCurrent !== undefined && expectedCurrent !== null && expectedCurrent !== "") {
+            const { data: currentRow } = await supabase
+              .from(relatedTable)
+              .select(field)
+              .eq("id", relatedId)
+              .maybeSingle();
+            const currentVal = currentRow ? (currentRow as Record<string, unknown>)[field] : undefined;
+            if (String(currentVal ?? "") !== String(expectedCurrent)) {
+              return { status: "success", details: `Skipped: ${field} is "${currentVal}", expected "${expectedCurrent}"` };
+            }
+          }
+
+          const { error } = await supabase
+            .from(relatedTable)
+            .update({ [field]: value })
+            .eq("id", relatedId);
+          if (error) return { status: "failed", error: error.message };
+          return { status: "success", details: `Updated ${relatedTable}.${field} → ${value} (id=${relatedId})` };
+        }
+
+        return { status: "failed", error: `Unsupported target: ${target}` };
       }
 
       case "handle_lead_tasks": {
