@@ -87,13 +87,14 @@ export function KitTouchCompleteDialog({
     } else if (requiresFollowup && followupAction === 'reschedule' && rescheduleDate) {
       await onReschedule(format(rescheduleDate, 'yyyy-MM-dd'));
     } else {
-      await onComplete(outcome, notes || undefined, hasLinkedTask ? alsoCompleteTask : false);
+      await onComplete(outcome, notes || undefined, alsoCompleteTask);
     }
     
     // Reset state
     setOutcome('');
     setNotes('');
     setFollowupAction('none');
+    setAlsoCompleteTask(true);
     onOpenChange(false);
   };
   
@@ -128,7 +129,18 @@ export function KitTouchCompleteDialog({
             </RadioGroup>
           </div>
 
-          {hasLinkedTask && !requiresFollowup && (
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes (optional)</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add any notes about this interaction..."
+              rows={2}
+            />
+          </div>
+
+          {hasLinkedTask && (
             <div className="flex items-start space-x-3 p-3 rounded-md border bg-muted/30">
               <Checkbox
                 id="also-complete-task"
@@ -146,17 +158,6 @@ export function KitTouchCompleteDialog({
               </div>
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes (optional)</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add any notes about this interaction..."
-              rows={2}
-            />
-          </div>
           
           {requiresFollowup && (
             <div className="space-y-3 p-3 bg-muted/50 rounded-lg border">

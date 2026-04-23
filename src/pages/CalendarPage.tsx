@@ -232,14 +232,18 @@ const CalendarPage = () => {
     }
   };
 
-  const handleKitTouchComplete = async (outcome: string, notes?: string, alsoCompleteTask?: boolean) => {
+  const handleKitTouchComplete = async (
+    outcome: string,
+    notes?: string,
+    alsoCompleteTask?: boolean
+  ) => {
     if (!selectedKitEvent) return;
     try {
       await completeTouch({
         touchId: selectedKitEvent.sourceId,
         outcome,
         outcomeNotes: notes,
-        alsoCompleteTask: alsoCompleteTask ?? true,
+        alsoCompleteTask: alsoCompleteTask,
       });
       if (selectedKitEvent.relatedEntityType && selectedKitEvent.relatedEntityId) {
         await logTouchCompleted({
@@ -443,9 +447,10 @@ const CalendarPage = () => {
           method: (selectedKitEvent.touchMethod || 'call') as any,
           scheduled_date: format(selectedKitEvent.start, 'yyyy-MM-dd'),
           status: 'pending' as any,
+          linked_task_id: selectedKitEvent.linkedTaskId,
         } as any : null}
         entityName={selectedKitEvent?.relatedEntityName || 'Unknown'}
-        hasLinkedTask={selectedKitEvent?.source === 'kit_touch'}
+        hasLinkedTask={!!selectedKitEvent?.linkedTaskId}
         onComplete={handleKitTouchComplete}
         onSnooze={async (snoozeUntil) => {
           if (selectedKitEvent) {
