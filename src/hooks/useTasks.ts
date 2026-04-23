@@ -149,6 +149,82 @@ function calculateNextDueDate(
   }
 }
 
+const FOLLOWUP_ACTIVITY_TYPES = [
+  'call',
+  'site_visit',
+  'meeting',
+  'whatsapp_sent',
+  'email_sent',
+  'follow_up_completed',
+  'note_added'
+];
+
+/**
+ * Explicitly sync follow-up dates for a lead by checking tasks and activity log.
+ * Wrapped in try/catch to never block the main operation.
+ */
+const syncLeadFollowUpDates = async (leadId: string) => {
+  if (!leadId) return;
+
+  try {
+    // 1. Get MAX(completed_at) from tasks
+    const { data: taskFollowup } = await supabase
+      .from('tasks')
+      .select('completed_at')
+      .eq('lead_id', leadId)
+      .eq('status', 'Completed')
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // 2. Get MAX(created_at) from activity_log
+    const { data: activityFollowup } = await supabase
+      .from('activity_log')
+      .select('created_at')
+      .eq('lead_id', leadId)
+      .in('activity_type', FOLLOWUP_ACTIVITY_TYPES)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // 3. Get MIN(due_date) from pending tasks
+    const { data: nextTask } = await supabase
+      .from('tasks')
+      .select('due_date')
+      .eq('lead_id', leadId)
+      .in('status', ['Pending', 'In Progress'])
+      .order('due_date', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const lastTaskDate = taskFollowup?.completed_at ? new Date(taskFollowup.completed_at) : null;
+    const lastActivityDate = activityFollowup?.created_at ? new Date(activityFollowup.created_at) : null;
+
+    let lastFollowUp: string | null = null;
+    if (lastTaskDate && lastActivityDate) {
+      lastFollowUp = lastTaskDate > lastActivityDate ? lastTaskDate.toISOString() : lastActivityDate.toISOString();
+    } else if (lastTaskDate) {
+      lastFollowUp = lastTaskDate.toISOString();
+    } else if (lastActivityDate) {
+      lastFollowUp = lastActivityDate.toISOString();
+    }
+
+    const nextFollowUp = nextTask?.due_date || null;
+
+    // 4. Update leads table
+    await supabase
+      .from('leads')
+      .update({
+        last_follow_up: lastFollowUp,
+        next_follow_up: nextFollowUp,
+      })
+      .eq('id', leadId);
+
+  } catch (error) {
+    console.error(`[syncLeadFollowUpDates] Failed for lead ${leadId}:`, error);
+  }
+};
+
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,6 +324,12 @@ export function useTasks() {
         }
       } catch (_) {
         // Staff activity log is non-critical — failure is acceptable
+      }
+
+      // Sync follow-up dates for linked lead
+      if (data.lead_id) void syncLeadFollowUpDates(data.lead_id);
+      if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
+        void syncLeadFollowUpDates(data.related_entity_id);
       }
 
       return data;
@@ -363,6 +445,12 @@ export function useTasks() {
         }
       } catch (_) {
         // Staff activity log is non-critical — failure is acceptable
+      }
+
+      // Sync follow-up dates for linked lead
+      if (data.lead_id) void syncLeadFollowUpDates(data.lead_id);
+      if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
+        void syncLeadFollowUpDates(data.related_entity_id);
       }
 
       // KIT ↔ Task sync: completion syncs back to linked kit_touch
@@ -579,6 +667,12 @@ export function useTasks() {
         }
       } catch (e: any) { console.error('[useTasks/snoozeTask] Failed to log snooze to lead activity_log:', e?.message || e); }
 
+      // Sync follow-up dates for linked lead
+      if (task.lead_id) void syncLeadFollowUpDates(task.lead_id);
+      if (task.related_entity_type === 'lead' && task.related_entity_id && task.related_entity_id !== task.lead_id) {
+        void syncLeadFollowUpDates(task.related_entity_id);
+      }
+
       toast({ title: "Task snoozed" });
     } catch (error: any) {
       toast({
@@ -632,6 +726,12 @@ export function useTasks() {
         }
       } catch (_) {
         // Staff activity log is non-critical — failure is acceptable
+      }
+
+      // Sync follow-up dates for linked lead
+      if (taskToDelete?.lead_id) void syncLeadFollowUpDates(taskToDelete.lead_id);
+      if (taskToDelete?.related_entity_type === 'lead' && taskToDelete?.related_entity_id && taskToDelete?.related_entity_id !== taskToDelete?.lead_id) {
+        void syncLeadFollowUpDates(taskToDelete.related_entity_id);
       }
     } catch (error: any) {
       toast({

@@ -254,7 +254,7 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
     { name: "estimated_quantity", label: "Estimated Quantity", type: "number", editable: true },
     { name: "notes", label: "Notes", type: "text", editable: true },
     { name: "next_follow_up", label: "Next Follow-up", type: "datetime", editable: true },
-    { name: "last_follow_up", label: "Last Follow-up", type: "datetime", editable: false },
+    { name: "last_follow_up", label: "Last Follow-up", type: "datetime", editable: true },
     { name: "created_at", label: "Created At", type: "datetime", editable: false },
     { name: "updated_at", label: "Updated At", type: "datetime", editable: false },
     { name: "created_by", label: "Created By", type: "select", editable: false, dynamicOptions: "staff", options: [] },

@@ -206,6 +206,34 @@ async function executeAction(
           if (resolved) resolvedProfiles.push(resolved);
         }
 
+        // Handle role-based recipient types
+        const roleRecipients: string[] = [];
+        if (recipients?.includes('all_managers') || recipients?.includes('manager')) {
+          roleRecipients.push('manager', 'admin', 'super_admin');
+        }
+        if (recipients?.includes('all_admins') || recipients?.includes('admin')) {
+          roleRecipients.push('admin', 'super_admin');
+        }
+        if (recipients?.includes('all_sales_team')) {
+          roleRecipients.push('sales_user', 'field_agent');
+        }
+        if (recipients?.includes('all_staff')) {
+          roleRecipients.push('manager', 'admin', 'super_admin', 'sales_user', 'field_agent', 'sales_viewer');
+        }
+
+        if (roleRecipients.length > 0) {
+          const { data: roleProfiles } = await supabase
+            .from('profiles')
+            .select('id, email')
+            .in('role', roleRecipients);
+
+          if (roleProfiles) {
+            for (const p of roleProfiles) {
+              resolvedProfiles.push({ id: p.id, email: p.email });
+            }
+          }
+        }
+
         // Deduplicate by email
         const seen = new Set<string>();
         resolvedProfiles = resolvedProfiles.filter(p => {
@@ -213,6 +241,8 @@ async function executeAction(
           seen.add(p.email);
           return true;
         });
+
+        console.log(`[Automation] send_notification: resolved ${resolvedProfiles.length} recipients from config:`, JSON.stringify(recipients));
         
 
         if (resolvedProfiles.length === 0) {
