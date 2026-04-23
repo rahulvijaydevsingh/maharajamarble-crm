@@ -271,9 +271,14 @@ export function KitProfileTab({
     setCancelConfirmOpen(false);
   };
   
-  const handleCompleteTouch = async (outcome: string, notes?: string) => {
+  const handleCompleteTouch = async (outcome: string, notes?: string, alsoCompleteTask?: boolean) => {
     if (!completeDialogTouch) return;
-    const result = await completeTouch({ touchId: completeDialogTouch.id, outcome, outcomeNotes: notes });
+    const result = await completeTouch({
+      touchId: completeDialogTouch.id,
+      outcome,
+      outcomeNotes: notes,
+      alsoCompleteTask: alsoCompleteTask ?? true,
+    });
     await logTouchCompleted({
       entityType,
       entityId,
@@ -824,6 +829,7 @@ export function KitProfileTab({
         onOpenChange={(open) => !open && setCompleteDialogTouch(null)}
         touch={completeDialogTouch}
         entityName={entityName}
+        hasLinkedTask={!!completeDialogTouch?.linked_task_id}
         onComplete={handleCompleteTouch}
         onSnooze={handleSnoozeTouch}
         onReschedule={handleRescheduleTouch}
