@@ -271,13 +271,17 @@ export function KitProfileTab({
     setCancelConfirmOpen(false);
   };
   
-  const handleCompleteTouch = async (outcome: string, notes?: string, alsoCompleteTask?: boolean) => {
+  const handleCompleteTouch = async (
+    outcome: string,
+    notes?: string,
+    alsoCompleteTask?: boolean
+  ) => {
     if (!completeDialogTouch) return;
     const result = await completeTouch({
       touchId: completeDialogTouch.id,
       outcome,
       outcomeNotes: notes,
-      alsoCompleteTask: alsoCompleteTask ?? true,
+      alsoCompleteTask: alsoCompleteTask,
     });
     await logTouchCompleted({
       entityType,

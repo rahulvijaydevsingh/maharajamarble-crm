@@ -22,6 +22,35 @@ export function useKitTouches(subscriptionId?: string) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Silently advance linked lead from 'new' → 'in-progress'
+  // on any meaningful KIT interaction
+  const maybeAdvanceLeadFromKit = async (subscriptionId: string) => {
+    try {
+      const { data: sub } = await supabase
+        .from('kit_subscriptions')
+        .select('entity_id, entity_type')
+        .eq('id', subscriptionId)
+        .maybeSingle();
+
+      if (sub?.entity_type === 'lead' && sub?.entity_id) {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('status')
+          .eq('id', sub.entity_id)
+          .maybeSingle();
+
+        if (lead?.status === 'new') {
+          await supabase
+            .from('leads')
+            .update({ status: 'in-progress' })
+            .eq('id', sub.entity_id);
+        }
+      }
+    } catch (_) {
+      // Non-critical — never block the KIT operation
+    }
+  };
+
   // Fetch touches for a subscription
   const touchesQuery = useQuery({
     queryKey: ['kit-touches', subscriptionId],
@@ -132,6 +161,11 @@ export function useKitTouches(subscriptionId?: string) {
         // KIT→Task sync is non-critical — never block touch completion
       }
 
+      // Advance lead to in-progress on KIT touch completion
+      if (existingTouch?.subscription_id) {
+        await maybeAdvanceLeadFromKit(existingTouch.subscription_id);
+      }
+
       // Update subscription current_step
       const { data: subscription, error: subError } = await supabase
         .from('kit_subscriptions')
@@ -219,6 +253,18 @@ export function useKitTouches(subscriptionId?: string) {
       } catch (_) {
         // KIT→Task sync is non-critical
       }
+
+      // Advance lead to in-progress on KIT touch snooze
+      try {
+        const { data: snoozedTouch } = await supabase
+          .from('kit_touches')
+          .select('subscription_id')
+          .eq('id', touchId)
+          .maybeSingle();
+        if (snoozedTouch?.subscription_id) {
+          await maybeAdvanceLeadFromKit(snoozedTouch.subscription_id);
+        }
+      } catch (_) { /* silent */ }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
@@ -235,7 +281,11 @@ export function useKitTouches(subscriptionId?: string) {
   // Reschedule a touch
   const rescheduleMutation = useMutation({
     mutationFn: async ({ touchId, newDate }: { touchId: string; newDate: string }) => {
-      const { data: touch } = await supabase.from('kit_touches').select('scheduled_date, reschedule_count, linked_task_id').eq('id', touchId).single();
+      const { data: touch } = await supabase
+        .from('kit_touches')
+        .select('scheduled_date, reschedule_count, linked_task_id, subscription_id')
+        .eq('id', touchId)
+        .single();
 
       const { error } = await supabase
         .from('kit_touches')
@@ -259,6 +309,11 @@ export function useKitTouches(subscriptionId?: string) {
         }
       } catch (_) {
         // KIT→Task sync is non-critical
+      }
+
+      // Advance lead to in-progress on KIT touch reschedule
+      if (touch?.subscription_id) {
+        await maybeAdvanceLeadFromKit(touch.subscription_id);
       }
     },
     onSuccess: () => {

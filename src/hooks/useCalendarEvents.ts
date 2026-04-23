@@ -36,6 +36,7 @@ export interface CalendarEvent {
   entityLocation?: string | null;
   touchMethod?: string;
   subscriptionId?: string;
+  linkedTaskId?: string | null;
 }
 
 export interface CalendarFilters {
@@ -174,7 +175,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
       const { data: kitTouchesData, error: kitTouchesError } = await supabase
         .from("kit_touches")
         .select(`
-          id, method, scheduled_date, scheduled_time, assigned_to, status,
+          id, method, scheduled_date, scheduled_time, assigned_to, status, linked_task_id,
           subscription:kit_subscriptions(
             id, entity_type, entity_id, preset:kit_presets(name)
           )
@@ -385,6 +386,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
         entityLocation: entityInfo?.location || null,
         touchMethod: touch.method,
         subscriptionId: sub?.id,
+        linkedTaskId: touch.linked_task_id,
       });
     });
 
