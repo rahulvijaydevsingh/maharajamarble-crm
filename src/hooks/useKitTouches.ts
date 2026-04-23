@@ -89,11 +89,20 @@ export function useKitTouches(subscriptionId?: string) {
       touchId,
       outcome,
       outcomeNotes,
+      alsoCompleteTask,
     }: {
       touchId: string;
       outcome: string;
       outcomeNotes?: string;
+      alsoCompleteTask?: boolean;
     }) => {
+      // Fetch linked task ID before updating
+      const { data: existingTouch } = await supabase
+        .from('kit_touches')
+        .select('linked_task_id, subscription_id')
+        .eq('id', touchId)
+        .maybeSingle();
+
       const { data: touch, error: touchError } = await supabase
         .from('kit_touches')
         .update({
@@ -107,6 +116,21 @@ export function useKitTouches(subscriptionId?: string) {
         .single();
 
       if (touchError) throw touchError;
+
+      // Sync linked task completion if user opted in (default true)
+      try {
+        if ((alsoCompleteTask ?? true) && existingTouch?.linked_task_id) {
+          await supabase
+            .from('tasks')
+            .update({
+              status: 'Completed',
+              completed_at: new Date().toISOString(),
+            })
+            .eq('id', existingTouch.linked_task_id);
+        }
+      } catch (_) {
+        // KIT→Task sync is non-critical — never block touch completion
+      }
 
       // Update subscription current_step
       const { data: subscription, error: subError } = await supabase
@@ -156,6 +180,8 @@ export function useKitTouches(subscriptionId?: string) {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
       queryClient.invalidateQueries({ queryKey: ['kit-subscription'] });
       queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: 'Touch logged successfully' });
     },
     onError: (error: Error) => {
@@ -197,6 +223,8 @@ export function useKitTouches(subscriptionId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
       queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: 'Touch snoozed' });
     },
     onError: (error: Error) => {
@@ -236,6 +264,8 @@ export function useKitTouches(subscriptionId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kit-touches'] });
       queryClient.invalidateQueries({ queryKey: ['kit-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: 'Touch rescheduled' });
     },
     onError: (error: Error) => {
