@@ -83,7 +83,7 @@ export function PhoneLink({
         className
       )}
       onClick={handleClick}
-      target="_self"
+      target="_top"
       rel="noopener noreferrer"
     >
       {phone}
