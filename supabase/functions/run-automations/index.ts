@@ -391,8 +391,42 @@ async function executeAction(
 
         if (target === "trigger_record") {
           const tableName = ENTITY_TABLE_MAP[entityType] || entityType;
+
+          // Capture old value before update (for status changes)
+          let oldValue: string | null = null;
+          if (field === "status" && entityType === "lead") {
+            oldValue = String((newRow as any)?.status || (oldRow as any)?.status || "");
+          }
+
           const { error } = await supabase.from(tableName).update({ [field]: value }).eq("id", entityId);
           if (error) return { status: "failed", error: error.message };
+
+          // Log status changes to activity_log for leads
+          if (field === "status" && entityType === "lead") {
+            try {
+              await supabase.from("activity_log").insert({
+                activity_type: "status_change",
+                activity_category: "status_change",
+                title: `Status changed to ${value}`,
+                description: oldValue
+                  ? `Changed from ${oldValue} to ${value} by automation rule`
+                  : `Changed to ${value} by automation rule`,
+                user_name: "Automation",
+                lead_id: entityId,
+                metadata: {
+                  old_status: oldValue,
+                  new_status: value,
+                  triggered_by: "automation",
+                },
+              });
+            } catch (err) {
+              console.error(
+                "[Automation] Failed to log status change to activity_log:",
+                err
+              );
+            }
+          }
+
           return { status: "success", details: `Updated ${field} to ${value}` };
         }
 

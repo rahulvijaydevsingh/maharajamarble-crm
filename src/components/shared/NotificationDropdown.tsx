@@ -146,7 +146,7 @@ export function NotificationDropdown() {
           )}
         </div>
         
-        <Tabs defaultValue="messages" className="w-full">
+        <Tabs defaultValue="reminders" className="w-full">
           <TabsList className="w-full grid grid-cols-3 rounded-none border-b">
             <TabsTrigger value="messages" className="relative text-xs">
               <MessageSquare className="h-3.5 w-3.5 mr-1" />
