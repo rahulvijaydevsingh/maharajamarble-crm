@@ -51,13 +51,6 @@ export function QuotationPDFTemplate({
 }: QuotationPDFTemplateProps) {
   const items = quotation.items || [];
 
-  // Calculate tax split
-  const gstRate = quotation.gst_percentage || 0;
-  const gstAmount = quotation.gst_amount || 0;
-  const sgstRate = gstRate / 2;
-  const cgstRate = gstRate / 2;
-  const sgstAmount = gstAmount / 2;
-  const cgstAmount = gstAmount / 2;
   const grandTotal = Math.round(quotation.total || 0);
   const amountInWords = numberToWords(grandTotal) + ' ONLY';
 
@@ -77,16 +70,18 @@ export function QuotationPDFTemplate({
     >
       {/* HEADER */}
       <div style={{
-        borderBottom: '3px solid #1a1a1a',
-        paddingBottom: '12px',
-        marginBottom: '12px',
+        backgroundColor: '#1a1a1a',
+        color: '#fff',
+        padding: '20px 24px',
+        margin: '-30px -36px 16px -36px',
+        borderBottom: '3px solid #c8a96e',
       }}>
         {/* Top row: GSTIN left, Phone right */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           fontSize: '10px',
-          color: '#555',
+          color: '#aaa',
           marginBottom: '6px',
         }}>
           <span>GSTIN: 03AMVPT8346H1ZD</span>
@@ -98,7 +93,7 @@ export function QuotationPDFTemplate({
           <h1 style={{
             fontSize: '22px',
             fontWeight: '800',
-            color: '#1a1a1a',
+            color: '#ffffff',
             margin: '0 0 2px 0',
             letterSpacing: '-0.5px',
           }}>
@@ -106,14 +101,14 @@ export function QuotationPDFTemplate({
           </h1>
           <p style={{
             margin: '0',
-            color: '#555',
+            color: '#ccc',
             fontSize: '11px',
           }}>
             Plot No. 658, JLPL, Sector 82, Mohali, Punjab, India
           </p>
           <p style={{
             margin: '2px 0 0 0',
-            color: '#555',
+            color: '#ccc',
             fontSize: '11px',
           }}>
             Deals in: Quartz, Granite and Marble
@@ -122,7 +117,7 @@ export function QuotationPDFTemplate({
 
         {/* Reverse charges right-aligned */}
         <div style={{ textAlign: 'right', fontSize: '10px',
-                      color: '#555', marginTop: '4px' }}>
+                      color: '#aaa', marginTop: '4px' }}>
           Reverse Charges: No
         </div>
       </div>
@@ -137,7 +132,7 @@ export function QuotationPDFTemplate({
         paddingBottom: '10px',
       }}>
         <div style={{
-          backgroundColor: '#1a1a1a',
+          backgroundColor: '#c8a96e',
           color: '#fff',
           padding: '4px 14px',
           borderRadius: '3px',
@@ -218,8 +213,8 @@ export function QuotationPDFTemplate({
         fontSize: '11px',
       }}>
         <thead>
-          <tr style={{ backgroundColor: '#1a1a1a',
-                       color: '#fff' }}>
+          <tr style={{ backgroundColor: '#c8a96e',
+                       color: '#1a1a1a' }}>
             <th style={{
               padding: '8px 6px',
               textAlign: 'center',
@@ -289,7 +284,7 @@ export function QuotationPDFTemplate({
           {items.map((item, index) => (
             <tr key={item.id} style={{
               backgroundColor: index % 2 === 0
-                ? '#f9f9f9' : '#fff',
+                ? '#fffdf7' : '#ffffff',
             }}>
               <td style={{
                 padding: '8px 6px',
@@ -375,36 +370,19 @@ export function QuotationPDFTemplate({
               {formatCurrency(quotation.subtotal)}
             </span>
           </div>
-          {gstRate > 0 && (
-            <>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '5px 0',
-                borderBottom: '1px solid #e5e5e5',
-              }}>
-                <span style={{ color: '#555' }}>
-                  SGST ({sgstRate}%)
-                </span>
-                <span style={{ fontWeight: '600' }}>
-                  {formatCurrency(sgstAmount)}
-                </span>
-              </div>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '5px 0',
-                borderBottom: '1px solid #e5e5e5',
-              }}>
-                <span style={{ color: '#555' }}>
-                  CGST ({cgstRate}%)
-                </span>
-                <span style={{ fontWeight: '600' }}>
-                  {formatCurrency(cgstAmount)}
-                </span>
-              </div>
-            </>
-          )}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            padding: '5px 0',
+            borderBottom: '1px solid #e5e5e5',
+          }}>
+            <span style={{ color: '#555' }}>
+              GST ({quotation.gst_percentage}%)
+            </span>
+            <span style={{ fontWeight: '600' }}>
+              {formatCurrency(quotation.gst_amount)}
+            </span>
+          </div>
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -424,8 +402,8 @@ export function QuotationPDFTemplate({
             display: 'flex',
             justifyContent: 'space-between',
             padding: '10px 12px',
-            backgroundColor: '#1a1a1a',
-            color: '#fff',
+            backgroundColor: '#c8a96e',
+            color: '#1a1a1a',
             borderRadius: '4px',
             marginTop: '4px',
           }}>
@@ -447,8 +425,9 @@ export function QuotationPDFTemplate({
 
       {/* AMOUNT IN WORDS */}
       <div style={{
-        backgroundColor: '#f5f5f5',
-        border: '1px solid #e0e0e0',
+        backgroundColor: '#fffdf7',
+        border: '1px solid #e8d5a3',
+        borderLeft: '3px solid #c8a96e',
         borderRadius: '4px',
         padding: '8px 12px',
         marginBottom: '16px',
@@ -504,7 +483,7 @@ export function QuotationPDFTemplate({
           fontWeight: '700',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
-          color: '#1a1a1a',
+          color: '#c8a96e',
         }}>
           Terms & Conditions
         </p>
@@ -530,7 +509,7 @@ export function QuotationPDFTemplate({
 
       {/* FOOTER */}
       <div style={{
-        borderTop: '2px solid #1a1a1a',
+        borderTop: '2px solid #c8a96e',
         paddingTop: '12px',
         marginTop: '8px',
       }}>
@@ -538,9 +517,9 @@ export function QuotationPDFTemplate({
         <div style={{
           textAlign: 'center',
           fontSize: '10px',
-          color: '#555',
+          color: '#c8a96e',
           marginBottom: '16px',
-          fontWeight: '600',
+          fontWeight: '700',
         }}>
           Our Bank: Canara Bank |
           A/C No. 120001351990 |
