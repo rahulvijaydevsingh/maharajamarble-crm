@@ -79,6 +79,7 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
   } | null>(null);
 
   useEffect(() => {
+    setLatestActivity(null);
     if (!lead?.id) return;
     supabase
       .from('activity_log')
@@ -88,9 +89,31 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) setLatestActivity(data as any);
+        if (data) setLatestActivity(data as {
+          activity_type: string;
+          title: string;
+          user_name: string;
+          created_at: string;
+        } | null);
       });
   }, [lead.id]);
+
+  const fetchLatestActivity = async () => {
+    if (!lead?.id) return;
+    const { data } = await supabase
+      .from('activity_log')
+      .select('activity_type, title, user_name, created_at')
+      .eq('lead_id', lead.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (data) {
+      setLatestActivity(data as any);
+    } else {
+      setLatestActivity(null);
+    }
+  };
   
   const statusConfig = LEAD_STATUSES[lead.status] || { label: lead.status, className: 'bg-gray-100 text-gray-700' };
   const priorityConfig = PRIORITY_LEVELS[lead.priority] || { label: 'Medium', color: 'text-yellow-700', bgColor: 'bg-yellow-50' };
@@ -113,6 +136,7 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
             field_name: 'status',
           },
         });
+        await fetchLatestActivity();
       }
       toast({
         title: "Status Updated",

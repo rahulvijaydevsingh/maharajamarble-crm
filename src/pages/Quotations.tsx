@@ -194,20 +194,25 @@ const Quotations = () => {
             position: static !important;
             left: auto !important;
           }
-          @page { margin: 10mm; size: A4; }
         }
+        @page { margin: 10mm; size: A4; }
       `;
       document.head.appendChild(style);
 
-      window.print();
-
-      // Cleanup after print dialog closes
-      setTimeout(() => {
+      // Cleanup function using afterprint — fires when
+      // print dialog closes, not on a fixed timer
+      const cleanup = () => {
         root.unmount();
-        document.body.removeChild(printDiv);
+        if (document.body.contains(printDiv)) {
+          document.body.removeChild(printDiv);
+        }
         const s = document.getElementById('print-styles-quotation');
         if (s) document.head.removeChild(s);
-      }, 1000);
+        window.removeEventListener('afterprint', cleanup);
+      };
+
+      window.addEventListener('afterprint', cleanup);
+      window.print();
     }, 300);
   };
 

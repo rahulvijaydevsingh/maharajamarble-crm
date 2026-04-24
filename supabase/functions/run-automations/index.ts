@@ -413,13 +413,18 @@ async function executeAction(
                   : `Changed to ${value} by automation rule`,
                 user_name: "Automation",
                 lead_id: entityId,
-                metadata: JSON.stringify({
+                metadata: {
                   old_status: oldValue,
                   new_status: value,
                   triggered_by: "automation",
-                }),
+                },
               });
-            } catch (_) { /* non-critical */ }
+            } catch (err) {
+              console.error(
+                "[Automation] Failed to log status change to activity_log:",
+                err
+              );
+            }
           }
 
           return { status: "success", details: `Updated ${field} to ${value}` };
