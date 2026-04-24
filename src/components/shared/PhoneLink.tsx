@@ -40,7 +40,11 @@ export function PhoneLink({
   const href = toTelHref(phone);
 
   // If number can't be normalized, show as plain text
-  if (!href) return <span className={className}>{phone}</span>;
+  if (!href) return (
+    <span className={cn("text-muted-foreground", className)}>
+      {phone}
+    </span>
+  );
 
   const handleClick: React.MouseEventHandler<HTMLAnchorElement> = async (e) => {
     // Don't prevent default — let the tel: link fire naturally
