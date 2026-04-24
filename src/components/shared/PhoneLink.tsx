@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 function toTelHref(phone: string): string | null {
   const trimmed = phone.trim();
@@ -27,6 +28,8 @@ export function PhoneLink({
     relatedEntityId?: string;
   };
 }) {
+  const { user } = useAuth();
+
   if (!phone) return null;
 
   const href = toTelHref(phone);
@@ -47,6 +50,9 @@ export function PhoneLink({
     // never awaited, never blocks the tel: link,
     // never throws to React
     if (log?.leadId || log?.customerId || log?.relatedEntityType) {
+      const userId = user?.id || null;
+      const userName = user?.email?.split('@')[0] || 'System';
+
       Promise.resolve()
         .then(() => import('@/integrations/supabase/client'))
         .then(({ supabase }) =>
@@ -55,8 +61,15 @@ export function PhoneLink({
             customer_id: log?.customerId ?? null,
             activity_type: 'phone_call',
             activity_category: 'communication',
+            user_id: userId,
+            user_name: userName,
             title: 'Phone Call Initiated',
             description: `Called ${phone}`,
+            metadata: {
+              phone,
+              href,
+              source: 'ui_click',
+            },
             related_entity_type: log?.relatedEntityType ?? null,
             related_entity_id: log?.relatedEntityId ?? null,
           })
