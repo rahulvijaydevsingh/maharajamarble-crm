@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -70,6 +71,26 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [latestActivity, setLatestActivity] = useState<{
+    activity_type: string;
+    title: string;
+    user_name: string;
+    created_at: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!lead?.id) return;
+    supabase
+      .from('activity_log')
+      .select('activity_type, title, user_name, created_at')
+      .eq('lead_id', lead.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setLatestActivity(data as any);
+      });
+  }, [lead.id]);
   
   const statusConfig = LEAD_STATUSES[lead.status] || { label: lead.status, className: 'bg-gray-100 text-gray-700' };
   const priorityConfig = PRIORITY_LEVELS[lead.priority] || { label: 'Medium', color: 'text-yellow-700', bgColor: 'bg-yellow-50' };
@@ -399,22 +420,39 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-start gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                {lead.assigned_to.split(' ').map(n => n[0]).join('').slice(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <div>
-                <span className="font-medium">{lead.assigned_to}</span>
-                <span className="text-muted-foreground"> - Lead created</span>
+          {(() => {
+            const displayActivity = latestActivity ?? {
+              activity_type: 'created',
+              title: 'Lead created',
+              user_name: lead.assigned_to,
+              created_at: lead.created_at,
+            };
+
+            return (
+              <div className="flex items-start gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {displayActivity.user_name?.split(' ')
+                      .map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div>
+                    <span className="font-medium">
+                      {displayActivity.user_name}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '} - {displayActivity.title}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(displayActivity.created_at)}{' '}
+                    ({getRelativeTime(displayActivity.created_at)})
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {formatDate(lead.created_at)} ({getRelativeTime(lead.created_at)})
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {onViewActivityLog && (
             <Button 
