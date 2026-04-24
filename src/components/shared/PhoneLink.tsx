@@ -28,7 +28,7 @@ export function PhoneLink({
     relatedEntityId?: string;
   };
 }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   if (!phone) return null;
 
@@ -57,7 +57,7 @@ export function PhoneLink({
             lead_id: log?.leadId ?? null,
             customer_id: log?.customerId ?? null,
             user_id: user?.id ?? null,
-            user_name: user?.email?.split('@')[0] ?? 'System',
+            user_name: profile?.full_name ?? user?.email?.split('@')[0] ?? 'System',
             activity_type: 'phone_call',
             activity_category: 'communication',
             title: 'Phone Call Initiated',
