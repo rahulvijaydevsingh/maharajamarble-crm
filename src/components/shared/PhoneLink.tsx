@@ -4,10 +4,11 @@ import { useLogActivity } from "@/hooks/useActivityLog";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { useAuth } from "@/contexts/AuthContext";
 
-function toTelHref(phone: string) {
-  // Keep leading +, strip everything else except digits.
+function toTelHref(phone: string): string | null {
   const trimmed = phone.trim();
   if (!trimmed) return null;
+  // Preserve leading + for international numbers,
+  // strip all non-digit characters from the rest
   const normalized = trimmed.startsWith("+")
     ? "+" + trimmed.slice(1).replace(/[^\d]/g, "")
     : trimmed.replace(/[^\d]/g, "");
@@ -33,11 +34,20 @@ export function PhoneLink({
 }) {
   const { logActivity } = useLogActivity();
   const { user } = useAuth();
-  if (!phone) return <span className={cn("text-muted-foreground", className)}>-</span>;
+
+  if (!phone) return null;
+
   const href = toTelHref(phone);
-  if (!href) return <span className={cn("text-muted-foreground", className)}>{phone}</span>;
+
+  // If number can't be normalized, show as plain text
+  if (!href) return (
+    <span className={cn("text-muted-foreground", className)}>
+      {phone}
+    </span>
+  );
 
   const handleClick: React.MouseEventHandler<HTMLAnchorElement> = async (e) => {
+    // Don't prevent default — let the tel: link fire naturally
     try {
       if (log?.leadId || log?.customerId || log?.relatedEntityType) {
         await logActivity({
@@ -56,20 +66,24 @@ export function PhoneLink({
           related_entity_id: log?.relatedEntityId,
         });
       }
-      // Also log to staff_activity_log for performance metrics
       if (user) {
         await logToStaffActivity(
           'call_made',
           user.email || '',
           user.id,
           `Called ${phone}`,
-          log?.leadId ? 'lead' : log?.customerId ? 'customer' : undefined,
+          log?.leadId ? 'lead'
+            : log?.customerId ? 'customer' : undefined,
           log?.leadId || log?.customerId || undefined,
-          { phone_number: phone, lead_id: log?.leadId, customer_id: log?.customerId }
+          {
+            phone_number: phone,
+            lead_id: log?.leadId,
+            customer_id: log?.customerId
+          }
         );
       }
     } catch {
-      // Don't block the click action if logging fails.
+      // Never block the dial action if logging fails
     } finally {
       onClick?.(e);
     }
@@ -79,13 +93,12 @@ export function PhoneLink({
     <a
       href={href}
       className={cn(
-        "text-primary hover:underline underline-offset-4",
-        // Prevent long numbers from breaking table layouts
-        "whitespace-nowrap",
+        "text-primary hover:underline underline-offset-4 whitespace-nowrap",
         className
       )}
       onClick={handleClick}
-      title="Click to call"
+      target="_self"
+      rel="noopener noreferrer"
     >
       {phone}
     </a>
