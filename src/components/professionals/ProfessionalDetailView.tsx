@@ -322,7 +322,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
   const { user } = useAuth();
   const { role } = usePermissions();
   const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager';
-  const { activities, loading, deleteActivity, updateActivity, refetch } = useActivityLog(undefined, undefined);
+  const { deleteActivity, updateActivity } = useActivityLog(undefined, undefined);
   const [professionalActivities, setProfessionalActivities] = useState<ActivityLogEntry[]>([]);
   const [fetching, setFetching] = useState(true);
   const { toast } = useToast();
