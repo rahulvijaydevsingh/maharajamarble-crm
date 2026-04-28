@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,17 +18,29 @@ const Professionals = () => {
   const [initialTab, setInitialTab] = useState<string | undefined>();
   const { professionals, refetch, deleteProfessional } = useProfessionals();
 
+  const pendingViewId = useRef<string | null>(null);
+
   // Handle URL deep-linking
   useEffect(() => {
     const selectedId = searchParams.get("selected") || searchParams.get("view");
     const tab = searchParams.get("tab");
-    if (selectedId && professionals.length > 0) {
-      const found = professionals.find(p => p.id === selectedId);
-      if (found) {
-        setSelectedProfessional(found);
-        setInitialTab(tab || undefined);
-        setDetailViewOpen(true);
-      }
+
+    if (!selectedId) {
+      pendingViewId.current = null;
+      return;
+    }
+
+    // Store the pending ID in case professionals haven't loaded yet
+    pendingViewId.current = selectedId;
+
+    if (professionals.length === 0) return;
+
+    const found = professionals.find(p => p.id === selectedId);
+    if (found) {
+      setSelectedProfessional(found);
+      setInitialTab(tab || undefined);
+      setDetailViewOpen(true);
+      pendingViewId.current = null;
     }
   }, [searchParams, professionals]);
 

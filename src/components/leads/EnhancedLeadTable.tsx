@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { 
   Table, 
@@ -280,22 +280,34 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     }
   }, [savedFilters]);
 
+  const pendingViewId = useRef<string | null>(null);
+
   // Handle ?view= or ?selected= URL parameters to open lead detail view
   useEffect(() => {
     const viewLeadId = searchParams.get('view') || searchParams.get('selected');
     const tabParam = searchParams.get('tab');
-    if (viewLeadId && leads.length > 0) {
-      const leadToView = leads.find(l => l.id === viewLeadId);
-      if (leadToView) {
-        setSelectedLead(leadToView);
-        setDetailInitialTab(tabParam || undefined);
-        setDetailViewOpen(true);
-        // Clear the URL parameters
-        searchParams.delete('view');
-        searchParams.delete('selected');
-        searchParams.delete('tab');
-        setSearchParams(searchParams, { replace: true });
-      }
+
+    if (!viewLeadId) {
+      pendingViewId.current = null;
+      return;
+    }
+
+    // Store the pending ID in case leads haven't loaded yet
+    pendingViewId.current = viewLeadId;
+
+    if (leads.length === 0) return;
+
+    const leadToView = leads.find(l => l.id === viewLeadId);
+    if (leadToView) {
+      setSelectedLead(leadToView);
+      setDetailInitialTab(tabParam || undefined);
+      setDetailViewOpen(true);
+      pendingViewId.current = null;
+      // Clear the URL parameters
+      searchParams.delete('view');
+      searchParams.delete('selected');
+      searchParams.delete('tab');
+      setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, leads, setSearchParams]);
 
