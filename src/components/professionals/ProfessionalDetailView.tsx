@@ -382,7 +382,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
       await updateActivity(activityToEdit.id, {
         title: editTitle.trim(),
         description: editDescription.trim() || null,
-      } as any);
+      });
       setProfessionalActivities(prev => prev.map(a =>
         a.id === activityToEdit.id
           ? { ...a, title: editTitle.trim(), description: editDescription.trim() || null }
@@ -413,10 +413,10 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
           {professionalActivities.map((activity) => (
             <ActivityLogItem
               key={activity.id}
-              activity={activity as any}
+              activity={activity}
               isAdmin={isAdmin || activity.user_id === user?.id}
-              onEdit={() => handleEditOpen(activity as any)}
-              onDelete={(a) => setActivityToDelete(a as any)}
+              onEdit={() => handleEditOpen(activity)}
+              onDelete={(a) => setActivityToDelete(a)}
             />
           ))}
         </div>
