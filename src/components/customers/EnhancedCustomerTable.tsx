@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -269,22 +269,34 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     }
   }, [columnVisibility]);
 
+  const pendingViewId = useRef<string | null>(null);
+
   // Handle ?view= or ?selected= URL parameters to open customer detail view
   useEffect(() => {
     const viewCustomerId = searchParams.get('view') || searchParams.get('selected');
     const tabParam = searchParams.get('tab');
-    if (viewCustomerId && customers.length > 0) {
-      const customerToView = customers.find(c => c.id === viewCustomerId);
-      if (customerToView) {
-        setSelectedCustomer(customerToView);
-        setDetailInitialTab(tabParam || undefined);
-        setDetailViewOpen(true);
-        // Clear the URL parameters
-        searchParams.delete('view');
-        searchParams.delete('selected');
-        searchParams.delete('tab');
-        setSearchParams(searchParams, { replace: true });
-      }
+
+    if (!viewCustomerId) {
+      pendingViewId.current = null;
+      return;
+    }
+
+    // Store the pending ID in case customers haven't loaded yet
+    pendingViewId.current = viewCustomerId;
+
+    if (customers.length === 0) return;
+
+    const customerToView = customers.find(c => c.id === viewCustomerId);
+    if (customerToView) {
+      setSelectedCustomer(customerToView);
+      setDetailInitialTab(tabParam || undefined);
+      setDetailViewOpen(true);
+      pendingViewId.current = null;
+      // Clear the URL parameters
+      searchParams.delete('view');
+      searchParams.delete('selected');
+      searchParams.delete('tab');
+      setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, customers, setSearchParams]);
 
@@ -766,11 +778,24 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           <div>
             <div className="flex items-center">
               <Phone className="h-3 w-3 mr-1" />
-              <PhoneLink phone={customer.phone} />
+              <PhoneLink
+                phone={customer.phone}
+                log={{
+                  relatedEntityType: 'customer',
+                  relatedEntityId: customer.id,
+                }}
+              />
             </div>
             {customer.alternate_phone && (
               <div className="text-xs text-muted-foreground ml-4">
-                <PhoneLink phone={customer.alternate_phone} className="text-xs" />
+                <PhoneLink
+                  phone={customer.alternate_phone}
+                  className="text-xs"
+                  log={{
+                    relatedEntityType: 'customer',
+                    relatedEntityId: customer.id,
+                  }}
+                />
               </div>
             )}
           </div>

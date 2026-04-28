@@ -353,7 +353,13 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         return (
           <div className="flex items-center gap-1">
             <Phone className="h-3 w-3" />
-            <PhoneLink phone={professional.phone} />
+            <PhoneLink
+              phone={professional.phone}
+              log={{
+                relatedEntityType: 'professional',
+                relatedEntityId: professional.id,
+              }}
+            />
           </div>
         );
       case "email":

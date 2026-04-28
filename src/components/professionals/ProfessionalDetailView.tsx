@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -47,6 +50,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   User,
   CheckSquare,
@@ -71,7 +77,9 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Professional, useProfessionals } from '@/hooks/useProfessionals';
-import { useLogActivity } from '@/hooks/useActivityLog';
+import { useActivityLog, useLogActivity, ActivityLogEntry } from '@/hooks/useActivityLog';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { EntityAttachmentsTab } from '@/components/shared/EntityAttachmentsTab';
 import { KitProfileTab } from '@/components/kit/KitProfileTab';
@@ -89,6 +97,7 @@ import { useQuotations } from '@/hooks/useQuotations';
 import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
+import { ActivityLogItem } from '@/components/leads/activity/ActivityLogItem';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
@@ -121,12 +130,24 @@ function ProfessionalProfileTab({ professional, onEdit }: { professional: Profes
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Phone</span>
-            <PhoneLink phone={professional.phone} />
+            <PhoneLink
+              phone={professional.phone}
+              log={{
+                relatedEntityType: 'professional',
+                relatedEntityId: professional.id,
+              }}
+            />
           </div>
           {professional.alternate_phone && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Alt Phone</span>
-              <PhoneLink phone={professional.alternate_phone} />
+              <PhoneLink
+                phone={professional.alternate_phone}
+                log={{
+                  relatedEntityType: 'professional',
+                  relatedEntityId: professional.id,
+                }}
+              />
             </div>
           )}
           <div className="flex justify-between">
@@ -298,8 +319,19 @@ function ProfessionalNotesTab({ professional }: { professional: Professional }) 
 
 // ---- Activity Tab ----
 function ProfessionalActivityTab({ professional }: { professional: Professional }) {
-  const [activities, setActivities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { role } = usePermissions();
+  const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager';
+  const { activities, loading, deleteActivity, updateActivity, refetch } = useActivityLog(undefined, undefined);
+  const [professionalActivities, setProfessionalActivities] = useState<ActivityLogEntry[]>([]);
+  const [fetching, setFetching] = useState(true);
+  const { toast } = useToast();
+
+  const [activityToDelete, setActivityToDelete] = useState<ActivityLogEntry | null>(null);
+  const [activityToEdit, setActivityToEdit] = useState<ActivityLogEntry | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [isEditSaving, setIsEditSaving] = useState(false);
 
   useEffect(() => {
     loadActivities();
@@ -307,41 +339,144 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
 
   const loadActivities = async () => {
     try {
+      setFetching(true);
       const { data, error } = await supabase
         .from('activity_log')
         .select('*')
-        .eq('related_entity_id', professional.id)
-        .eq('related_entity_type', 'professional')
-        .order('created_at', { ascending: false });
+        .or(
+          `related_entity_id.eq.${professional.id},` +
+          `professional_id.eq.${professional.id}`
+        )
+        .order('activity_timestamp', { ascending: false });
       if (error) throw error;
-      setActivities(data || []);
-    } catch {
-      // silent
+      setProfessionalActivities(data || []);
+    } catch (err) {
+      console.error('Error loading professional activities:', err);
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
   };
 
-  if (loading) return <p className="text-sm text-muted-foreground">Loading activity...</p>;
-  if (activities.length === 0) return <p className="text-sm text-muted-foreground">No activity recorded yet.</p>;
+  const handleDelete = async () => {
+    if (activityToDelete) {
+      try {
+        await deleteActivity(activityToDelete.id);
+        setProfessionalActivities(prev => prev.filter(a => a.id !== activityToDelete.id));
+        setActivityToDelete(null);
+      } catch (err) {
+        toast({ title: "Error deleting activity", variant: "destructive" });
+      }
+    }
+  };
+
+  const handleEditOpen = (activity: ActivityLogEntry) => {
+    setActivityToEdit(activity);
+    setEditTitle(activity.title);
+    setEditDescription(activity.description || '');
+  };
+
+  const handleEditSave = async () => {
+    if (!activityToEdit) return;
+    setIsEditSaving(true);
+    try {
+      await updateActivity(activityToEdit.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+      } as any);
+      setProfessionalActivities(prev => prev.map(a =>
+        a.id === activityToEdit.id
+          ? { ...a, title: editTitle.trim(), description: editDescription.trim() || null }
+          : a
+      ));
+      setActivityToEdit(null);
+      toast({ title: "Activity updated" });
+    } catch (err) {
+      toast({ title: "Error updating activity", variant: "destructive" });
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
+
+  if (fetching) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+
+  if (professionalActivities.length === 0) return (
+    <div className="text-center py-12 text-muted-foreground">
+      <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+      <p>No activity recorded yet.</p>
+    </div>
+  );
 
   return (
     <div className="space-y-3">
-      {activities.map((activity) => (
-        <Card key={activity.id}>
-          <CardContent className="py-3">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-sm">{activity.title}</span>
-              <span className="text-xs text-muted-foreground">
-                {format(new Date(activity.created_at), 'dd MMM yyyy, hh:mm a')}
-              </span>
+      <div className="relative border-l border-border ml-[4px]">
+        <div className="space-y-2 pl-4 pb-2">
+          {professionalActivities.map((activity) => (
+            <ActivityLogItem
+              key={activity.id}
+              activity={activity as any}
+              isAdmin={isAdmin || activity.user_id === user?.id}
+              onEdit={() => handleEditOpen(activity as any)}
+              onDelete={(a) => setActivityToDelete(a as any)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!activityToDelete} onOpenChange={() => setActivityToDelete(null)}>
+        <AlertDialogContent className="z-[130]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Activity Entry</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this activity entry? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Activity Dialog */}
+      <Dialog open={!!activityToEdit} onOpenChange={(open) => { if (!open) setActivityToEdit(null); }}>
+        <DialogContent className="sm:max-w-[425px] z-[130]">
+          <DialogHeader>
+            <DialogTitle>Edit Activity</DialogTitle>
+            <DialogDescription>Update the activity title and description.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Activity title"
+              />
             </div>
-            {activity.description && (
-              <p className="text-sm text-muted-foreground mt-1">{activity.description}</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Activity description"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActivityToEdit(null)}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={isEditSaving || !editTitle.trim()}>
+              {isEditSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
