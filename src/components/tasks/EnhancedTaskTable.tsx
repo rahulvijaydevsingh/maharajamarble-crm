@@ -561,9 +561,15 @@ export function EnhancedTaskTable({
   const filteredTasks = useMemo(() => {
     let result = transformedTasks.filter(task => {
       // Search filter
+      const leadName = (
+        task.lead?.name ||
+        (task as any).related_entity_name ||
+        ''
+      ).toLowerCase();
+
       const matchesSearch = !searchTerm || searchTerm.length < 2 || 
         task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.lead?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leadName.includes(searchTerm.toLowerCase()) ||
         (task.lead?.phone || "").includes(searchTerm) ||
         (task.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (task.assigned_to || "").toLowerCase().includes(searchTerm.toLowerCase());
@@ -1117,6 +1123,11 @@ export function EnhancedTaskTable({
                 <PhoneLink
                   phone={task.lead.phone}
                   className="inline-flex items-center rounded px-1 py-0.5 hover:bg-muted/50"
+                  log={{
+                    leadId: task.lead.id,
+                    relatedEntityType: 'lead',
+                    relatedEntityId: task.lead.id,
+                  }}
                 />
               </span>
             </div>
@@ -1172,7 +1183,16 @@ export function EnhancedTaskTable({
                 return phone ? (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Phone className="h-3 w-3 shrink-0" />
-                    <PhoneLink phone={phone} className="text-xs" />
+                    <PhoneLink
+                      phone={phone}
+                      className="text-xs"
+                      log={{
+                        leadId: task.related_entity_type === 'lead' ? task.related_entity_id || undefined : undefined,
+                        customerId: task.related_entity_type === 'customer' ? task.related_entity_id || undefined : undefined,
+                        relatedEntityType: task.related_entity_type || undefined,
+                        relatedEntityId: task.related_entity_id || undefined,
+                      }}
+                    />
                   </div>
                 ) : null;
               })()}

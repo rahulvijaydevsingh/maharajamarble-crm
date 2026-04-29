@@ -265,7 +265,16 @@ export function TaskTable({ onEditTask }: TaskTableProps) {
                       <div className="text-sm font-medium">{task.relatedTo.name}</div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
-                        <PhoneLink phone={task.relatedTo.phone} className="text-xs" />
+                        <PhoneLink
+                          phone={task.relatedTo.phone}
+                          className="text-xs"
+                          log={{
+                            leadId: task.relatedTo.type.toLowerCase() === 'lead' ? task.relatedTo.id : undefined,
+                            customerId: task.relatedTo.type.toLowerCase() === 'customer' ? task.relatedTo.id : undefined,
+                            relatedEntityType: task.relatedTo.type.toLowerCase(),
+                            relatedEntityId: task.relatedTo.id,
+                          }}
+                        />
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {task.relatedTo.type}

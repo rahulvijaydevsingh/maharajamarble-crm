@@ -27,6 +27,8 @@ export interface CalendarEvent {
   relatedEntityType?: string | null;
   relatedEntityId?: string | null;
   relatedEntityName?: string | null;
+  entityType?: string | null; // Compatibility alias
+  entityId?: string | null;   // Compatibility alias
   source: "task" | "reminder" | "quotation" | "kit_touch";
   sourceId: string;
   color: string;
@@ -296,6 +298,8 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
         assignedTo: task.assigned_to,
         relatedEntityType: task.related_entity_type,
         relatedEntityId: task.related_entity_id,
+        entityType: task.related_entity_type,
+        entityId: task.related_entity_id,
         source: "task",
         sourceId: task.id,
         color: config.color,
@@ -318,6 +322,8 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
         assignedTo: reminder.assigned_to,
         relatedEntityType: reminder.entity_type,
         relatedEntityId: reminder.entity_id,
+        entityType: reminder.entity_type,
+        entityId: reminder.entity_id,
         source: "reminder",
         sourceId: reminder.id,
         color: config.color,
@@ -375,6 +381,8 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
         assignedTo: touch.assigned_to,
         relatedEntityType: sub?.entity_type || null,
         relatedEntityId: sub?.entity_id || null,
+        entityType: sub?.entity_type || null,
+        entityId: sub?.entity_id || null,
         relatedEntityName: entityName,
         source: "kit_touch",
         sourceId: touch.id,

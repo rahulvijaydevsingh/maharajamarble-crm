@@ -115,7 +115,16 @@ export function CalendarEventCard({
     return (
       <div className="flex items-center gap-2 mt-2">
         {event.touchMethod === 'call' && event.entityPhone && (
-          <PhoneLink phone={event.entityPhone} className="text-xs" />
+          <PhoneLink
+            phone={event.entityPhone}
+            className="text-xs"
+            log={{
+              leadId: event.entityType === 'lead' ? event.entityId : undefined,
+              customerId: event.entityType === 'customer' ? event.entityId : undefined,
+              relatedEntityType: event.entityType,
+              relatedEntityId: event.entityId,
+            }}
+          />
         )}
         {event.touchMethod === 'whatsapp' && event.entityPhone && (
           <a

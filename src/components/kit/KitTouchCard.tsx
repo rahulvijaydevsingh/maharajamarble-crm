@@ -173,7 +173,16 @@ export function KitTouchCard({
         {touch.method === 'call' && entityPhone && (
           <span className="inline-flex items-center text-xs">
             <Phone className="h-3 w-3 mr-1" />
-            <PhoneLink phone={entityPhone} className="text-xs" />
+            <PhoneLink
+              phone={entityPhone}
+              className="text-xs"
+              log={{
+                leadId: touch.subscription?.entity_type === 'lead' ? touch.subscription.entity_id : undefined,
+                customerId: touch.subscription?.entity_type === 'customer' ? touch.subscription.entity_id : undefined,
+                relatedEntityType: touch.subscription?.entity_type,
+                relatedEntityId: touch.subscription?.entity_id,
+              }}
+            />
           </span>
         )}
         {touch.method === 'whatsapp' && entityPhone && (

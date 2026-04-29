@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, User, Settings, LogOut, Plus, Users, Phone, Briefcase, FileText, CheckSquare, ListTodo, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,7 @@ export function Header() {
   const [addTodoOpen, setAddTodoOpen] = useState(false);
 
   // Global search state
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -82,14 +84,27 @@ export function Header() {
         supabase.from("leads").select("id, name, phone, email, status").or(`name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`).limit(5),
         supabase.from("customers").select("id, name, phone, email").or(`name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`).limit(5),
         supabase.from("professionals").select("id, name, phone, firm_name").or(`name.ilike.${pattern},phone.ilike.${pattern},firm_name.ilike.${pattern}`).limit(5),
-        supabase.from("tasks").select("id, title, status, assigned_to").or(`title.ilike.${pattern}`).limit(5),
+        supabase.from("tasks").select("id, title, status, assigned_to, lead:leads(id, name)").or(`title.ilike.${pattern}`).limit(10),
         supabase.from("quotations").select("id, quotation_number, client_name, status").or(`quotation_number.ilike.${pattern},client_name.ilike.${pattern}`).limit(5),
       ]);
 
       leadsRes.data?.forEach(l => results.push({ id: l.id, type: "lead", name: l.name, secondary: l.phone || l.email || "", url: `/leads?view=${l.id}` }));
       customersRes.data?.forEach(c => results.push({ id: c.id, type: "customer", name: c.name, secondary: c.phone || c.email || "", url: `/customers?view=${c.id}` }));
       professionalsRes.data?.forEach(p => results.push({ id: p.id, type: "professional", name: p.name, secondary: p.firm_name || p.phone || "", url: `/professionals?view=${p.id}` }));
-      tasksRes.data?.forEach(t => results.push({ id: t.id, type: "task", name: t.title, secondary: t.status || "", url: `/tasks?view=${t.id}` }));
+      tasksRes.data?.forEach((t: any) => {
+        const matchesTitle = t.title?.toLowerCase().includes(query.toLowerCase());
+        const matchesLead = t.lead?.name?.toLowerCase().includes(query.toLowerCase());
+
+        if (matchesTitle || matchesLead) {
+          results.push({
+            id: t.id,
+            type: "task",
+            name: t.title,
+            secondary: t.lead?.name ? `${t.status} · ${t.lead.name}` : t.status || "",
+            url: `/tasks?view=${t.id}`
+          });
+        }
+      });
       quotationsRes.data?.forEach(q => results.push({ id: q.id, type: "quotation", name: q.quotation_number, secondary: q.client_name || "", url: `/quotations?view=${q.id}` }));
     } catch (err) {
       console.error("Search error:", err);
@@ -106,6 +121,25 @@ export function Header() {
     debounceRef.current = setTimeout(() => performSearch(searchQuery), 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchQuery, performSearch]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (mobileSearchOpen) {
+        setMobileSearchOpen(false);
+        setSearchQuery("");
+        setSearchResults([]);
+      }
+    };
+
+    if (mobileSearchOpen) {
+      window.history.pushState({ searchOpen: true }, "");
+      window.addEventListener("popstate", handlePopState);
+    }
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [mobileSearchOpen]);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (!searchOpen || searchResults.length === 0) return;
@@ -130,6 +164,17 @@ export function Header() {
     navigate(result.url);
     setSearchQuery("");
     setSearchOpen(false);
+  };
+
+  const handleMobileResultClick = (result: SearchResult) => {
+    navigate(result.url);
+    setSearchQuery("");
+    setSearchResults([]);
+    if (window.history.state?.searchOpen) {
+      window.history.back();
+    } else {
+      setMobileSearchOpen(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -202,6 +247,90 @@ export function Header() {
               </PopoverContent>
             </Popover>
           </div>
+
+          <button
+            className="sm:hidden p-2 rounded-md hover:bg-accent"
+            onClick={() => setMobileSearchOpen(true)}
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5 text-muted-foreground" />
+          </button>
+
+          {mobileSearchOpen && (
+            <div className="sm:hidden fixed inset-0 z-[100] bg-background p-4 flex flex-col">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  {isSearching && <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />}
+                  <Input
+                    autoFocus
+                    type="search"
+                    placeholder="Search leads, customers, tasks..."
+                    className="w-full pl-8"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (window.history.state?.searchOpen) {
+                      window.history.back();
+                    } else {
+                      setMobileSearchOpen(false);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {isSearching ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  <div className="divide-y">
+                    {searchResults.map((result) => (
+                      <button
+                        key={`${result.type}-${result.id}`}
+                        className="w-full flex items-center gap-3 py-3 text-left hover:bg-accent transition-colors"
+                        onClick={() => handleMobileResultClick(result)}
+                      >
+                        <div className="p-2 rounded-full bg-muted/50">
+                          {ENTITY_ICONS[result.type]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{result.name}</div>
+                          {result.secondary && (
+                            <div className="text-xs text-muted-foreground truncate">
+                              {result.secondary}
+                            </div>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="capitalize shrink-0 text-[10px] px-1.5 h-5">
+                          {result.type}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                ) : searchQuery.length >= 2 ? (
+                  <div className="p-8 text-center text-muted-foreground">
+                    <p>No results found for "{searchQuery}"</p>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-muted-foreground">
+                    <p className="text-sm">Type at least 2 characters to search</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2 md:gap-4 ml-auto">
             {/* Quick Add Dropdown */}
             <DropdownMenu>
