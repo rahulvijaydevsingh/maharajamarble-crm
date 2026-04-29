@@ -84,7 +84,7 @@ export function Header() {
         supabase.from("leads").select("id, name, phone, email, status").or(`name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`).limit(5),
         supabase.from("customers").select("id, name, phone, email").or(`name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`).limit(5),
         supabase.from("professionals").select("id, name, phone, firm_name").or(`name.ilike.${pattern},phone.ilike.${pattern},firm_name.ilike.${pattern}`).limit(5),
-        supabase.from("tasks").select("id, title, status, assigned_to, lead:leads(id, name)").or(`title.ilike.${pattern}`).limit(10),
+        supabase.from("tasks").select("id, title, status, assigned_to, lead:leads(id, name)").or(`title.ilike.${pattern},leads.name.ilike.${pattern}`).limit(10),
         supabase.from("quotations").select("id, quotation_number, client_name, status").or(`quotation_number.ilike.${pattern},client_name.ilike.${pattern}`).limit(5),
       ]);
 
@@ -167,14 +167,12 @@ export function Header() {
   };
 
   const handleMobileResultClick = (result: SearchResult) => {
-    navigate(result.url);
-    setSearchQuery("");
+    setMobileSearchOpen(false);
+    setSearchQuery('');
     setSearchResults([]);
-    if (window.history.state?.searchOpen) {
-      window.history.back();
-    } else {
-      setMobileSearchOpen(false);
-    }
+    navigate(result.url, {
+      replace: !!window.history.state?.searchOpen
+    });
   };
 
   const handleLogout = async () => {
