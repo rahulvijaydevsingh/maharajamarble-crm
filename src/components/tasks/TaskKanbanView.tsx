@@ -253,7 +253,16 @@ export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompl
                           {task.lead?.phone && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Phone className="h-3 w-3" />
-                              <PhoneLink phone={task.lead.phone} className="text-xs" onClick={(e) => e.stopPropagation()} />
+                              <PhoneLink
+                                phone={task.lead.phone}
+                                className="text-xs"
+                                onClick={(e) => e.stopPropagation()}
+                                log={{
+                                  leadId: task.lead.id,
+                                  relatedEntityType: 'lead',
+                                  relatedEntityId: task.lead.id,
+                                }}
+                              />
                             </div>
                           )}
                           

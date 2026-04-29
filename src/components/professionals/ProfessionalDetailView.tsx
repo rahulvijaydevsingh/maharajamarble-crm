@@ -349,7 +349,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
         )
         .order('activity_timestamp', { ascending: false });
       if (error) throw error;
-      setProfessionalActivities(data || []);
+      setProfessionalActivities((data as any) || []);
     } catch (err) {
       console.error('Error loading professional activities:', err);
     } finally {

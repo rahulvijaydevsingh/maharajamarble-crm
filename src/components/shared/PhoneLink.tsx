@@ -65,7 +65,7 @@ export function PhoneLink({
             metadata: { phone, source: 'ui_click' },
             related_entity_type: log?.relatedEntityType ?? null,
             related_entity_id: log?.relatedEntityId ?? null,
-          })
+          } as any)
         )
         .catch(() => {
           // Logging failure must never surface to UI

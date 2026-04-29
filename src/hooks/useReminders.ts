@@ -54,7 +54,10 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
 
       // Only filter by datetime if we're NOT in entity-specific tab mode
       if (!entityType || !entityId) {
-        query = query.lte("reminder_datetime", nowISO);
+        const next24h = new Date(
+          Date.now() + 24 * 60 * 60 * 1000
+        ).toISOString();
+        query = query.lte("reminder_datetime", next24h);
       }
 
       if (entityType && entityId) {
