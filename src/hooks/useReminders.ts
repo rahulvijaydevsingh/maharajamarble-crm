@@ -49,18 +49,26 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
       let query = supabase
         .from("reminders")
         .select("*")
-        .eq("is_dismissed", false)
-        .order("reminder_datetime", { ascending: true });
+        .eq("is_dismissed", false);
 
       // Only filter by datetime if we're NOT in entity-specific tab mode
       if (!entityType || !entityId) {
-        query = query.lte("reminder_datetime", nowISO);
+        query = query
+          .lte("reminder_datetime", nowISO)
+          .or(`is_snoozed.eq.false,snooze_until.lte.${nowISO}`);
       }
 
       if (entityType && entityId) {
-        query = query.eq("entity_type", entityType).eq("entity_id", entityId);
-      } else if (assignedTo) {
-        query = query.eq("assigned_to", assignedTo);
+        query = query
+          .eq("entity_type", entityType)
+          .eq("entity_id", entityId)
+          .order("is_snoozed", { ascending: true })
+          .order("reminder_datetime", { ascending: true });
+      } else {
+        query = query.order("reminder_datetime", { ascending: true });
+        if (assignedTo) {
+          query = query.eq("assigned_to", assignedTo);
+        }
       }
 
       const { data, error } = await query;
@@ -197,6 +205,14 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   useEffect(() => {
     fetchReminders();
 
+    // Poll every 60s when in bell/global mode so newly-due reminders appear without page reload
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    if (!entityType || !entityId) {
+      pollInterval = setInterval(() => {
+        fetchReminders();
+      }, 60_000);
+    }
+
     // Handler logic shared between context path and fallback path
     const handlePayload = (payload: RemindersRealtimePayload) => {
       if (payload.eventType === 'INSERT') {
@@ -238,6 +254,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
       // Use shared context channel — no new Supabase subscription
       remindersChannel.addListener(handlePayload);
       return () => {
+        if (pollInterval) clearInterval(pollInterval);
         remindersChannel.removeListener(handlePayload);
       };
     } else {
@@ -251,6 +268,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
         )
         .subscribe();
       return () => {
+        if (pollInterval) clearInterval(pollInterval);
         supabase.removeChannel(channel);
       };
     }

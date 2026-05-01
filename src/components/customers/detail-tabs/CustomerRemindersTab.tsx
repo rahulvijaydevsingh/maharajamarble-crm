@@ -191,40 +191,56 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
         </Card>
       ) : (
         <div className="space-y-3">
-          {activeReminders.map((reminder) => (
-            <Card key={reminder.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="py-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Bell className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{reminder.title}</p>
-                      {reminder.description && (
-                        <p className="text-sm text-muted-foreground">{reminder.description}</p>
-                      )}
-                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                        <Badge variant="secondary" className={getTimeBadgeColor(reminder.reminder_datetime)}>
-                          {getTimeLabel(reminder.reminder_datetime)}
-                        </Badge>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {format(new Date(reminder.reminder_datetime), 'PPP')}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {format(new Date(reminder.reminder_datetime), 'p')}
-                        </span>
-                        {reminder.is_recurring && (
-                          <Badge variant="outline" className="text-xs">
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            {reminder.recurrence_pattern}
-                          </Badge>
+          {activeReminders.map((reminder) => {
+            const isSnoozedActive = reminder.is_snoozed &&
+              reminder.snooze_until &&
+              new Date(reminder.snooze_until) > new Date();
+
+            return (
+              <Card
+                key={reminder.id}
+                className={`hover:shadow-md transition-all duration-500 ${
+                  isSnoozedActive ? 'opacity-60 bg-muted/30' : ''
+                }`}
+              >
+                <CardContent className="py-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Bell className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{reminder.title}</p>
+                        {reminder.description && (
+                          <p className="text-sm text-muted-foreground">{reminder.description}</p>
                         )}
+                        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
+                          <Badge variant="secondary" className={getTimeBadgeColor(reminder.reminder_datetime)}>
+                            {getTimeLabel(reminder.reminder_datetime)}
+                          </Badge>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(reminder.reminder_datetime), 'PPP')}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {format(new Date(reminder.reminder_datetime), 'p')}
+                          </span>
+                          {reminder.is_recurring && (
+                            <Badge variant="outline" className="text-xs">
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              {reminder.recurrence_pattern}
+                            </Badge>
+                          )}
+                          {isSnoozedActive && reminder.snooze_until && (
+                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Snoozed until {format(new Date(reminder.snooze_until), 'MMM d, h:mm a')}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
                   <div className="flex gap-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -273,8 +289,9 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
                   </div>
                 </div>
               </CardContent>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
