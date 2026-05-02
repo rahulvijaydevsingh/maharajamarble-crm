@@ -424,22 +424,33 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-start gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                {customer.assigned_to.split(' ').map(n => n[0]).join('').slice(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <div>
-                <span className="font-medium">{customer.assigned_to}</span>
-                <span className="text-muted-foreground"> - Customer created</span>
+          {(() => {
+            const display = latestActivity ?? {
+              user_name: customer.assigned_to,
+              title: 'Customer created',
+              created_at: customer.created_at,
+            };
+            const initials = (display.user_name || customer.assigned_to || '?')
+              .split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+            return (
+              <div className="flex items-start gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div>
+                    <span className="font-medium">{display.user_name}</span>
+                    <span className="text-muted-foreground"> - {display.title}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(display.created_at)} ({getRelativeTime(display.created_at)})
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {formatDate(customer.created_at)} ({getRelativeTime(customer.created_at)})
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {onViewActivityLog && (
             <Button 
