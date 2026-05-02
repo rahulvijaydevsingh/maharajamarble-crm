@@ -225,6 +225,133 @@ const syncLeadFollowUpDates = async (leadId: string) => {
   }
 };
 
+/**
+ * Customer-side equivalent of syncLeadFollowUpDates. Customers track tasks via
+ * related_entity_type='customer' AND related_entity_id=<customer_id>.
+ * The DB trigger is the source of truth; this gives immediate optimistic UI.
+ */
+const syncCustomerFollowUpDates = async (customerId: string) => {
+  if (!customerId) return;
+
+  try {
+    const { data: taskFollowup } = await supabase
+      .from('tasks')
+      .select('completed_at')
+      .eq('related_entity_type', 'customer')
+      .eq('related_entity_id', customerId)
+      .eq('status', 'Completed')
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: nextTask } = await supabase
+      .from('tasks')
+      .select('due_date')
+      .eq('related_entity_type', 'customer')
+      .eq('related_entity_id', customerId)
+      .in('status', ['Pending', 'In Progress'])
+      .order('due_date', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const lastFollowUp = taskFollowup?.completed_at || null;
+    const nextFollowUp = nextTask?.due_date || null;
+
+    await supabase
+      .from('customers')
+      .update({
+        last_follow_up: lastFollowUp,
+        next_follow_up: nextFollowUp,
+      })
+      .eq('id', customerId);
+  } catch (error) {
+    console.error(`[syncCustomerFollowUpDates] Failed for customer ${customerId}:`, error);
+  }
+};
+
+/**
+ * Compute the fire timestamp for a task reminder from its fields.
+ * Returns ISO string, or null if not computable.
+ * fire_at = (due_date + (due_time or 09:00 local)) - reminder_time minutes
+ */
+const computeTaskReminderFireAt = (task: {
+  due_date?: string | null;
+  due_time?: string | null;
+  reminder_time?: string | null;
+}): string | null => {
+  if (!task.due_date) return null;
+  const offsetMinutes = parseInt(task.reminder_time || '0', 10);
+  if (Number.isNaN(offsetMinutes)) return null;
+  const time = (task.due_time && /^\d{1,2}:\d{2}/.test(task.due_time)) ? task.due_time : '09:00';
+  // Construct as local time
+  const dueDateOnly = task.due_date.includes('T') ? task.due_date.slice(0, 10) : task.due_date;
+  const localDue = new Date(`${dueDateOnly}T${time.length === 5 ? time : time.slice(0, 5)}:00`);
+  if (Number.isNaN(localDue.getTime())) return null;
+  const fireAt = new Date(localDue.getTime() - offsetMinutes * 60_000);
+  return fireAt.toISOString();
+};
+
+/**
+ * Mirror a task's reminder fields into the `reminders` table so the bell can fire.
+ * - reminder=true & open & future fire time → upsert one row keyed by (entity_type='task', entity_id=task.id)
+ * - otherwise (disabled, completed, cancelled, past) → delete any matching row(s)
+ *
+ * `overrides.fireAt` lets snoozeTask provide an explicit fire time and title.
+ */
+const syncTaskReminder = async (
+  task: {
+    id: string;
+    title: string;
+    status?: string | null;
+    reminder?: boolean | null;
+    reminder_time?: string | null;
+    due_date?: string | null;
+    due_time?: string | null;
+    assigned_to?: string | null;
+    created_by?: string | null;
+  },
+  overrides?: { fireAt?: string; title?: string }
+) => {
+  if (!task?.id) return;
+
+  const isClosed = task.status === 'Completed' || task.status === 'Cancelled';
+  const wantsReminder = !!task.reminder && !isClosed;
+
+  const fireAt = overrides?.fireAt || (wantsReminder ? computeTaskReminderFireAt(task) : null);
+  const isFuture = fireAt ? new Date(fireAt).getTime() > Date.now() : false;
+
+  try {
+    if ((wantsReminder || overrides?.fireAt) && fireAt && isFuture) {
+      // Upsert: delete then insert is simplest given no unique constraint
+      await supabase
+        .from('reminders')
+        .delete()
+        .eq('entity_type', 'task')
+        .eq('entity_id', task.id);
+
+      await supabase.from('reminders').insert({
+        title: overrides?.title || `Reminder: ${task.title}`,
+        description: null,
+        reminder_datetime: fireAt,
+        entity_type: 'task',
+        entity_id: task.id,
+        is_dismissed: false,
+        is_snoozed: false,
+        assigned_to: task.assigned_to || 'System',
+      } as any);
+    } else {
+      // Disabled / closed / past → remove any existing
+      await supabase
+        .from('reminders')
+        .delete()
+        .eq('entity_type', 'task')
+        .eq('entity_id', task.id);
+    }
+  } catch (error) {
+    console.warn(`[syncTaskReminder] Failed for task ${task.id}:`, error);
+  }
+};
+
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
