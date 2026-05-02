@@ -81,21 +81,34 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
   useEffect(() => {
     setLatestActivity(null);
     if (!lead?.id) return;
-    supabase
-      .from('activity_log')
-      .select('activity_type, title, user_name, created_at')
-      .eq('lead_id', lead.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setLatestActivity(data as {
-          activity_type: string;
-          title: string;
-          user_name: string;
-          created_at: string;
-        } | null);
-      });
+
+    const load = () => {
+      supabase
+        .from('activity_log')
+        .select('activity_type, title, user_name, created_at')
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          setLatestActivity((data as any) || null);
+        });
+    };
+    load();
+
+    // Realtime: refresh whenever any activity_log row for this lead changes
+    const channel = supabase
+      .channel(`lead-activity-${lead.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_log', filter: `lead_id=eq.${lead.id}` },
+        () => load()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [lead.id]);
 
   const fetchLatestActivity = async () => {

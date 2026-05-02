@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -54,6 +55,37 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [latestActivity, setLatestActivity] = useState<{
+    activity_type: string;
+    title: string;
+    user_name: string;
+    created_at: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setLatestActivity(null);
+    if (!customer?.id) return;
+    const load = () => {
+      supabase
+        .from('activity_log')
+        .select('activity_type, title, user_name, created_at')
+        .eq('customer_id', customer.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => setLatestActivity((data as any) || null));
+    };
+    load();
+    const channel = supabase
+      .channel(`customer-activity-${customer.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_log', filter: `customer_id=eq.${customer.id}` },
+        () => load()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [customer.id]);
   
   const statusConfig = CUSTOMER_STATUSES[customer.status] || { label: customer.status, className: 'bg-gray-100 text-gray-700' };
   const priorityConfig = PRIORITY_LEVELS[customer.priority] || { label: 'Normal', color: 'text-gray-600' };
@@ -392,22 +424,33 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-start gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                {customer.assigned_to.split(' ').map(n => n[0]).join('').slice(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <div>
-                <span className="font-medium">{customer.assigned_to}</span>
-                <span className="text-muted-foreground"> - Customer created</span>
+          {(() => {
+            const display = latestActivity ?? {
+              user_name: customer.assigned_to,
+              title: 'Customer created',
+              created_at: customer.created_at,
+            };
+            const initials = (display.user_name || customer.assigned_to || '?')
+              .split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+            return (
+              <div className="flex items-start gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div>
+                    <span className="font-medium">{display.user_name}</span>
+                    <span className="text-muted-foreground"> - {display.title}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(display.created_at)} ({getRelativeTime(display.created_at)})
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {formatDate(customer.created_at)} ({getRelativeTime(customer.created_at)})
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {onViewActivityLog && (
             <Button 
