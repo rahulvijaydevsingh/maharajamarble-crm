@@ -148,6 +148,13 @@ export function ActivityLogItem({
           <span
             role={isTaskClickable ? "button" : undefined}
             onClick={isTaskClickable ? () => onViewTask?.(resolvedTaskId) : undefined}
+            tabIndex={isTaskClickable ? 0 : undefined}
+            onKeyDown={isTaskClickable ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onViewTask?.(resolvedTaskId);
+              }
+            } : undefined}
             className={`
               inline-flex items-center text-[11px] font-medium
               px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0
