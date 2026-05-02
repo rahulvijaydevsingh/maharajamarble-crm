@@ -321,6 +321,7 @@ function ProfessionalNotesTab({ professional }: { professional: Professional }) 
 function ProfessionalActivityTab({ professional }: { professional: Professional }) {
   const { user } = useAuth();
   const { role } = usePermissions();
+  const { openTask } = useTaskDetailModal();
   const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager';
   const { deleteActivity, updateActivity } = useActivityLog(undefined, undefined);
   const [professionalActivities, setProfessionalActivities] = useState<ActivityLogEntry[]>([]);
@@ -417,6 +418,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
               isAdmin={isAdmin || activity.user_id === user?.id}
               onEdit={() => handleEditOpen(activity)}
               onDelete={(a) => setActivityToDelete(a)}
+              onViewTask={(taskId) => openTask(taskId)}
             />
           ))}
         </div>

@@ -12,6 +12,7 @@ import {
 import { Customer } from '@/hooks/useCustomers';
 import { useActivityLog, ActivityLogEntry } from '@/hooks/useActivityLog';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { ActivityLogFilters } from '@/components/leads/activity/ActivityLogFilters';
 import { ActivityLogItem } from '@/components/leads/activity/ActivityLogItem';
 import { AddManualActivityDialog } from '@/components/leads/activity/AddManualActivityDialog';
@@ -43,6 +44,7 @@ interface CustomerActivityTabProps {
 export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
   const { activities, loading, hasMore, loadMore, deleteActivity, updateActivity, refetch } = useActivityLog(undefined, customer.id);
   const { role } = usePermissions();
+  const { openTask } = useTaskDetailModal();
   const { toast } = useToast();
   const isAdmin = role === 'admin' || role === 'super_admin';
   
@@ -222,6 +224,7 @@ export function CustomerActivityTab({ customer }: CustomerActivityTabProps) {
                       isAdmin={isAdmin}
                       onEdit={() => handleEditOpen(activity)}
                       onDelete={setActivityToDelete}
+                      onViewTask={(taskId) => openTask(taskId)}
                     />
                   ))}
                 </div>
