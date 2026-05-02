@@ -458,6 +458,12 @@ export function useTasks() {
       if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
         void syncLeadFollowUpDates(data.related_entity_id);
       }
+      // Sync follow-up dates for linked customer
+      if (data.related_entity_type === 'customer' && data.related_entity_id) {
+        void syncCustomerFollowUpDates(data.related_entity_id);
+      }
+      // Mirror task reminder into reminders table so the bell can fire
+      void syncTaskReminder(data);
 
       return data;
     } catch (error: any) {
