@@ -25,8 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Activity, Search, Filter, X, Loader2, Download } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 import { useStaffManagement } from "@/hooks/useStaffManagement";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 import { format } from "date-fns";
 
 const ACTION_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -65,6 +67,8 @@ const ACTION_TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export function StaffActivityPanel() {
+  const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
   const { activities, loading, fetchActivities } = useStaffActivityLog();
   const { staffMembers } = useStaffManagement();
   const [userFilter, setUserFilter] = useState("all");
@@ -247,9 +251,44 @@ export function StaffActivityPanel() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {activity.entity_type ? (
-                        <Badge variant="outline" className="capitalize">
-                          {activity.entity_type}
-                        </Badge>
+                        (() => {
+                          const isClickable = activity.entity_id && [
+                            'task', 'lead', 'customer', 'professional'
+                          ].includes(activity.entity_type);
+
+                          const handleClick = () => {
+                            if (!activity.entity_id) return;
+
+                            switch (activity.entity_type) {
+                              case 'task':
+                                openTask(activity.entity_id);
+                                break;
+                              case 'lead':
+                                navigate(`/leads?view=${activity.entity_id}`);
+                                break;
+                              case 'customer':
+                                navigate(`/customers?view=${activity.entity_id}`);
+                                break;
+                              case 'professional':
+                                navigate(`/professionals?view=${activity.entity_id}`);
+                                break;
+                            }
+                          };
+
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={`
+                                capitalize
+                                ${isClickable ? 'cursor-pointer hover:bg-accent transition-colors duration-150' : ''}
+                              `}
+                              onClick={isClickable ? handleClick : undefined}
+                              title={isClickable ? `View ${activity.entity_type}` : undefined}
+                            >
+                              {activity.entity_type}
+                            </Badge>
+                          );
+                        })()
                       ) : (
                         "—"
                       )}

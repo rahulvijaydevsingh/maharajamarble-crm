@@ -55,8 +55,15 @@ export function ActivityLogItem({
     ? "System"
     : getStaffDisplayName(activity.user_name, staffMembers);
 
+  const resolvedTaskId = activity.metadata?.task_id ||
+    (activity.related_entity_type === 'task' ? activity.related_entity_id : undefined);
   const taskId = activity.metadata?.task_id;
   const reminderId = activity.metadata?.reminder_id;
+
+  const isTaskClickable =
+    activity.activity_category === 'task' &&
+    onViewTask &&
+    resolvedTaskId;
 
   const handleViewRelatedEntity = () => {
     if (!activity.related_entity_type || !activity.related_entity_id) return;
@@ -139,13 +146,26 @@ export function ActivityLogItem({
 
           {/* Badge */}
           <span
+            role={isTaskClickable ? "button" : undefined}
+            onClick={isTaskClickable ? () => onViewTask?.(resolvedTaskId) : undefined}
+            tabIndex={isTaskClickable ? 0 : undefined}
+            onKeyDown={isTaskClickable ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onViewTask?.(resolvedTaskId);
+              }
+            } : undefined}
             className={`
               inline-flex items-center text-[11px] font-medium
               px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0
               ${badgeClass}
+              ${isTaskClickable ? "cursor-pointer transition-colors duration-150 hover:bg-violet-100 dark:hover:bg-violet-900" : ""}
             `}
           >
             {typeLabel}
+            {isTaskClickable && (
+              <ExternalLink className="ml-1.5 h-3 w-3" />
+            )}
             {activity.is_manual && (
               <span className="ml-1 opacity-60">(manual)</span>
             )}
