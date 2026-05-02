@@ -55,6 +55,37 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [latestActivity, setLatestActivity] = useState<{
+    activity_type: string;
+    title: string;
+    user_name: string;
+    created_at: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setLatestActivity(null);
+    if (!customer?.id) return;
+    const load = () => {
+      supabase
+        .from('activity_log')
+        .select('activity_type, title, user_name, created_at')
+        .eq('customer_id', customer.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => setLatestActivity((data as any) || null));
+    };
+    load();
+    const channel = supabase
+      .channel(`customer-activity-${customer.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_log', filter: `customer_id=eq.${customer.id}` },
+        () => load()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [customer.id]);
   
   const statusConfig = CUSTOMER_STATUSES[customer.status] || { label: customer.status, className: 'bg-gray-100 text-gray-700' };
   const priorityConfig = PRIORITY_LEVELS[customer.priority] || { label: 'Normal', color: 'text-gray-600' };
