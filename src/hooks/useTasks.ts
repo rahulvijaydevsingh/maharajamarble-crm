@@ -916,6 +916,17 @@ export function useTasks() {
       if (taskToDelete?.related_entity_type === 'lead' && taskToDelete?.related_entity_id && taskToDelete?.related_entity_id !== taskToDelete?.lead_id) {
         void syncLeadFollowUpDates(taskToDelete.related_entity_id);
       }
+      // Sync follow-up dates for linked customer
+      if (taskToDelete?.related_entity_type === 'customer' && taskToDelete?.related_entity_id) {
+        void syncCustomerFollowUpDates(taskToDelete.related_entity_id);
+      }
+      // Remove any reminders row mirrored from this task
+      void syncTaskReminder({
+        id,
+        title: taskToDelete?.title || '',
+        status: 'Cancelled',
+        reminder: false,
+      });
     } catch (error: any) {
       toast({
         title: "Error deleting task",
