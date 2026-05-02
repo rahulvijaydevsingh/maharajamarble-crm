@@ -585,8 +585,12 @@ export function useTasks() {
       if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
         void syncLeadFollowUpDates(data.related_entity_id);
       }
-
-      // KIT ↔ Task sync: completion syncs back to linked kit_touch
+      // Sync follow-up dates for linked customer
+      if (data.related_entity_type === 'customer' && data.related_entity_id) {
+        void syncCustomerFollowUpDates(data.related_entity_id);
+      }
+      // Re-mirror task reminder (handles enable/disable, due date change, completion, cancellation)
+      void syncTaskReminder(data);
       if (updates.status === 'Completed') {
         try {
           const { data: linkedTouch } = await supabase
