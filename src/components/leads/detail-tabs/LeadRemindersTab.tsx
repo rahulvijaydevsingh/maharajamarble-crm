@@ -247,84 +247,96 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
         </div>
       ) : (
         <div className="space-y-3">
-          {reminders.map((reminder) => (
-            <div
-              key={reminder.id}
-              id={`reminder-${reminder.id}`}
-              className={`border rounded-lg p-4 flex items-center justify-between transition-all duration-500 ${
-                highlightedId === reminder.id ? 'ring-2 ring-primary bg-primary/5' : ''
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <Bell className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium">{reminder.title}</p>
-                  {reminder.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-1">{reminder.description}</p>
-                  )}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    <Badge variant="secondary" className={getTimeBadgeColor(reminder.reminder_datetime)}>
-                      {getTimeLabel(reminder.reminder_datetime)}
-                    </Badge>
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      <span>{format(new Date(reminder.reminder_datetime), 'h:mm a')}</span>
-                    </div>
-                    {reminder.is_recurring && (
-                      <Badge variant="outline" className="text-xs">
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        {reminder.recurrence_pattern}
-                      </Badge>
+          {reminders.map((reminder) => {
+            const isSnoozedActive = reminder.is_snoozed &&
+              reminder.snooze_until &&
+              new Date(reminder.snooze_until) > new Date();
+
+            return (
+              <div
+                key={reminder.id}
+                id={`reminder-${reminder.id}`}
+                className={`border rounded-lg p-4 flex items-center justify-between transition-all duration-500 ${
+                  isSnoozedActive ? 'opacity-60 bg-muted/30' : ''
+                } ${highlightedId === reminder.id ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Bell className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{reminder.title}</p>
+                    {reminder.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-1">{reminder.description}</p>
                     )}
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                      <Badge variant="secondary" className={getTimeBadgeColor(reminder.reminder_datetime)}>
+                        {getTimeLabel(reminder.reminder_datetime)}
+                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>{format(new Date(reminder.reminder_datetime), 'h:mm a')}</span>
+                      </div>
+                      {reminder.is_recurring && (
+                        <Badge variant="outline" className="text-xs">
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          {reminder.recurrence_pattern}
+                        </Badge>
+                      )}
+                      {isSnoozedActive && reminder.snooze_until && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Snoozed until {format(new Date(reminder.snooze_until), 'MMM d, h:mm a')}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleDismissReminder(reminder)}>
+                    Dismiss
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Snooze
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="z-[130]">
+                      <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addHours(new Date(), 1), '1 hour')}>
+                        1 hour
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addHours(new Date(), 3), '3 hours')}>
+                        3 hours
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addDays(new Date(), 1), 'Tomorrow')}>
+                        Tomorrow
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addDays(new Date(), 7), 'Next week')}>
+                        Next week
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="z-[130]">
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => handleDeleteReminder(reminder)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleDismissReminder(reminder)}>
-                  Dismiss
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      Snooze
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="z-[130]">
-                    <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addHours(new Date(), 1), '1 hour')}>
-                      1 hour
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addHours(new Date(), 3), '3 hours')}>
-                      3 hours
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addDays(new Date(), 1), 'Tomorrow')}>
-                      Tomorrow
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleSnoozeReminder(reminder, addDays(new Date(), 7), 'Next week')}>
-                      Next week
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="z-[130]">
-                    <DropdownMenuItem 
-                      className="text-destructive"
-                      onClick={() => handleDeleteReminder(reminder)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -673,6 +673,28 @@ export function useTasks() {
         void syncLeadFollowUpDates(task.related_entity_id);
       }
 
+      // Snooze the task's linked reminder (if any)
+      try {
+        const { data: taskReminders } = await supabase
+          .from("reminders")
+          .select("id")
+          .eq("entity_type", "task")
+          .eq("entity_id", id)
+          .eq("is_dismissed", false);
+
+        if (taskReminders && taskReminders.length > 0) {
+          await supabase
+            .from("reminders")
+            .update({
+              is_snoozed: true,
+              snooze_until: snoozedUntil.toISOString(),
+            })
+            .in("id", taskReminders.map((r: { id: string }) => r.id));
+        }
+      } catch (e: any) {
+        console.warn("[useTasks/snoozeTask] Failed to snooze linked task reminder:", e?.message || e);
+      }
+
       toast({ title: "Task snoozed" });
     } catch (error: any) {
       toast({

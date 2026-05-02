@@ -349,7 +349,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
         )
         .order('activity_timestamp', { ascending: false });
       if (error) throw error;
-      setProfessionalActivities(data || []);
+      setProfessionalActivities((data as ActivityLogEntry[]) || []);
     } catch (err) {
       console.error('Error loading professional activities:', err);
     } finally {
@@ -811,23 +811,39 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
         </div>
       ) : (
         <div className="space-y-3">
-          {reminders.map((reminder) => (
-            <div key={reminder.id} className="border rounded-lg p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <Bell className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium">{reminder.title}</p>
-                  {reminder.description && <p className="text-sm text-muted-foreground line-clamp-1">{reminder.description}</p>}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    <Badge variant="secondary" className={getTimeBadgeColor(reminder.reminder_datetime)}>{getTimeLabel(reminder.reminder_datetime)}</Badge>
-                    <div className="flex items-center gap-1"><Clock className="h-3 w-3" /><span>{format(new Date(reminder.reminder_datetime), 'h:mm a')}</span></div>
-                    {reminder.is_recurring && <Badge variant="outline" className="text-xs"><RefreshCw className="h-3 w-3 mr-1" />{reminder.recurrence_pattern}</Badge>}
+          {reminders.map((reminder) => {
+            const isSnoozedActive = reminder.is_snoozed &&
+              reminder.snooze_until &&
+              new Date(reminder.snooze_until) > new Date();
+
+            return (
+              <div
+                key={reminder.id}
+                className={`border rounded-lg p-4 flex items-center justify-between transition-all duration-500 ${
+                  isSnoozedActive ? 'opacity-60 bg-muted/30' : ''
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Bell className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{reminder.title}</p>
+                    {reminder.description && <p className="text-sm text-muted-foreground line-clamp-1">{reminder.description}</p>}
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                      <Badge variant="secondary" className={getTimeBadgeColor(reminder.reminder_datetime)}>{getTimeLabel(reminder.reminder_datetime)}</Badge>
+                      <div className="flex items-center gap-1"><Clock className="h-3 w-3" /><span>{format(new Date(reminder.reminder_datetime), 'h:mm a')}</span></div>
+                      {reminder.is_recurring && <Badge variant="outline" className="text-xs"><RefreshCw className="h-3 w-3 mr-1" />{reminder.recurrence_pattern}</Badge>}
+                      {isSnoozedActive && reminder.snooze_until && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Snoozed until {format(new Date(reminder.snooze_until), 'MMM d, h:mm a')}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => dismissReminder(reminder.id)}>Dismiss</Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Snooze</Button></DropdownMenuTrigger>
@@ -848,7 +864,8 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
                 </DropdownMenu>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
