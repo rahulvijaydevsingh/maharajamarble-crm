@@ -11,6 +11,8 @@ import {
 import { Plus, Bell, Calendar, Clock, MoreHorizontal, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { Customer } from '@/hooks/useCustomers';
 import { useReminders } from '@/hooks/useReminders';
+import { useTasks } from '@/hooks/useTasks';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDialog';
 import { format, isPast, isToday, isTomorrow, addHours, addDays } from 'date-fns';
