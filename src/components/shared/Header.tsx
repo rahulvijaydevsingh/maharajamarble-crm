@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, User, Settings, LogOut, Plus, Users, Phone, Briefcase, FileText, CheckSquare, ListTodo, Loader2 } from "lucide-react";
+import { Search, User, Settings, LogOut, Plus, Users, Phone, Briefcase, FileText, CheckSquare, ListTodo, Loader2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,7 @@ export function Header() {
   const [addQuotationOpen, setAddQuotationOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addTodoOpen, setAddTodoOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,6 +108,27 @@ export function Header() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchQuery, performSearch]);
 
+  useEffect(() => {
+    if (mobileSearchOpen) {
+      // Focus input
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+
+      // History management
+      window.history.pushState(null, "", window.location.href);
+
+      const handlePopState = () => {
+        setMobileSearchOpen(false);
+        setSearchQuery("");
+        setSearchOpen(false);
+      };
+
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+  }, [mobileSearchOpen]);
+
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (!searchOpen || searchResults.length === 0) return;
     if (e.key === "ArrowDown") {
@@ -127,6 +149,10 @@ export function Header() {
   };
 
   const handleResultClick = (result: SearchResult) => {
+    if (mobileSearchOpen) {
+      setMobileSearchOpen(false);
+      window.history.back();
+    }
     navigate(result.url);
     setSearchQuery("");
     setSearchOpen(false);
@@ -156,6 +182,66 @@ export function Header() {
 
   return (
     <>
+      {mobileSearchOpen && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col sm:hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b bg-background">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => {
+                setMobileSearchOpen(false);
+                setSearchQuery("");
+                setSearchOpen(false);
+                window.history.back();
+              }}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              {isSearching && <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />}
+              <Input
+                ref={searchInputRef}
+                type="search"
+                placeholder="Search leads, customers, tasks..."
+                className="w-full appearance-none bg-background pl-8 shadow-none"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {isSearching ? (
+              <div className="flex justify-center p-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : searchQuery.length >= 2 && searchResults.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground text-center">No results found</div>
+            ) : (
+              <div className="py-1">
+                {searchResults.map((result, idx) => (
+                  <button
+                    key={`${result.type}-${result.id}`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted transition-colors ${idx === selectedIndex ? 'bg-muted' : ''}`}
+                    onClick={() => handleResultClick(result)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                  >
+                    {ENTITY_ICONS[result.type]}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{result.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{result.secondary}</div>
+                    </div>
+                    <span className="text-xs text-muted-foreground capitalize shrink-0">{result.type}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <header className="sticky top-0 z-30 flex h-14 md:h-16 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6">
         <SidebarTrigger />
         <div className="w-full flex justify-between items-center">
@@ -203,6 +289,15 @@ export function Header() {
             </Popover>
           </div>
           <div className="flex items-center gap-2 md:gap-4 ml-auto">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 sm:hidden"
+              onClick={() => setMobileSearchOpen(true)}
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+
             {/* Quick Add Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
