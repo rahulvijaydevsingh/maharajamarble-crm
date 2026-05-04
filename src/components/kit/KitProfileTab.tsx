@@ -742,6 +742,12 @@ export function KitProfileTab({
             entityPhone={entityPhone}
             entityLocation={entityLocation}
             entityAddress={entityAddress}
+            callLog={{
+              leadId: entityType === 'lead' ? entityId : undefined,
+              customerId: entityType === 'customer' ? entityId : undefined,
+              relatedEntityType: entityType,
+              relatedEntityId: entityId,
+            }}
           />
         </div>
       )}
@@ -801,6 +807,12 @@ export function KitProfileTab({
                 entityPhone={entityPhone}
                 entityLocation={entityLocation}
                 entityAddress={entityAddress}
+                callLog={{
+                  leadId: entityType === 'lead' ? entityId : undefined,
+                  customerId: entityType === 'customer' ? entityId : undefined,
+                  relatedEntityType: entityType,
+                  relatedEntityId: entityId,
+                }}
               />
             ))}
           </div>

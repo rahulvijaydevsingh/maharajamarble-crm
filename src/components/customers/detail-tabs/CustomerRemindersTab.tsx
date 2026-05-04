@@ -11,6 +11,8 @@ import {
 import { Plus, Bell, Calendar, Clock, MoreHorizontal, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { Customer } from '@/hooks/useCustomers';
 import { useReminders } from '@/hooks/useReminders';
+import { useTasks } from '@/hooks/useTasks';
+import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDialog';
 import { format, isPast, isToday, isTomorrow, addHours, addDays } from 'date-fns';
@@ -22,9 +24,17 @@ interface CustomerRemindersTabProps {
 
 export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRemindersTabProps) {
   const { reminders, loading, addReminder, dismissReminder, snoozeReminder, deleteReminder } = useReminders('customer', customer.id);
+  const { tasks } = useTasks();
+  const { openTask } = useTaskDetailModal();
   const { logActivity } = useLogActivity();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [savingReminder, setSavingReminder] = useState(false);
+
+  const customerTaskReminders = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.related_entity_type === 'customer' && t.related_entity_id === customer.id && !!t.reminder && t.status !== 'Completed' && t.status !== 'Cancelled')
+      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  }, [tasks, customer.id]);
 
   const activeReminders = reminders.filter(r => !r.is_dismissed);
   const dismissedReminders = reminders.filter(r => r.is_dismissed);
@@ -177,6 +187,37 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
           Add Reminder
         </Button>
       </div>
+
+      {customerTaskReminders.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Task reminders</h4>
+          {customerTaskReminders.map((task) => (
+            <div key={task.id} className="border rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <Button variant="link" className="h-auto p-0 font-medium" onClick={() => openTask(task.id)}>
+                    {task.title}
+                  </Button>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                    <Badge variant="outline" className="text-xs">
+                      Due: {format(new Date(task.due_date), 'MMM d, yyyy')}
+                    </Badge>
+                    {task.reminder_time && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {task.reminder_time}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {activeReminders.length === 0 ? (
         <Card>

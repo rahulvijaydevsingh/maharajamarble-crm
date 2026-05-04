@@ -49,6 +49,12 @@ interface KitTouchCardProps {
   entityPhone?: string;
   entityLocation?: string;
   entityAddress?: string;
+  callLog?: {
+    leadId?: string;
+    customerId?: string;
+    relatedEntityType?: string;
+    relatedEntityId?: string;
+  };
 }
 
 const SNOOZE_OPTIONS = [
@@ -76,6 +82,7 @@ export function KitTouchCard({
   entityPhone,
   entityLocation,
   entityAddress,
+  callLog,
 }: KitTouchCardProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -173,7 +180,7 @@ export function KitTouchCard({
         {touch.method === 'call' && entityPhone && (
           <span className="inline-flex items-center text-xs">
             <Phone className="h-3 w-3 mr-1" />
-            <PhoneLink phone={entityPhone} className="text-xs" />
+            <PhoneLink phone={entityPhone} className="text-xs" log={callLog} />
           </span>
         )}
         {touch.method === 'whatsapp' && entityPhone && (
