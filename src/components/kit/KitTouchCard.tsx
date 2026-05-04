@@ -49,6 +49,12 @@ interface KitTouchCardProps {
   entityPhone?: string;
   entityLocation?: string;
   entityAddress?: string;
+  callLog?: {
+    leadId?: string;
+    customerId?: string;
+    relatedEntityType?: string;
+    relatedEntityId?: string;
+  };
 }
 
 const SNOOZE_OPTIONS = [
