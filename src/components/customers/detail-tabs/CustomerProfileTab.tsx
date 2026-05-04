@@ -391,9 +391,19 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
                   <Calendar className="h-3 w-3" />
                   Next Follow-up
                 </div>
-                <div className="font-medium text-sm">
-                  {customer.next_follow_up ? formatDate(customer.next_follow_up) : '-'}
-                </div>
+                {(() => {
+                  if (!customer.next_follow_up) return <div className="font-medium text-sm">-</div>;
+                  const due = new Date(customer.next_follow_up);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const isOverdue = due < today;
+                  return (
+                    <div className={`font-medium text-sm ${isOverdue ? 'text-red-600 font-semibold' : ''}`}>
+                      {formatDate(customer.next_follow_up)}
+                      {isOverdue && <span className="ml-1 text-xs">(Overdue)</span>}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </CardContent>
