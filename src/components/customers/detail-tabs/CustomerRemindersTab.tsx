@@ -24,9 +24,17 @@ interface CustomerRemindersTabProps {
 
 export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRemindersTabProps) {
   const { reminders, loading, addReminder, dismissReminder, snoozeReminder, deleteReminder } = useReminders('customer', customer.id);
+  const { tasks } = useTasks();
+  const { openTask } = useTaskDetailModal();
   const { logActivity } = useLogActivity();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [savingReminder, setSavingReminder] = useState(false);
+
+  const customerTaskReminders = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.related_entity_type === 'customer' && t.related_entity_id === customer.id && !!t.reminder && t.status !== 'Completed' && t.status !== 'Cancelled')
+      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  }, [tasks, customer.id]);
 
   const activeReminders = reminders.filter(r => !r.is_dismissed);
   const dismissedReminders = reminders.filter(r => r.is_dismissed);
