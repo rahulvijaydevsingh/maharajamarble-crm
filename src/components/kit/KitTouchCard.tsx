@@ -82,6 +82,7 @@ export function KitTouchCard({
   entityPhone,
   entityLocation,
   entityAddress,
+  callLog,
 }: KitTouchCardProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
