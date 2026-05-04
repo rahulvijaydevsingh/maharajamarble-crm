@@ -188,6 +188,37 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
         </Button>
       </div>
 
+      {customerTaskReminders.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Task reminders</h4>
+          {customerTaskReminders.map((task) => (
+            <div key={task.id} className="border rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <Button variant="link" className="h-auto p-0 font-medium" onClick={() => openTask(task.id)}>
+                    {task.title}
+                  </Button>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                    <Badge variant="outline" className="text-xs">
+                      Due: {format(new Date(task.due_date), 'MMM d, yyyy')}
+                    </Badge>
+                    {task.reminder_time && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {task.reminder_time}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {activeReminders.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
