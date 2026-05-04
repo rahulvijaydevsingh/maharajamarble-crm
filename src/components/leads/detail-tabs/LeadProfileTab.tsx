@@ -424,9 +424,19 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
                   <Calendar className="h-3 w-3" />
                   Next Follow-up
                 </div>
-                <div className="font-medium text-sm">
-                  {lead.next_follow_up ? formatDate(lead.next_follow_up) : '-'}
-                </div>
+                {(() => {
+                  if (!lead.next_follow_up) return <div className="font-medium text-sm">-</div>;
+                  const due = new Date(lead.next_follow_up);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const isOverdue = due < today;
+                  return (
+                    <div className={`font-medium text-sm ${isOverdue ? 'text-red-600 font-semibold' : ''}`}>
+                      {formatDate(lead.next_follow_up)}
+                      {isOverdue && <span className="ml-1 text-xs">(Overdue)</span>}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </CardContent>
