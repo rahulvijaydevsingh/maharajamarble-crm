@@ -33,7 +33,10 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
 
   const leadTaskReminders = React.useMemo(() => {
     return tasks
-      .filter((t) => t.lead_id === lead.id && !!t.reminder && t.status !== 'Completed')
+      .filter((t) => {
+        const isLinked = t.lead_id === lead.id || (t.related_entity_type === 'lead' && t.related_entity_id === lead.id);
+        return isLinked && !!t.reminder && t.status !== 'Completed' && t.status !== 'Cancelled';
+      })
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, lead.id]);
 
