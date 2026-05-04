@@ -65,6 +65,7 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const performSearch = useCallback(async (query: string) => {
@@ -111,7 +112,7 @@ export function Header() {
   useEffect(() => {
     if (mobileSearchOpen) {
       // Focus input
-      setTimeout(() => searchInputRef.current?.focus(), 50);
+      setTimeout(() => mobileSearchInputRef.current?.focus(), 50);
 
       // History management
       window.history.pushState(null, "", window.location.href);
@@ -183,7 +184,7 @@ export function Header() {
   return (
     <>
       {mobileSearchOpen && (
-        <div className="fixed inset-0 z-50 bg-background flex flex-col sm:hidden">
+        <div className="fixed inset-0 z-[300] bg-background flex flex-col sm:hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b bg-background">
             <Button
               variant="ghost"
@@ -202,7 +203,7 @@ export function Header() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               {isSearching && <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />}
               <Input
-                ref={searchInputRef}
+                ref={mobileSearchInputRef}
                 type="search"
                 placeholder="Search leads, customers, tasks..."
                 className="w-full appearance-none bg-background pl-8 shadow-none"
