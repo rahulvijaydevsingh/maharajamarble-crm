@@ -222,14 +222,24 @@ async function executeAction(
         }
 
         if (roleRecipients.length > 0) {
-          const { data: roleProfiles } = await supabase
-            .from('profiles')
-            .select('id, email')
+          // profiles table has no role column — roles live in user_roles table
+          const { data: roleUserIds } = await supabase
+            .from('user_roles')
+            .select('user_id')
             .in('role', roleRecipients);
 
-          if (roleProfiles) {
-            for (const p of roleProfiles) {
-              resolvedProfiles.push({ id: p.id, email: p.email });
+          if (roleUserIds && roleUserIds.length > 0) {
+            const userIdList = roleUserIds.map((r: { user_id: string }) => r.user_id);
+            const { data: roleProfiles } = await supabase
+              .from('profiles')
+              .select('id, email')
+              .in('id', userIdList)
+              .eq('is_active', true);
+
+            if (roleProfiles) {
+              for (const p of roleProfiles) {
+                if (p.email) resolvedProfiles.push({ id: p.id, email: p.email });
+              }
             }
           }
         }
