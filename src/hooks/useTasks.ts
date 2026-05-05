@@ -454,21 +454,13 @@ export function useTasks() {
       }
 
       // Sync follow-up dates for linked lead
-      if (data.lead_id) {
-        syncLeadFollowUpDates(data.lead_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', data.lead_id, ':', err)
-        );
-      }
+      if (data.lead_id) void syncLeadFollowUpDates(data.lead_id);
       if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
-        syncLeadFollowUpDates(data.related_entity_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', data.related_entity_id, ':', err)
-        );
+        void syncLeadFollowUpDates(data.related_entity_id);
       }
       // Sync follow-up dates for linked customer
       if (data.related_entity_type === 'customer' && data.related_entity_id) {
-        syncCustomerFollowUpDates(data.related_entity_id).catch(err =>
-          console.error('[useTasks] syncCustomerFollowUpDates failed for customer', data.related_entity_id, ':', err)
-        );
+        void syncCustomerFollowUpDates(data.related_entity_id);
       }
       // Mirror task reminder into reminders table so the bell can fire
       void syncTaskReminder(data);
@@ -589,21 +581,13 @@ export function useTasks() {
       }
 
       // Sync follow-up dates for linked lead
-      if (data.lead_id) {
-        syncLeadFollowUpDates(data.lead_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', data.lead_id, ':', err)
-        );
-      }
+      if (data.lead_id) void syncLeadFollowUpDates(data.lead_id);
       if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
-        syncLeadFollowUpDates(data.related_entity_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', data.related_entity_id, ':', err)
-        );
+        void syncLeadFollowUpDates(data.related_entity_id);
       }
       // Sync follow-up dates for linked customer
       if (data.related_entity_type === 'customer' && data.related_entity_id) {
-        syncCustomerFollowUpDates(data.related_entity_id).catch(err =>
-          console.error('[useTasks] syncCustomerFollowUpDates failed for customer', data.related_entity_id, ':', err)
-        );
+        void syncCustomerFollowUpDates(data.related_entity_id);
       }
       // Re-mirror task reminder (handles enable/disable, due date change, completion, cancellation)
       void syncTaskReminder(data);
@@ -761,7 +745,7 @@ export function useTasks() {
     if (!task) return;
 
     try {
-      const snoozedUntil = new Date(Date.now() + hoursToAdd * 3_600_000);
+      const snoozedUntil = new Date(Date.now() + hoursToAdd * 60 * 60 * 1000);
 
       // Log snooze history
       await supabase.from("task_snooze_history").insert([{
@@ -820,21 +804,13 @@ export function useTasks() {
       } catch (e: any) { console.error('[useTasks/snoozeTask] Failed to log snooze to lead activity_log:', e?.message || e); }
 
       // Sync follow-up dates for linked lead
-      if (task.lead_id) {
-        syncLeadFollowUpDates(task.lead_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', task.lead_id, ':', err)
-        );
-      }
+      if (task.lead_id) void syncLeadFollowUpDates(task.lead_id);
       if (task.related_entity_type === 'lead' && task.related_entity_id && task.related_entity_id !== task.lead_id) {
-        syncLeadFollowUpDates(task.related_entity_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', task.related_entity_id, ':', err)
-        );
+        void syncLeadFollowUpDates(task.related_entity_id);
       }
       // Sync follow-up dates for linked customer
       if (task.related_entity_type === 'customer' && task.related_entity_id) {
-        syncCustomerFollowUpDates(task.related_entity_id).catch(err =>
-          console.error('[useTasks] syncCustomerFollowUpDates failed for customer', task.related_entity_id, ':', err)
-        );
+        void syncCustomerFollowUpDates(task.related_entity_id);
       }
 
       // Snooze the task's linked reminder (if any) — keep PR #62 behavior
@@ -935,21 +911,13 @@ export function useTasks() {
       }
 
       // Sync follow-up dates for linked lead
-      if (taskToDelete?.lead_id) {
-        syncLeadFollowUpDates(taskToDelete.lead_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', taskToDelete.lead_id, ':', err)
-        );
-      }
+      if (taskToDelete?.lead_id) void syncLeadFollowUpDates(taskToDelete.lead_id);
       if (taskToDelete?.related_entity_type === 'lead' && taskToDelete?.related_entity_id && taskToDelete?.related_entity_id !== taskToDelete?.lead_id) {
-        syncLeadFollowUpDates(taskToDelete.related_entity_id).catch(err =>
-          console.error('[useTasks] syncLeadFollowUpDates failed for lead', taskToDelete.related_entity_id, ':', err)
-        );
+        void syncLeadFollowUpDates(taskToDelete.related_entity_id);
       }
       // Sync follow-up dates for linked customer
       if (taskToDelete?.related_entity_type === 'customer' && taskToDelete?.related_entity_id) {
-        syncCustomerFollowUpDates(taskToDelete.related_entity_id).catch(err =>
-          console.error('[useTasks] syncCustomerFollowUpDates failed for customer', taskToDelete.related_entity_id, ':', err)
-        );
+        void syncCustomerFollowUpDates(taskToDelete.related_entity_id);
       }
       // Remove any reminders row mirrored from this task
       void syncTaskReminder({
