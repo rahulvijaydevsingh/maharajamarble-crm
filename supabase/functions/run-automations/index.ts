@@ -222,23 +222,18 @@ async function executeAction(
         }
 
         if (roleRecipients.length > 0) {
-          // profiles table has no role column — roles live in user_roles table
-          const { data: roleUserIds } = await supabase
-            .from('user_roles')
-            .select('user_id')
-            .in('role', roleRecipients);
+          const { data: roleProfiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, email, user_roles!inner(role)')
+            .in('user_roles.role', roleRecipients)
+            .eq('is_active', true);
 
-          if (roleUserIds && roleUserIds.length > 0) {
-            const userIdList = roleUserIds.map((r: { user_id: string }) => r.user_id);
-            const { data: roleProfiles } = await supabase
-              .from('profiles')
-              .select('id, email')
-              .in('id', userIdList)
-              .eq('is_active', true);
+          if (profilesError) console.error('[Automation] Error fetching role profiles:', profilesError);
 
-            if (roleProfiles) {
-              for (const p of roleProfiles) {
-                if (p.email) resolvedProfiles.push({ id: p.id, email: p.email });
+          if (roleProfiles) {
+            for (const p of roleProfiles) {
+              if (p.email && !resolvedProfiles.some(rp => rp.id === p.id)) {
+                resolvedProfiles.push({ id: p.id, email: p.email });
               }
             }
           }
