@@ -745,8 +745,7 @@ export function useTasks() {
     if (!task) return;
 
     try {
-      const snoozedUntil = new Date();
-      snoozedUntil.setHours(snoozedUntil.getHours() + hoursToAdd);
+      const snoozedUntil = new Date(Date.now() + hoursToAdd * 60 * 60 * 1000);
 
       // Log snooze history
       await supabase.from("task_snooze_history").insert([{

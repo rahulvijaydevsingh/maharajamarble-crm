@@ -15,7 +15,9 @@ export interface Reminder {
   entity_type: "lead" | "customer" | "professional" | "task" | "quotation";
   entity_id: string;
   is_recurring: boolean;
-  recurrence_pattern: "daily" | "weekly" | "monthly" | "yearly" | null;
+  recurrence_pattern: string | null; // Supports extended patterns
+  // e.g. "weekly;interval:1;days:mon,wed" — DB CHECK constraint was
+  // intentionally dropped in migration 20260501_fix_reminders_recurrence_pattern.sql
   recurrence_end_date: string | null;
   created_by: string;
   assigned_to: string;
@@ -30,7 +32,7 @@ export interface ReminderInsert {
   entity_type: "lead" | "customer" | "professional" | "task" | "quotation";
   entity_id: string;
   is_recurring?: boolean;
-  recurrence_pattern?: "daily" | "weekly" | "monthly" | "yearly" | null;
+  recurrence_pattern?: string | null;
   recurrence_end_date?: string | null;
   created_by?: string;
   assigned_to: string;
@@ -260,7 +262,9 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
     } else {
       // Fallback: create own channel (RemindersProvider not in tree)
       const channel = supabase
-        .channel(`reminders-fallback-${Date.now()}-${Math.random()}`)
+        .channel(
+          `reminders-${entityType || 'global'}-${entityId || assignedTo || 'all'}`
+        )
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'reminders' },
