@@ -222,14 +222,19 @@ async function executeAction(
         }
 
         if (roleRecipients.length > 0) {
-          const { data: roleProfiles } = await supabase
+          const { data: roleProfiles, error: profilesError } = await supabase
             .from('profiles')
-            .select('id, email')
-            .in('role', roleRecipients);
+            .select('id, email, user_roles!inner(role)')
+            .in('user_roles.role', roleRecipients)
+            .eq('is_active', true);
+
+          if (profilesError) console.error('[Automation] Error fetching role profiles:', profilesError);
 
           if (roleProfiles) {
             for (const p of roleProfiles) {
-              resolvedProfiles.push({ id: p.id, email: p.email });
+              if (p.email && !resolvedProfiles.some(rp => rp.id === p.id)) {
+                resolvedProfiles.push({ id: p.id, email: p.email });
+              }
             }
           }
         }
