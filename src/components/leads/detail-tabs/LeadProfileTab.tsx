@@ -230,13 +230,15 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(LEAD_STATUSES).map(([value, config]) => (
-                  <SelectItem key={value} value={value}>
-                    <Badge variant="secondary" className={config.className}>
-                      {config.label}
-                    </Badge>
-                  </SelectItem>
-                ))}
+                {Object.entries(LEAD_STATUSES)
+                  .filter(([value]) => !['lost', 'pending_lost', 'deleted'].includes(value))
+                  .map(([value, config]) => (
+                    <SelectItem key={value} value={value}>
+                      <Badge variant="secondary" className={config.className}>
+                        {config.label}
+                      </Badge>
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </CardContent>
