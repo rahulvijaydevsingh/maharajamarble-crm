@@ -133,6 +133,11 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
   const priorityConfig = PRIORITY_LEVELS[lead.priority] || { label: 'Medium', color: 'text-yellow-700', bgColor: 'bg-yellow-50' };
   
   const handleStatusChange = async (newStatus: string) => {
+    // Lost / Pending Approval must go through the MarkAsLostDialog approval workflow
+    if (newStatus === 'lost' || newStatus === 'pending_lost') {
+      onMarkAsLost?.();
+      return;
+    }
     setUpdatingStatus(true);
     try {
       const oldStatus = lead.status;
