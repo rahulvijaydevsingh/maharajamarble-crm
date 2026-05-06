@@ -309,8 +309,11 @@ const syncTaskReminder = async (
     due_time?: string | null;
     assigned_to?: string | null;
     created_by?: string | null;
+    lead_id?: string | null;
+    related_entity_type?: string | null;
+    related_entity_id?: string | null;
   },
-  overrides?: { fireAt?: string; title?: string }
+  overrides?: { fireAt?: string; title?: string; description?: string }
 ) => {
   if (!task?.id) return;
 
@@ -322,6 +325,26 @@ const syncTaskReminder = async (
 
   try {
     if ((wantsReminder || overrides?.fireAt) && fireAt && isFuture) {
+      // Build description with linked entity name so the bell card shows context
+      let description: string | null = overrides?.description ?? null;
+      if (description == null) {
+        try {
+          if (task.lead_id) {
+            const { data: l } = await supabase.from('leads').select('name').eq('id', task.lead_id).maybeSingle();
+            if (l?.name) description = `Lead: ${l.name}`;
+          } else if (task.related_entity_type === 'lead' && task.related_entity_id) {
+            const { data: l } = await supabase.from('leads').select('name').eq('id', task.related_entity_id).maybeSingle();
+            if (l?.name) description = `Lead: ${l.name}`;
+          } else if (task.related_entity_type === 'customer' && task.related_entity_id) {
+            const { data: c } = await supabase.from('customers').select('name').eq('id', task.related_entity_id).maybeSingle();
+            if (c?.name) description = `Customer: ${c.name}`;
+          } else if (task.related_entity_type === 'professional' && task.related_entity_id) {
+            const { data: p } = await supabase.from('professionals').select('name').eq('id', task.related_entity_id).maybeSingle();
+            if (p?.name) description = `Professional: ${p.name}`;
+          }
+        } catch (_) { /* non-critical */ }
+      }
+
       // Upsert: delete then insert is simplest given no unique constraint
       await supabase
         .from('reminders')
@@ -331,7 +354,7 @@ const syncTaskReminder = async (
 
       await supabase.from('reminders').insert({
         title: overrides?.title || `Reminder: ${task.title}`,
-        description: null,
+        description,
         reminder_datetime: fireAt,
         entity_type: 'task',
         entity_id: task.id,
