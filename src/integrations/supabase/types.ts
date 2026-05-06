@@ -3469,6 +3469,87 @@ export type Database = {
         Args: { assigned_to_value: string }
         Returns: boolean
       }
+      snooze_task: {
+        Args: {
+          p_due_date: string
+          p_due_time: string
+          p_hours_added: number
+          p_lead_id?: string
+          p_related_entity_id?: string
+          p_related_entity_type?: string
+          p_snoozed_until: string
+          p_task_id: string
+          p_task_title?: string
+          p_user_id: string
+          p_user_name: string
+        }
+        Returns: {
+          actual_time_spent_minutes: number | null
+          assigned_to: string
+          attempt_count: number
+          closed_at: string | null
+          closed_by: string | null
+          completed_at: string | null
+          completion_key_points: Json | null
+          completion_notes: string | null
+          completion_outcome: string | null
+          completion_status: string | null
+          created_at: string
+          created_by: string
+          custom_reminder_at: string | null
+          deal_ready: boolean
+          deal_ready_at: string | null
+          description: string | null
+          due_date: string
+          due_time: string | null
+          id: string
+          is_recurring: boolean | null
+          is_starred: boolean | null
+          last_attempt_at: string | null
+          lead_id: string | null
+          max_attempts: number | null
+          next_action_payload: Json | null
+          next_action_type: string | null
+          original_due_date: string | null
+          parent_task_id: string | null
+          priority: string
+          recurrence_day_of_month: number | null
+          recurrence_days_of_week: string[] | null
+          recurrence_end_date: string | null
+          recurrence_end_type: string | null
+          recurrence_frequency: string | null
+          recurrence_interval: number | null
+          recurrence_month: number | null
+          recurrence_occurrences_count: number | null
+          recurrence_occurrences_limit: number | null
+          recurrence_reset_from_completion: boolean | null
+          related_entity_id: string | null
+          related_entity_type: string | null
+          reminded_at: string | null
+          reminder: boolean | null
+          reminder_offset_hours: number | null
+          reminder_time: string | null
+          reschedule_count: number
+          reschedule_reason: string | null
+          snoozed_until: string | null
+          status: string
+          status_override: string | null
+          status_override_at: string | null
+          status_override_by: string | null
+          status_override_reason: string | null
+          suspended_at: string | null
+          suspension_reason: string | null
+          title: string
+          type: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tasks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       app_role:

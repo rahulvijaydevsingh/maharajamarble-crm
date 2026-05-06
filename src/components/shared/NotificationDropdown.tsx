@@ -96,6 +96,40 @@ export function NotificationDropdown() {
     }
   };
 
+  const handleNotificationClick = (notification: any) => {
+    // Always mark as read + close dropdown
+    if (!notification.is_read) {
+      markAsRead.mutate(notification.id);
+    }
+    setOpen(false);
+
+    const entityType = (notification.entity_type || '').toLowerCase();
+    const entityId = notification.entity_id;
+    const isAutomation = notification.type === 'automation';
+    const text = `${notification.title || ''} ${notification.message || ''}`.toLowerCase();
+    const looksLikePendingLost = /pending|approval|lost/.test(text);
+
+    if (entityType === 'lead' || entityType === 'leads') {
+      if (isAutomation || looksLikePendingLost) {
+        navigate('/leads?status=pending_lost');
+      } else if (entityId) {
+        navigate(`/leads?view=${entityId}`);
+      } else {
+        navigate('/leads');
+      }
+      return;
+    }
+    if (entityType === 'customer' || entityType === 'customers') {
+      if (entityId) navigate(`/customers?view=${entityId}`);
+      else navigate('/customers');
+      return;
+    }
+    if (entityType === 'task' || entityType === 'tasks') {
+      if (entityId) openTask(entityId);
+      return;
+    }
+  };
+
   const handleMarkNotificationRead = (notificationId: string) => {
     markAsRead.mutate(notificationId);
   };
@@ -341,7 +375,7 @@ export function NotificationDropdown() {
                         "p-3 hover:bg-muted/50 transition-colors cursor-pointer",
                         !notification.is_read && "bg-primary/5"
                       )}
-                      onClick={() => handleMarkNotificationRead(notification.id)}
+                      onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 p-1.5 rounded-full bg-primary/10 text-primary">

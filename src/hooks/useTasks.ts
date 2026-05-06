@@ -309,8 +309,11 @@ const syncTaskReminder = async (
     due_time?: string | null;
     assigned_to?: string | null;
     created_by?: string | null;
+    lead_id?: string | null;
+    related_entity_type?: string | null;
+    related_entity_id?: string | null;
   },
-  overrides?: { fireAt?: string; title?: string }
+  overrides?: { fireAt?: string; title?: string; description?: string }
 ) => {
   if (!task?.id) return;
 
@@ -322,6 +325,26 @@ const syncTaskReminder = async (
 
   try {
     if ((wantsReminder || overrides?.fireAt) && fireAt && isFuture) {
+      // Build description with linked entity name so the bell card shows context
+      let description: string | null = overrides?.description ?? null;
+      if (description == null) {
+        try {
+          if (task.lead_id) {
+            const { data: l } = await supabase.from('leads').select('name').eq('id', task.lead_id).maybeSingle();
+            if (l?.name) description = `Lead: ${l.name}`;
+          } else if (task.related_entity_type === 'lead' && task.related_entity_id) {
+            const { data: l } = await supabase.from('leads').select('name').eq('id', task.related_entity_id).maybeSingle();
+            if (l?.name) description = `Lead: ${l.name}`;
+          } else if (task.related_entity_type === 'customer' && task.related_entity_id) {
+            const { data: c } = await supabase.from('customers').select('name').eq('id', task.related_entity_id).maybeSingle();
+            if (c?.name) description = `Customer: ${c.name}`;
+          } else if (task.related_entity_type === 'professional' && task.related_entity_id) {
+            const { data: p } = await supabase.from('professionals').select('name').eq('id', task.related_entity_id).maybeSingle();
+            if (p?.name) description = `Professional: ${p.name}`;
+          }
+        } catch (_) { /* non-critical */ }
+      }
+
       // Upsert: delete then insert is simplest given no unique constraint
       await supabase
         .from('reminders')
@@ -331,7 +354,7 @@ const syncTaskReminder = async (
 
       await supabase.from('reminders').insert({
         title: overrides?.title || `Reminder: ${task.title}`,
-        description: null,
+        description,
         reminder_datetime: fireAt,
         entity_type: 'task',
         entity_id: task.id,
@@ -746,62 +769,30 @@ export function useTasks() {
 
     try {
       const snoozedUntil = new Date(Date.now() + hoursToAdd * 60 * 60 * 1000);
-
-      // Log snooze history
-      await supabase.from("task_snooze_history").insert([{
-        task_id: id,
-        original_due_date: task.due_date,
-        original_due_time: task.due_time,
-        snoozed_until: snoozedUntil.toISOString(),
-        // created_by handled by DB default
-      }]);
-
-      // Calculate new due date
       const newDueDate = snoozedUntil.toISOString().split("T")[0];
       const newDueTime = snoozedUntil.toTimeString().slice(0, 5);
 
-      await updateTask(id, {
-        due_date: newDueDate,
-        due_time: newDueTime,
-        snoozed_until: snoozedUntil.toISOString(),
+      // Atomic snooze: snooze_history + tasks update + task_activity_log + activity_log all in one TX
+      const { data: updatedRow, error: rpcError } = await (supabase as any).rpc('snooze_task', {
+        p_task_id: id,
+        p_snoozed_until: snoozedUntil.toISOString(),
+        p_due_date: newDueDate,
+        p_due_time: newDueTime,
+        p_hours_added: hoursToAdd,
+        p_user_id: user?.id || null,
+        p_user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
+        p_lead_id: task.lead_id || null,
+        p_related_entity_type: task.related_entity_type || null,
+        p_related_entity_id: task.related_entity_id || null,
+        p_task_title: task.title,
       });
 
-      // Log to task_activity_log
-      try {
-        await (supabase.from("task_activity_log" as any).insert as any)({
-          task_id: id,
-          event_type: "snoozed",
-          metadata: {
-            snoozed_until: snoozedUntil.toISOString(),
-            hours_added: hoursToAdd,
-            original_due_date: task.due_date,
-          },
-        });
-      } catch (e: any) { console.error('[useTasks/snoozeTask] Failed to log snooze to task_activity_log:', e?.message || e); }
+      if (rpcError) throw rpcError;
 
-      // Log to lead activity_log if task has lead_id
-      try {
-        if (task.lead_id) {
-          await supabase.from("activity_log").insert({
-            lead_id: task.lead_id,
-            activity_type: "task_snoozed",
-            activity_category: "task",
-            user_id: user?.id || null,
-            user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
-            title: `Task Snoozed: ${task.title} — until ${snoozedUntil.toLocaleDateString()}`,
-            metadata: {
-              task_id: task.id,
-              snoozed_until: snoozedUntil.toISOString(),
-              original_due_date: task.due_date,
-              hours_added: hoursToAdd,
-            } as any,
-            related_entity_type: "task",
-            related_entity_id: task.id,
-            is_manual: false,
-            is_editable: false,
-          });
-        }
-      } catch (e: any) { console.error('[useTasks/snoozeTask] Failed to log snooze to lead activity_log:', e?.message || e); }
+      // Update local state to reflect new due date/time
+      if (updatedRow) {
+        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updatedRow } as Task : t)));
+      }
 
       // Sync follow-up dates for linked lead
       if (task.lead_id) void syncLeadFollowUpDates(task.lead_id);
@@ -850,6 +841,9 @@ export function useTasks() {
             due_time: newDueTime,
             assigned_to: task.assigned_to,
             created_by: task.created_by,
+            lead_id: task.lead_id,
+            related_entity_type: task.related_entity_type,
+            related_entity_id: task.related_entity_id,
           },
           { fireAt: snoozedUntil.toISOString(), title: `Snoozed task: ${task.title}` }
         );

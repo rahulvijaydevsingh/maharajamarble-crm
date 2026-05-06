@@ -37,6 +37,7 @@ interface LeadProfileTabProps {
   lead: Lead;
   onEdit: () => void;
   onViewActivityLog?: () => void;
+  onMarkAsLost?: () => void;
 }
 
 const LEAD_STATUSES: Record<string, { label: string; className: string }> = {
@@ -66,7 +67,7 @@ const sourceLabels: Record<string, string> = {
   'customer_conversion': 'Customer Conversion',
 };
 
-export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileTabProps) {
+export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }: LeadProfileTabProps) {
   const { updateLead } = useLeads();
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
@@ -132,6 +133,11 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
   const priorityConfig = PRIORITY_LEVELS[lead.priority] || { label: 'Medium', color: 'text-yellow-700', bgColor: 'bg-yellow-50' };
   
   const handleStatusChange = async (newStatus: string) => {
+    // Lost / Pending Approval must go through the MarkAsLostDialog approval workflow
+    if (newStatus === 'lost' || newStatus === 'pending_lost') {
+      onMarkAsLost?.();
+      return;
+    }
     setUpdatingStatus(true);
     try {
       const oldStatus = lead.status;
@@ -224,13 +230,15 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileT
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(LEAD_STATUSES).map(([value, config]) => (
-                  <SelectItem key={value} value={value}>
-                    <Badge variant="secondary" className={config.className}>
-                      {config.label}
-                    </Badge>
-                  </SelectItem>
-                ))}
+                {Object.entries(LEAD_STATUSES)
+                  .filter(([value]) => !['lost', 'pending_lost', 'deleted'].includes(value))
+                  .map(([value, config]) => (
+                    <SelectItem key={value} value={value}>
+                      <Badge variant="secondary" className={config.className}>
+                        {config.label}
+                      </Badge>
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </CardContent>
