@@ -375,7 +375,7 @@ export function NotificationDropdown() {
                         "p-3 hover:bg-muted/50 transition-colors cursor-pointer",
                         !notification.is_read && "bg-primary/5"
                       )}
-                      onClick={() => handleMarkNotificationRead(notification.id)}
+                      onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 p-1.5 rounded-full bg-primary/10 text-primary">
