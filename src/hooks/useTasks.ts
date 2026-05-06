@@ -873,6 +873,9 @@ export function useTasks() {
             due_time: newDueTime,
             assigned_to: task.assigned_to,
             created_by: task.created_by,
+            lead_id: task.lead_id,
+            related_entity_type: task.related_entity_type,
+            related_entity_id: task.related_entity_id,
           },
           { fireAt: snoozedUntil.toISOString(), title: `Snoozed task: ${task.title}` }
         );
