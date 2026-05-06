@@ -533,6 +533,7 @@ export function LeadDetailView({
                   lead={currentLead} 
                   onEdit={handleEditClick} 
                   onViewActivityLog={() => setActiveTab('activity')}
+                  onMarkAsLost={() => setMarkLostOpen(true)}
                 />
               </TabsContent>
               
