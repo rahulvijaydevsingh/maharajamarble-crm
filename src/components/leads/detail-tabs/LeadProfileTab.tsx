@@ -67,7 +67,7 @@ const sourceLabels: Record<string, string> = {
   'customer_conversion': 'Customer Conversion',
 };
 
-export function LeadProfileTab({ lead, onEdit, onViewActivityLog }: LeadProfileTabProps) {
+export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }: LeadProfileTabProps) {
   const { updateLead } = useLeads();
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
