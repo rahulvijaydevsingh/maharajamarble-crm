@@ -37,6 +37,7 @@ interface LeadProfileTabProps {
   lead: Lead;
   onEdit: () => void;
   onViewActivityLog?: () => void;
+  onMarkAsLost?: () => void;
 }
 
 const LEAD_STATUSES: Record<string, { label: string; className: string }> = {
