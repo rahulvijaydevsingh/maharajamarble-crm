@@ -207,6 +207,39 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   useEffect(() => {
     fetchReminders();
 
+    // Mount-time catch-up: in bell mode, fetch any reminders that fired in the
+    // last 10 minutes (so snoozes that expired between polls still show on
+    // page load / route change).
+    if (!entityType || !entityId) {
+      (async () => {
+        try {
+          const now = new Date();
+          const tenMinAgo = new Date(now.getTime() - 10 * 60_000).toISOString();
+          let q = supabase
+            .from('reminders')
+            .select('*')
+            .eq('is_dismissed', false)
+            .gte('reminder_datetime', tenMinAgo)
+            .lte('reminder_datetime', now.toISOString())
+            .or(`is_snoozed.eq.false,snooze_until.lte.${now.toISOString()}`);
+          if (assignedTo) q = q.eq('assigned_to', assignedTo);
+          const { data } = await q;
+          if (data && data.length) {
+            setReminders((prev) => {
+              const seen = new Set(prev.map((r) => r.id));
+              const merged = [...prev];
+              for (const r of data as Reminder[]) {
+                if (!seen.has(r.id)) merged.push(r);
+              }
+              return merged.sort((a, b) =>
+                a.reminder_datetime.localeCompare(b.reminder_datetime)
+              );
+            });
+          }
+        } catch (_) { /* non-critical */ }
+      })();
+    }
+
     // Poll every 60s when in bell/global mode so newly-due reminders appear without page reload
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     if (!entityType || !entityId) {
