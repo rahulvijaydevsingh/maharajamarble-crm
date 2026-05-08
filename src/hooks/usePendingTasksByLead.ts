@@ -28,9 +28,10 @@ export function usePendingTasksByLead() {
       setLoading(true);
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, title, due_date, due_time, assigned_to, priority, status, lead_id")
+        .select("id, title, due_date, due_time, assigned_to, priority, status, lead_id, related_entity_type, related_entity_id")
         .neq("status", "Completed")
-        .not("lead_id", "is", null);
+        .neq("status", "Cancelled")
+        .or("lead_id.not.is.null,and(related_entity_type.eq.lead,related_entity_id.not.is.null)");
 
       if (error) throw error;
       setTasks(data || []);
