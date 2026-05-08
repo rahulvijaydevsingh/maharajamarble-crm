@@ -108,6 +108,8 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
   const [nextActionDate, setNextActionDate] = useState(lead.next_follow_up ? new Date(lead.next_follow_up) : addDays(new Date(), 2));
   const [nextActionTime, setNextActionTime] = useState("10:00");
   const [initialNote, setInitialNote] = useState(lead.notes || "");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("30");
   
   // Priority override
   const [useManualPriority, setUseManualPriority] = useState(initialUseManual);
@@ -305,6 +307,10 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
               onNextActionDateChange={setNextActionDate}
               onNextActionTimeChange={setNextActionTime}
               onInitialNoteChange={setInitialNote}
+              reminderEnabled={reminderEnabled}
+              reminderTime={reminderTime}
+              onReminderEnabledChange={setReminderEnabled}
+              onReminderTimeChange={setReminderTime}
               validationErrors={validationErrors}
             />
 

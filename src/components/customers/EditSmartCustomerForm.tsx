@@ -52,6 +52,8 @@ export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartC
   const [nextActionDate, setNextActionDate] = useState(addDays(new Date(), 2));
   const [nextActionTime, setNextActionTime] = useState("10:00");
   const [initialNote, setInitialNote] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("30");
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
 
@@ -241,6 +243,10 @@ export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartC
               onNextActionDateChange={setNextActionDate}
               onNextActionTimeChange={setNextActionTime}
               onInitialNoteChange={setInitialNote}
+              reminderEnabled={reminderEnabled}
+              reminderTime={reminderTime}
+              onReminderEnabledChange={setReminderEnabled}
+              onReminderTimeChange={setReminderTime}
               validationErrors={validationErrors}
             />
           </div>

@@ -28,11 +28,12 @@ import {
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, Search, Eye, RefreshCw, CalendarIcon, Archive } from "lucide-react";
+import { Loader2, Search, Eye, RefreshCw, CalendarIcon, Archive, Clock } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface ArchivedLead {
   id: string;
@@ -71,6 +72,8 @@ export function LeadArchive() {
   const [reasonFilter, setReasonFilter] = useState("all");
   const [reengageDateDialogOpen, setReengageDateDialogOpen] = useState(false);
   const [viewingLead, setViewingLead] = useState<ArchivedLead | null>(null);
+  const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [reengageLead, setReengageLead] = useState<ArchivedLead | null>(null);
   const [isReengaging, setIsReengaging] = useState(false);
   const [selectedLead, setSelectedLead] = useState<ArchivedLead | null>(null);
@@ -97,6 +100,23 @@ export function LeadArchive() {
   useEffect(() => {
     fetchArchivedLeads();
   }, []);
+
+  useEffect(() => {
+    if (!viewingLead) {
+      setActivityLog([]);
+      return;
+    }
+    setActivityLoading(true);
+    supabase
+      .from("activity_log")
+      .select("*")
+      .eq("lead_id", viewingLead.id)
+      .order("activity_timestamp", { ascending: false })
+      .then(({ data }) => {
+        setActivityLog(data || []);
+        setActivityLoading(false);
+      });
+  }, [viewingLead?.id]);
 
   const filteredLeads = useMemo(() => {
     let result = leads;
@@ -321,63 +341,105 @@ export function LeadArchive() {
 
       {/* View Lead Details Dialog */}
       <Dialog open={!!viewingLead} onOpenChange={(open) => !open && setViewingLead(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Archived Lead Details</DialogTitle>
           </DialogHeader>
           {viewingLead && (
-            <div className="grid grid-cols-2 gap-6 py-4">
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lead Name</Label>
-                  <p className="text-sm font-medium">{viewingLead.name}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Phone</Label>
-                  <p className="text-sm font-medium">{viewingLead.phone}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Email</Label>
-                  <p className="text-sm font-medium">{viewingLead.email || "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Address</Label>
-                  <p className="text-sm font-medium">{viewingLead.address || "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Assigned To</Label>
-                  <p className="text-sm font-medium">{viewingLead.assigned_to}</p>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Reason</Label>
-                  <div>
-                    <Badge variant="secondary" className="bg-red-100 text-red-700">
-                      {LOST_REASON_LABELS[viewingLead.lost_reason || ""] || viewingLead.lost_reason || "-"}
-                    </Badge>
+            <Tabs defaultValue="info" className="mt-2">
+              <TabsList className="w-full">
+                <TabsTrigger value="info" className="flex-1">Contact Info</TabsTrigger>
+                <TabsTrigger value="activity" className="flex-1">Activity History</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="info">
+                <div className="grid grid-cols-2 gap-6 py-4">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lead Name</Label>
+                      <p className="text-sm font-medium">{viewingLead.name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Phone</Label>
+                      <p className="text-sm font-medium">{viewingLead.phone}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Email</Label>
+                      <p className="text-sm font-medium">{viewingLead.email || "-"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Address</Label>
+                      <p className="text-sm font-medium">{viewingLead.address || "-"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Assigned To</Label>
+                      <p className="text-sm font-medium">{viewingLead.assigned_to}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Reason</Label>
+                      <div>
+                        <Badge variant="secondary" className="bg-red-100 text-red-700">
+                          {LOST_REASON_LABELS[viewingLead.lost_reason || ""] || viewingLead.lost_reason || "-"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Date</Label>
+                      <p className="text-sm font-medium">
+                        {viewingLead.lost_at ? format(new Date(viewingLead.lost_at), "PPP") : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wider">Re-engagement Due</Label>
+                      <p className="text-sm font-medium">
+                        {viewingLead.cooling_off_due_date ? format(new Date(viewingLead.cooling_off_due_date), "PPP") : "-"}
+                      </p>
+                    </div>
+                    {viewingLead.lost_reason_notes && (
+                      <div>
+                        <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Reason Notes</Label>
+                        <p className="text-sm text-muted-foreground mt-1 bg-muted p-2 rounded">{viewingLead.lost_reason_notes}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Date</Label>
-                  <p className="text-sm font-medium">
-                    {viewingLead.lost_at ? format(new Date(viewingLead.lost_at), "PPP") : "-"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wider">Re-engagement Due</Label>
-                  <p className="text-sm font-medium">
-                    {viewingLead.cooling_off_due_date ? format(new Date(viewingLead.cooling_off_due_date), "PPP") : "-"}
-                  </p>
-                </div>
-                {viewingLead.lost_reason_notes && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wider">Lost Reason Notes</Label>
-                    <p className="text-sm text-muted-foreground mt-1 bg-muted p-2 rounded">{viewingLead.lost_reason_notes}</p>
+              </TabsContent>
+
+              <TabsContent value="activity" className="mt-4">
+                {activityLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : activityLog.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    No activity recorded for this lead.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                    {activityLog.map((entry) => (
+                      <div key={entry.id} className="flex gap-3 p-3 rounded-md bg-muted/40 border">
+                        <div className="mt-0.5 shrink-0">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{entry.title}</p>
+                          {entry.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                              {entry.description}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {entry.user_name} · {formatDistanceToNow(new Date(entry.activity_timestamp), { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
-            </div>
+              </TabsContent>
+            </Tabs>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewingLead(null)}>

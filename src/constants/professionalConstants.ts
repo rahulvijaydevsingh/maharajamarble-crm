@@ -8,6 +8,9 @@ export const PROFESSIONAL_TYPES = [
   { value: "architect", label: "Architect" },
   { value: "engineer", label: "Engineer" },
   { value: "interior_designer", label: "Interior Designer" },
+  { value: "builder", label: "Builder" },
+  { value: "site_supervisor", label: "Site Supervisor" },
+  { value: "real_estate_developer", label: "Real Estate Developer" },
 ];
 
 // Professional Status
