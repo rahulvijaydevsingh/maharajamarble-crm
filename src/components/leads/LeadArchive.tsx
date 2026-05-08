@@ -109,8 +109,11 @@ export function LeadArchive() {
     const target = leads.find((l) => l.id === targetLeadId);
     if (target) {
       setViewingLead(target);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("leadId");
+      navigate({ search: newParams.toString() }, { replace: true });
     }
-  }, [searchParams, leads]);
+  }, [searchParams, leads, navigate]);
 
   useEffect(() => {
     if (!viewingLead) {
