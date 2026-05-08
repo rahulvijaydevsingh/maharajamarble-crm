@@ -37,6 +37,44 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, customer.id]);
 
+  // Reminders from the reminders table (entity_type='task') for tasks linked to this customer.
+  const linkedTaskIds = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.related_entity_type === 'customer' && t.related_entity_id === customer.id)
+      .map((t) => t.id);
+  }, [tasks, customer.id]);
+
+  const [taskReminderRows, setTaskReminderRows] = useState<Array<any>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (linkedTaskIds.length === 0) {
+      setTaskReminderRows([]);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('reminders')
+          .select('*')
+          .eq('entity_type', 'task')
+          .in('entity_id', linkedTaskIds)
+          .eq('is_dismissed', false)
+          .order('reminder_datetime', { ascending: true });
+        if (!cancelled) setTaskReminderRows(data || []);
+      } catch (_) {
+        if (!cancelled) setTaskReminderRows([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [linkedTaskIds.join(',')]);
+
+  const taskTitleById = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    tasks.forEach((t) => { map[t.id] = t.title; });
+    return map;
+  }, [tasks]);
+
   const activeReminders = reminders.filter(r => !r.is_dismissed);
   const dismissedReminders = reminders.filter(r => r.is_dismissed);
 
