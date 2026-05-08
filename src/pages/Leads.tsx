@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Upload, Trash2, Archive } from "lucide-react";
 import { useLeads, LeadInsert } from "@/hooks/useLeads";
 import { useTasks } from "@/hooks/useTasks";
+import { useReminders } from "@/hooks/useReminders";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { format } from "date-fns";
@@ -30,6 +31,7 @@ const Leads = () => {
   const [bulkUploadDialogOpen, setBulkUploadDialogOpen] = useState(false);
   const { addLead, refetch } = useLeads();
   const { addTask } = useTasks();
+  const { addReminder } = useReminders();
   const { toast } = useToast();
   const { canCreate } = usePermissions();
   const { staffMembers } = useActiveStaff();
@@ -149,6 +151,30 @@ const Leads = () => {
           lead_id: newLead.id,
           created_by: profile?.full_name || user?.email || "unknown",
         });
+      }
+
+      // Create reminder if requested
+      if (formData.reminderEnabled && newLead) {
+        try {
+          const [rHours, rMinutes] = (formData.nextActionTime || "09:00").split(":").map(Number);
+          const actionDate = new Date(formData.nextActionDate);
+          actionDate.setHours(rHours, rMinutes, 0, 0);
+          const offsetMs = parseInt(formData.reminderTime || "30") * 60 * 1000;
+          const reminderDatetime = new Date(actionDate.getTime() - offsetMs);
+          const assignedToName =
+            staffMembers.find((m) => m.id === formData.assignedTo || m.name === formData.assignedTo)?.name ||
+            formData.assignedTo;
+          await addReminder({
+            title: `Follow-up: ${formData.fullName || formData.primaryPhone}`,
+            reminder_datetime: reminderDatetime.toISOString(),
+            entity_type: "lead",
+            entity_id: newLead.id,
+            assigned_to: assignedToName,
+          });
+        } catch (reminderErr) {
+          console.error("Failed to create reminder for new lead:", reminderErr);
+          // Non-fatal — lead and task already saved
+        }
       }
 
       setAddLeadDialogOpen(false);

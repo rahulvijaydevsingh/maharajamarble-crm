@@ -86,6 +86,8 @@ export interface SmartLeadFormData {
   // Professional-specific fields (only if leadCategory === "professional")
   firmName?: string;
   gstNumber?: string;
+  reminderEnabled?: boolean;
+  reminderTime?: string;
 }
 
 // Duplicate check result

@@ -29,6 +29,7 @@ import {
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCustomers, CustomerInsert } from "@/hooks/useCustomers";
+import { useReminders } from "@/hooks/useReminders";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 
 interface SmartCustomerFormProps {
@@ -39,8 +40,9 @@ interface SmartCustomerFormProps {
 export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps) {
   const { toast } = useToast();
   const { addCustomer } = useCustomers();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { staffMembers } = useActiveStaff();
+  const { addReminder } = useReminders();
   const { logStaffAction } = useStaffActivityLog();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateResults, setDuplicateResults] = useState<{ [key: string]: DuplicateCheckResult }>({});
@@ -96,6 +98,8 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
   const [nextActionDate, setNextActionDate] = useState(addDays(new Date(), 2));
   const [nextActionTime, setNextActionTime] = useState("10:00");
   const [initialNote, setInitialNote] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("30");
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
 
@@ -185,7 +189,29 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         // created_by handled by DB default get_current_user_email()
       };
 
-      await addCustomer(customerData);
+      const newCustomer = await addCustomer(customerData);
+
+      if (reminderEnabled && newCustomer) {
+        try {
+          const [rHours, rMinutes] = (nextActionTime || "09:00").split(":").map(Number);
+          const actionDate = new Date(nextActionDate);
+          actionDate.setHours(rHours, rMinutes, 0, 0);
+          const offsetMs = parseInt(reminderTime || "30") * 60 * 1000;
+          const reminderDatetime = new Date(actionDate.getTime() - offsetMs);
+          const assignedToName =
+            staffMembers.find((m) => m.id === assignedTo)?.name || assignedTo;
+          await addReminder({
+            title: `Follow-up: ${contacts[0]?.name || contacts[0]?.phone}`,
+            reminder_datetime: reminderDatetime.toISOString(),
+            entity_type: "customer",
+            entity_id: newCustomer.id,
+            assigned_to: assignedToName,
+          });
+        } catch (reminderErr) {
+          console.error("Failed to create reminder for new customer:", reminderErr);
+          // Non-fatal
+        }
+      }
 
       logStaffAction('create_customer', `Created customer: ${primaryContact.name}`, 'customer');
 
@@ -233,6 +259,8 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
     setNextActionDate(addDays(new Date(), 2));
     setNextActionTime("10:00");
     setInitialNote("");
+    setReminderEnabled(false);
+    setReminderTime("30");
     setValidationErrors({});
     setDuplicateResults({});
   };
@@ -306,6 +334,10 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
                 onNextActionDateChange={setNextActionDate}
                 onNextActionTimeChange={setNextActionTime}
                 onInitialNoteChange={setInitialNote}
+                reminderEnabled={reminderEnabled}
+                reminderTime={reminderTime}
+                onReminderEnabledChange={setReminderEnabled}
+                onReminderTimeChange={setReminderTime}
                 validationErrors={validationErrors}
               />
             </div>

@@ -26,11 +26,14 @@ import {
   Info,
   Mic,
   MicOff,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, addHours, addDays, setHours, setMinutes } from "date-fns";
 import { FollowUpPriority, LeadSource, ConstructionStage } from "@/types/lead";
 import { FOLLOW_UP_PRIORITIES, LEAD_SOURCES, CONSTRUCTION_STAGES } from "@/constants/leadConstants";
+import { Checkbox } from "@/components/ui/checkbox";
+import { REMINDER_OPTIONS } from "@/constants/taskConstants";
 
 interface ActionTriggerSectionProps {
   followUpPriority: FollowUpPriority;
@@ -43,6 +46,10 @@ interface ActionTriggerSectionProps {
   onNextActionDateChange: (date: Date) => void;
   onNextActionTimeChange: (time: string) => void;
   onInitialNoteChange: (note: string) => void;
+  reminderEnabled?: boolean;
+  reminderTime?: string;
+  onReminderEnabledChange?: (val: boolean) => void;
+  onReminderTimeChange?: (val: string) => void;
   validationErrors?: { [key: string]: string };
 }
 
@@ -57,6 +64,10 @@ export function ActionTriggerSection({
   onNextActionDateChange,
   onNextActionTimeChange,
   onInitialNoteChange,
+  reminderEnabled = false,
+  reminderTime = "30",
+  onReminderEnabledChange,
+  onReminderTimeChange,
   validationErrors = {},
 }: ActionTriggerSectionProps) {
   const [isAutoFilled, setIsAutoFilled] = useState(true);
@@ -284,6 +295,35 @@ export function ActionTriggerSection({
           {validationErrors.nextActionTime && (
             <p className="text-sm text-destructive">{validationErrors.nextActionTime}</p>
           )}
+
+          {/* Set Reminder */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="actionReminderEnabled"
+                checked={reminderEnabled}
+                onCheckedChange={(checked) => onReminderEnabledChange?.(checked === true)}
+              />
+              <Label htmlFor="actionReminderEnabled" className="text-sm font-normal cursor-pointer select-none flex items-center gap-1">
+                <Bell className="h-3.5 w-3.5" />
+                Set Reminder
+              </Label>
+            </div>
+            {reminderEnabled && (
+              <Select value={reminderTime} onValueChange={(v) => onReminderTimeChange?.(v)}>
+                <SelectTrigger className="h-8 text-xs w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="z-[220]">
+                  {REMINDER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
 
           <p className="text-xs text-muted-foreground">
             Business hours: 9:00 AM - 7:00 PM

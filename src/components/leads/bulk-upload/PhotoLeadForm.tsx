@@ -42,6 +42,8 @@ interface PhotoLeadData {
   nextActionDate: Date;
   nextActionTime: string;
   initialNote: string;
+  reminderEnabled?: boolean;
+  reminderTime?: string;
   status: "pending" | "saved" | "skipped" | "duplicate";
   duplicateInfo?: string;
 }
@@ -196,6 +198,10 @@ export function PhotoLeadForm({
           onNextActionDateChange={(v) => onUpdateLead("nextActionDate", v)}
           onNextActionTimeChange={(v) => onUpdateLead("nextActionTime", v)}
           onInitialNoteChange={(v) => onUpdateLead("initialNote", v)}
+          reminderEnabled={currentLead.reminderEnabled ?? false}
+          reminderTime={currentLead.reminderTime ?? "30"}
+          onReminderEnabledChange={(v) => onUpdateLead("reminderEnabled", v)}
+          onReminderTimeChange={(v) => onUpdateLead("reminderTime", v)}
           validationErrors={validationErrors}
         />
 
