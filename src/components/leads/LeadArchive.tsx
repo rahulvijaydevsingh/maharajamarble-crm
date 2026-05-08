@@ -106,16 +106,25 @@ export function LeadArchive() {
       setActivityLog([]);
       return;
     }
+    let isMounted = true;
     setActivityLoading(true);
     supabase
       .from("activity_log")
       .select("*")
       .eq("lead_id", viewingLead.id)
       .order("activity_timestamp", { ascending: false })
-      .then(({ data }) => {
-        setActivityLog(data || []);
+      .then(({ data, error }) => {
+        if (!isMounted) return;
+        if (error) {
+          console.error("Error fetching activity log:", error);
+        } else {
+          setActivityLog(data || []);
+        }
         setActivityLoading(false);
       });
+    return () => {
+      isMounted = false;
+    };
   }, [viewingLead?.id]);
 
   const filteredLeads = useMemo(() => {
@@ -431,7 +440,7 @@ export function LeadArchive() {
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-1">
-                            {entry.user_name} · {entry.activity_timestamp ? formatDistanceToNow(new Date(entry.activity_timestamp), { addSuffix: true }) : "No date"}
+                            {entry.user_name} · {formatDistanceToNow(new Date(entry.activity_timestamp), { addSuffix: true })}
                           </p>
                         </div>
                       </div>
