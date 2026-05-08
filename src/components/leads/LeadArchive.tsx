@@ -431,7 +431,7 @@ export function LeadArchive() {
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-1">
-                            {entry.user_name} · {formatDistanceToNow(new Date(entry.activity_timestamp), { addSuffix: true })}
+                            {entry.user_name} · {entry.activity_timestamp ? formatDistanceToNow(new Date(entry.activity_timestamp), { addSuffix: true }) : "No date"}
                           </p>
                         </div>
                       </div>
