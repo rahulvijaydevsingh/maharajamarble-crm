@@ -258,6 +258,26 @@ export function LeadDetailView({
     setIsEditing(false);
   };
 
+  // Cancel all open tasks linked to this lead via either lead_id OR
+  // related_entity_id. Re-engagement opportunity tasks are created by automation
+  // AFTER the lead is lost, so they cannot exist at sweep time — no title filter
+  // needed (relying on natural timing per architect guidance).
+  const cancelOpenLeadTasks = async (leadId: string, note: string) => {
+    try {
+      await supabase.from('tasks')
+        .update({ status: 'Cancelled', completion_notes: note } as any)
+        .eq('lead_id', leadId)
+        .not('status', 'in', '("Completed","Cancelled")');
+    } catch (e) { console.warn('[lead sweep] lead_id pass failed:', e); }
+    try {
+      await supabase.from('tasks')
+        .update({ status: 'Cancelled', completion_notes: note } as any)
+        .eq('related_entity_type', 'lead')
+        .eq('related_entity_id', leadId)
+        .not('status', 'in', '("Completed","Cancelled")');
+    } catch (e) { console.warn('[lead sweep] related_entity pass failed:', e); }
+  };
+
   const handleMarkAsLost = async (reasonKey: string, notes: string) => {
     if (!currentLead) return;
     await updateLead(currentLead.id, {
@@ -273,6 +293,9 @@ export function LeadDetailView({
       description: `Lead marked as Pending Lost. Reason: ${reasonKey}${notes ? ` — ${notes}` : ''}`,
       metadata: { old_status: currentLead.status, new_status: 'pending_lost', lost_reason: reasonKey },
     });
+    // Sweep open tasks immediately on pending_lost so nothing remains overdue
+    // while awaiting admin approval.
+    await cancelOpenLeadTasks(currentLead.id, 'Cancelled — Lead marked Pending Lost');
     await refetch();
     toast({ title: "Lost Request Submitted", description: "Awaiting manager approval." });
   };
