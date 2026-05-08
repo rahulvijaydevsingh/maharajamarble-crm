@@ -41,6 +41,46 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, lead.id]);
 
+  // Fetch reminders from the reminders table whose entity_type='task' and the
+  // task is linked to this lead. These are reminders created via the task form
+  // (reminder checkbox) and otherwise wouldn't show up in this tab.
+  const linkedTaskIds = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.lead_id === lead.id || (t.related_entity_type === 'lead' && t.related_entity_id === lead.id))
+      .map((t) => t.id);
+  }, [tasks, lead.id]);
+
+  const [taskReminderRows, setTaskReminderRows] = useState<Array<any>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (linkedTaskIds.length === 0) {
+      setTaskReminderRows([]);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('reminders')
+          .select('*')
+          .eq('entity_type', 'task')
+          .in('entity_id', linkedTaskIds)
+          .eq('is_dismissed', false)
+          .order('reminder_datetime', { ascending: true });
+        if (!cancelled) setTaskReminderRows(data || []);
+      } catch (_) {
+        if (!cancelled) setTaskReminderRows([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [linkedTaskIds.join(',')]);
+
+  const taskTitleById = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    tasks.forEach((t) => { map[t.id] = t.title; });
+    return map;
+  }, [tasks]);
+
   // Scroll to and highlight the reminder when highlightReminderId is provided
   React.useEffect(() => {
     if (highlightReminderId && reminders.length > 0) {
