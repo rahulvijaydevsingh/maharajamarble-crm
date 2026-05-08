@@ -68,6 +68,7 @@ export interface Task {
     name: string;
     phone: string;
     site_plus_code?: string | null;
+    status?: string | null;
   } | null;
   // Computed fields
   subtasks_count?: number;
@@ -395,14 +396,20 @@ export function useTasks() {
         .from("tasks")
         .select(`
           *,
-          lead:leads(id, name, phone, site_plus_code)
+          lead:leads(id, name, phone, site_plus_code, status)
         `)
         .order("due_date", { ascending: true });
 
       if (error) throw error;
       
+      const activeTasks = (data || []).filter(task => {
+        // Exclude tasks belonging to lost leads
+        if (task.lead && task.lead.status === 'lost') return false;
+        return true;
+      });
+
       // Add calculated status to each task
-      const tasksWithCalculatedStatus = (data || []).map(task => ({
+      const tasksWithCalculatedStatus = activeTasks.map(task => ({
         ...task,
         calculatedStatus: calculateTaskStatus(task),
       }));

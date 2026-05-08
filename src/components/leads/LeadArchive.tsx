@@ -32,7 +32,7 @@ import { Loader2, Search, Eye, RefreshCw, CalendarIcon, Archive, Clock } from "l
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface ArchivedLead {
@@ -66,6 +66,7 @@ const LOST_REASON_LABELS: Record<string, string> = {
 export function LeadArchive() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [leads, setLeads] = useState<ArchivedLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -100,6 +101,16 @@ export function LeadArchive() {
   useEffect(() => {
     fetchArchivedLeads();
   }, []);
+
+  useEffect(() => {
+    const targetLeadId = searchParams.get("leadId");
+    const isArchiveView = searchParams.get("archive") === "true";
+    if (!targetLeadId || !isArchiveView || leads.length === 0) return;
+    const target = leads.find((l) => l.id === targetLeadId);
+    if (target) {
+      setViewingLead(target);
+    }
+  }, [searchParams, leads]);
 
   useEffect(() => {
     if (!viewingLead) {
