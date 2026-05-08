@@ -315,26 +315,21 @@ export function LeadDetailView({
     
     const leadId = currentLead.id;
 
-    // First pass — cancel all existing open tasks immediately
-    await supabase.from('tasks')
-      .update({ status: 'Cancelled', completion_notes: 'Cancelled — Lead marked Lost' } as any)
-      .eq('lead_id', leadId)
-      .not('status', 'in', '("Completed","Cancelled")');
-    
+    // First pass — cancel all existing open tasks immediately (both link types)
+    await cancelOpenLeadTasks(leadId, 'Cancelled — Lead marked Lost');
+
     await logActivity({
       lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
       title: 'Lead Marked Lost — Approved',
       description: `Lead approved as Lost. Reason: ${(currentLead as any).lost_reason || 'N/A'}`,
     });
 
-    // Short wait, then second pass to catch any automation-created tasks that arrived async
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Wait for any in-flight automation-created tasks (e.g. approval task), then sweep again.
+    // Re-engagement Opportunity is created on `lost` status — but that automation runs every
+    // ~60s, so a 3s wait will not catch it (timing safety).
+    await new Promise(resolve => setTimeout(resolve, 3000));
     try {
-      await supabase.from('tasks')
-        .update({ status: 'Cancelled', completion_notes: 'Auto-cancelled — Lead marked Lost' } as any)
-        .eq('lead_id', leadId)
-        .eq('created_by', 'system')
-        .not('status', 'in', '("Completed","Cancelled")');
+      await cancelOpenLeadTasks(leadId, 'Auto-cancelled — Lead marked Lost');
     } catch (_) { /* non-critical */ }
 
     await refetch();
