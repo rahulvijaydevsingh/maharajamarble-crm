@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +36,44 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
       .filter((t) => t.related_entity_type === 'customer' && t.related_entity_id === customer.id && !!t.reminder && t.status !== 'Completed' && t.status !== 'Cancelled')
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, customer.id]);
+
+  // Reminders from the reminders table (entity_type='task') for tasks linked to this customer.
+  const linkedTaskIds = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.related_entity_type === 'customer' && t.related_entity_id === customer.id)
+      .map((t) => t.id);
+  }, [tasks, customer.id]);
+
+  const [taskReminderRows, setTaskReminderRows] = useState<Array<any>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (linkedTaskIds.length === 0) {
+      setTaskReminderRows([]);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('reminders')
+          .select('*')
+          .eq('entity_type', 'task')
+          .in('entity_id', linkedTaskIds)
+          .eq('is_dismissed', false)
+          .order('reminder_datetime', { ascending: true });
+        if (!cancelled) setTaskReminderRows(data || []);
+      } catch (_) {
+        if (!cancelled) setTaskReminderRows([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [linkedTaskIds.join(',')]);
+
+  const taskTitleById = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    tasks.forEach((t) => { map[t.id] = t.title; });
+    return map;
+  }, [tasks]);
 
   const activeReminders = reminders.filter(r => !r.is_dismissed);
   const dismissedReminders = reminders.filter(r => r.is_dismissed);
@@ -216,6 +255,40 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {taskReminderRows.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Task-based reminders</h4>
+          {taskReminderRows.map((r) => {
+            const taskTitle = taskTitleById[r.entity_id] || 'Linked task';
+            const overdue = isPast(new Date(r.reminder_datetime));
+            return (
+              <div key={r.id} className="border rounded-lg p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <Bell className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <Button
+                      variant="link"
+                      className="h-auto p-0 font-medium text-left"
+                      onClick={() => openTask(r.entity_id)}
+                    >
+                      {r.title}
+                    </Button>
+                    <div className="text-xs text-muted-foreground">Task: {taskTitle}</div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                      <Badge variant="secondary" className={overdue ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}>
+                        {format(new Date(r.reminder_datetime), 'MMM d, yyyy h:mm a')}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

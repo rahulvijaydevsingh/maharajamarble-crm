@@ -127,9 +127,11 @@ export function KitTouchCard({
     
     if (touch.method === 'call' && entityPhone) {
       return (
-        <a href={`tel:${entityPhone}`} className="font-medium hover:underline text-primary">
-          {methodLabel}
-        </a>
+        <PhoneLink
+          phone={entityPhone}
+          className="font-medium"
+          log={callLog}
+        />
       );
     }
     if (touch.method === 'whatsapp' && entityPhone) {

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -39,6 +40,46 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
       })
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [tasks, lead.id]);
+
+  // Fetch reminders from the reminders table whose entity_type='task' and the
+  // task is linked to this lead. These are reminders created via the task form
+  // (reminder checkbox) and otherwise wouldn't show up in this tab.
+  const linkedTaskIds = React.useMemo(() => {
+    return tasks
+      .filter((t) => t.lead_id === lead.id || (t.related_entity_type === 'lead' && t.related_entity_id === lead.id))
+      .map((t) => t.id);
+  }, [tasks, lead.id]);
+
+  const [taskReminderRows, setTaskReminderRows] = useState<Array<any>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (linkedTaskIds.length === 0) {
+      setTaskReminderRows([]);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('reminders')
+          .select('*')
+          .eq('entity_type', 'task')
+          .in('entity_id', linkedTaskIds)
+          .eq('is_dismissed', false)
+          .order('reminder_datetime', { ascending: true });
+        if (!cancelled) setTaskReminderRows(data || []);
+      } catch (_) {
+        if (!cancelled) setTaskReminderRows([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [linkedTaskIds.join(',')]);
+
+  const taskTitleById = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    tasks.forEach((t) => { map[t.id] = t.title; });
+    return map;
+  }, [tasks]);
 
   // Scroll to and highlight the reminder when highlightReminderId is provided
   React.useEffect(() => {
@@ -239,6 +280,40 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {taskReminderRows.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Task-based reminders</h4>
+          {taskReminderRows.map((r) => {
+            const taskTitle = taskTitleById[r.entity_id] || 'Linked task';
+            const overdue = isPast(new Date(r.reminder_datetime));
+            return (
+              <div key={r.id} className="border rounded-lg p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <Bell className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <Button
+                      variant="link"
+                      className="h-auto p-0 font-medium text-left"
+                      onClick={() => openTask(r.entity_id)}
+                    >
+                      {r.title}
+                    </Button>
+                    <div className="text-xs text-muted-foreground">Task: {taskTitle}</div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                      <Badge variant="secondary" className={overdue ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}>
+                        {format(new Date(r.reminder_datetime), 'MMM d, yyyy h:mm a')}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

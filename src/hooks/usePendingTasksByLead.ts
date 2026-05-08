@@ -28,9 +28,10 @@ export function usePendingTasksByLead() {
       setLoading(true);
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, title, due_date, due_time, assigned_to, priority, status, lead_id")
+        .select("id, title, due_date, due_time, assigned_to, priority, status, lead_id, related_entity_type, related_entity_id")
         .neq("status", "Completed")
-        .not("lead_id", "is", null);
+        .neq("status", "Cancelled")
+        .or("lead_id.not.is.null,and(related_entity_type.eq.lead,related_entity_id.not.is.null)");
 
       if (error) throw error;
       setTasks(data || []);
@@ -67,12 +68,16 @@ export function usePendingTasksByLead() {
     const grouped: Record<string, LeadPendingTasks> = {};
 
     tasks.forEach((task: any) => {
-      const leadId = task.lead_id;
+      const leadId = task.lead_id
+        || (task.related_entity_type === 'lead' ? task.related_entity_id : null);
       if (!leadId) return;
 
       if (!grouped[leadId]) {
         grouped[leadId] = { total: 0, overdue: 0, dueToday: 0, upcoming: 0, tasks: [] };
       }
+
+      // De-duplicate: a task linked via both lead_id and related_entity_id should count once
+      if (grouped[leadId].tasks.some((t: any) => t.id === task.id)) return;
 
       const dueDate = new Date(task.due_date);
       dueDate.setHours(0, 0, 0, 0);
