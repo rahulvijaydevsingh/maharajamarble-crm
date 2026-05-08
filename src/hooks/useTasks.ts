@@ -387,7 +387,7 @@ const syncTaskReminder = async (
         entity_id: task.id,
         is_dismissed: false,
         is_snoozed: false,
-        assigned_to: task.assigned_to || 'System',
+        assigned_to: await resolveToFullName(task.assigned_to || 'System'),
       } as any);
     } else {
       // Disabled / closed / past → remove any existing
