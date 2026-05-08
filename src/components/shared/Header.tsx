@@ -88,7 +88,12 @@ export function Header() {
         supabase.from("quotations").select("id, quotation_number, client_name, status").or(`quotation_number.ilike.${pattern},client_name.ilike.${pattern}`).limit(5),
       ]);
 
-      leadsRes.data?.forEach(l => results.push({ id: l.id, type: "lead", name: l.name, secondary: l.phone || l.email || "", url: `/leads?view=${l.id}` }));
+      leadsRes.data?.forEach(l => {
+        const url = l.status === 'lost'
+          ? `/leads?archive=true&leadId=${l.id}`
+          : `/leads?view=${l.id}`;
+        results.push({ id: l.id, type: "lead", name: l.name, secondary: l.phone || l.email || "", url });
+      });
       customersRes.data?.forEach(c => results.push({ id: c.id, type: "customer", name: c.name, secondary: c.phone || c.email || "", url: `/customers?view=${c.id}` }));
       professionalsRes.data?.forEach(p => results.push({ id: p.id, type: "professional", name: p.name, secondary: p.firm_name || p.phone || "", url: `/professionals?view=${p.id}` }));
       tasksRes.data?.forEach(t => results.push({ id: t.id, type: "task", name: t.title, secondary: t.status || "", url: `/tasks?view=${t.id}` }));

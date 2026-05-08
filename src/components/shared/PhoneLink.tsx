@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -29,6 +29,7 @@ export function PhoneLink({
   };
 }) {
   const { user, profile } = useAuth();
+  const isLoggingRef = useRef(false);
 
   if (!phone) return null;
 
@@ -46,10 +47,15 @@ export function PhoneLink({
     // Fire any external onClick handler
     onClick?.(e);
 
+    // Prevent double logging within 3 seconds
+    if (isLoggingRef.current) return;
+
     // Log activity completely asynchronously —
     // never awaited, never blocks the tel: link,
     // never throws to React
     if (log?.leadId || log?.customerId || log?.relatedEntityType) {
+      isLoggingRef.current = true;
+
       Promise.resolve()
         .then(() => import('@/integrations/supabase/client'))
         .then(({ supabase }) =>
@@ -69,6 +75,11 @@ export function PhoneLink({
         )
         .catch(() => {
           // Logging failure must never surface to UI
+        })
+        .finally(() => {
+          setTimeout(() => {
+            isLoggingRef.current = false;
+          }, 3000);
         });
     }
     // tel: link fires natively — DO NOT call
