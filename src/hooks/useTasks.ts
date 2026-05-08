@@ -292,6 +292,33 @@ const computeTaskReminderFireAt = (task: {
 };
 
 /**
+ * Resolve a staff identity (email/UUID/name) to canonical full_name string.
+ * Cached at module level. Identity rule: assigned_to MUST be full_name; we
+ * normalize legacy email/UUID values so bell filter (profile.full_name) matches.
+ */
+const profileNameCache = new Map<string, string>();
+const resolveToFullName = async (value: string | null | undefined): Promise<string> => {
+  const v = (value || '').trim();
+  if (!v || v === 'System' || v === 'system') return v || 'System';
+  if (!v.includes('@') && v.includes(' ')) return v;
+  if (profileNameCache.has(v)) return profileNameCache.get(v)!;
+  try {
+    const isEmail = v.includes('@');
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    let q = supabase.from('profiles').select('full_name').limit(1);
+    if (isEmail) q = q.eq('email', v);
+    else if (isUuid) q = q.eq('id', v);
+    else q = q.eq('full_name', v);
+    const { data } = await q.maybeSingle();
+    const name = (data as any)?.full_name || v;
+    profileNameCache.set(v, name);
+    return name;
+  } catch {
+    return v;
+  }
+};
+
+/**
  * Mirror a task's reminder fields into the `reminders` table so the bell can fire.
  * - reminder=true & open & future fire time → upsert one row keyed by (entity_type='task', entity_id=task.id)
  * - otherwise (disabled, completed, cancelled, past) → delete any matching row(s)
@@ -360,7 +387,7 @@ const syncTaskReminder = async (
         entity_id: task.id,
         is_dismissed: false,
         is_snoozed: false,
-        assigned_to: task.assigned_to || 'System',
+        assigned_to: await resolveToFullName(task.assigned_to || 'System'),
       } as any);
     } else {
       // Disabled / closed / past → remove any existing
