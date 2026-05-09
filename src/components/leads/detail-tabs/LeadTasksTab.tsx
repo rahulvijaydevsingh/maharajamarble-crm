@@ -60,7 +60,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'Pending': { label: 'Pending', className: 'bg-gray-100 text-gray-700' },
   'In Progress': { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
   'Completed': { label: 'Completed', className: 'bg-green-100 text-green-700' },
-  'Overdue': { label: 'Overdue', className: 'bg-red-100 text-red-700' },
+  'Overdue': { label: 'Overdue', className: 'bg-red-50 text-red-600' },
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
