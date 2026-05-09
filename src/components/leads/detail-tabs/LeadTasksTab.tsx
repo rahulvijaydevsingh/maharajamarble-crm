@@ -60,6 +60,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'Pending': { label: 'Pending', className: 'bg-gray-100 text-gray-700' },
   'In Progress': { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
   'Completed': { label: 'Completed', className: 'bg-green-100 text-green-700' },
+  'Overdue': { label: 'Overdue', className: 'bg-red-100 text-red-700' },
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
@@ -232,7 +233,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
             <TableBody>
               {leadTasks.map((task) => {
                 const priorityConfig = priorityStyles[task.priority] || { label: task.priority, className: 'bg-gray-100 text-gray-700' };
-                const statusConfig = statusStyles[task.status] || { label: task.status, className: 'bg-gray-100 text-gray-700' };
+                const currentStatus = (task.calculatedStatus ?? task.status) as string;
+                const statusConfig = statusStyles[currentStatus] || { label: currentStatus, className: 'bg-gray-100 text-gray-700' };
                 
                 return (
                   <TableRow key={task.id}>
@@ -270,7 +272,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                         </Tooltip>
                       </TooltipProvider>
                     </TableCell>
-                    <TableCell className={getDueDateStyle(task.due_date, task.status)}>
+                    <TableCell className={getDueDateStyle(task.due_date, currentStatus)}>
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
                         {format(new Date(task.due_date), 'dd MMM yyyy')}

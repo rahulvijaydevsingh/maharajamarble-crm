@@ -853,28 +853,26 @@ export function useTasks() {
         console.warn("[useTasks/snoozeTask] Failed to snooze linked task reminder:", e?.message || e);
       }
 
-      // Long-snooze (>4h): ensure a fresh reminder fires at the wake time so the
-      // task isn't forgotten. Replaces any existing reminders row for this task,
-      // so we never end up with duplicates.
-      if (hoursToAdd > 4) {
-        await syncTaskReminder(
-          {
-            id,
-            title: task.title,
-            status: 'Pending',
-            reminder: true,
-            reminder_time: '0',
-            due_date: newDueDate,
-            due_time: newDueTime,
-            assigned_to: task.assigned_to,
-            created_by: task.created_by,
-            lead_id: task.lead_id,
-            related_entity_type: task.related_entity_type,
-            related_entity_id: task.related_entity_id,
-          },
-          { fireAt: snoozedUntil.toISOString(), title: `Snoozed task: ${task.title}` }
-        );
-      }
+      // Always sync reminder for any snooze duration so the bell fires
+      // at the wake time regardless of whether the snooze is short or long.
+      // Replaces any existing reminders row for this task, so we never end up with duplicates.
+      await syncTaskReminder(
+        {
+          id,
+          title: task.title,
+          status: 'Pending',
+          reminder: true,
+          reminder_time: '0',
+          due_date: newDueDate,
+          due_time: newDueTime,
+          assigned_to: task.assigned_to,
+          created_by: task.created_by,
+          lead_id: task.lead_id,
+          related_entity_type: task.related_entity_type,
+          related_entity_id: task.related_entity_id,
+        },
+        { fireAt: snoozedUntil.toISOString(), title: `Snoozed task: ${task.title}` }
+      );
 
       toast({ title: "Task snoozed" });
     } catch (error: any) {
