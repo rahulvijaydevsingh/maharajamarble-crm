@@ -43,6 +43,7 @@ import { format, isPast, isToday } from 'date-fns';
 import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
+import { calculateTaskStatus } from "@/lib/taskStatusService";
 
 interface LeadTasksTabProps {
   lead: Lead;
@@ -60,7 +61,7 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'Pending': { label: 'Pending', className: 'bg-gray-100 text-gray-700' },
   'In Progress': { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
   'Completed': { label: 'Completed', className: 'bg-green-100 text-green-700' },
-  'Overdue': { label: 'Overdue', className: 'bg-red-50 text-red-600' },
+  'Overdue': { label: 'Overdue', className: 'bg-red-100 text-red-700' },
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
@@ -233,7 +234,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
             <TableBody>
               {leadTasks.map((task) => {
                 const priorityConfig = priorityStyles[task.priority] || { label: task.priority, className: 'bg-gray-100 text-gray-700' };
-                const currentStatus = (task.calculatedStatus ?? task.status) as string;
+                const currentStatus = calculateTaskStatus(task);
                 const statusConfig = statusStyles[currentStatus] || { label: currentStatus, className: 'bg-gray-100 text-gray-700' };
                 
                 return (
