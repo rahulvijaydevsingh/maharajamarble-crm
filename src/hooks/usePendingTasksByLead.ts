@@ -88,8 +88,8 @@ export function usePendingTasksByLead() {
         ? task.due_date.slice(0, 10)
         : task.due_date;
       const dueTimeStr = (task.due_time && /^\d{1,2}:\d{2}/.test(task.due_time))
-        ? task.due_time.slice(0, 5)
-        : '23:59';
+        ? task.due_time.slice(0, 5).padStart(5, "0")
+        : "23:59";
       const fullDueDatetime = new Date(`${dueDateOnly}T${dueTimeStr}:00`);
       const now = new Date();
 
