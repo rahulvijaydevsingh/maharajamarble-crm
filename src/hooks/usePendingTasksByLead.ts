@@ -79,15 +79,28 @@ export function usePendingTasksByLead() {
       // De-duplicate: a task linked via both lead_id and related_entity_id should count once
       if (grouped[leadId].tasks.some((t: any) => t.id === task.id)) return;
 
-      const dueDate = new Date(task.due_date);
-      dueDate.setHours(0, 0, 0, 0);
-
       grouped[leadId].total++;
       grouped[leadId].tasks.push(task);
 
-      if (dueDate < today) {
+      // Build a full datetime for the task using due_date + due_time (or 23:59 if no time)
+      // so that a task due at 13:13 today is correctly overdue at 13:35 today.
+      const dueDateOnly = task.due_date.includes('T')
+        ? task.due_date.slice(0, 10)
+        : task.due_date;
+      const dueTimeStr = (task.due_time && /^\d{1,2}:\d{2}/.test(task.due_time))
+        ? task.due_time.slice(0, 5)
+        : '23:59';
+      const fullDueDatetime = new Date(`${dueDateOnly}T${dueTimeStr}:00`);
+      const now = new Date();
+
+      // Date-only comparison for dueToday/upcoming buckets
+      const dueDateForSort = new Date(dueDateOnly);
+      dueDateForSort.setHours(0, 0, 0, 0);
+
+      if (fullDueDatetime < now) {
+        // Past due datetime (catches intra-day overdue like 13:13 when it's 13:35)
         grouped[leadId].overdue++;
-      } else if (dueDate.getTime() === today.getTime()) {
+      } else if (dueDateForSort.getTime() === today.getTime()) {
         grouped[leadId].dueToday++;
       } else {
         grouped[leadId].upcoming++;
