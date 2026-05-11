@@ -487,15 +487,36 @@ async function executeAction(
           .replace("{original_assignee}", String(newRow.assigned_to || ""))
           .replace("{new_status}", String(newRow.status || ""));
 
-        // Find all open tasks on this lead
-        const { data: openTasks, error: tasksErr } = await supabase
+        // Sweep 1: tasks linked via lead_id
+        const { data: sweep1, error: tasksErr } = await supabase
           .from("tasks")
           .select("id, assigned_to, status")
           .eq("lead_id", leadId)
           .not("status", "in", '("Completed","Cancelled")');
 
         if (tasksErr) return { status: "failed", error: tasksErr.message };
-        if (!openTasks || openTasks.length === 0) {
+
+        // Sweep 2: tasks linked via related_entity_id = lead (automation-created)
+        const { data: sweep2, error: sweep2Err } = await supabase
+          .from("tasks")
+          .select("id, assigned_to, status")
+          .eq("related_entity_type", "lead")
+          .eq("related_entity_id", leadId)
+          .not("status", "in", '("Completed","Cancelled")');
+
+        if (sweep2Err) {
+          console.warn("[handle_lead_tasks] sweep2 failed, proceeding with sweep1 only:", sweep2Err.message);
+        }
+
+        // Deduplicate by id
+        const seenIds = new Set<string>();
+        const openTasks = [...(sweep1 || []), ...(sweep2 || [])].filter((t) => {
+          if (seenIds.has(t.id)) return false;
+          seenIds.add(t.id);
+          return true;
+        });
+
+        if (openTasks.length === 0) {
           return { status: "success", details: "No open tasks found on this lead" };
         }
 
