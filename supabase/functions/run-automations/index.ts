@@ -497,12 +497,16 @@ async function executeAction(
         if (tasksErr) return { status: "failed", error: tasksErr.message };
 
         // Sweep 2: tasks linked via related_entity_id = lead (automation-created)
-        const { data: sweep2 } = await supabase
+        const { data: sweep2, error: sweep2Err } = await supabase
           .from("tasks")
           .select("id, assigned_to, status")
           .eq("related_entity_type", "lead")
           .eq("related_entity_id", leadId)
           .not("status", "in", '("Completed","Cancelled")');
+
+        if (sweep2Err) {
+          console.warn("[handle_lead_tasks] sweep2 failed, proceeding with sweep1 only:", sweep2Err.message);
+        }
 
         // Deduplicate by id
         const seenIds = new Set<string>();
