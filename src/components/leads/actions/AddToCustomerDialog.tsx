@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { 
@@ -60,6 +60,14 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   const { staffMembers } = useActiveStaff();
   const [step, setStep] = useState(1); // 1: Conversion Options, 2: Feedback Reminder Setup
   const [conversionOption, setConversionOption] = useState<ConversionOption>('convert_and_remove');
+  const [dupCheckDone, setDupCheckDone] = useState(false);
+  const [existingCustomer, setExistingCustomer] = useState<{
+    id: string;
+    name: string;
+    phone: string;
+  } | null>(null);
+  const [dupChoice, setDupChoice] = useState<'link' | 'create_new' | null>(null);
+
   const [reminderData, setReminderData] = useState({
     reminderDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     reminderTypes: {
@@ -77,6 +85,32 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   const { logActivity } = useLogActivity();
   const { user } = useAuth();
 
+  useEffect(() => {
+    if (!open) {
+      // reset on close
+      setDupCheckDone(false);
+      setExistingCustomer(null);
+      setDupChoice(null);
+      setStep(1);
+      setConversionOption('convert_and_remove');
+      return;
+    }
+    const phone = leadData.phone?.replace(/\D/g, '');
+    if (!phone) { setDupCheckDone(true); return; }
+
+    supabase
+      .from('customers')
+      .select('id, name, phone')
+      .ilike('phone', `%${phone.slice(-10)}`)
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) setExistingCustomer(data);
+        setDupCheckDone(true);
+      })
+      .catch(() => setDupCheckDone(true)); // non-blocking: if check fails, proceed normally
+  }, [open, leadData.phone]);
+
   const handleConfirmConversion = () => {
     setStep(2);
   };
@@ -85,73 +119,143 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
     setIsSubmitting(true);
     
     try {
-      // Create customer record
-      const customerData = {
-        name: leadData.name,
-        phone: leadData.phone || '',
-        alternate_phone: leadData.alternate_phone || null,
-        email: leadData.email || null,
-        address: leadData.address || null,
-        assigned_to: leadData.assigned_to || 'System',
-        source: leadData.source || 'lead_conversion',
-        notes: leadData.notes || null,
-        site_plus_code: leadData.site_plus_code || null,
-        created_from_lead_id: leadData.id,
-        status: 'active',
-        customer_type: 'individual',
-        priority: 3,
-      };
+      // --- DEDUP: link to existing customer instead of creating new ---
+      let resolvedCustomerId: string;
 
-      const newCustomer = await addCustomer(customerData);
+      if (existingCustomer && dupChoice === 'link') {
+        resolvedCustomerId = existingCustomer.id;
 
-      if (!newCustomer) {
-        throw new Error('Failed to create customer');
-      }
+        // Update lead based on conversion option
+        if (conversionOption === 'convert_and_remove') {
+          // Mark lead as converted and archived
+          await supabase
+            .from('leads')
+            .update({
+              is_converted: true,
+              converted_at: new Date().toISOString(),
+              converted_to_customer_id: existingCustomer.id,
+              status: 'won',
+            })
+            .eq('id', leadData.id);
 
-      // Update lead based on conversion option
-      if (conversionOption === 'convert_and_remove') {
-        // Mark lead as converted and archived
-        await supabase
-          .from('leads')
-          .update({
-            is_converted: true,
-            converted_at: new Date().toISOString(),
-            converted_to_customer_id: newCustomer.id,
-            status: 'won',
-          })
-          .eq('id', leadData.id);
+          await logActivity({
+            lead_id: leadData.id,
+            customer_id: existingCustomer.id,
+            activity_type: 'lead_converted',
+            activity_category: 'conversion',
+            title: 'Lead Linked to Existing Customer',
+            description: `Lead #${leadData.id.slice(0, 8)} - ${leadData.name} linked to existing customer record ${existingCustomer.id.slice(0, 8)} instead of creating a duplicate.`,
+            metadata: {
+              customer_id: existingCustomer.id,
+              conversion_type: 'link_to_existing',
+            },
+          });
+        } else {
+          // Keep lead active but link to customer
+          await supabase
+            .from('leads')
+            .update({
+              converted_to_customer_id: existingCustomer.id,
+            })
+            .eq('id', leadData.id);
 
-        // Log activity in lead
-        await logActivity({
-          lead_id: leadData.id,
-          activity_type: 'lead_converted',
-          activity_category: 'conversion',
-          title: 'Lead Converted to Customer',
-          description: `Lead #${leadData.id.slice(0, 8)} - ${leadData.name} converted to customer by user. Lead data transferred successfully.`,
-          metadata: {
-            customer_id: newCustomer.id,
-            conversion_type: 'convert_and_remove',
-          },
-        });
+          await logActivity({
+            lead_id: leadData.id,
+            customer_id: existingCustomer.id,
+            activity_type: 'customer_created',
+            activity_category: 'conversion',
+            title: 'Lead Linked to Existing Customer',
+            description: `Lead linked to existing customer record. Lead remains active.`,
+            metadata: {
+              customer_id: existingCustomer.id,
+              conversion_type: 'link_to_existing',
+            },
+          });
+        }
       } else {
-        // Keep lead active but link to customer
-        await supabase
-          .from('leads')
-          .update({
-            converted_to_customer_id: newCustomer.id,
-          })
-          .eq('id', leadData.id);
+        // Normal path: create new customer
+        const customerData = {
+          name: leadData.name,
+          phone: leadData.phone || '',
+          alternate_phone: leadData.alternate_phone || null,
+          email: leadData.email || null,
+          address: leadData.address || null,
+          assigned_to: leadData.assigned_to || 'System',
+          source: leadData.source || 'lead_conversion',
+          notes: leadData.notes || null,
+          site_plus_code: leadData.site_plus_code || null,
+          created_from_lead_id: leadData.id,
+          status: 'active',
+          customer_type: 'individual',
+          priority: 3,
+        };
 
-        // Log activity in lead
+        const newCustomer = await addCustomer(customerData);
+
+        if (!newCustomer) {
+          throw new Error('Failed to create customer');
+        }
+
+        resolvedCustomerId = newCustomer.id;
+
+        // Update lead based on conversion option
+        if (conversionOption === 'convert_and_remove') {
+          // Mark lead as converted and archived
+          await supabase
+            .from('leads')
+            .update({
+              is_converted: true,
+              converted_at: new Date().toISOString(),
+              converted_to_customer_id: resolvedCustomerId,
+              status: 'won',
+            })
+            .eq('id', leadData.id);
+
+          // Log activity in lead
+          await logActivity({
+            lead_id: leadData.id,
+            activity_type: 'lead_converted',
+            activity_category: 'conversion',
+            title: 'Lead Converted to Customer',
+            description: `Lead #${leadData.id.slice(0, 8)} - ${leadData.name} converted to customer by user. Lead data transferred successfully.`,
+            metadata: {
+              customer_id: resolvedCustomerId,
+              conversion_type: 'convert_and_remove',
+            },
+          });
+        } else {
+          // Keep lead active but link to customer
+          await supabase
+            .from('leads')
+            .update({
+              converted_to_customer_id: resolvedCustomerId,
+            })
+            .eq('id', leadData.id);
+
+          // Log activity in lead
+          await logActivity({
+            lead_id: leadData.id,
+            activity_type: 'customer_created',
+            activity_category: 'conversion',
+            title: 'Customer Created from Lead',
+            description: `Customer record created from lead. Lead remains active.`,
+            metadata: {
+              customer_id: resolvedCustomerId,
+              conversion_type: 'convert_and_keep',
+            },
+          });
+        }
+
+        // Log activity in customer record
         await logActivity({
-          lead_id: leadData.id,
+          customer_id: resolvedCustomerId,
           activity_type: 'customer_created',
-          activity_category: 'conversion',
+          activity_category: 'system',
           title: 'Customer Created from Lead',
-          description: `Customer record created from lead. Lead remains active.`,
+          description: `Created from lead #${leadData.id.slice(0, 8)} - ${leadData.name}`,
           metadata: {
-            customer_id: newCustomer.id,
-            conversion_type: 'convert_and_keep',
+            lead_id: leadData.id,
+            conversion_type: conversionOption,
           },
         });
       }
@@ -165,42 +269,119 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           `Converted lead: ${leadData.name}`,
           'lead',
           leadData.id,
-          { lead_name: leadData.name, customer_id: newCustomer.id, converted_at: new Date().toISOString() }
+          { lead_name: leadData.name, customer_id: resolvedCustomerId, converted_at: new Date().toISOString() }
         );
       }
 
-      // (Tasks page filters by related_entity_id for customers.)
+      // --- TASK RELINKING (dual sweep) + INTENT-BASED ROUTING ---
       try {
-        const { data: relinkedTasks, error: relinkError } = await supabase
+        const SALES_TASK_TYPES = [
+          'Follow-up Call',
+          'Follow-up Meeting',
+          'Site Visit',
+          'Quotation Preparation',
+          'Sample Delivery',
+          'KIT Call',
+          'KIT WhatsApp',
+          'KIT Visit',
+          'KIT Email',
+          'KIT Meeting',
+        ];
+        const FEEDBACK_TASK_TYPES = ['Feedback Collection'];
+
+        // Sweep 1: tasks linked only via lead_id (no related_entity_id set)
+        const { data: sweep1 } = await supabase
           .from('tasks')
-          .update({
-            related_entity_type: 'customer',
-            related_entity_id: newCustomer.id,
-          })
+          .update({ related_entity_type: 'customer', related_entity_id: resolvedCustomerId })
           .eq('lead_id', leadData.id)
           .is('related_entity_id', null)
-          .select('id');
+          .select('id, type, status');
 
-        if (relinkError) throw relinkError;
+        // Sweep 2: tasks linked via related_entity_id = lead (automation-created tasks)
+        const { data: sweep2 } = await supabase
+          .from('tasks')
+          .update({ related_entity_type: 'customer', related_entity_id: resolvedCustomerId })
+          .eq('related_entity_type', 'lead')
+          .eq('related_entity_id', leadData.id)
+          .select('id, type, status');
 
-        if ((relinkedTasks?.length || 0) > 0) {
+        // Combine and deduplicate by id
+        const seenIds = new Set<string>();
+        const allRelinkedTasks = [...(sweep1 || []), ...(sweep2 || [])].filter(t => {
+          if (seenIds.has(t.id)) return false;
+          seenIds.add(t.id);
+          return true;
+        });
+
+        // Log the relink
+        if (allRelinkedTasks.length > 0) {
           await logActivity({
             lead_id: leadData.id,
-            customer_id: newCustomer.id,
+            customer_id: resolvedCustomerId,
             activity_type: 'task_updated',
             activity_category: 'task',
             title: 'Tasks Linked to Customer',
-            description: `Linked ${relinkedTasks!.length} existing lead task(s) to the new customer so they appear in customer task views.`,
-            metadata: {
-              lead_id: leadData.id,
-              customer_id: newCustomer.id,
-              task_ids: relinkedTasks!.map(t => t.id),
-            },
+            description: `Linked ${allRelinkedTasks.length} task(s) from lead to customer on conversion.`,
+            metadata: { task_ids: allRelinkedTasks.map(t => t.id) },
           });
         }
+
+        // Intent-based routing: classify and update each open task
+        for (const task of allRelinkedTasks) {
+          const isOpen = !['Completed', 'Cancelled'].includes(task.status);
+          if (!isOpen) continue;
+
+          if (FEEDBACK_TASK_TYPES.includes(task.type)) {
+            // Keep as-is: feedback tasks survive conversion
+            continue;
+          }
+
+          if (SALES_TASK_TYPES.includes(task.type)) {
+            const newStatus = task.status === 'Overdue' ? 'Cancelled' : 'Completed';
+            const note = task.status === 'Overdue'
+              ? 'Auto-cancelled: sales task superseded by lead conversion'
+              : 'Auto-completed: lead converted to customer';
+
+            await supabase.from('tasks').update({
+              status: newStatus,
+              ...(newStatus === 'Completed' ? { completed_at: new Date().toISOString() } : {}),
+            }).eq('id', task.id);
+
+            await supabase.from('activity_log').insert({
+              activity_type: 'task_updated',
+              activity_category: 'automation',
+              title: note,
+              user_name: 'System',
+              related_entity_type: 'task',
+              related_entity_id: task.id,
+              lead_id: leadData.id,
+              customer_id: resolvedCustomerId,
+            });
+          }
+          // 'Other' and unknown types: no status change (conservative)
+        }
+
+        // Follow-up date sync: set customer.next_follow_up to earliest open task
+        const { data: openTasks } = await supabase
+          .from('tasks')
+          .select('due_date')
+          .eq('related_entity_type', 'customer')
+          .eq('related_entity_id', resolvedCustomerId)
+          .in('status', ['Pending', 'In Progress'])
+          .not('due_date', 'is', null)
+          .order('due_date', { ascending: true })
+          .limit(1);
+
+        if (openTasks && openTasks.length > 0) {
+          await supabase
+            .from('customers')
+            .update({ next_follow_up: openTasks[0].due_date })
+            .eq('id', resolvedCustomerId);
+        }
+
       } catch (e) {
-        console.error('Failed to relink lead tasks to customer:', e);
-        // Non-blocking: conversion should still succeed
+        console.error('[conversion] task routing failed:', e);
+        // Non-blocking: conversion itself succeeds even if routing fails
       }
 
       // Copy lead attachments to customer so photos/import files remain visible
@@ -217,7 +398,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           const { error: insErr } = await supabase.from('entity_attachments').insert(
             leadAtt.map((a) => ({
               entity_type: 'customer',
-              entity_id: newCustomer.id,
+              entity_id: resolvedCustomerId,
               file_name: a.file_name,
               file_path: a.file_path,
               mime_type: a.mime_type,
@@ -230,19 +411,6 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         console.error('Failed to copy lead attachments to customer:', e);
       }
 
-      // Log activity in customer record
-      await logActivity({
-        customer_id: newCustomer.id,
-        activity_type: 'customer_created',
-        activity_category: 'system',
-        title: 'Customer Created from Lead',
-        description: `Created from lead #${leadData.id.slice(0, 8)} - ${leadData.name}`,
-        metadata: {
-          lead_id: leadData.id,
-          conversion_type: conversionOption,
-        },
-      });
-
       // Create reminder if requested
       if (withReminder) {
         const selectedTypes = Object.entries(reminderData.reminderTypes)
@@ -254,13 +422,13 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           await supabase.from('tasks').insert({
             title: `Collect feedback from ${leadData.name}`,
             description: reminderData.notes || `Follow up to collect feedback from converted customer.`,
-            type: 'Follow-up Call',
+            type: 'Feedback Collection',
             priority: 'Medium',
             status: 'Pending',
             due_date: format(reminderData.reminderDate, 'yyyy-MM-dd'),
             assigned_to: reminderData.assignedTo || 'System',
             related_entity_type: 'customer',
-            related_entity_id: newCustomer.id,
+            related_entity_id: resolvedCustomerId,
           });
         }
 
@@ -346,6 +514,34 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
             </DialogHeader>
             
             <div className="py-4 space-y-4">
+              {dupCheckDone && existingCustomer && (
+                <div className="border-l-4 border-amber-400 bg-amber-50 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-medium text-amber-800">
+                    Existing customer found
+                  </p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    {existingCustomer.name} ({existingCustomer.phone}) is already in customers.
+                  </p>
+                  <div className="flex gap-3 mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-500 text-amber-800"
+                      onClick={() => setDupChoice('link')}
+                    >
+                      {dupChoice === 'link' ? '✓ Link to existing' : 'Link to existing customer'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDupChoice('create_new')}
+                    >
+                      {dupChoice === 'create_new' ? '✓ Create new anyway' : 'Create new anyway'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <p className="text-sm text-muted-foreground">Please choose how to proceed:</p>
               
               <RadioGroup 
@@ -432,7 +628,10 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleConfirmConversion}>
+              <Button
+                onClick={handleConfirmConversion}
+                disabled={existingCustomer !== null && dupChoice === null}
+              >
                 Convert
               </Button>
             </DialogFooter>
