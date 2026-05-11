@@ -96,7 +96,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
       return;
     }
     const phone = leadData.phone?.replace(/\D/g, '');
-    if (!phone) { setDupCheckDone(true); return; }
+    if (!phone || phone.length < 10) { setDupCheckDone(true); return; }
 
     supabase
       .from('customers')
@@ -162,7 +162,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           await logActivity({
             lead_id: leadData.id,
             customer_id: existingCustomer.id,
-            activity_type: 'customer_created',
+            activity_type: 'lead_converted',
             activity_category: 'conversion',
             title: 'Lead Linked to Existing Customer',
             description: `Lead linked to existing customer record. Lead remains active.`,
@@ -172,6 +172,20 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
             },
           });
         }
+
+        // --- FIX 3: Log activity on the customer side ---
+        await logActivity({
+          customer_id: existingCustomer.id,
+          lead_id: leadData.id,
+          activity_type: 'lead_converted',
+          activity_category: 'conversion',
+          title: 'Lead Linked to This Customer',
+          description: `Lead #${leadData.id.slice(0, 8)} - ${leadData.name} was linked to this customer record on conversion.`,
+          metadata: {
+            lead_id: leadData.id,
+            conversion_type: 'link_to_existing',
+          },
+        });
       } else {
         // Normal path: create new customer
         const customerData = {
@@ -347,11 +361,10 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
               ...(newStatus === 'Completed' ? { completed_at: new Date().toISOString() } : {}),
             }).eq('id', task.id);
 
-            await supabase.from('activity_log').insert({
+            await logActivity({
               activity_type: 'task_updated',
               activity_category: 'automation',
               title: note,
-              user_name: 'System',
               related_entity_type: 'task',
               related_entity_id: task.id,
               lead_id: leadData.id,
@@ -372,12 +385,10 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           .order('due_date', { ascending: true })
           .limit(1);
 
-        if (openTasks && openTasks.length > 0) {
-          await supabase
-            .from('customers')
-            .update({ next_follow_up: openTasks[0].due_date })
-            .eq('id', resolvedCustomerId);
-        }
+        await supabase
+          .from('customers')
+          .update({ next_follow_up: openTasks?.[0]?.due_date ?? null })
+          .eq('id', resolvedCustomerId);
 
       } catch (e) {
         console.error('[conversion] task routing failed:', e);
