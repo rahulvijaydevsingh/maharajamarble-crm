@@ -70,10 +70,11 @@ const defaultConfigs: Record<string, ColumnConfig[]> = {
     { key: "status", label: "Status", visible: true, order: 6, locked: false },
     { key: "priority", label: "Priority", visible: true, order: 7, locked: false },
     { key: "assignedTo", label: "Assigned To", visible: true, order: 8, locked: false },
-    { key: "serviceCategory", label: "Service Category", visible: false, order: 9, locked: false },
-    { key: "rating", label: "Rating", visible: false, order: 10, locked: false },
-    { key: "createdAt", label: "Created", visible: false, order: 11, locked: false },
-    { key: "actions", label: "Actions", visible: true, order: 12, locked: true },
+    { key: "tasks", label: "Tasks", visible: true, order: 9, locked: false },
+    { key: "serviceCategory", label: "Service Category", visible: false, order: 10, locked: false },
+    { key: "rating", label: "Rating", visible: false, order: 11, locked: false },
+    { key: "createdAt", label: "Created", visible: false, order: 12, locked: false },
+    { key: "actions", label: "Actions", visible: true, order: 13, locked: true },
   ],
 };
 
