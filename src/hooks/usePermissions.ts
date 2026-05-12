@@ -15,6 +15,7 @@ type Permission =
   | "customers.edit"
   | "customers.delete"
   | "customers.bulk_actions"
+  | "professionals.bulk_actions"
   | "tasks.create"
   | "tasks.edit"
   | "tasks.delete"
@@ -42,7 +43,7 @@ const systemRolePermissions: Record<string, Permission[]> = {
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
     "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
     "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
-    "professionals.create", "professionals.edit", "professionals.delete",
+    "professionals.create", "professionals.edit", "professionals.delete", "professionals.bulk_actions",
     "quotations.create", "quotations.edit", "quotations.delete",
     "settings.view", "settings.edit",
     "control_panel.view", "control_panel.edit",
@@ -53,7 +54,7 @@ const systemRolePermissions: Record<string, Permission[]> = {
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
     "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
     "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
-    "professionals.create", "professionals.edit", "professionals.delete",
+    "professionals.create", "professionals.edit", "professionals.delete", "professionals.bulk_actions",
     "quotations.create", "quotations.edit", "quotations.delete",
     "settings.view", "settings.edit",
     "control_panel.view", "control_panel.edit",
@@ -70,7 +71,7 @@ const defaultRolePermissions: Record<AppRole, Permission[]> = {
     "leads.create", "leads.edit", "leads.bulk_actions", "leads.export", "leads.convert",
     "customers.create", "customers.edit", "customers.bulk_actions",
     "tasks.create", "tasks.edit", "tasks.bulk_actions", "tasks.assign",
-    "professionals.create", "professionals.edit",
+    "professionals.create", "professionals.edit", "professionals.bulk_actions",
     "quotations.create", "quotations.edit",
   ],
   sales_user: [
@@ -159,7 +160,7 @@ export function usePermissions() {
     return hasPermission(`${entity}.delete` as Permission);
   };
 
-  const canBulkAction = (entity: "leads" | "customers" | "tasks"): boolean => {
+  const canBulkAction = (entity: "leads" | "customers" | "tasks" | "professionals"): boolean => {
     return hasPermission(`${entity}.bulk_actions` as Permission);
   };
 

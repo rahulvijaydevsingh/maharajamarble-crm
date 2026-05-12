@@ -17,10 +17,19 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
-import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings, Upload, Calendar as CalendarIcon } from "lucide-react";
+import { Edit, MoreHorizontal, Phone, Search, Trash2, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus, SlidersHorizontal, Loader2, Settings, Upload, Calendar as CalendarIcon, CheckCircle, Users, Tag, ClipboardList, Download, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Professional, useProfessionals } from "@/hooks/useProfessionals";
+import { usePendingTasksByProfessional } from "@/hooks/usePendingTasksByProfessional";
+import { exportProfessionals } from "@/lib/exportProfessionals";
+import { ExportProfessionalsDialog } from "./ExportProfessionalsDialog";
+import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
+import { usePermissions } from "@/hooks/usePermissions";
+import { supabase } from "@/integrations/supabase/client";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSavedFilters, SavedFilter } from "@/hooks/useSavedFilters";
 import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +59,11 @@ interface EnhancedProfessionalTableProps {
 
 export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional, onBulkUpload }: EnhancedProfessionalTableProps) {
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
+  const {
+    getProfessionalTasks,
+    tasksByProfessional,
+  } = usePendingTasksByProfessional();
+  const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("professionals");
   const { 
@@ -72,6 +86,22 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
   const [columnManagerOpen, setColumnManagerOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<SavedFilter | null>(null);
+
+  // Bulk action state
+  const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<string>("");
+  const [bulkActionValue, setBulkActionValue] = useState<string>("");
+  const [bulkActionProgress, setBulkActionProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Bulk task creation
+  const [bulkTaskDialogOpen, setBulkTaskDialogOpen] = useState(false);
+
+  // Export
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Tasks column filter
+  const [tasksFilter, setTasksFilter] = useState<string>("all");
+  // "all" | "has_overdue" | "has_pending" | "no_tasks"
   
   // Inline filter states
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -145,6 +175,15 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       
       const advancedMatch = activeAdvancedRules.length === 0 ||
         evaluateRules(p as Record<string, any>, activeAdvancedRules);
+
+      // Tasks filter
+      if (tasksFilter !== "all") {
+        const t = getProfessionalTasks(p.id);
+        if (tasksFilter === "has_overdue") if (t.overdue <= 0) return false;
+        if (tasksFilter === "has_pending") if (!(t.upcoming > 0 || t.dueToday > 0)) return false;
+        if (tasksFilter === "no_tasks") if (t.total !== 0) return false;
+      }
+
       return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch && createdDateMatch && advancedMatch;
     });
 
@@ -156,13 +195,18 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         if (bVal === null || bVal === undefined) bVal = "";
         if (typeof aVal === "string") aVal = aVal.toLowerCase();
         if (typeof bVal === "string") bVal = bVal.toLowerCase();
+        if (sortField === "tasks") {
+          aVal = getProfessionalTasks(a.id).total;
+          bVal = getProfessionalTasks(b.id).total;
+        }
+
         if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
         if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
         return 0;
       });
     }
     return result;
-  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter, createdDateRange, activeAdvancedRules]);
+  }, [professionals, searchTerm, sortField, sortDirection, statusFilter, typeFilter, cityFilter, assignedToFilter, priorityFilter, createdDateRange, activeAdvancedRules, tasksFilter, getProfessionalTasks]);
   
   // MultiSelectFilter component for inline column filters
   const MultiSelectFilter = ({
@@ -301,6 +345,173 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     toast({ title: "Data refreshed" });
   };
 
+  const BATCH_SIZE = 5;
+
+  const handleBulkAction = async () => {
+    if (!bulkActionType || selectedItems.length === 0) return;
+    const total = selectedItems.length;
+    setBulkActionProgress({ current: 0, total });
+
+    try {
+      if (bulkActionType === "status") {
+        // Single bulk update — all selected IDs in one query
+        const { error } = await supabase
+          .from("professionals")
+          .update({ status: bulkActionValue })
+          .in("id", selectedItems);
+        if (error) throw error;
+
+      } else if (bulkActionType === "priority") {
+        const { error } = await supabase
+          .from("professionals")
+          .update({ priority: parseInt(bulkActionValue) })
+          .in("id", selectedItems);
+        if (error) throw error;
+
+      } else if (bulkActionType === "delete") {
+        const { error } = await supabase
+          .from("professionals")
+          .delete()
+          .in("id", selectedItems);
+        if (error) throw error;
+
+      } else if (bulkActionType === "assigned_to") {
+        // Reassign must remain per-professional because we need
+        // to capture each professional's OLD assignee before
+        // overwriting, to scope the task reassignment correctly.
+        // This cannot be collapsed into a single .in() query.
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < selectedItems.length; i += BATCH_SIZE) {
+          const batch = selectedItems.slice(i, i + BATCH_SIZE);
+
+          for (const profId of batch) {
+            // Step 1: read OLD assignee before overwriting
+            const prof = professionals.find(p => p.id === profId);
+            const oldAssignee = prof?.assigned_to;
+
+            // Step 2: update professional record
+            await supabase
+              .from("professionals")
+              .update({ assigned_to: bulkActionValue })
+              .eq("id", profId);
+
+            // Step 3: update only tasks owned by the old assignee
+            if (oldAssignee) {
+              await supabase
+                .from("tasks")
+                .update({ assigned_to: bulkActionValue })
+                .eq("related_entity_type", "professional")
+                .eq("related_entity_id", profId)
+                .eq("assigned_to", oldAssignee)
+                .not("status", "in", '("Completed","Cancelled")');
+            }
+          }
+
+          setBulkActionProgress({
+            current: Math.min(i + BATCH_SIZE, total),
+            total
+          });
+        }
+      }
+
+      // Set progress to 100% for non-loop actions
+      if (bulkActionType !== "assigned_to") {
+        setBulkActionProgress({ current: total, total });
+      }
+
+      toast({ title: `Updated ${total} professionals` });
+      setSelectedItems([]);
+      setBulkActionDialogOpen(false);
+      setBulkActionType("");
+      setBulkActionValue("");
+      refetch();
+
+    } catch (e) {
+      console.error("[bulk-professionals]", e);
+      toast({
+        title: "Error performing bulk action",
+        variant: "destructive"
+      });
+    } finally {
+      setBulkActionProgress(null);
+    }
+  };
+
+  const handleBulkTaskSubmit = async (
+    taskData: any,
+    subtasks: any[]
+  ) => {
+    const total = selectedItems.length;
+    setBulkActionProgress({ current: 0, total });
+
+    try {
+      // Build the full array of task objects to insert
+      const tasksToInsert = selectedItems.map(profId => {
+        const prof = professionals.find(p => p.id === profId);
+        return {
+          ...taskData,
+          related_entity_type: "professional",
+          related_entity_id: profId,
+          title: taskData.title
+            || `Task for ${prof?.name || profId}`,
+        };
+      });
+
+      // Single bulk insert — all tasks in one DB call
+      const { error } = await supabase
+        .from("tasks")
+        .insert(tasksToInsert);
+
+      if (error) throw error;
+
+      setBulkActionProgress({ current: total, total });
+      toast({ title: `Created ${total} tasks` });
+      setSelectedItems([]);
+      setBulkTaskDialogOpen(false);
+
+    } catch (e) {
+      console.error("[bulk-task-create]", e);
+      toast({
+        title: "Error creating tasks",
+        variant: "destructive"
+      });
+    } finally {
+      setBulkActionProgress(null);
+    }
+  };
+
+  const handleExport = (config: any) => {
+    // tasksByProfessional already has exactly this shape —
+    // remap upcoming→pending for the export util's expected key
+    const taskData: Record<string,
+      { total: number; overdue: number; pending: number }
+    > = {};
+    Object.entries(tasksByProfessional).forEach(([id, t]) => {
+      taskData[id] = {
+        total: t.total,
+        overdue: t.overdue,
+        pending: t.upcoming,
+      };
+    });
+
+    const profsToExport =
+      config.scope === "selected"
+        ? filteredProfessionals.filter(p => selectedItems.includes(p.id))
+        : config.scope === "filtered"
+        ? filteredProfessionals
+        : professionals;
+
+    const result = exportProfessionals(profsToExport, config, taskData);
+
+    if (result.error) {
+      toast({ title: "Export failed", description: result.error,
+              variant: "destructive" });
+    } else {
+      toast({ title: `Exported ${result.rowCount} professionals` });
+    }
+    setExportDialogOpen(false);
+  };
+
   const handleSelectAll = (checked: boolean) => {
     setSelectedItems(checked ? filteredProfessionals.map(p => p.id) : []);
   };
@@ -324,8 +535,8 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     }).length;
   };
 
-  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort(field)}>
+  const SortableHeader = ({ field, children }: { field: SortField | "tasks"; children: React.ReactNode }) => (
+    <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort(field as SortField)}>
       {children}
       {sortField === field ? (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
     </div>
@@ -390,6 +601,29 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         ) : "-";
       case "assignedTo":
         return assigneeDisplayMap.get(professional.assigned_to) || getStaffDisplayName(professional.assigned_to, staffMembers);
+      case "tasks":
+        const t = getProfessionalTasks(professional.id);
+        return t.total === 0 ? (
+          <span className="text-xs text-muted-foreground">No tasks</span>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {t.overdue > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                {t.overdue} overdue
+              </Badge>
+            )}
+            {t.dueToday > 0 && (
+              <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+                {t.dueToday} today
+              </Badge>
+            )}
+            {t.upcoming > 0 && (
+              <Badge variant="outline" className="text-xs">
+                {t.upcoming} upcoming
+              </Badge>
+            )}
+          </div>
+        );
       case "serviceCategory":
         return professional.service_category || "-";
       case "rating":
@@ -440,9 +674,73 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
           <Button variant="outline" size="icon" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           </Button>
+          {selectedItems.length > 0 && canBulkAction("professionals" as any) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Bulk Actions ({selectedItems.length})
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {canEdit("professionals") && (
+                  <>
+                    <DropdownMenuItem onClick={() => {
+                      setBulkActionType("assigned_to");
+                      setBulkActionDialogOpen(true);
+                    }}>
+                      <Users className="mr-2 h-4 w-4" />Assign To
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {
+                      setBulkActionType("status");
+                      setBulkActionDialogOpen(true);
+                    }}>
+                      <Tag className="mr-2 h-4 w-4" />Change Status
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {
+                      setBulkActionType("priority");
+                      setBulkActionDialogOpen(true);
+                    }}>
+                      <ArrowUpDown className="mr-2 h-4 w-4" />Change Priority
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setBulkTaskDialogOpen(true)}>
+                      <ClipboardList className="mr-2 h-4 w-4" />Create Task
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem onClick={() => setExportDialogOpen(true)}>
+                  <Download className="mr-2 h-4 w-4" />Export Selected
+                </DropdownMenuItem>
+                {hasPermission("whatsapp.bulk_send" as any) && (
+                  <DropdownMenuItem onClick={() => {}}>
+                    <MessageCircle className="mr-2 h-4 w-4" />Send WhatsApp
+                  </DropdownMenuItem>
+                )}
+                {canDelete("professionals") && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-red-600"
+                      onClick={() => {
+                        setBulkActionType("delete");
+                        setBulkActionDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />Delete Selected
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {onBulkUpload && (
             <Button variant="outline" onClick={onBulkUpload}><Upload className="h-4 w-4 mr-1" /> Upload</Button>
           )}
+          <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+            <Download className="h-4 w-4 mr-1" /> Export
+          </Button>
           <Button onClick={onAdd}><Plus className="h-4 w-4 mr-1" /> Add Professional</Button>
         </div>
       </div>
@@ -518,6 +816,36 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                         renderLabel={(p) => PRIORITIES[parseInt(p) as keyof typeof PRIORITIES]?.label || p}
                       />
                     )}
+                    {column.key === "tasks" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 px-2">
+                            <Filter className="h-3 w-3" />
+                            {tasksFilter !== "all" && (
+                              <span className="ml-1 text-xs bg-primary/10 text-primary px-1 rounded">1</span>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuLabel>Filter by tasks</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {[
+                            { value: "all", label: "All professionals" },
+                            { value: "has_overdue", label: "Has overdue tasks" },
+                            { value: "has_pending", label: "Has pending tasks" },
+                            { value: "no_tasks", label: "No tasks" },
+                          ].map(opt => (
+                            <DropdownMenuCheckboxItem
+                              key={opt.value}
+                              checked={tasksFilter === opt.value}
+                              onCheckedChange={() => setTasksFilter(opt.value)}
+                            >
+                              {opt.label}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 </TableHead>
               ))}
@@ -571,6 +899,130 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         onSave={savePreferences}
         onReset={resetToDefaults}
         saving={savingPrefs}
+      />
+
+      {/* Bulk Confirmation Dialog */}
+      <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Bulk Action</DialogTitle>
+          </DialogHeader>
+
+          {/* Assign To */}
+          {bulkActionType === "assigned_to" && (
+            <div className="space-y-2">
+              <Label>Assign to staff member</Label>
+              <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
+                <SelectTrigger><SelectValue placeholder="Select staff member" /></SelectTrigger>
+                <SelectContent>
+                  {staffMembers.map(s => (
+                    <SelectItem key={s.email || s.name} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Also reassigns open tasks that were assigned to the current owner of each professional.
+              </p>
+            </div>
+          )}
+
+          {/* Status */}
+          {bulkActionType === "status" && (
+            <div className="space-y-2">
+              <Label>New status</Label>
+              <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
+                <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PROFESSIONAL_STATUSES).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Priority */}
+          {bulkActionType === "priority" && (
+            <div className="space-y-2">
+              <Label>New priority</Label>
+              <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
+                <SelectTrigger><SelectValue placeholder="Select priority" /></SelectTrigger>
+                <SelectContent>
+                  {[
+                    { value: "1", label: "Very High" },
+                    { value: "2", label: "High" },
+                    { value: "3", label: "Medium" },
+                    { value: "4", label: "Low" },
+                    { value: "5", label: "Very Low" },
+                  ].map(p => (
+                    <SelectItem key={p.value} value={p.value}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Delete */}
+          {bulkActionType === "delete" && (
+            <p>
+              Are you sure you want to delete {selectedItems.length} professional(s)?
+              This cannot be undone.
+            </p>
+          )}
+
+          {/* Progress bar */}
+          {bulkActionProgress && (
+            <div className="space-y-1">
+              <div className="w-full bg-muted rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all"
+                  style={{ width: `${(bulkActionProgress.current / bulkActionProgress.total) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                {bulkActionProgress.current} / {bulkActionProgress.total}
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkActionDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant={bulkActionType === "delete" ? "destructive" : "default"}
+              onClick={handleBulkAction}
+              disabled={(bulkActionType !== "delete" && !bulkActionValue) || !!bulkActionProgress}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Task Dialog */}
+      <AddTaskDialog
+        open={bulkTaskDialogOpen}
+        onOpenChange={setBulkTaskDialogOpen}
+        bulkMode={true}
+        bulkLeadCount={selectedItems.length}
+        onBulkTaskSubmit={handleBulkTaskSubmit}
+      />
+
+      {/* Export Dialog */}
+      <ExportProfessionalsDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        totalProfessionals={professionals.length}
+        filteredProfessionals={filteredProfessionals.length}
+        selectedProfessionals={selectedItems.length}
+        onExport={handleExport}
       />
     </div>
   );
