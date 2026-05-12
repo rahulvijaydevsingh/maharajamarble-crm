@@ -40,11 +40,20 @@ const priorityLabels: Record<number, string> = {
   5: "Very Low",
 };
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function exportLeads(
   leads: Lead[],
   config: ExportConfig,
   taskData?: { [leadId: string]: { total: number; overdue: number; pending: number } }
-) {
+): { fileName: string; rowCount: number; error?: string } {
   const timestamp = format(new Date(), "yyyy-MM-dd_HH-mm-ss");
   const fileName = `leads_export_${timestamp}`;
 
@@ -151,14 +160,81 @@ export function exportLeads(
   }));
   worksheet["!cols"] = colWidths;
 
-  if (config.format === "csv") {
-    XLSX.writeFile(workbook, `${fileName}.csv`, { bookType: "csv" });
-  } else if (config.format === "excel") {
-    XLSX.writeFile(workbook, `${fileName}.xlsx`, { bookType: "xlsx" });
-  } else if (config.format === "pdf") {
-    // For PDF, we'll export as CSV and show a message that PDF is not available
-    // A proper PDF export would require a separate library like jspdf
-    XLSX.writeFile(workbook, `${fileName}.csv`, { bookType: "csv" });
+  if (config.format === "pdf") {
+    try {
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) {
+        return {
+          fileName,
+          rowCount: leads.length,
+          error: "Popup blocked. Allow popups and try again.",
+        };
+      }
+      const headers = Object.keys(rows[0] || {});
+      const tableRows = rows
+        .map(
+          (row) =>
+            `<tr>${headers
+              .map(
+                (h) =>
+                  `<td style="border:1px solid #ddd;padding:6px 10px;font-size:12px">${escapeHtml(
+                    row[h]
+                  )}</td>`
+              )
+              .join("")}</tr>`
+        )
+        .join("");
+
+      printWindow.document.write(`
+        <!DOCTYPE html><html><head>
+        <title>Leads Export</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h2 { color: #333; margin-bottom: 16px; }
+          table { border-collapse: collapse; width: 100%; }
+          th { background: #f5f5f5; border: 1px solid #ddd;
+               padding: 8px 10px; text-align: left; font-size: 12px; }
+          td { vertical-align: top; }
+          @media print { button { display: none; } }
+        </style></head><body>
+        <h2>Leads Export — ${format(new Date(), "PPpp")}</h2>
+        <table>
+          <thead><tr>${headers
+            .map((h) => `<th>${escapeHtml(h)}</th>`)
+            .join("")}</tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+        <br/>
+        <button onclick="window.print()"
+          style="padding:8px 16px;cursor:pointer">
+          Print / Save as PDF
+        </button>
+        </body></html>`);
+      printWindow.document.close();
+      return { fileName, rowCount: leads.length };
+    } catch (e) {
+      console.error("[exportLeads] PDF failed:", e);
+      return {
+        fileName,
+        rowCount: leads.length,
+        error: "PDF generation failed.",
+      };
+    }
+  }
+
+  try {
+    if (config.format === "csv") {
+      XLSX.writeFile(workbook, `${fileName}.csv`, { bookType: "csv" });
+    } else if (config.format === "excel") {
+      XLSX.writeFile(workbook, `${fileName}.xlsx`, { bookType: "xlsx" });
+    }
+  } catch (writeError) {
+    console.error("[exportLeads] write failed:", writeError);
+    return {
+      fileName,
+      rowCount: leads.length,
+      error: "File download failed. Check browser download permissions.",
+    };
   }
 
   return { fileName, rowCount: leads.length };

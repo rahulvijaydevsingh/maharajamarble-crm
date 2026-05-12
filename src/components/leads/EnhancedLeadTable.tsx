@@ -527,10 +527,18 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         includeTimestamp: true,
       }, taskData);
 
-      toast({ 
-        title: "Export Complete", 
-        description: `Exported ${result.rowCount} leads as ${format.toUpperCase()}` 
-      });
+      if (result.error) {
+        toast({
+          title: "Export failed",
+          description: result.error,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Export complete",
+          description: `Exported ${result.rowCount} leads as ${format.toUpperCase()}.`,
+        });
+      }
     } catch (error) {
       console.error("Export error:", error);
       toast({ title: "Export failed", variant: "destructive" });
