@@ -59,7 +59,10 @@ interface EnhancedProfessionalTableProps {
 
 export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional, onBulkUpload }: EnhancedProfessionalTableProps) {
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
-  const { getProfessionalTasks } = usePendingTasksByProfessional();
+  const {
+    getProfessionalTasks,
+    tasksByProfessional,
+  } = usePendingTasksByProfessional();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter } = useSavedFilters("professionals");
@@ -350,48 +353,70 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     setBulkActionProgress({ current: 0, total });
 
     try {
-      for (let i = 0; i < selectedItems.length; i += BATCH_SIZE) {
-        const batch = selectedItems.slice(i, i + BATCH_SIZE);
+      if (bulkActionType === "status") {
+        // Single bulk update — all selected IDs in one query
+        const { error } = await supabase
+          .from("professionals")
+          .update({ status: bulkActionValue })
+          .in("id", selectedItems);
+        if (error) throw error;
 
-        for (const profId of batch) {
-          if (bulkActionType === "status") {
-            await supabase.from("professionals")
-              .update({ status: bulkActionValue })
-              .eq("id", profId);
+      } else if (bulkActionType === "priority") {
+        const { error } = await supabase
+          .from("professionals")
+          .update({ priority: parseInt(bulkActionValue) })
+          .in("id", selectedItems);
+        if (error) throw error;
 
-          } else if (bulkActionType === "priority") {
-            await supabase.from("professionals")
-              .update({ priority: parseInt(bulkActionValue) })
-              .eq("id", profId);
+      } else if (bulkActionType === "delete") {
+        const { error } = await supabase
+          .from("professionals")
+          .delete()
+          .in("id", selectedItems);
+        if (error) throw error;
 
-          } else if (bulkActionType === "assigned_to") {
+      } else if (bulkActionType === "assigned_to") {
+        // Reassign must remain per-professional because we need
+        // to capture each professional's OLD assignee before
+        // overwriting, to scope the task reassignment correctly.
+        // This cannot be collapsed into a single .in() query.
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < selectedItems.length; i += BATCH_SIZE) {
+          const batch = selectedItems.slice(i, i + BATCH_SIZE);
+
+          for (const profId of batch) {
             // Step 1: read OLD assignee before overwriting
             const prof = professionals.find(p => p.id === profId);
             const oldAssignee = prof?.assigned_to;
 
             // Step 2: update professional record
-            await supabase.from("professionals")
+            await supabase
+              .from("professionals")
               .update({ assigned_to: bulkActionValue })
               .eq("id", profId);
 
-            // Step 3: update only tasks that belonged to the old assignee
+            // Step 3: update only tasks owned by the old assignee
             if (oldAssignee) {
-              await supabase.from("tasks")
+              await supabase
+                .from("tasks")
                 .update({ assigned_to: bulkActionValue })
                 .eq("related_entity_type", "professional")
                 .eq("related_entity_id", profId)
                 .eq("assigned_to", oldAssignee)
                 .not("status", "in", '("Completed","Cancelled")');
             }
-
-          } else if (bulkActionType === "delete") {
-            await supabase.from("professionals").delete().eq("id", profId);
           }
-        }
 
-        setBulkActionProgress({
-          current: Math.min(i + BATCH_SIZE, total), total
-        });
+          setBulkActionProgress({
+            current: Math.min(i + BATCH_SIZE, total),
+            total
+          });
+        }
+      }
+
+      // Set progress to 100% for non-loop actions
+      if (bulkActionType !== "assigned_to") {
+        setBulkActionProgress({ current: total, total });
       }
 
       toast({ title: `Updated ${total} professionals` });
@@ -400,48 +425,73 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       setBulkActionType("");
       setBulkActionValue("");
       refetch();
+
     } catch (e) {
       console.error("[bulk-professionals]", e);
-      toast({ title: "Error performing bulk action", variant: "destructive" });
+      toast({
+        title: "Error performing bulk action",
+        variant: "destructive"
+      });
     } finally {
       setBulkActionProgress(null);
     }
   };
 
-  const handleBulkTaskSubmit = async (taskData: any, subtasks: any[]) => {
+  const handleBulkTaskSubmit = async (
+    taskData: any,
+    subtasks: any[]
+  ) => {
     const total = selectedItems.length;
     setBulkActionProgress({ current: 0, total });
+
     try {
-      for (let i = 0; i < selectedItems.length; i += BATCH_SIZE) {
-        const batch = selectedItems.slice(i, i + BATCH_SIZE);
-        for (const profId of batch) {
-          const prof = professionals.find(p => p.id === profId);
-          await supabase.from("tasks").insert({
-            ...taskData,
-            related_entity_type: "professional",
-            related_entity_id: profId,
-            title: taskData.title || `Task for ${prof?.name || profId}`,
-          });
-        }
-        setBulkActionProgress({
-          current: Math.min(i + BATCH_SIZE, total), total
-        });
-      }
+      // Build the full array of task objects to insert
+      const tasksToInsert = selectedItems.map(profId => {
+        const prof = professionals.find(p => p.id === profId);
+        return {
+          ...taskData,
+          related_entity_type: "professional",
+          related_entity_id: profId,
+          title: taskData.title
+            || `Task for ${prof?.name || profId}`,
+        };
+      });
+
+      // Single bulk insert — all tasks in one DB call
+      const { error } = await supabase
+        .from("tasks")
+        .insert(tasksToInsert);
+
+      if (error) throw error;
+
+      setBulkActionProgress({ current: total, total });
       toast({ title: `Created ${total} tasks` });
       setSelectedItems([]);
       setBulkTaskDialogOpen(false);
+
     } catch (e) {
-      toast({ title: "Error creating tasks", variant: "destructive" });
+      console.error("[bulk-task-create]", e);
+      toast({
+        title: "Error creating tasks",
+        variant: "destructive"
+      });
     } finally {
       setBulkActionProgress(null);
     }
   };
 
   const handleExport = (config: any) => {
-    const taskData: Record<string, { total: number; overdue: number; pending: number }> = {};
-    filteredProfessionals.forEach(p => {
-      const t = getProfessionalTasks(p.id);
-      taskData[p.id] = { total: t.total, overdue: t.overdue, pending: t.upcoming };
+    // tasksByProfessional already has exactly this shape —
+    // remap upcoming→pending for the export util's expected key
+    const taskData: Record<string,
+      { total: number; overdue: number; pending: number }
+    > = {};
+    Object.entries(tasksByProfessional).forEach(([id, t]) => {
+      taskData[id] = {
+        total: t.total,
+        overdue: t.overdue,
+        pending: t.upcoming,
+      };
     });
 
     const profsToExport =

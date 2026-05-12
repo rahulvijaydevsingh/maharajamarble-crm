@@ -36,6 +36,15 @@ const priorityLabels: Record<number, string> = {
   5: "Very Low",
 };
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function exportProfessionals(
   professionals: Professional[],
   config: ExportConfig,
@@ -124,8 +133,9 @@ export function exportProfessionals(
       const headers = Object.keys(rows[0] || {});
       const tableRows = rows.map(row =>
         `<tr>${headers.map(h =>
-          `<td style="border:1px solid #ddd;padding:6px 10px;font-size:12px">
-            ${row[h] ?? ""}</td>`).join("")}</tr>`
+          `<td style="border:1px solid #ddd;padding:6px 10px;font-size:12px">${
+            escapeHtml(row[h])
+          }</td>`).join("")}</tr>`
       ).join("");
 
       printWindow.document.write(`
@@ -142,7 +152,7 @@ export function exportProfessionals(
         <h2>Professionals Export — ${format(new Date(), "PPpp")}</h2>
         <table>
           <thead><tr>${headers.map(h =>
-            `<th>${h}</th>`).join("")}</tr></thead>
+            `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
           <tbody>${tableRows}</tbody>
         </table>
         <br/><button onclick="window.print()"

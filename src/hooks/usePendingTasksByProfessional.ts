@@ -51,7 +51,12 @@ export function usePendingTasksByProfessional() {
       .channel("pending-professional-tasks-changes")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: "related_entity_type=eq.professional",
+        },
         () => fetchPendingTasks()
       )
       .subscribe();
