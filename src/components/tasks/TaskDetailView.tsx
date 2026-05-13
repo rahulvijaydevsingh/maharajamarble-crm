@@ -145,6 +145,18 @@ export function TaskDetailView({
     [tasks, taskId]
   );
 
+  // Effect 1: Sync store data to local state immediately.
+  // Runs whenever the store updates — no DB fetch here.
+  useEffect(() => {
+    if (fromStore) {
+      setTask(fromStore);
+      setLoading(false);
+    }
+  }, [fromStore]);
+
+  // Effect 2: Fetch fresh data from DB.
+  // Runs ONLY when the modal opens or the task ID changes —
+  // NOT on every background store update.
   useEffect(() => {
     let cancelled = false;
 
@@ -157,13 +169,11 @@ export function TaskDetailView({
         return;
       }
 
-      if (fromStore) {
-        setTask(fromStore);
-        setLoading(false);
-        return;
+      // Only show spinner if we have no store data to display
+      if (!fromStore) {
+        setLoading(true);
       }
 
-      setLoading(true);
       try {
         const { data, error } = await supabase
           .from("tasks")
@@ -176,7 +186,7 @@ export function TaskDetailView({
         setTask((data as unknown as Task) || null);
       } catch (e) {
         console.error("Failed to load task:", e);
-        if (!cancelled) setTask(null);
+        if (!cancelled && !fromStore) setTask(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -186,7 +196,8 @@ export function TaskDetailView({
     return () => {
       cancelled = true;
     };
-  }, [open, taskId, fromStore]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, taskId]); // fromStore intentionally omitted — see Effect 1
 
   useEffect(() => {
     let cancelled = false;
