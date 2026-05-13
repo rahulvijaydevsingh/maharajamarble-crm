@@ -170,8 +170,11 @@ export function exportLeads(
           error: "Popup blocked. Allow popups and try again.",
         };
       }
-      const headers = Object.keys(rows[0] || {});
-      const tableRows = rows
+      // Slice to actual data rows only — exclude the metadata
+      // timestamp/spacer rows appended by includeTimestamp logic
+      const dataRows = rows.slice(0, leads.length);
+      const headers = Object.keys(dataRows[0] || {});
+      const tableRows = dataRows
         .map(
           (row) =>
             `<tr>${headers
