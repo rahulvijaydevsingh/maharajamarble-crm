@@ -157,13 +157,22 @@ export function TaskDetailView({
         return;
       }
 
+      // If task is in the store, use it as the initial value
+      // but ALSO schedule a fresh DB fetch to catch any updates
+      // that haven't yet propagated through the realtime subscription
       if (fromStore) {
         setTask(fromStore);
         setLoading(false);
-        return;
+        // Don't return — fall through to also fetch fresh from DB
+        // The DB fetch will update the modal if store data is stale
       }
 
-      setLoading(true);
+      // Remove the early return above and let the DB fetch always run
+      // (the setLoading(false) above prevents the spinner from showing
+      //  since we already have fromStore data to display)
+      if (!fromStore) {
+        setLoading(true);
+      }
       try {
         const { data, error } = await supabase
           .from("tasks")
