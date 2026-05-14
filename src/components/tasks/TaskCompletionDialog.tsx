@@ -29,13 +29,22 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTaskCompletionTemplates } from "@/hooks/useTaskCompletionTemplates";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import type { Task, TaskInsert } from "@/hooks/useTasks";
+import { TaskFormFields } from "./form/TaskFormFields";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import {
+  TASK_TYPES as FALLBACK_TASK_TYPES,
+  KIT_TASK_TYPES as FALLBACK_KIT_TASK_TYPES,
+  TASK_PRIORITIES as FALLBACK_TASK_PRIORITIES,
+} from "@/constants/taskConstants";
 
 type NextActionType = "follow_up" | "reschedule" | "convert_to_deal";
 
@@ -83,6 +92,32 @@ export function TaskCompletionDialog({
   const { toast } = useToast();
   const { user, profile } = useAuth();
   const { templates, hasTemplates, loading: templatesLoading } = useTaskCompletionTemplates(task?.type || null);
+  const { staffMembers } = useActiveStaff();
+  const { getFieldOptions } = useControlPanelSettings();
+
+  const TASK_TYPES = useMemo(() => {
+    const cp = getFieldOptions("tasks", "type");
+    return cp.length > 0
+      ? cp.filter(o => !o.value.startsWith("KIT")).map(o => o.value)
+      : FALLBACK_TASK_TYPES;
+  }, [getFieldOptions]);
+
+  const KIT_TASK_TYPES = useMemo(() => {
+    const cp = getFieldOptions("tasks", "type");
+    return cp.length > 0
+      ? cp.filter(o => o.value.startsWith("KIT")).map(o => o.value)
+      : FALLBACK_KIT_TASK_TYPES;
+  }, [getFieldOptions]);
+
+  const TASK_PRIORITIES = useMemo(() => {
+    const cp = getFieldOptions("tasks", "priority");
+    return cp.length > 0
+      ? cp.map(o => ({
+          value: o.value, label: o.label,
+          color: o.color ? `text-[${o.color}]` : "text-foreground"
+        }))
+      : FALLBACK_TASK_PRIORITIES;
+  }, [getFieldOptions]);
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const selectedTemplate = useMemo(
@@ -104,6 +139,40 @@ export function TaskCompletionDialog({
   const [customReminderAt, setCustomReminderAt] = useState<string>("");
 
   const [rescheduleReason, setRescheduleReason] = useState<string>("");
+
+  // Follow-up task inline form state
+  const [followUpExpanded, setFollowUpExpanded] = useState(false);
+  const [followUpFormData, setFollowUpFormData] = useState({
+    title: "",
+    type: "Follow-up Call",
+    assignedTo: "",
+    priority: "Medium",
+    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    dueTime: "10:00",
+    description: "",
+    reminder: false,
+    reminderTime: "30",
+    isStarred: false,
+  });
+  const [followUpRecurrence, setFollowUpRecurrence] = useState({
+    isRecurring: false,
+    frequency: "one-time",
+    interval: 1,
+    daysOfWeek: [] as string[],
+    dayOfMonth: null as number | null,
+    resetFromCompletion: false,
+    endType: "never",
+    endDate: undefined as Date | undefined,
+    occurrencesLimit: null as number | null,
+  });
+  const [followUpSubtasks, setFollowUpSubtasks] = useState<
+    Array<{ id: string; title: string; is_completed: boolean }>
+  >([]);
+  const [followUpShowAdvanced, setFollowUpShowAdvanced] = useState(false);
+  const [followUpErrors, setFollowUpErrors] = useState<
+    Record<string, string>
+  >({});
+  const [followUpCharCount, setFollowUpCharCount] = useState(0);
 
   const rescheduleReasonSuggestions = useMemo(() => {
     if (outcome === "No Answer")
@@ -181,7 +250,42 @@ export function TaskCompletionDialog({
     setCustomReminderAt("");
     setRescheduleReason("");
     setErrors({});
+
+    // Reset follow-up state
+    setFollowUpFormData({
+      title: "", type: "Follow-up Call", assignedTo: "",
+      priority: "Medium",
+      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      dueTime: "10:00", description: "", reminder: false,
+      reminderTime: "30", isStarred: false,
+    });
+    setFollowUpRecurrence({
+      isRecurring: false, frequency: "one-time", interval: 1,
+      daysOfWeek: [], dayOfMonth: null,
+      resetFromCompletion: false, endType: "never",
+      endDate: undefined, occurrencesLimit: null,
+    });
+    setFollowUpSubtasks([]);
+    setFollowUpExpanded(false);
+    setFollowUpErrors({});
+    setFollowUpCharCount(0);
   }, [open, task?.id]);
+
+  useEffect(() => {
+    if (nextAction === "follow_up" && task) {
+      setFollowUpFormData(prev => ({
+        ...prev,
+        title: `Follow-up: ${task.title}`,
+        type: task.type || "Follow-up Call",
+        assignedTo: task.assigned_to || "",
+        priority: task.priority || "Medium",
+        dueDate: nextDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
+        dueTime: nextTime || "10:00",
+        description: notes || "",
+      }));
+      setFollowUpExpanded(false);
+    }
+  }, [nextAction]);
 
   useEffect(() => {
     if (!selectedTemplate) return;
@@ -414,36 +518,88 @@ export function TaskCompletionDialog({
 
       // 4b) Follow-up: create NEW task
       if (nextAction === "follow_up") {
-        const nextDueDate = format(nextDate!, "yyyy-MM-dd");
-
-        const nextTask: TaskInsert = {
-          title: `Follow-up: ${task.title}`,
-          description: task.completion_notes || task.description || null,
-          type: task.type,
-          priority: task.priority,
+        const nextTask: any = {
+          title: followUpFormData.title.trim() ||
+                 `Follow-up: ${task.title}`,
+          type: followUpFormData.type,
+          priority: followUpFormData.priority,
+          assigned_to: followUpFormData.assignedTo ||
+                       task.assigned_to,
+          due_date: format(followUpFormData.dueDate, "yyyy-MM-dd"),
+          due_time: followUpFormData.dueTime || null,
           status: "Pending",
-          assigned_to: task.assigned_to,
-          due_date: nextDueDate,
-          due_time: nextTime || null,
-          lead_id: task.lead_id,
-          reminder: task.reminder,
-          reminder_time: task.reminder_time,
-          is_starred: task.is_starred,
-          related_entity_type: task.related_entity_type,
-          related_entity_id: task.related_entity_id,
+          description: followUpFormData.description.trim() || null,
+          reminder: followUpFormData.reminder,
+          reminder_time: followUpFormData.reminder
+            ? followUpFormData.reminderTime : null,
+          is_starred: followUpFormData.isStarred,
+          is_recurring: followUpRecurrence.isRecurring,
+          recurrence_frequency: followUpRecurrence.isRecurring
+            ? followUpRecurrence.frequency : null,
+          recurrence_interval: followUpRecurrence.interval,
+          recurrence_days_of_week:
+            followUpRecurrence.daysOfWeek.length > 0
+              ? followUpRecurrence.daysOfWeek : null,
+          recurrence_day_of_month:
+            followUpRecurrence.dayOfMonth,
+          recurrence_reset_from_completion:
+            followUpRecurrence.resetFromCompletion,
+          recurrence_end_type: followUpRecurrence.endType,
+          recurrence_end_date: followUpRecurrence.endDate
+            ? format(followUpRecurrence.endDate, "yyyy-MM-dd") : null,
+          recurrence_occurrences_limit:
+            followUpRecurrence.occurrencesLimit,
           parent_task_id: task.id,
-          original_due_date: nextDueDate,
-          reminder_offset_hours: reminderOffsetHours ? parseInt(reminderOffsetHours, 10) : null,
-          custom_reminder_at: customReminderAt || null,
+          lead_id: task.lead_id || null,
+          related_entity_type: task.related_entity_type || null,
+          related_entity_id: task.related_entity_id || null,
         };
 
         const newTask = await addTask(nextTask);
 
-        await logTaskActivity(task.id, "follow_up_created", {
-          new_task_id: newTask?.id,
-          new_task_title: `Follow-up: ${task.title}`,
-          due_date: nextDueDate,
-        });
+        if (newTask) {
+          // Insert subtasks if any
+          if (followUpSubtasks.length > 0) {
+            for (let i = 0; i < followUpSubtasks.length; i++) {
+              await supabase.from("task_subtasks").insert({
+                task_id: newTask.id,
+                title: followUpSubtasks[i].title,
+                sort_order: i,
+              });
+            }
+          }
+
+          await logTaskActivity(task.id, "follow_up_created", {
+            new_task_id: newTask.id,
+            new_task_title: newTask.title,
+            due_date: newTask.due_date,
+          });
+
+          // Log follow-up creation to lead timeline
+          if (task.lead_id) {
+            try {
+              await supabase.from("activity_log").insert({
+                lead_id: task.lead_id,
+                activity_type: "task_created",
+                activity_category: "task",
+                user_id: user?.id || null,
+                user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
+                title: `Follow-up Task Created: ${newTask.title}`,
+                metadata: {
+                  task_id: newTask.id,
+                  parent_task_id: task.id,
+                  parent_task_title: task.title,
+                  due_date: newTask.due_date,
+                  assigned_to: newTask.assigned_to,
+                } as any,
+                related_entity_type: "task",
+                related_entity_id: newTask.id,
+                is_manual: false,
+                is_editable: false,
+              });
+            } catch (e: any) { console.error('[TaskCompletionDialog/handleSubmit/follow_up] Failed to log follow-up creation to activity_log:', e?.message || e); }
+          }
+        }
 
         // Auto-close parent task when follow-up is created (even if closeTask wasn't checked)
         if (!closeTask) {
@@ -452,37 +608,12 @@ export function TaskCompletionDialog({
             completed_at: new Date().toISOString(),
             closed_at: new Date().toISOString(),
             closed_by: user?.id,
-            completion_notes: notes.trim() || `Follow-up created: Follow-up: ${task.title}`,
+            completion_notes: notes.trim() || `Follow-up created: ${followUpFormData.title.trim() || `Follow-up: ${task.title}`}`,
           });
           await logTaskActivity(task.id, "closed", {
             closed_by: user?.id,
             reason: "Auto-closed: follow-up task created",
           });
-        }
-
-        // Log follow-up creation to lead timeline
-        if (task.lead_id && newTask) {
-          try {
-            await supabase.from("activity_log").insert({
-              lead_id: task.lead_id,
-              activity_type: "task_created",
-              activity_category: "task",
-              user_id: user?.id || null,
-              user_name: profile?.full_name || user?.email?.split("@")[0] || "System",
-              title: `Follow-up Task Created: Follow-up: ${task.title}`,
-              metadata: {
-                task_id: newTask.id,
-                parent_task_id: task.id,
-                parent_task_title: task.title,
-                due_date: nextDueDate,
-                assigned_to: task.assigned_to,
-              } as any,
-              related_entity_type: "task",
-              related_entity_id: newTask.id,
-              is_manual: false,
-              is_editable: false,
-            });
-          } catch (e: any) { console.error('[TaskCompletionDialog/handleSubmit/follow_up] Failed to log follow-up creation to activity_log:', e?.message || e); }
         }
       }
 
@@ -532,6 +663,22 @@ export function TaskCompletionDialog({
     }
   };
 
+  const getActiveZone = (time: string) => {
+    if (!time) return null;
+    if (time >= "08:00" && time <= "11:59") return "morning";
+    if (time >= "12:00" && time <= "16:59") return "afternoon";
+    if (time >= "17:00" && time <= "20:00") return "evening";
+    return null;
+  };
+
+  const currentNextTimeActiveZone = getActiveZone(nextTime);
+
+  const zoneSlots = {
+    morning: ["08:00", "09:00", "10:00", "11:00"],
+    afternoon: ["12:00", "13:00", "14:00", "15:00", "16:00"],
+    evening: ["17:00", "18:00", "19:00", "20:00"],
+  };
+
   if (!task) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -569,7 +716,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={templatesLoading ? "Loading templates..." : "Select a template"} />
                 </SelectTrigger>
-<SelectContent>
+<SelectContent className="z-[200]">
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
@@ -589,7 +736,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.outcome && "border-destructive")}>
                   <SelectValue placeholder="Select outcome" />
                 </SelectTrigger>
-<SelectContent>
+<SelectContent className="z-[200]">
                   {OUTCOME_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>
                   ))}
@@ -607,7 +754,7 @@ export function TaskCompletionDialog({
                 <SelectTrigger className={cn(errors.nextAction && "border-destructive")}>
                   <SelectValue placeholder="Select next action" />
                 </SelectTrigger>
-<SelectContent>
+<SelectContent className="z-[200]">
                   {nextActionOptions.map((a) => (
                     <SelectItem key={a.value} value={a.value} disabled={a.disabled}>{a.label}</SelectItem>
                   ))}
@@ -637,7 +784,7 @@ export function TaskCompletionDialog({
                         {nextDate ? format(nextDate, "PPP") : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
-<PopoverContent className="w-auto p-0" align="start">
+<PopoverContent className="w-auto p-0 z-[200]" align="start">
                       <Calendar
                         mode="single"
                         selected={nextDate}
@@ -653,47 +800,85 @@ export function TaskCompletionDialog({
 
                 <div className="space-y-2">
                   <Label>Next Time *</Label>
-                  {/* Business hours quick-select */}
-                  <div className="rounded-md border border-border p-2 bg-muted/20">
-                    <p className="text-xs text-muted-foreground mb-2 font-medium">
-                      Business Hours (tap to select)
-                    </p>
-                    <div className="grid grid-cols-4 gap-1 max-h-[140px] overflow-y-auto pr-1">
-                      {BUSINESS_HOUR_SLOTS.filter(slot =>
-                        !minTimeForToday || slot.value >= minTimeForToday
-                      ).map((slot) => (
-                        <button
-                          key={slot.value}
-                          type="button"
-                          onClick={() => {
-                            setNextTime(slot.value);
-                            setErrors((p) => ({ ...p, nextTime: undefined }));
-                          }}
-                          className={cn(
-                            "text-xs py-1 px-1 rounded border text-center transition-colors cursor-pointer",
-                            nextTime === slot.value
-                              ? "bg-primary text-primary-foreground border-primary font-medium"
-                              : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {slot.label}
-                        </button>
-                      ))}
+                  <div className="space-y-3">
+                    {/* Zone 1: Preset buttons */}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("flex-1 text-xs h-8", currentNextTimeActiveZone === "morning" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                        onClick={() => {
+                          setNextTime("10:00");
+                          setErrors((p) => ({ ...p, nextTime: undefined }));
+                        }}
+                      >
+                        Morning
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("flex-1 text-xs h-8", currentNextTimeActiveZone === "afternoon" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                        onClick={() => {
+                          setNextTime("14:00");
+                          setErrors((p) => ({ ...p, nextTime: undefined }));
+                        }}
+                      >
+                        Afternoon
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("flex-1 text-xs h-8", currentNextTimeActiveZone === "evening" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                        onClick={() => {
+                          setNextTime("17:00");
+                          setErrors((p) => ({ ...p, nextTime: undefined }));
+                        }}
+                      >
+                        Evening
+                      </Button>
                     </div>
-                  </div>
-                  {/* Manual override input */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Custom time:</span>
-                    <Input
-                      type="time"
-                      value={nextTime}
-                      min={minTimeForToday}
-                      onChange={(e) => {
-                        setNextTime(e.target.value);
-                        setErrors((p) => ({ ...p, nextTime: undefined }));
-                      }}
-                      className={cn("h-8 text-sm", errors.nextTime && "border-destructive")}
-                    />
+
+                    {/* Zone 2: Range-specific slots */}
+                    {currentNextTimeActiveZone && (
+                      <div className="flex flex-wrap gap-1">
+                        {zoneSlots[currentNextTimeActiveZone].map((slot) => (
+                          <Button
+                            key={slot}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                              "h-7 px-2 text-[10px] rounded-full",
+                              nextTime === slot && "bg-primary text-primary-foreground hover:bg-primary/90"
+                            )}
+                            onClick={() => {
+                              setNextTime(slot);
+                              setErrors((p) => ({ ...p, nextTime: undefined }));
+                            }}
+                          >
+                            {slot}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Zone 3: Custom input */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs text-muted-foreground">Custom:</span>
+                      <Input
+                        type="time"
+                        value={nextTime}
+                        min={minTimeForToday}
+                        onChange={(e) => {
+                          setNextTime(e.target.value);
+                          setErrors((p) => ({ ...p, nextTime: undefined }));
+                        }}
+                        className={cn("h-7 w-28 text-xs", errors.nextTime && "border-destructive")}
+                      />
+                    </div>
                   </div>
                   {errors.nextTime && <p className="text-sm text-destructive">{errors.nextTime}</p>}
                 </div>
@@ -737,6 +922,85 @@ export function TaskCompletionDialog({
                   />
                   {errors.rescheduleReason && (
                     <p className="text-sm text-destructive">{errors.rescheduleReason}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Inline follow-up task form */}
+              {nextAction === "follow_up" && (
+                <div className="rounded-md border border-border bg-muted/20 overflow-hidden">
+                  {/* Collapsed summary header — always visible */}
+                  <div className="flex items-center justify-between p-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium truncate">
+                          {followUpFormData.title || "Follow-up task"}
+                        </span>
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
+                          {followUpFormData.type}
+                        </span>
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
+                          {followUpFormData.priority}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpExpanded(prev => !prev)}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-2"
+                    >
+                      {followUpExpanded ? (
+                        <>Less <ChevronUp className="h-3.5 w-3.5" /></>
+                      ) : (
+                        <>Customise <ChevronDown className="h-3.5 w-3.5" /></>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Expanded full form */}
+                  {followUpExpanded && (
+                    <div className="border-t border-border p-3 space-y-3">
+                      <TaskFormFields
+                        formData={followUpFormData}
+                        onFormDataChange={(field, value) => {
+                          setFollowUpFormData(prev => ({ ...prev, [field]: value }));
+                          if (field === "description") setFollowUpCharCount(value.length);
+                          if (followUpErrors[field]) {
+                            setFollowUpErrors(prev => ({ ...prev, [field]: "" }));
+                          }
+                        }}
+                        recurrenceData={followUpRecurrence}
+                        onRecurrenceChange={(updates) =>
+                          setFollowUpRecurrence(prev => ({ ...prev, ...updates }))
+                        }
+                        subtasks={followUpSubtasks}
+                        onAddSubtask={(title) =>
+                          setFollowUpSubtasks(prev => [
+                            ...prev,
+                            { id: crypto.randomUUID(), title, is_completed: false }
+                          ])
+                        }
+                        onUpdateSubtask={(id, updates) =>
+                          setFollowUpSubtasks(prev =>
+                            prev.map(s => s.id === id ? { ...s, ...updates } : s)
+                          )
+                        }
+                        onDeleteSubtask={(id) =>
+                          setFollowUpSubtasks(prev =>
+                            prev.filter(s => s.id !== id)
+                          )
+                        }
+                        errors={followUpErrors}
+                        staffMembers={staffMembers}
+                        TASK_TYPES={TASK_TYPES}
+                        KIT_TASK_TYPES={KIT_TASK_TYPES}
+                        TASK_PRIORITIES={TASK_PRIORITIES}
+                        showAdvanced={followUpShowAdvanced}
+                        onShowAdvancedChange={setFollowUpShowAdvanced}
+                        hideRelatedEntity={true}
+                        characterCount={followUpCharCount}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -809,7 +1073,7 @@ export function TaskCompletionDialog({
                             : "Pick date"}
                         </Button>
                       </PopoverTrigger>
-<PopoverContent className="w-auto p-0" align="start">
+<PopoverContent className="w-auto p-0 z-[200]" align="start">
                         <Calendar
                           mode="single"
                           selected={customReminderAt ? new Date(customReminderAt) : undefined}
@@ -842,7 +1106,7 @@ export function TaskCompletionDialog({
                       <SelectTrigger className="h-8 text-sm">
                         <SelectValue placeholder="Pick time" />
                       </SelectTrigger>
-<SelectContent className="max-h-[200px]">
+<SelectContent className="max-h-[200px] z-[200]">
   <SelectGroup>
   <SelectLabel>
     Business hours
