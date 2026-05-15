@@ -382,12 +382,9 @@ export function TaskCompletionDialog({
     }
 
     if (nextAction === "follow_up") {
-      const followUpErrs: Record<string, string> = {};
       if (!followUpFormData.dueDate) {
-        followUpErrs.dueDate = "Follow-up date is required";
+        nextErrors.followUpDueDate = "Follow-up date is required";
       }
-      setFollowUpErrors(followUpErrs);
-      if (Object.keys(followUpErrs).length > 0) return { valid: false };
     }
 
     if (nextAction === "reschedule" && !rescheduleReason.trim()) {
@@ -797,7 +794,7 @@ export function TaskCompletionDialog({
                         {nextDate ? format(nextDate, "PPP") : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
-<PopoverContent className="w-auto p-0 z-[200]" align="start">
+                    <PopoverContent className="w-auto p-0 z-[200]" align="start">
                       <Calendar
                         mode="single"
                         selected={nextDate}
@@ -897,128 +894,128 @@ export function TaskCompletionDialog({
                 </div>
               </div>
 
-              {/* Reschedule reason (only for reschedule) */}
-              {nextAction === "reschedule" && (
-                <div className="space-y-2">
-                  <Label>Reschedule Reason *</Label>
-                  {/* Quick-fill chips — outcome-aware */}
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {rescheduleReasonSuggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        onClick={() => {
-                          const newVal = rescheduleReason === suggestion ? "" : suggestion;
-                          setRescheduleReason(newVal);
-                          setErrors((p) => ({ ...p, rescheduleReason: undefined }));
-                        }}
-                        className={cn(
-                          "text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer",
-                          rescheduleReason === suggestion
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-muted hover:bg-muted/80 border-border text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                  <Textarea
-                    value={rescheduleReason}
-                    onChange={(e) => {
-                      setRescheduleReason(e.target.value);
-                      setErrors((p) => ({ ...p, rescheduleReason: undefined }));
-                    }}
-                    className={cn(errors.rescheduleReason && "border-destructive")}
-                    placeholder="Or type a custom reason..."
-                    rows={2}
-                  />
-                  {errors.rescheduleReason && (
-                    <p className="text-sm text-destructive">{errors.rescheduleReason}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Inline follow-up task form */}
-              {nextAction === "follow_up" && (
-                <div className="rounded-md border border-border bg-muted/20 overflow-hidden">
-                  {/* Collapsed summary header — always visible */}
-                  <div className="flex items-center justify-between p-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm font-medium truncate">
-                          {followUpFormData.title || "Follow-up task"}
-                        </span>
-                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
-                          {followUpFormData.type}
-                        </span>
-                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
-                          {followUpFormData.priority}
-                        </span>
-                      </div>
-                    </div>
+              {/* Reschedule reason */}
+              <div className="space-y-2">
+                <Label>Reschedule Reason *</Label>
+                {/* Quick-fill chips — outcome-aware */}
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {rescheduleReasonSuggestions.map((suggestion) => (
                     <button
+                      key={suggestion}
                       type="button"
-                      onClick={() => setFollowUpExpanded(prev => !prev)}
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-2"
-                    >
-                      {followUpExpanded ? (
-                        <>Less <ChevronUp className="h-3.5 w-3.5" /></>
-                      ) : (
-                        <>Customise <ChevronDown className="h-3.5 w-3.5" /></>
+                      onClick={() => {
+                        const newVal = rescheduleReason === suggestion ? "" : suggestion;
+                        setRescheduleReason(newVal);
+                        setErrors((p) => ({ ...p, rescheduleReason: undefined }));
+                      }}
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer",
+                        rescheduleReason === suggestion
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted hover:bg-muted/80 border-border text-muted-foreground hover:text-foreground"
                       )}
+                    >
+                      {suggestion}
                     </button>
-                  </div>
+                  ))}
+                </div>
+                <Textarea
+                  value={rescheduleReason}
+                  onChange={(e) => {
+                    setRescheduleReason(e.target.value);
+                    setErrors((p) => ({ ...p, rescheduleReason: undefined }));
+                  }}
+                  className={cn(errors.rescheduleReason && "border-destructive")}
+                  placeholder="Or type a custom reason..."
+                  rows={2}
+                />
+                {errors.rescheduleReason && (
+                  <p className="text-sm text-destructive">{errors.rescheduleReason}</p>
+                )}
+              </div>
+            </>
+          )}
 
-                  {/* Expanded full form */}
-                  {followUpExpanded && (
-                    <div className="border-t border-border p-3 space-y-3">
-                      <TaskFormFields
-                        formData={followUpFormData}
-                        onFormDataChange={(field, value) => {
-                          setFollowUpFormData(prev => ({ ...prev, [field]: value }));
-                          if (field === "description") setFollowUpCharCount(value.length);
-                          if (followUpErrors[field]) {
-                            setFollowUpErrors(prev => ({ ...prev, [field]: "" }));
-                          }
-                        }}
-                        recurrenceData={followUpRecurrence}
-                        onRecurrenceChange={(updates) =>
-                          setFollowUpRecurrence(prev => ({ ...prev, ...updates }))
-                        }
-                        subtasks={followUpSubtasks}
-                        onAddSubtask={(title) =>
-                          setFollowUpSubtasks(prev => [
-                            ...prev,
-                            { id: crypto.randomUUID(), title, is_completed: false }
-                          ])
-                        }
-                        onUpdateSubtask={(id, updates) =>
-                          setFollowUpSubtasks(prev =>
-                            prev.map(s => s.id === id ? { ...s, ...updates } : s)
-                          )
-                        }
-                        onDeleteSubtask={(id) =>
-                          setFollowUpSubtasks(prev =>
-                            prev.filter(s => s.id !== id)
-                          )
-                        }
-                        errors={followUpErrors}
-                        staffMembers={staffMembers}
-                        TASK_TYPES={TASK_TYPES}
-                        KIT_TASK_TYPES={KIT_TASK_TYPES}
-                        TASK_PRIORITIES={TASK_PRIORITIES}
-                        showAdvanced={followUpShowAdvanced}
-                        onShowAdvancedChange={setFollowUpShowAdvanced}
-                        hideRelatedEntity={true}
-                        hideReminder={true}
-                        staffLoading={staffLoading}
-                        characterCount={followUpCharCount}
-                      />
-                    </div>
+          {/* Inline follow-up task form */}
+          {nextAction === "follow_up" && (
+            <div className="rounded-md border border-border bg-muted/20 overflow-hidden">
+              {/* Collapsed summary header — always visible */}
+              <div className="flex items-center justify-between p-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium truncate">
+                      {followUpFormData.title || "Follow-up task"}
+                    </span>
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
+                      {followUpFormData.type}
+                    </span>
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
+                      {followUpFormData.priority}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFollowUpExpanded(prev => !prev)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-2"
+                >
+                  {followUpExpanded ? (
+                    <>Less <ChevronUp className="h-3.5 w-3.5" /></>
+                  ) : (
+                    <>Customise <ChevronDown className="h-3.5 w-3.5" /></>
                   )}
+                </button>
+              </div>
+
+              {/* Expanded full form */}
+              {followUpExpanded && (
+                <div className="border-t border-border p-3 space-y-3">
+                  <TaskFormFields
+                    formData={followUpFormData}
+                    onFormDataChange={(field, value) => {
+                      setFollowUpFormData(prev => ({ ...prev, [field]: value }));
+                      if (field === "description") setFollowUpCharCount(value.length);
+                      if (followUpErrors[field]) {
+                        setFollowUpErrors(prev => ({ ...prev, [field]: "" }));
+                      }
+                    }}
+                    recurrenceData={followUpRecurrence}
+                    onRecurrenceChange={(updates) =>
+                      setFollowUpRecurrence(prev => ({ ...prev, ...updates }))
+                    }
+                    subtasks={followUpSubtasks}
+                    onAddSubtask={(title) =>
+                      setFollowUpSubtasks(prev => [
+                        ...prev,
+                        { id: crypto.randomUUID(), title, is_completed: false }
+                      ])
+                    }
+                    onUpdateSubtask={(id, updates) =>
+                      setFollowUpSubtasks(prev =>
+                        prev.map(s => s.id === id ? { ...s, ...updates } : s)
+                      )
+                    }
+                    onDeleteSubtask={(id) =>
+                      setFollowUpSubtasks(prev =>
+                        prev.filter(s => s.id !== id)
+                      )
+                    }
+                    errors={followUpErrors}
+                    staffMembers={staffMembers}
+                    TASK_TYPES={TASK_TYPES}
+                    KIT_TASK_TYPES={KIT_TASK_TYPES}
+                    TASK_PRIORITIES={TASK_PRIORITIES}
+                    showAdvanced={followUpShowAdvanced}
+                    onShowAdvancedChange={setFollowUpShowAdvanced}
+                    hideRelatedEntity={true}
+                    hideReminder={true}
+                    staffLoading={staffLoading}
+                    characterCount={followUpCharCount}
+                  />
                 </div>
               )}
+            </div>
+          )}
 
               {/* Compact Reminder */}
               <div className="space-y-2">
