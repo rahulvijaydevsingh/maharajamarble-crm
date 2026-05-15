@@ -250,6 +250,7 @@ export function TaskCompletionDialog({
     nextDate?: string;
     nextTime?: string;
     rescheduleReason?: string;
+    followUpDueDate?: string;
   }>({});
 
   useEffect(() => {
@@ -363,7 +364,7 @@ export function TaskCompletionDialog({
   }, [minTimeForToday]);
 
   const validate = () => {
-    const nextErrors: any = {};
+    const nextErrors: typeof errors = {};
     if (!task) return { valid: false, nextErrors: { notes: "No task selected" } };
 
     if (!outcome) nextErrors.outcome = "Outcome is required";
@@ -383,7 +384,7 @@ export function TaskCompletionDialog({
 
     if (nextAction === "follow_up") {
       if (!followUpFormData.dueDate) {
-        nextErrors.followUpDueDate = "Follow-up date is required";
+        (nextErrors as any).followUpDueDate = "Follow-up date is required";
       }
     }
 
