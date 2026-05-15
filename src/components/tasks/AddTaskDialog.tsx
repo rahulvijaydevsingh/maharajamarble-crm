@@ -30,20 +30,17 @@ import {
 } from "@/components/ui/collapsible";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CalendarIcon, Clock, Loader2, Star, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Star } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useTasks } from "@/hooks/useTasks";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
-import { SubtasksSection } from "./form/SubtasksSection";
-import { RecurrenceSection } from "./form/RecurrenceSection";
-import { RelatedEntitySection } from "./form/RelatedEntitySection";
+import { TaskFormFields } from "./form/TaskFormFields";
 import {
   TASK_TYPES as FALLBACK_TASK_TYPES,
   KIT_TASK_TYPES as FALLBACK_KIT_TASK_TYPES,
   TASK_PRIORITIES as FALLBACK_TASK_PRIORITIES,
-  REMINDER_OPTIONS,
   TASK_TEMPLATES,
 } from "@/constants/taskConstants";
 import {
@@ -412,199 +409,32 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
             </Select>
           </div>
 
-          {/* Task Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title">Task Title *</Label>
-            <Input
-              id="title"
-              value={formData.title}
-              onChange={(e) => handleInputChange("title", e.target.value)}
-              placeholder="Enter task title"
-              maxLength={100}
-              className={errors.title ? "border-destructive" : ""}
-            />
-            {errors.title && <p className="text-sm text-destructive">{errors.title}</p>}
-            <p className="text-xs text-muted-foreground">{formData.title.length}/100 characters</p>
-          </div>
-
-          {/* Task Type & Priority */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Task Type *</Label>
-              <Select value={formData.type} onValueChange={(v) => handleInputChange("type", v)}>
-                <SelectTrigger className={errors.type ? "border-destructive" : ""}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[200]">
-                  <SelectGroup>
-                    <SelectLabel>Standard Tasks</SelectLabel>
-                    {TASK_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>KIT Tasks</SelectLabel>
-                    {KIT_TASK_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Priority *</Label>
-              <Select value={formData.priority} onValueChange={(v) => handleInputChange("priority", v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[200]">
-                  {TASK_PRIORITIES.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      <span className={p.color}>{p.label}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Assign To */}
-          <div className="space-y-2">
-            <Label>Assign To *</Label>
-            <Select value={formData.assignedTo} onValueChange={(v) => handleInputChange("assignedTo", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder={staffLoading ? "Loading..." : "Select team member"} />
-              </SelectTrigger>
-              <SelectContent className="z-[200]">
-                {staffMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.name}>
-                    {(member as any)._display || member.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Related Entity - hidden in bulk mode */}
-          {!bulkMode && (
-            <RelatedEntitySection
-              entityType={relatedEntityType}
-              selectedEntity={selectedEntity}
-              onEntityTypeChange={setRelatedEntityType}
-              onEntitySelect={setSelectedEntity}
-            />
-          )}
-
-          {/* Due Date, Time & Reminder */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Due Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !formData.dueDate && "text-muted-foreground",
-                      errors.dueDate && "border-destructive"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.dueDate ? format(formData.dueDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[200]" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={formData.dueDate}
-                    onSelect={(date) => date && handleInputChange("dueDate", date)}
-                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                    initialFocus
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Due Time</Label>
-              <div className="relative">
-                <Clock className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="time"
-                  value={formData.dueTime}
-                  onChange={(e) => handleInputChange("dueTime", e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Reminder</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="reminder"
-                    checked={formData.reminder}
-                    onCheckedChange={(checked) => handleInputChange("reminder", checked)}
-                  />
-                  <Label htmlFor="reminder" className="text-sm">Enable</Label>
-                </div>
-                {formData.reminder && (
-                  <Select value={formData.reminderTime} onValueChange={(v) => handleInputChange("reminderTime", v)}>
-                    <SelectTrigger className="text-xs h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="z-[220]">
-                      {REMINDER_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => handleInputChange("description", e.target.value)}
-              placeholder="Enter task details and instructions"
-              maxLength={500}
-              rows={3}
-              className={errors.description ? "border-destructive" : ""}
-            />
-            <p className="text-xs text-muted-foreground">{characterCount}/500 characters</p>
-          </div>
-
-          {/* Advanced Options Collapsible */}
-          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                <span className="text-sm font-medium">Advanced Options</span>
-                {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-4 pt-4">
-              {/* Recurrence */}
-              <RecurrenceSection
-                data={recurrenceData}
-                onChange={handleRecurrenceChange}
-              />
-
-              {/* Subtasks */}
-              <SubtasksSection
-                subtasks={subtasks}
-                onAddSubtask={handleAddSubtask}
-                onUpdateSubtask={handleUpdateSubtask}
-                onDeleteSubtask={handleDeleteSubtask}
-              />
-            </CollapsibleContent>
-          </Collapsible>
+          <TaskFormFields
+            formData={formData}
+            onFormDataChange={handleInputChange}
+            recurrenceData={recurrenceData}
+            onRecurrenceChange={handleRecurrenceChange}
+            subtasks={subtasks}
+            onAddSubtask={handleAddSubtask}
+            onUpdateSubtask={handleUpdateSubtask}
+            onDeleteSubtask={handleDeleteSubtask}
+            errors={errors}
+            staffMembers={staffMembers}
+            TASK_TYPES={TASK_TYPES}
+            KIT_TASK_TYPES={KIT_TASK_TYPES}
+            TASK_PRIORITIES={TASK_PRIORITIES}
+            showAdvanced={showAdvanced}
+            onShowAdvancedChange={setShowAdvanced}
+            selectedEntity={selectedEntity}
+            relatedEntityType={relatedEntityType}
+            onRelatedEntityChange={(entity, type) => {
+              setSelectedEntity(entity);
+              setRelatedEntityType(type);
+            }}
+            hideRelatedEntity={bulkMode}
+            staffLoading={staffLoading}
+            characterCount={characterCount}
+          />
         </div>
 
         <DialogFooter className="gap-2">
