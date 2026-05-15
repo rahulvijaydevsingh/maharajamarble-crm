@@ -432,6 +432,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
               setRelatedEntityType(type);
             }}
             hideRelatedEntity={bulkMode}
+            staffLoading={staffLoading}
             characterCount={characterCount}
           />
         </div>

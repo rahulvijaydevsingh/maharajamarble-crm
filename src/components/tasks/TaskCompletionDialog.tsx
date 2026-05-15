@@ -29,7 +29,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Calendar as CalendarIcon, Loader2, ChevronDown, ChevronUp, Bell } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTaskCompletionTemplates } from "@/hooks/useTaskCompletionTemplates";
 import { useAuth } from "@/contexts/AuthContext";
@@ -74,6 +74,20 @@ function outcomeKind(outcome: string | null) {
   return OUTCOME_OPTIONS.find((o) => o.value === outcome)?.kind ?? null;
 }
 
+const getActiveZone = (time: string) => {
+  if (!time) return null;
+  if (time >= "08:00" && time <= "11:59") return "morning";
+  if (time >= "12:00" && time <= "16:59") return "afternoon";
+  if (time >= "17:00" && time <= "20:00") return "evening";
+  return null;
+};
+
+const zoneSlots = {
+  morning: ["08:00", "09:00", "10:00", "11:00"],
+  afternoon: ["12:00", "13:00", "14:00", "15:00", "16:00"],
+  evening: ["17:00", "18:00", "19:00", "20:00"],
+};
+
 export interface TaskCompletionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -92,7 +106,7 @@ export function TaskCompletionDialog({
   const { toast } = useToast();
   const { user, profile } = useAuth();
   const { templates, hasTemplates, loading: templatesLoading } = useTaskCompletionTemplates(task?.type || null);
-  const { staffMembers } = useActiveStaff();
+  const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
 
   const TASK_TYPES = useMemo(() => {
@@ -137,6 +151,7 @@ export function TaskCompletionDialog({
   // Reminder fields for follow-up
   const [reminderOffsetHours, setReminderOffsetHours] = useState<string>("");
   const [customReminderAt, setCustomReminderAt] = useState<string>("");
+  const [showCustomReminder, setShowCustomReminder] = useState(false);
 
   const [rescheduleReason, setRescheduleReason] = useState<string>("");
 
@@ -248,6 +263,7 @@ export function TaskCompletionDialog({
     setCloseTask(false);
     setReminderOffsetHours("");
     setCustomReminderAt("");
+    setShowCustomReminder(false);
     setRescheduleReason("");
     setErrors({});
 
@@ -347,7 +363,7 @@ export function TaskCompletionDialog({
   }, [minTimeForToday]);
 
   const validate = () => {
-    const nextErrors: typeof errors = {};
+    const nextErrors: any = {};
     if (!task) return { valid: false, nextErrors: { notes: "No task selected" } };
 
     if (!outcome) nextErrors.outcome = "Outcome is required";
@@ -356,13 +372,22 @@ export function TaskCompletionDialog({
     // Next action required only when NOT closing the task
     if (!closeTask && !nextAction) nextErrors.nextAction = "Next action is required when task stays open";
 
-    if (nextAction === "follow_up" || nextAction === "reschedule") {
+    if (nextAction === "reschedule") {
       if (!nextDate) nextErrors.nextDate = "Please pick the next date";
       if (!nextTime) nextErrors.nextTime = "Please pick the next time";
       if (nextDate && !nextDateTime) nextErrors.nextTime = "Invalid time";
       if (nextDate && nextDateTime && nextDateTime.getTime() <= Date.now()) {
         nextErrors.nextTime = "Next schedule must be in the future";
       }
+    }
+
+    if (nextAction === "follow_up") {
+      const followUpErrs: Record<string, string> = {};
+      if (!followUpFormData.dueDate) {
+        followUpErrs.dueDate = "Follow-up date is required";
+      }
+      setFollowUpErrors(followUpErrs);
+      if (Object.keys(followUpErrs).length > 0) return { valid: false };
     }
 
     if (nextAction === "reschedule" && !rescheduleReason.trim()) {
@@ -485,8 +510,8 @@ export function TaskCompletionDialog({
           due_time: nextTime || null,
           reschedule_count: (task.reschedule_count ?? 0) + 1,
           reschedule_reason: rescheduleReason.trim(),
-          reminder_offset_hours: reminderOffsetHours ? parseInt(reminderOffsetHours, 10) : null,
-          custom_reminder_at: customReminderAt || null,
+          reminder_offset_hours: (reminderOffsetHours && reminderOffsetHours !== "custom") ? parseInt(reminderOffsetHours, 10) : null,
+          custom_reminder_at: reminderOffsetHours === "custom" ? customReminderAt || null : null,
         });
 
         await logTaskActivity(task.id, "rescheduled", {
@@ -553,6 +578,9 @@ export function TaskCompletionDialog({
           lead_id: task.lead_id || null,
           related_entity_type: task.related_entity_type || null,
           related_entity_id: task.related_entity_id || null,
+          reminder_offset_hours: (reminderOffsetHours && reminderOffsetHours !== "custom") ? parseInt(reminderOffsetHours, 10) : null,
+          custom_reminder_at: reminderOffsetHours === "custom" ? customReminderAt || null : null,
+          original_due_date: format(followUpFormData.dueDate, "yyyy-MM-dd"),
         };
 
         const newTask = await addTask(nextTask);
@@ -560,13 +588,12 @@ export function TaskCompletionDialog({
         if (newTask) {
           // Insert subtasks if any
           if (followUpSubtasks.length > 0) {
-            for (let i = 0; i < followUpSubtasks.length; i++) {
-              await supabase.from("task_subtasks").insert({
-                task_id: newTask.id,
-                title: followUpSubtasks[i].title,
-                sort_order: i,
-              });
-            }
+            const subtasksToInsert = followUpSubtasks.map((s, i) => ({
+              task_id: newTask.id,
+              title: s.title,
+              sort_order: i,
+            }));
+            await supabase.from("task_subtasks").insert(subtasksToInsert);
           }
 
           await logTaskActivity(task.id, "follow_up_created", {
@@ -663,21 +690,7 @@ export function TaskCompletionDialog({
     }
   };
 
-  const getActiveZone = (time: string) => {
-    if (!time) return null;
-    if (time >= "08:00" && time <= "11:59") return "morning";
-    if (time >= "12:00" && time <= "16:59") return "afternoon";
-    if (time >= "17:00" && time <= "20:00") return "evening";
-    return null;
-  };
-
   const currentNextTimeActiveZone = getActiveZone(nextTime);
-
-  const zoneSlots = {
-    morning: ["08:00", "09:00", "10:00", "11:00"],
-    afternoon: ["12:00", "13:00", "14:00", "15:00", "16:00"],
-    evening: ["17:00", "18:00", "19:00", "20:00"],
-  };
 
   if (!task) {
     return (
@@ -764,8 +777,8 @@ export function TaskCompletionDialog({
             </div>
           </div>
 
-          {/* Date/Time for follow-up or reschedule */}
-          {(nextAction === "follow_up" || nextAction === "reschedule") && (
+          {/* Date/Time for reschedule */}
+          {nextAction === "reschedule" && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -998,6 +1011,8 @@ export function TaskCompletionDialog({
                         showAdvanced={followUpShowAdvanced}
                         onShowAdvancedChange={setFollowUpShowAdvanced}
                         hideRelatedEntity={true}
+                        hideReminder={true}
+                        staffLoading={staffLoading}
                         characterCount={followUpCharCount}
                       />
                     </div>
@@ -1005,78 +1020,74 @@ export function TaskCompletionDialog({
                 </div>
               )}
 
-              {/* Reminder section */}
-              <div className="rounded-md border border-border p-3 bg-muted/20 space-y-3">
-                <p className="text-sm font-medium">Reminder Settings</p>
-
-                {/* Auto reminder — quick chips */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    Auto Reminder — how long before the scheduled time?
-                  </Label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "1 hour", hours: "1" },
-                      { label: "2 hours", hours: "2" },
-                      { label: "3 hours", hours: "3" },
-                      { label: "1 day", hours: "24" },
-                      { label: "2 days", hours: "48" },
-                      { label: "None", hours: "" },
-                    ].map(({ label, hours }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => setReminderOffsetHours(hours)}
-                        className={cn(
-                          "text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer",
-                          reminderOffsetHours === hours
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {reminderOffsetHours && reminderOffsetHours !== "" && (
-                    <p className="text-xs text-muted-foreground">
-                      Reminder will fire {
-                        reminderOffsetHours === "1" ? "1 hour" :
-                        reminderOffsetHours === "24" ? "1 day" :
-                        reminderOffsetHours === "48" ? "2 days" :
-                        `${reminderOffsetHours} hours`
-                      } before the scheduled time.
-                    </p>
-                  )}
+              {/* Compact Reminder */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 shrink-0">
+                    <Bell className="h-3.5 w-3.5" /> Reminder:
+                  </span>
+                  {[
+                    { label: "1 hr", hours: "1" },
+                    { label: "2 hr", hours: "2" },
+                    { label: "3 hr", hours: "3" },
+                    { label: "1 day", hours: "24" },
+                    { label: "2 days", hours: "48" },
+                    { label: "Custom", hours: "custom" },
+                    { label: "None", hours: "" },
+                  ].map(({ label, hours }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        if (hours === "custom") {
+                          setShowCustomReminder(prev => !prev);
+                          if (reminderOffsetHours !== "custom") {
+                            setReminderOffsetHours("custom");
+                          }
+                        } else {
+                          setReminderOffsetHours(hours);
+                          setShowCustomReminder(false);
+                          if (hours === "") setCustomReminderAt("");
+                        }
+                      }}
+                      className={cn(
+                        "text-xs px-2.5 py-1 rounded-full border transition-colors",
+                        (reminderOffsetHours === hours ||
+                          (hours === "custom" && reminderOffsetHours === "custom"))
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Custom reminder — date + business hours time picker */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    Or set a specific reminder date and time
-                  </Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {/* Date part */}
+                {/* Custom reminder — compact inline row */}
+                {showCustomReminder && (
+                  <div className="flex flex-wrap items-center gap-2 pl-1">
+                    {/* Date picker */}
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
                           size="sm"
                           className={cn(
-                            "w-full justify-start text-left font-normal text-sm h-8",
+                            "h-7 text-xs justify-start font-normal w-32",
                             !customReminderAt && "text-muted-foreground"
                           )}
                         >
-                          <CalendarIcon className="mr-2 h-3 w-3" />
+                          <CalendarIcon className="mr-1.5 h-3 w-3" />
                           {customReminderAt
-                            ? format(new Date(customReminderAt), "MMM d, yyyy")
+                            ? format(new Date(customReminderAt), "MMM d")
                             : "Pick date"}
                         </Button>
                       </PopoverTrigger>
-<PopoverContent className="w-auto p-0 z-[200]" align="start">
+                      <PopoverContent className="w-auto p-0 z-[200]" align="start">
                         <Calendar
                           mode="single"
-                          selected={customReminderAt ? new Date(customReminderAt) : undefined}
+                          selected={customReminderAt
+                            ? new Date(customReminderAt) : undefined}
                           onSelect={(d) => {
                             if (!d) { setCustomReminderAt(""); return; }
                             const existingTime = customReminderAt
@@ -1087,15 +1098,18 @@ export function TaskCompletionDialog({
                             );
                           }}
                           initialFocus
-                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                          disabled={(date) =>
+                            date < new Date(new Date().setHours(0, 0, 0, 0))}
                           className="pointer-events-auto"
                         />
                       </PopoverContent>
                     </Popover>
 
-                    {/* Time part — business hours quick-select */}
+                    {/* Time select — compact */}
                     <Select
-                      value={customReminderAt ? customReminderAt.split("T")[1]?.slice(0,5) || "" : ""}
+                      value={customReminderAt
+                        ? customReminderAt.split("T")[1]?.slice(0, 5) || ""
+                        : ""}
                       onValueChange={(t) => {
                         const datePart = customReminderAt
                           ? customReminderAt.split("T")[0]
@@ -1103,45 +1117,61 @@ export function TaskCompletionDialog({
                         setCustomReminderAt(`${datePart}T${t}`);
                       }}
                     >
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue placeholder="Pick time" />
+                      <SelectTrigger className="h-7 w-24 text-xs">
+                        <SelectValue placeholder="Time" />
                       </SelectTrigger>
-<SelectContent className="max-h-[200px] z-[200]">
-  <SelectGroup>
-  <SelectLabel>
-    Business hours
-  </SelectLabel>
-  {BUSINESS_HOUR_SLOTS.filter((slot) => {
-                          const datePart = customReminderAt
-                            ? customReminderAt.split("T")[0]
-                            : format(new Date(), "yyyy-MM-dd");
-                          const isToday = datePart === format(new Date(), "yyyy-MM-dd");
-                          return !isToday || slot.value >= format(new Date(), "HH:mm");
-                        }).map((slot) => (
-                          <SelectItem key={slot.value} value={slot.value}>
-                            {slot.label}
-                          </SelectItem>
-                        ))}
-  </SelectGroup>
-      </SelectContent>
+                      <SelectContent className="max-h-[180px] z-[200]">
+                        <SelectGroup>
+                          {BUSINESS_HOUR_SLOTS.filter((slot) => {
+                            const datePart = customReminderAt
+                              ? customReminderAt.split("T")[0]
+                              : format(new Date(), "yyyy-MM-dd");
+                            const isToday =
+                              datePart === format(new Date(), "yyyy-MM-dd");
+                            return !isToday ||
+                              slot.value >= format(new Date(), "HH:mm");
+                          }).map((slot) => (
+                            <SelectItem key={slot.value} value={slot.value}>
+                              {slot.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
                     </Select>
-                  </div>
 
-                  {customReminderAt && (
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">
-                        Reminder set for {format(new Date(customReminderAt), "PPP 'at' h:mm a")}
-                      </p>
+                    {customReminderAt && (
                       <button
                         type="button"
-                        onClick={() => setCustomReminderAt("")}
+                        onClick={() => {
+                          setCustomReminderAt("");
+                          setShowCustomReminder(false);
+                          setReminderOffsetHours("");
+                        }}
                         className="text-xs text-destructive hover:underline"
                       >
                         Clear
                       </button>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Confirmation line */}
+                {customReminderAt && (
+                  <p className="text-xs text-muted-foreground pl-1">
+                    Reminder: {format(new Date(customReminderAt), "MMM d 'at' h:mm a")}
+                  </p>
+                )}
+                {reminderOffsetHours && reminderOffsetHours !== "" &&
+                 reminderOffsetHours !== "custom" && (
+                  <p className="text-xs text-muted-foreground pl-1">
+                    Reminder {
+                      reminderOffsetHours === "1" ? "1 hour" :
+                      reminderOffsetHours === "24" ? "1 day" :
+                      reminderOffsetHours === "48" ? "2 days" :
+                      `${reminderOffsetHours} hours`
+                    } before scheduled time.
+                  </p>
+                )}
               </div>
             </>
           )}

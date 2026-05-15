@@ -76,6 +76,8 @@ export interface TaskFormFieldsProps {
   relatedEntityType?: string | null;
   onRelatedEntityChange?: (entity: any, type: string | null) => void;
   hideRelatedEntity?: boolean;
+  hideReminder?: boolean;
+  staffLoading?: boolean;
   characterCount: number;
 }
 
@@ -99,6 +101,8 @@ export function TaskFormFields({
   relatedEntityType,
   onRelatedEntityChange,
   hideRelatedEntity = false,
+  hideReminder = false,
+  staffLoading = false,
   characterCount,
 }: TaskFormFieldsProps) {
 
@@ -182,7 +186,7 @@ export function TaskFormFields({
         <Label>Assign To *</Label>
         <Select value={formData.assignedTo} onValueChange={(v) => onFormDataChange("assignedTo", v)}>
           <SelectTrigger className={cn(errors.assignedTo && "border-destructive")}>
-            <SelectValue placeholder="Select team member" />
+            <SelectValue placeholder={staffLoading ? "Loading..." : "Select team member"} />
           </SelectTrigger>
           <SelectContent className="z-[200]">
             {staffMembers.map((member) => (
@@ -320,29 +324,31 @@ export function TaskFormFields({
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-6 pt-4">
           {/* Reminder */}
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="reminder"
-                checked={formData.reminder}
-                onCheckedChange={(checked) => onFormDataChange("reminder", !!checked)}
-              />
-              <Label htmlFor="reminder" className="text-sm cursor-pointer">Enable Reminder</Label>
+          {!hideReminder && (
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="reminder"
+                  checked={formData.reminder}
+                  onCheckedChange={(checked) => onFormDataChange("reminder", !!checked)}
+                />
+                <Label htmlFor="reminder" className="text-sm cursor-pointer">Enable Reminder</Label>
+              </div>
+              {formData.reminder && (
+                <Select value={formData.reminderTime} onValueChange={(v) => onFormDataChange("reminderTime", v)}>
+                  <SelectTrigger className={cn("text-xs h-8 w-40", errors.reminderTime && "border-destructive")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-[200]">
+                    {REMINDER_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {errors.reminderTime && <p className="text-sm text-destructive">{errors.reminderTime}</p>}
             </div>
-            {formData.reminder && (
-              <Select value={formData.reminderTime} onValueChange={(v) => onFormDataChange("reminderTime", v)}>
-                <SelectTrigger className={cn("text-xs h-8 w-40", errors.reminderTime && "border-destructive")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[200]">
-                  {REMINDER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {errors.reminderTime && <p className="text-sm text-destructive">{errors.reminderTime}</p>}
-          </div>
+          )}
 
           {/* Subtasks */}
           <SubtasksSection
