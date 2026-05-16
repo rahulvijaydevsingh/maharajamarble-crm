@@ -76,6 +76,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   // Auto-open edit dialog when highlightTaskId is provided
   React.useEffect(() => {
@@ -249,7 +250,10 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                       <Button
                         variant="link"
                         className="h-auto p-0 justify-start"
-                        onClick={() => setDetailTaskId(task.id)}
+                        onClick={() => {
+                          setDetailTaskId(task.id);
+                          setDetailOpen(true);
+                        }}
                       >
                         {task.title}
                       </Button>
@@ -408,10 +412,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
 
       <TaskDetailView
         taskId={detailTaskId}
-        open={!!detailTaskId}
-        onOpenChange={(o) => {
-          if (!o) setDetailTaskId(null);
-        }}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
       />
     </div>
   );
