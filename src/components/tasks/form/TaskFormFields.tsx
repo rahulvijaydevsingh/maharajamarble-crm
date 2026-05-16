@@ -77,6 +77,7 @@ export interface TaskFormFieldsProps {
   onRelatedEntityChange?: (entity: any, type: string | null) => void;
   hideRelatedEntity?: boolean;
   hideReminder?: boolean;
+  hideDueDateTime?: boolean;
   staffLoading?: boolean;
   characterCount: number;
 }
@@ -102,6 +103,7 @@ export function TaskFormFields({
   onRelatedEntityChange,
   hideRelatedEntity = false,
   hideReminder = false,
+  hideDueDateTime = false,
   staffLoading = false,
   characterCount,
 }: TaskFormFieldsProps) {
@@ -198,107 +200,111 @@ export function TaskFormFields({
         </Select>
       </div>
 
-      {/* Due Date & Improved Time Picker */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Due Date</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !formData.dueDate && "text-muted-foreground",
-                  errors.dueDate && "border-destructive"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.dueDate ? format(formData.dueDate, "PPP") : "Pick a date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[200]" align="start">
-              <Calendar
-                mode="single"
-                selected={formData.dueDate}
-                onSelect={(date) => date && onFormDataChange("dueDate", date)}
-                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                initialFocus
-                className="pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
-          {errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate}</p>}
-        </div>
-
-        <div className="space-y-2">
-          <Label>Due Time</Label>
-          <div className="space-y-3">
-            {/* Zone 1: Preset buttons */}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn("flex-1 text-xs h-8", activeZone === "morning" && "bg-primary text-primary-foreground hover:bg-primary/90")}
-                onClick={() => onFormDataChange("dueTime", "10:00")}
-              >
-                Morning
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn("flex-1 text-xs h-8", activeZone === "afternoon" && "bg-primary text-primary-foreground hover:bg-primary/90")}
-                onClick={() => onFormDataChange("dueTime", "14:00")}
-              >
-                Afternoon
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn("flex-1 text-xs h-8", activeZone === "evening" && "bg-primary text-primary-foreground hover:bg-primary/90")}
-                onClick={() => onFormDataChange("dueTime", "17:00")}
-              >
-                Evening
-              </Button>
+      {!hideDueDateTime && (
+        <>
+          {/* Due Date & Improved Time Picker */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Due Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !formData.dueDate && "text-muted-foreground",
+                      errors.dueDate && "border-destructive"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.dueDate ? format(formData.dueDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[200]" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.dueDate}
+                    onSelect={(date) => date && onFormDataChange("dueDate", date)}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+              {errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate}</p>}
             </div>
 
-            {/* Zone 2: Range-specific slots */}
-            {activeZone && (
-              <div className="flex flex-wrap gap-1">
-                {zoneSlots[activeZone].map((slot) => (
+            <div className="space-y-2">
+              <Label>Due Time</Label>
+              <div className="space-y-3">
+                {/* Zone 1: Preset buttons */}
+                <div className="flex gap-2">
                   <Button
-                    key={slot}
                     type="button"
                     variant="outline"
                     size="sm"
-                    className={cn(
-                      "h-7 px-2 text-[10px] rounded-full",
-                      formData.dueTime === slot && "bg-primary text-primary-foreground hover:bg-primary/90"
-                    )}
-                    onClick={() => onFormDataChange("dueTime", slot)}
+                    className={cn("flex-1 text-xs h-8", activeZone === "morning" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                    onClick={() => onFormDataChange("dueTime", "10:00")}
                   >
-                    {slot}
+                    Morning
                   </Button>
-                ))}
-              </div>
-            )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn("flex-1 text-xs h-8", activeZone === "afternoon" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                    onClick={() => onFormDataChange("dueTime", "14:00")}
+                  >
+                    Afternoon
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn("flex-1 text-xs h-8", activeZone === "evening" && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                    onClick={() => onFormDataChange("dueTime", "17:00")}
+                  >
+                    Evening
+                  </Button>
+                </div>
 
-            {/* Zone 3: Custom input */}
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-muted-foreground">Custom:</span>
-              <Input
-                type="time"
-                value={formData.dueTime}
-                onChange={(e) => onFormDataChange("dueTime", e.target.value)}
-                className={cn("h-7 w-28 text-xs", errors.dueTime && "border-destructive")}
-              />
+                {/* Zone 2: Range-specific slots */}
+                {activeZone && (
+                  <div className="flex flex-wrap gap-1">
+                    {zoneSlots[activeZone].map((slot) => (
+                      <Button
+                        key={slot}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-7 px-2 text-[10px] rounded-full",
+                          formData.dueTime === slot && "bg-primary text-primary-foreground hover:bg-primary/90"
+                        )}
+                        onClick={() => onFormDataChange("dueTime", slot)}
+                      >
+                        {slot}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Zone 3: Custom input */}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">Custom:</span>
+                  <Input
+                    type="time"
+                    value={formData.dueTime}
+                    onChange={(e) => onFormDataChange("dueTime", e.target.value)}
+                    className={cn("h-7 w-28 text-xs", errors.dueTime && "border-destructive")}
+                  />
+                </div>
+                {errors.dueTime && <p className="text-sm text-destructive">{errors.dueTime}</p>}
+              </div>
             </div>
-            {errors.dueTime && <p className="text-sm text-destructive">{errors.dueTime}</p>}
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Description */}
       <div className="space-y-2">
