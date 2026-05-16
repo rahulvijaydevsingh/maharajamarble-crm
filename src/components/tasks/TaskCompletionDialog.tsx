@@ -363,6 +363,7 @@ export function TaskCompletionDialog({
     const now = new Date();
     const h = now.getHours();
     const m = now.getMinutes();
+    if (h === 23 && m >= 30) return "23:30";
     const roundedH = m >= 30 ? h + 1 : h;
     const roundedM = m >= 30 ? 0 : 30;
     return `${String(roundedH).padStart(2, "0")}:${String(roundedM).padStart(
@@ -409,15 +410,18 @@ export function TaskCompletionDialog({
     }
 
     if (nextAction === "follow_up") {
+      const followUpErrs: Record<string, string> = {};
       if (!followUpFormData.dueDate) {
-        (nextErrors as any).followUpDueDate = "Follow-up date is required";
+        followUpErrs.dueDate = "Follow-up date is required";
       }
       if (followUpIsToday && followUpFormData.dueTime < followUpMinTime) {
-        setFollowUpErrors((prev) => ({
-          ...prev,
-          dueTime: "Follow-up time must be in the future",
-        }));
-        (nextErrors as any).followUpDueTime = "Follow-up time must be in the future";
+        followUpErrs.dueTime = "Follow-up time must be in the future";
+      }
+      if (Object.keys(followUpErrs).length > 0) {
+        setFollowUpErrors((prev) => ({ ...prev, ...followUpErrs }));
+        // Populate nextErrors to ensure validate() returns valid: false
+        if (followUpErrs.dueDate) nextErrors.followUpDueDate = followUpErrs.dueDate;
+        if (followUpErrs.dueTime) (nextErrors as any).followUpDueTime = followUpErrs.dueTime;
       }
     }
 
@@ -1189,7 +1193,9 @@ export function TaskCompletionDialog({
                   {/* Hourly pills for active zone */}
                   {followUpActiveZone && (
                     <div className="flex flex-wrap gap-1">
-                      {zoneSlots[followUpActiveZone].map((slot) => (
+                      {zoneSlots[followUpActiveZone]
+                        .filter((slot) => !followUpIsToday || slot >= followUpMinTime)
+                        .map((slot) => (
                         <Button
                           key={slot}
                           type="button"
