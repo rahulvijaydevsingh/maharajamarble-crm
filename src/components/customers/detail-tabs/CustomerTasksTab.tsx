@@ -42,7 +42,7 @@ import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { format, isPast, isToday, parseISO } from 'date-fns';
 import { calculateTaskStatus } from '@/lib/taskStatusService';
-import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
+import { TaskDetailView } from '@/components/tasks/TaskDetailView';
 
 interface CustomerTasksTabProps {
   customer: Customer;
@@ -64,13 +64,15 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 
 export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabProps) {
   const navigate = useNavigate();
-  const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'completed' | 'overdue'>('all');
+
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
@@ -237,7 +239,10 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
                       <Button
                         variant="link"
                         className="h-auto p-0 justify-start"
-                        onClick={() => openTask(task.id)}
+                        onClick={() => {
+                          setDetailTaskId(task.id);
+                          setDetailOpen(true);
+                        }}
                       >
                         {task.title}
                       </Button>
@@ -387,6 +392,12 @@ export function CustomerTasksTab({ customer, onOpenAddTask }: CustomerTasksTabPr
         task={taskToComplete}
         updateTask={updateTask}
         addTask={addTask}
+      />
+
+      <TaskDetailView
+        taskId={detailTaskId}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
       />
     </div>
   );
