@@ -35,6 +35,8 @@ import { useTaskActivityLog } from "@/hooks/useTaskActivityLog";
 import { TaskActivityTimeline } from "@/components/tasks/TaskActivityTimeline";
 import { LeadDetailView } from "@/components/leads/LeadDetailView";
 import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
+import { ProfessionalDetailView } from "@/components/professionals/ProfessionalDetailView";
+import { useProfessionals, Professional } from "@/hooks/useProfessionals";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 import { useZLayer } from '@/contexts/ZLayerContext';
 import { useReminders } from "@/hooks/useReminders";
@@ -76,6 +78,7 @@ export function TaskDetailView({
   const { tasks, updateTask, addTask, deleteTask, snoozeTask } = useTasks();
   const { leads } = useLeads();
   const { customers } = useCustomers();
+  const { professionals } = useProfessionals();
   const { staffMembers } = useActiveStaff();
   const { zIndex } = useZLayer(
     taskId ? `task-${taskId}` : '',
@@ -134,8 +137,10 @@ export function TaskDetailView({
   // Related modals
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
   const [customerDetailOpen, setCustomerDetailOpen] = useState(false);
+  const [professionalDetailOpen, setProfessionalDetailOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
 
   // For chain navigation from timeline
   const [chainTaskId, setChainTaskId] = useState<string | null>(null);
@@ -375,6 +380,32 @@ export function TaskDetailView({
     }
   };
 
+  const openProfessionalDetailById = async (professionalId: string) => {
+    const fromStore = professionals.find((p) => p.id === professionalId);
+    if (fromStore) {
+      setSelectedProfessional(fromStore);
+      setProfessionalDetailOpen(true);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("professionals")
+        .select("*")
+        .eq("id", professionalId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast({ title: "Professional not found", description: "It may have been deleted.", variant: "destructive" });
+        return;
+      }
+      setSelectedProfessional(data as unknown as Professional);
+      setProfessionalDetailOpen(true);
+    } catch (e: any) {
+      console.error("Failed to fetch professional:", e);
+      toast({ title: "Could not open professional", description: e?.message || "Please try again.", variant: "destructive" });
+    }
+  };
+
   const handleShare = async () => {
     if (!taskId) return;
     const url = `${window.location.origin}/tasks/${taskId}`;
@@ -396,7 +427,7 @@ export function TaskDetailView({
       void openCustomerDetailById(related.id);
       return;
     }
-    navigate(`/professionals?highlight=${encodeURIComponent(related.id)}`);
+    void openProfessionalDetailById(related.id);
   };
 
   return (
@@ -798,6 +829,15 @@ export function TaskDetailView({
         onOpenChange={(o) => {
           setCustomerDetailOpen(o);
           if (!o) setSelectedCustomer(null);
+        }}
+      />
+
+      <ProfessionalDetailView
+        professional={selectedProfessional}
+        open={professionalDetailOpen}
+        onOpenChange={(o) => {
+          setProfessionalDetailOpen(o);
+          if (!o) setSelectedProfessional(null);
         }}
       />
 
