@@ -347,6 +347,33 @@ export function TaskCompletionDialog({
     return format(d, "HH:mm");
   }, [isNextTimeToday]);
 
+  const followUpIsToday = useMemo(() => {
+    const d = followUpFormData.dueDate;
+    if (!d) return false;
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  }, [followUpFormData.dueDate]);
+
+  const followUpMinTime = useMemo(() => {
+    if (!followUpIsToday) return "00:00";
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    if (h === 23 && m >= 30) return "23:30";
+    const roundedH = m >= 30 ? h + 1 : h;
+    const roundedM = m >= 30 ? 0 : 30;
+    return `${String(roundedH).padStart(2, "0")}:${String(roundedM).padStart(
+      2,
+      "0"
+    )}`;
+  }, [followUpIsToday]);
+
+  const followUpActiveZone = getActiveZone(followUpFormData.dueTime);
+
   const timeToMinutes = (t: string) => {
     const [hStr, mStr] = (t || "").split(":");
     const h = Number(hStr);
@@ -383,8 +410,18 @@ export function TaskCompletionDialog({
     }
 
     if (nextAction === "follow_up") {
+      const followUpErrs: Record<string, string> = {};
       if (!followUpFormData.dueDate) {
-        (nextErrors as any).followUpDueDate = "Follow-up date is required";
+        followUpErrs.dueDate = "Follow-up date is required";
+      }
+      if (followUpIsToday && followUpFormData.dueTime < followUpMinTime) {
+        followUpErrs.dueTime = "Follow-up time must be in the future";
+      }
+      if (Object.keys(followUpErrs).length > 0) {
+        setFollowUpErrors((prev) => ({ ...prev, ...followUpErrs }));
+        // Populate nextErrors to ensure validate() returns valid: false
+        if (followUpErrs.dueDate) nextErrors.followUpDueDate = followUpErrs.dueDate;
+        if (followUpErrs.dueTime) (nextErrors as any).followUpDueTime = followUpErrs.dueTime;
       }
     }
 
@@ -1093,6 +1130,108 @@ export function TaskCompletionDialog({
             </div>
           )}
 
+          {/* Follow-up Due Date & Time — shown above the form for quick entry */}
+          {nextAction === "follow_up" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Due Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !followUpFormData.dueDate && "text-muted-foreground",
+                        followUpErrors.dueDate && "border-destructive"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {followUpFormData.dueDate ? format(followUpFormData.dueDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 z-[200]" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={followUpFormData.dueDate}
+                      onSelect={(date) => {
+                        if (date) {
+                          setFollowUpFormData(prev => ({ ...prev, dueDate: date }));
+                          setFollowUpErrors(prev => ({ ...prev, dueDate: "" }));
+                        }
+                      }}
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+                {followUpErrors.dueDate && <p className="text-sm text-destructive">{followUpErrors.dueDate}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Due Time</Label>
+                <div className="space-y-3">
+                  {/* Zone preset buttons */}
+                  <div className="flex gap-2">
+                    {(["morning", "afternoon", "evening"] as const).map((zone) => (
+                      <Button
+                        key={zone}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("flex-1 text-xs h-8 capitalize", followUpActiveZone === zone && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                        onClick={() => {
+                          const defaults = { morning: "10:00", afternoon: "14:00", evening: "17:00" };
+                          setFollowUpFormData(prev => ({ ...prev, dueTime: defaults[zone] }));
+                          setFollowUpErrors(prev => ({ ...prev, dueTime: "" }));
+                        }}
+                      >
+                        {zone.charAt(0).toUpperCase() + zone.slice(1)}
+                      </Button>
+                    ))}
+                  </div>
+                  {/* Hourly pills for active zone */}
+                  {followUpActiveZone && (
+                    <div className="flex flex-wrap gap-1">
+                      {zoneSlots[followUpActiveZone]
+                        .filter((slot) => !followUpIsToday || slot >= followUpMinTime)
+                        .map((slot) => (
+                        <Button
+                          key={slot}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn("h-7 px-2 text-[10px] rounded-full", followUpFormData.dueTime === slot && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                          onClick={() => {
+                            setFollowUpFormData(prev => ({ ...prev, dueTime: slot }));
+                            setFollowUpErrors(prev => ({ ...prev, dueTime: "" }));
+                          }}
+                        >
+                          {slot}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Custom time input */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-muted-foreground">Custom:</span>
+                    <Input
+                      type="time"
+                      value={followUpFormData.dueTime}
+                      min={followUpMinTime}
+                      onChange={(e) => {
+                        setFollowUpFormData(prev => ({ ...prev, dueTime: e.target.value }));
+                        setFollowUpErrors(prev => ({ ...prev, dueTime: "" }));
+                      }}
+                      className={cn("h-7 w-28 text-xs", followUpErrors.dueTime && "border-destructive")}
+                    />
+                  </div>
+                </div>
+                {followUpErrors.dueTime && <p className="text-sm text-destructive">{followUpErrors.dueTime}</p>}
+              </div>
+            </div>
+          )}
+
           {/* Inline follow-up task form — independent block */}
           {nextAction === "follow_up" && (
             <div className="rounded-md border border-border bg-muted/20 overflow-hidden">
@@ -1166,6 +1305,7 @@ export function TaskCompletionDialog({
                     onShowAdvancedChange={setFollowUpShowAdvanced}
                     hideRelatedEntity={true}
                     hideReminder={true}
+                    hideDueDateTime={true}
                     staffLoading={staffLoading}
                     characterCount={followUpCharCount}
                   />
