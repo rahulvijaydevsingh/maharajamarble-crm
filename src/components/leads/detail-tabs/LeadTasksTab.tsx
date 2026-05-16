@@ -40,7 +40,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
 import { format, isPast, isToday } from 'date-fns';
-import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
+import { TaskDetailView } from '@/components/tasks/TaskDetailView';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
 import { calculateTaskStatus } from "@/lib/taskStatusService";
@@ -65,7 +65,6 @@ const statusStyles: Record<string, { label: string; className: string }> = {
 };
 
 export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
-  const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
   const { staffMembers } = useActiveStaff();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -76,6 +75,8 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   // Auto-open edit dialog when highlightTaskId is provided
   React.useEffect(() => {
@@ -249,7 +250,10 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
                       <Button
                         variant="link"
                         className="h-auto p-0 justify-start"
-                        onClick={() => openTask(task.id)}
+                        onClick={() => {
+                          setDetailTaskId(task.id);
+                          setDetailOpen(true);
+                        }}
                       >
                         {task.title}
                       </Button>
@@ -404,6 +408,12 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
         task={taskToComplete}
         updateTask={updateTask}
         addTask={addTask}
+      />
+
+      <TaskDetailView
+        taskId={detailTaskId}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
       />
     </div>
   );
