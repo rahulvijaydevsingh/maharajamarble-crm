@@ -247,6 +247,40 @@ export function ActivityLogItem({
             </div>
         </div>
 
+        {/* ── Task completion outcome block ── */}
+        {activity.activity_type === "task_completed" &&
+          (activity.metadata?.completion_outcome ||
+            activity.metadata?.completion_notes ||
+            activity.metadata?.completion_status ||
+            (activity.metadata?.next_action &&
+              activity.metadata.next_action !== "none")) && (
+          <div className="px-3 pb-2.5 pt-0 border-t border-border/40 mt-0">
+            <div className="flex flex-wrap gap-1.5 pt-2">
+              {activity.metadata?.completion_outcome && (
+                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-green-50 text-green-800 border border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800 font-medium">
+                  Outcome: {activity.metadata.completion_outcome}
+                </span>
+              )}
+              {activity.metadata?.completion_status && (
+                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800 font-medium">
+                  Status: {activity.metadata.completion_status}
+                </span>
+              )}
+              {activity.metadata?.next_action &&
+                activity.metadata.next_action !== "none" && (
+                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800 font-medium">
+                  Next: {activity.metadata.next_action}
+                </span>
+              )}
+            </div>
+            {activity.metadata?.completion_notes?.trim() && (
+              <p className="mt-1.5 text-[12px] text-muted-foreground leading-relaxed pl-1 border-l-2 border-border">
+                {activity.metadata.completion_notes}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* ── Quick-link row (only renders when links exist) ── */}
         {hasQuickLinks && (
           <div className="flex flex-wrap gap-3 px-3 pb-2 -mt-0.5">

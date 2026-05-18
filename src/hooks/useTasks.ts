@@ -598,7 +598,9 @@ export function useTasks() {
           activity_type: activityType,
           activity_category: "task",
           title: `${activityType === "task_completed" ? "Task Completed" : activityType === "task_snoozed" ? "Task Snoozed" : "Task Updated"}: ${data.title}`,
-          description: data.description || undefined,
+          description: activityType === "task_completed" && data.completion_notes?.trim()
+            ? data.completion_notes.trim()
+            : (data.description || undefined),
           metadata: {
             task_id: data.id,
             previous: prevTask
@@ -612,6 +614,12 @@ export function useTasks() {
                 }
               : null,
             updates,
+            ...(activityType === "task_completed" && {
+              completion_outcome: data.completion_outcome ?? null,
+              completion_notes: data.completion_notes ?? null,
+              completion_status: data.completion_status ?? null,
+              next_action: data.next_action_type ?? null,
+            }),
           },
           related_entity_type: data.related_entity_type || undefined,
           related_entity_id: data.related_entity_id || undefined,
