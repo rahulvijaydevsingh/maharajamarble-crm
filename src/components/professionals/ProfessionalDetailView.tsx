@@ -358,7 +358,6 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
         description: editDescription.trim() || null,
       });
       setActivityToEdit(null);
-      toast({ title: "Activity updated" });
     } catch (err) {
       toast({ title: "Error updating activity", variant: "destructive" });
     } finally {
