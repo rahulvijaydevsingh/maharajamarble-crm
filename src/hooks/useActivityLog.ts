@@ -50,7 +50,7 @@ const transformActivityRow = (row: any): ActivityLogEntry => ({
   attachments: Array.isArray(row.attachments) ? row.attachments : [],
 });
 
-export function useActivityLog(leadId?: string, customerId?: string) {
+export function useActivityLog(leadId?: string, customerId?: string, professionalId?: string) {
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -60,7 +60,7 @@ export function useActivityLog(leadId?: string, customerId?: string) {
   const PAGE_SIZE = 30;
 
   const fetchActivities = useCallback(async (pageNum: number = 0, reset: boolean = false) => {
-    if (!leadId && !customerId) {
+    if (!leadId && !customerId && !professionalId) {
       setLoading(false);
       return;
     }
@@ -77,6 +77,10 @@ export function useActivityLog(leadId?: string, customerId?: string) {
         query = query.eq('lead_id', leadId);
       } else if (customerId) {
         query = query.eq('customer_id', customerId);
+      } else if (professionalId) {
+        query = query
+          .eq('related_entity_type', 'professional')
+          .eq('related_entity_id', professionalId);
       }
 
       const { data, error } = await query;
@@ -98,7 +102,7 @@ export function useActivityLog(leadId?: string, customerId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [leadId, customerId]);
+  }, [leadId, customerId, professionalId]);
 
   const loadMore = useCallback(() => {
     if (!loading && hasMore) {
@@ -216,7 +220,7 @@ export function useActivityLog(leadId?: string, customerId?: string) {
 
   // Realtime subscription
   useEffect(() => {
-    if (!leadId && !customerId) return;
+    if (!leadId && !customerId && !professionalId) return;
 
     const channel = supabase
       .channel('activity_log_changes')
@@ -226,7 +230,11 @@ export function useActivityLog(leadId?: string, customerId?: string) {
           event: '*',
           schema: 'public',
           table: 'activity_log',
-          filter: leadId ? `lead_id=eq.${leadId}` : `customer_id=eq.${customerId}`,
+          filter: leadId
+            ? `lead_id=eq.${leadId}`
+            : customerId
+            ? `customer_id=eq.${customerId}`
+            : `related_entity_id=eq.${professionalId}`,
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
@@ -245,7 +253,7 @@ export function useActivityLog(leadId?: string, customerId?: string) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [leadId, customerId]);
+  }, [leadId, customerId, professionalId]);
 
   return {
     activities,
