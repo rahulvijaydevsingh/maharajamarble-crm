@@ -323,9 +323,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
   const { role } = usePermissions();
   const { openTask } = useTaskDetailModal();
   const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager';
-  const { deleteActivity, updateActivity } = useActivityLog(undefined, undefined);
-  const [professionalActivities, setProfessionalActivities] = useState<ActivityLogEntry[]>([]);
-  const [fetching, setFetching] = useState(true);
+  const { activities, loading, hasMore, loadMore, deleteActivity, updateActivity } = useActivityLog(undefined, undefined, professional?.id);
   const { toast } = useToast();
 
   const [activityToDelete, setActivityToDelete] = useState<ActivityLogEntry | null>(null);
@@ -334,35 +332,10 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
   const [editDescription, setEditDescription] = useState('');
   const [isEditSaving, setIsEditSaving] = useState(false);
 
-  useEffect(() => {
-    loadActivities();
-  }, [professional.id]);
-
-  const loadActivities = async () => {
-    try {
-      setFetching(true);
-      const { data, error } = await supabase
-        .from('activity_log')
-        .select('*')
-        .or(
-          `related_entity_id.eq.${professional.id},` +
-          `professional_id.eq.${professional.id}`
-        )
-        .order('activity_timestamp', { ascending: false });
-      if (error) throw error;
-      setProfessionalActivities((data as ActivityLogEntry[]) || []);
-    } catch (err) {
-      console.error('Error loading professional activities:', err);
-    } finally {
-      setFetching(false);
-    }
-  };
-
   const handleDelete = async () => {
     if (activityToDelete) {
       try {
         await deleteActivity(activityToDelete.id);
-        setProfessionalActivities(prev => prev.filter(a => a.id !== activityToDelete.id));
         setActivityToDelete(null);
       } catch (err) {
         toast({ title: "Error deleting activity", variant: "destructive" });
@@ -384,13 +357,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
         title: editTitle.trim(),
         description: editDescription.trim() || null,
       });
-      setProfessionalActivities(prev => prev.map(a =>
-        a.id === activityToEdit.id
-          ? { ...a, title: editTitle.trim(), description: editDescription.trim() || null }
-          : a
-      ));
       setActivityToEdit(null);
-      toast({ title: "Activity updated" });
     } catch (err) {
       toast({ title: "Error updating activity", variant: "destructive" });
     } finally {
@@ -398,9 +365,9 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
     }
   };
 
-  if (fetching) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+  if (loading && activities.length === 0) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
-  if (professionalActivities.length === 0) return (
+  if (activities.length === 0) return (
     <div className="text-center py-12 text-muted-foreground">
       <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
       <p>No activity recorded yet.</p>
@@ -411,7 +378,7 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
     <div className="space-y-3">
       <div className="relative border-l border-border ml-[4px]">
         <div className="space-y-2 pl-4 pb-2">
-          {professionalActivities.map((activity) => (
+          {activities.map((activity) => (
             <ActivityLogItem
               key={activity.id}
               activity={activity}
@@ -423,6 +390,15 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
           ))}
         </div>
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-4">
+          <Button variant="outline" size="sm" onClick={loadMore} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Load more
+          </Button>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!activityToDelete} onOpenChange={() => setActivityToDelete(null)}>
