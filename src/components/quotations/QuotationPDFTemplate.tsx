@@ -66,6 +66,8 @@ export function QuotationPDFTemplate({
         maxWidth: '800px',
         margin: '0 auto',
         lineHeight: '1.4',
+        WebkitPrintColorAdjust: 'exact',
+        printColorAdjust: 'exact',
       }}
     >
       {/* HEADER */}

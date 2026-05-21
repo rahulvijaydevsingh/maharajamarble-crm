@@ -194,6 +194,10 @@ const Quotations = () => {
             position: static !important;
             left: auto !important;
           }
+          #pdf-print-container, #pdf-print-container * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
         @page { margin: 10mm; size: A4; }
       `;
