@@ -167,11 +167,14 @@ const syncLeadFollowUpDates = async (leadId: string) => {
   if (!leadId) return;
 
   try {
-    // 1. Get MAX(completed_at) from tasks
+    // Tasks may be linked to a lead via lead_id OR related_entity_type='lead'+related_entity_id.
+    const leadTaskFilter = `lead_id.eq.${leadId},and(related_entity_type.eq.lead,related_entity_id.eq.${leadId})`;
+
+    // 1. Get MAX(completed_at) from tasks (both link paths)
     const { data: taskFollowup } = await supabase
       .from('tasks')
       .select('completed_at')
-      .eq('lead_id', leadId)
+      .or(leadTaskFilter)
       .eq('status', 'Completed')
       .order('completed_at', { ascending: false })
       .limit(1)
@@ -187,11 +190,11 @@ const syncLeadFollowUpDates = async (leadId: string) => {
       .limit(1)
       .maybeSingle();
 
-    // 3. Get MIN(due_date) from pending tasks
+    // 3. Get MIN(due_date) from pending tasks (both link paths)
     const { data: nextTask } = await supabase
       .from('tasks')
       .select('due_date')
-      .eq('lead_id', leadId)
+      .or(leadTaskFilter)
       .in('status', ['Pending', 'In Progress'])
       .order('due_date', { ascending: true })
       .limit(1)

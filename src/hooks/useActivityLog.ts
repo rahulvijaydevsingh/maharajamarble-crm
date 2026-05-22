@@ -222,8 +222,13 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
   useEffect(() => {
     if (!leadId && !customerId && !professionalId) return;
 
+    const channelKey = leadId
+      ? `lead-${leadId}`
+      : customerId
+      ? `cust-${customerId}`
+      : `prof-${professionalId}`;
     const channel = supabase
-      .channel('activity_log_changes')
+      .channel(`activity_log_${channelKey}`)
       .on(
         'postgres_changes',
         {

@@ -569,6 +569,24 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Dual-mode internal-secret auth. Defaults to disabled so behavior is unchanged
+  // until AUTOMATION_REQUIRE_SECRET=true is set manually in the dashboard.
+  const REQUIRE_SECRET = Deno.env.get("AUTOMATION_REQUIRE_SECRET") === "true";
+  const EXPECTED_SECRET = Deno.env.get("AUTOMATION_INTERNAL_SECRET");
+  const providedSecret = req.headers.get("x-internal-secret");
+  const secretValid = !!(EXPECTED_SECRET && providedSecret === EXPECTED_SECRET);
+
+  console.log(
+    `[Automation] secret_provided=${!!providedSecret} secret_valid=${secretValid} require=${REQUIRE_SECRET}`
+  );
+
+  if (REQUIRE_SECRET && !secretValid) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const payload: AutomationPayload = await req.json();
     const { entity_type: dbTable, entity_id, operation, new_row, old_row } = payload;
