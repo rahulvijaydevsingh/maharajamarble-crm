@@ -33,6 +33,16 @@ import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useTasks } from "@/hooks/useTasks";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
+
+const localDate = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 interface AddCustomerDialogProps {
   open: boolean;
@@ -42,6 +52,7 @@ interface AddCustomerDialogProps {
 
 export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCustomerDialogProps) {
   const { addCustomer, updateCustomer } = useCustomers();
+  const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -107,6 +118,15 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
     assigned_to: "",
   });
 
+  const [createFollowUp, setCreateFollowUp] = useState(false);
+  const [followUpData, setFollowUpData] = useState({
+    title: "",
+    type: "Follow-up Call",
+    dueDate: new Date(),
+    dueTime: "10:00",
+    reminder: false,
+  });
+
   useEffect(() => {
     if (editingCustomer) {
       setFormData({
@@ -147,6 +167,14 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
       notes: "",
       assigned_to: getDefaultAssignedTo(),
     });
+    setCreateFollowUp(false);
+    setFollowUpData({
+      title: "",
+      type: "Follow-up Call",
+      dueDate: new Date(),
+      dueTime: "10:00",
+      reminder: false,
+    });
   };
 
   const handleSubmit = async () => {
@@ -174,12 +202,34 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
 
       if (editingCustomer) {
         await updateCustomer(editingCustomer.id, data);
+        onOpenChange(false);
+        resetForm();
       } else {
-        await addCustomer(data);
+        const newCustomer = await addCustomer(data);
+        if (createFollowUp && newCustomer?.id && followUpData.title.trim()) {
+          try {
+            await addTask({
+              title: followUpData.title.trim(),
+              type: followUpData.type,
+              assigned_to: formData.assigned_to,
+              priority: "Medium",
+              due_date: localDate(followUpData.dueDate),
+              due_time: followUpData.dueTime,
+              status: "Pending",
+              reminder: followUpData.reminder,
+              reminder_time: followUpData.reminder ? "60" : null,
+              related_entity_type: "customer",
+              related_entity_id: newCustomer.id,
+              description: null,
+              lead_id: null,
+            });
+          } catch (e) {
+            console.warn("Follow-up task creation failed", e);
+          }
+        }
+        onOpenChange(false);
+        resetForm();
       }
-
-      onOpenChange(false);
-      resetForm();
     } finally {
       setIsSubmitting(false);
     }
@@ -327,6 +377,101 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
             <Label htmlFor="notes">Notes</Label>
             <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes about this customer..." rows={3} />
           </div>
+
+          {!editingCustomer && (
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="createFollowUp"
+                  checked={createFollowUp}
+                  onCheckedChange={(v) => {
+                    setCreateFollowUp(!!v);
+                    if (!!v && !followUpData.title) {
+                      setFollowUpData(prev => ({ ...prev, title: `Follow-up: ${formData.name}` }));
+                    }
+                  }}
+                />
+                <Label htmlFor="createFollowUp" className="text-sm cursor-pointer font-medium">
+                  Create initial follow-up task
+                </Label>
+              </div>
+
+              {createFollowUp && (
+                <div className="space-y-3 pl-6 border-l-2 border-border">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Task Title *</Label>
+                    <Input
+                      value={followUpData.title}
+                      onChange={(e) => setFollowUpData(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="Follow-up task title"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Task Type</Label>
+                      <Select value={followUpData.type} onValueChange={(v) => setFollowUpData(prev => ({ ...prev, type: v }))}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Follow-up Call">Follow-up Call</SelectItem>
+                          <SelectItem value="Meeting">Meeting</SelectItem>
+                          <SelectItem value="Site Visit">Site Visit</SelectItem>
+                          <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Due Date</Label>
+                      <Input
+                        type="date"
+                        value={localDate(followUpData.dueDate)}
+                        min={localDate(new Date())}
+                        onChange={(e) => setFollowUpData(prev => ({ ...prev, dueDate: new Date(e.target.value) }))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Due Time</Label>
+                    <div className="flex gap-2">
+                      {(["Morning", "Afternoon", "Evening"] as const).map((zone) => (
+                        <Button
+                          key={zone}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn("flex-1 text-xs h-8", {
+                            "bg-primary text-primary-foreground hover:bg-primary/90":
+                              (zone === "Morning" && followUpData.dueTime >= "08:00" && followUpData.dueTime <= "11:59") ||
+                              (zone === "Afternoon" && followUpData.dueTime >= "12:00" && followUpData.dueTime <= "16:59") ||
+                              (zone === "Evening" && followUpData.dueTime >= "17:00" && followUpData.dueTime <= "20:00"),
+                          })}
+                          onClick={() => setFollowUpData(prev => ({ ...prev, dueTime: zone === "Morning" ? "10:00" : zone === "Afternoon" ? "14:00" : "17:00" }))}
+                        >
+                          {zone}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="mt-2">
+                      <Input
+                        type="time"
+                        value={followUpData.dueTime}
+                        onChange={(e) => setFollowUpData(prev => ({ ...prev, dueTime: e.target.value }))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="taskReminder"
+                      checked={followUpData.reminder}
+                      onCheckedChange={(v) => setFollowUpData(prev => ({ ...prev, reminder: !!v }))}
+                    />
+                    <Label htmlFor="taskReminder" className="text-xs cursor-pointer">Set reminder (1 hour before)</Label>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
