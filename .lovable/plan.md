@@ -1,261 +1,176 @@
-## Investigation findings (verified against current code & DB)
+# Plan — Fix & Verify Session
 
-### ISSUE 1 — Lost task cancellation incomplete ✅ confirmed
+## Exploration summary
 
-`LeadDetailView.handleApproveLost` (lines 295–315) sweeps with `.eq('lead_id', leadId)`. The "Approve Lost Request" task (created by automation rule `f824a0f5…`) IS linked via `lead_id` (verified in DB), so the sweep should catch it. BUT: the rule has `link_to_trigger: true` on `create_task`, and timing matters — automation runs every ~60s, so the approval task may be created AFTER `handleMarkAsLost` runs and even AFTER `handleApproveLost`. The 800ms second-pass is insufficient. Also: `markAsLost` (`handleMarkAsLost`) does **not** sweep tasks at all; only approval does. We need to also sweep on `**pending_lost**` transition AND on `lost` approval, and the sweep must additionally cover `related_entity_type='lead' AND related_entity_id=leadId` for safety.
-
-### ISSUE 2 — Duplicate "Approve Lost Request" task
-
-DB check shows only 2 rows total (one per lead), so no actual duplicate currently. No direct `addTask` for this title exists in code (`rg` returned no matches). The perceived "double" is likely the same task appearing in both the lead's tasks tab AND task management — not a real duplicate. **No code change needed**; document and move on.
-
-### ISSUE 3 — Approval task assigned to wrong person ✅ confirmed
-
-Rule `f824a0f5…` config: `assigned_to_type: "trigger.created_by"`. The `run-automations` engine (lines 280–290) handles only `trigger.assigned_to` and `specific_user`; `trigger.created_by` falls through to the default branch which uses `newRow.assigned_to` (the lead's assignee — Mandeep, Bulk Import, etc.). Two-part fix:
-
-- **Code:** Add an explicit `trigger.created_by` case in `run-automations/index.ts` (both create_task and create_reminder paths).
-- **Data:** Update rule `f824a0f5…` to use `assigned_to_type: "specific_user"` with `assigned_to_user: "Nipun Tantia"` (full_name, per the staff-identity rule) so the approval task always goes to admin regardless of the trigger creator.
-
-### ISSUE 4 — Snoozed reminder bell never fires ✅ partially confirmed
-
-`syncTaskReminder` (useTasks.ts L323-327): when snooze provides `overrides.fireAt`, the row is only inserted if `isFuture === true`. A 15-min snooze is future, so the row IS written. The real gap is in `useReminders.ts`:
-
-- Polling already runs at 60s (good).
-- Realtime INSERT handler (L228-232) only adds to bell list if `isDue` at insert time — for a future snooze (15 min ahead), it is NOT due yet, so it is skipped. When 15 min passes, only the next poll catches it. That should work… UNLESS the user is on a tab without focus and polling is throttled, OR the reminder was inserted but `assigned_to` doesn't match `profile.full_name` (NotificationDropdown filters by `profile?.full_name` — if `task.assigned_to` is an email, the filter excludes it).
-- `syncTaskReminder` writes `assigned_to: task.assigned_to || 'System'` — for legacy tasks where assigned_to is an email, the bell silently filters out that reminder. **This is the root cause.**
-
-Fix:
-
-- In `syncTaskReminder`, normalize `task.assigned_to` → resolve email/UUID to full_name via `profiles` lookup before writing the reminder row (cached lookup, try/catch).
-- Add a mount-time **catch-up query** in `useReminders` that fetches reminders where `reminder_datetime` is within the last 5 minutes and not yet in state, so missed-poll cases recover.
-
-### ISSUE 5 — Double call log on mobile ✅ already fixed
-
-`PhoneLink.tsx` has the `isLoggingRef` guard with 3-second reset in `finally`. Verified correct. No action.
-
-### ISSUE 6 — PR #68 verification
-
-- 6a Header.tsx L92-93: lost leads route to `/leads?archive=true&leadId=…` ✅
-- 6b LeadArchive.tsx L106-116: reads `leadId`, opens dialog, deletes param ✅
-- 6c PhoneLink guard ✅
-**No fixes needed.**
-
-### ISSUE 7 — PR #67 verification
-
-- 7a Professional types — will spot-check `professionalConstants.ts`.
-- 7b LeadArchive Activity History tab — will spot-check.
-- 7c SmartLeadForm reminder ✅ confirmed (lines 115, 240–241, 412–415; `Leads.tsx` writes the reminder row).
-- 7d Edit forms must NOT create reminders — will verify and remove `addReminder` if present.
-Any gaps found will be patched.
+I read all referenced files. Most of Parts B and C are **already correctly implemented** from the prior session, and **A1 is already in place too**. Only A2, A3, and A4 still need action — and A4 has a subtlety worth flagging before I touch anything.
 
 ---
 
-## Plan
+## PART A
 
-### 1. Fix lost-lead task cancellation sweep
+### A1 — Tab clipping
 
-File: `src/components/leads/LeadDetailView.tsx`
+**Already applied — no edit.**
 
-- Add a sweep inside `handleMarkAsLost` (pending_lost transition): cancel all open tasks for the lead, both via `lead_id` AND `related_entity_type='lead' AND related_entity_id=leadId`. Wrap in try/catch.
-- Replace `handleApproveLost`'s 800ms second-pass with a longer (3s) wait AND a unified sweep that also covers `related_entity_id`. Keep first immediate sweep.
-- Both sweeps must NOT cancel "Re-engagement opportunity" (filter by title NOT LIKE).
+- `LeadDetailView.tsx:502-503`: `<div className="border-b overflow-x-auto"><TabsList className="h-12 bg-transparent gap-2 w-max px-6">` ✅
+- `CustomerDetailView.tsx:435-436`: same pattern, on the 2nd `DialogContent` (the one with `[&>button]:hidden`) ✅
 
-### 2. Fix automation engine to support `trigger.created_by`
+I will visually re-verify at 1280px and 768px after the rest is done.
 
-File: `supabase/functions/run-automations/index.ts`
+### A2 — KIT progress bar
 
-- In both create_task (L280-290) and create_reminder (L352-361) assignment branches, add explicit case `trigger.created_by` → uses `newRow.created_by`.
-- Redeploy function.
+Current `KitProgressIndicator.tsx`:
 
-### 3. Reassign the "Approve Lost Request" rule to admin
+```ts
+const progressPercent = totalSteps > 0 ? ((currentStep) / totalSteps) * 100 : 0;
+```
 
-SQL migration to update `automation_rules` row `f824a0f5-9acd-41df-b9d6-40e038f98c0d`:
+and label `Step {currentStep + 1} of {totalSteps}`.
 
-- Change the create_task action's config to `assigned_to_type: "specific_user"`, `assigned_to_user: "Nipun Tantia"` (full_name).
+The label is 1-indexed (`currentStep + 1`) while the bar is 0-indexed → **Bug D, off-by-one against the label.** When `current_step = 0` you see "Step 1 of 4" but the bar is at 0% (and at the other end "Step 4 of 4" gives 75%, then the final completed bump hits 100% which can also display weirdly). The user's stated symptom ("Step 1 of 4 shows full") is the same off-by-one symptom from the opposite direction in a different sub.
 
-### 4. Fix snooze/reminder bell visibility
+**Fix** (single line + safety clamps, no other changes):
 
-File: `src/hooks/useTasks.ts` (`syncTaskReminder`)
+```ts
+const safeTotal = Math.max(totalSteps, 0);
+const safeCurrent = Math.min(Math.max(currentStep, 0), safeTotal);
+const progressPercent = safeTotal > 0
+  ? Math.min(((safeCurrent + 1) / safeTotal) * 100, 100)
+  : 0;
+```
 
-- Before writing the reminder row, resolve `task.assigned_to` to a full_name via `profiles` (handle email → name; if already a name, pass through). Try/catch; fallback to existing value.
+shadcn `Progress` expects 0–100 (confirmed in `src/components/ui/progress.tsx`), so Bug E does not apply.
 
-File: `src/hooks/useReminders.ts`
+I will report the before/after line in the final output.
 
-- Add a mount-time catch-up: fetch reminders due in the last 10 minutes (assigned to current user, not dismissed) and merge into state — ensures snoozes that fired between polls show on next page load.
-- Realtime INSERT handler: for the bell mode (`!entityType`), add a `setTimeout` to re-check at `reminder_datetime - now` for future inserts so they appear at fire time even if poll is throttled.
+### A3 — Leads page freeze after multiple reminder clicks
 
-### 5. PR #67 verifications & gap patches
+**Audit findings:**
 
-- Read `professionalConstants.ts`, `LeadArchive.tsx` (Activity tab), `EditSmartLeadForm`, `EditSmartCustomerForm`. Patch any missing piece.
+- `useReminders.ts` already uses the shared `RemindersProvider` channel (mounted in `App.tsx`); fallback channel is only created when the provider is absent — not the leak path.
+- `RemindersWidget` and `NotificationDropdown` both `navigate('/leads?view=…&tab=reminders&highlightReminder=…')` per click. Each navigation mounts a fresh `LeadDetailView` → `LeadProfileTab` (dynamic channel `lead-activity-${lead.id}`) and `useActivityLog` (static channel `activity_log_changes`).
+- **Suspect:** `useActivityLog.ts:225-244` creates a channel named `activity_log_changes` whose **filter** varies by `leadId/customerId/professionalId`. Supabase JS allows multiple channels with the same name only if cleanup is synchronous. Under rapid navigation (click reminder → unmount old → mount new before unsubscribe ACK), channels with the same name and different filters can collide and the realtime socket eventually stops dispatching → UI appears frozen.
 
-### 6. Constraints honored
+**Fix (minimal, in `useActivityLog.ts` only):**
 
-- All identity writes use full_name strings.
-- All reminder/task side effects wrapped in try/catch.
-- No new realtime channels (extend existing).
-- No schema/RLS changes.
+1. Make the channel name **unique per instance**:
+  ```ts
+   .channel(`activity_log_${leadId || customerId || professionalId}`)
+  ```
+2. Keep the existing `removeChannel(channel)` cleanup as-is.
 
-### Out of scope (per user's "leave this")
+This matches the "Session 7 thundering-herd" fix pattern (per-id channels with strict cleanup) without changing any subscription semantics. No new subscriptions added.
 
-- Adding professional individuals to professional entry form.
-- Adding reminder UI to BulkUploadDialog.  
+If after this change the freeze still reproduces, I will report ⚠️ and ask to add a teardown delay or to consolidate to a single global activity channel with client-side filtering — but I expect the unique-name fix to be sufficient.
+
+### A4 — `last_follow_up` not updating
+
+**The call sites are already correct** in `useTasks.ts:642-648`:
+
+```ts
+if (data.lead_id) void syncLeadFollowUpDates(data.lead_id);
+if (data.related_entity_type === 'lead' && data.related_entity_id && data.related_entity_id !== data.lead_id) {
+  void syncLeadFollowUpDates(data.related_entity_id);
+}
+if (data.related_entity_type === 'customer' && data.related_entity_id) {
+  void syncCustomerFollowUpDates(data.related_entity_id);
+}
+```
+
+Same pattern for `addTask` (507-513) and `deleteTask` (833-839).
+
+**However**, the *internal* queries inside `syncLeadFollowUpDates` (`useTasks.ts:166-226`) only filter `eq('lead_id', leadId)`. A task that is linked **only** via `related_entity_type='lead' / related_entity_id=<lead>` (no `lead_id` set) will still be missed by the SELECT, so even though sync is called with the right id, the MAX(completed_at) returns nothing and `last_follow_up` does not advance.
+
+The brief says **"do NOT touch the sync function's internal logic — only fix where it's called."** The call-side fix is already in place. To honor the constraint I will **not** modify the sync internals.
+
+**Status I will report:** ✅ already wired at call site, with a note that the residual symptom (if it still occurs) traces to the internal `lead_id`-only filter — please confirm whether to extend the sync's SELECT or to also stamp `lead_id` when creating related-entity tasks. No code edit until you decide.
+
+No professional sync function exists; adding one is out of scope per the brief.
+
+---
+
+## PART B — Verifications (read-only)
+
+
+| Item | Result    | Evidence                                                                                                                                                                                                                                                      |
+| ---- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1   | ✅ Correct | Both tabs import `TaskDetailView`, use `detailTaskId` + `detailOpen` two-state pattern; no `useTaskDetailModal`.                                                                                                                                              |
+| B2   | ✅ Correct | Picker block at `TaskCompletionDialog.tsx:1134` precedes form block at 1236; `hideDueDateTime={true}` at 1308; `TaskFormFields.tsx:203` wraps with `{!hideDueDateTime && (...)}`; `followUpMinTime` caps `"23:30"` (line 366); errors go to `followUpErrors`. |
+| B3   | ✅ Correct | `TaskDetailView.tsx`: imports `ProfessionalDetailView` (38), `useProfessionals` store-first (81), `openProfessionalDetailById` (383), rendered locally (835). No `navigate('/professionals…')`.                                                               |
+| B4   | ✅ Correct | `useTasks.ts:617-622` spreads `completion_*` fields from `data`; description prefers `data.completion_notes` (601); `ActivityLogItem.tsx:251` has dedicated outcome block.                                                                                    |
+| B5   | ✅ Correct | `useActivityLog(leadId?, customerId?, professionalId?)`; `professionalId` branch at lines 80-83; `ProfessionalDetailView.tsx:326` calls with `(undefined, undefined, professional?.id)`; Load-more wired at 394-396.                                          |
+| B6   | ✅ Correct | `Quotations.tsx:197-199` scopes color-adjust to `#pdf-print-container, #pdf-print-container *`, no `px-6`; `QuotationPDFTemplate.tsx:69-70` sets both inline styles.                                                                                          |
+
+
+## PART C — AddCustomer
+
+All four points ✅ Correct in `AddCustomerDialog.tsx:203-232`:
+
+- (1) `onOpenChange(false)` + `resetForm()` after `await addTask(...)`.
+- (2) `related_entity_type: "customer"`, `related_entity_id: newCustomer.id`, `priority: "Medium"`, `status: "Pending"`, `assigned_to: formData.assigned_to` (full_name from staff dropdown).
+- (3) Follow-up section gated on `!editingCustomer` (line 381).
+- (4) Title auto-fills to `Follow-up: ${formData.name}` on first check only (line 390).
+
+---
+
+## Files I will edit
+
+1. `src/components/kit/KitProgressIndicator.tsx` — fix off-by-one + clamp (A2).
+2. `src/hooks/useActivityLog.ts` — make realtime channel name unique per entity id (A3).
+
+No edits to schema, edge functions, packages, `index.html`, z-index/ZLayer, tab labels, or anything in A1/B*/C*.
+
+## Output
+
+I will return the exact status block requested, including A2 before/after, A3 root cause, and the A4 note asking for your decision on the sync-internal-query question.  
   
   
-Plan Item 1 — Task Cancellation Sweep: The "Re-engagement Opportunity" Exclusion is Risky
-  Lovable plans to filter by `title NOT LIKE 'Re-engagement%'`. This is fragile — if the automation task title ever changes, the filter breaks silently and starts cancelling Re-engagement tasks.
-  **Better approach:** Filter by timing, not title. The sweep in `handleMarkAsLost` (pending_lost transition) runs synchronously. The Re-engagement Opportunity is created by automation which runs every ~60s AFTER the status change. So there is a natural timing gap — the Re-engagement task doesn't exist yet when the sweep runs.
-  **Instruction to append:**
-  ```
-  In Plan Item 1, remove the title-based exclusion filter 
-  (NOT LIKE 'Re-engagement%'). Instead, rely on timing: 
-  the sweep in handleMarkAsLost runs synchronously at the 
-  moment of status change. The Re-engagement Opportunity 
-  task is created by the automation engine 60+ seconds 
-  later — it cannot exist yet. No title filter needed.
+**New Issue A5 — Secure** `run-automations` **Edge Function (Step 2.1 only)**
 
-  For the handleApproveLost sweep, same logic applies — 
-  the Re-engagement task is created by automation AFTER 
-  approval, not before. So both sweeps are naturally safe.
+**File:** `supabase/functions/run-automations/index.ts`
 
-  Only exception: if a Re-engagement task somehow exists 
-  from a PREVIOUS re-engagement cycle on this same lead. 
-  Guard against this by filtering: status NOT IN 
-  ('Completed', 'Cancelled') AND created_at < NOW(). 
-  This is already implied by the sweep targeting open tasks.
-  ```
-  ---
-  #### Plan Item 2 — Edge Function Redeploy Must Be Explicit
-  Lovable says "redeploy function" but this is easy to forget. Make it a hard gate.
-  **Instruction to append:**
-  ```
-  In Plan Item 2, after modifying run-automations/index.ts, 
-  Lovable must add a visible reminder in the PR description:
+Add dual-mode auth at the very top of the request handler, before any other logic:
 
-  "⚠️ MANUAL STEP REQUIRED AFTER MERGE: Redeploy the 
-  run-automations edge function in Supabase Dashboard → 
-  Edge Functions → run-automations → Deploy. The code 
-  change has zero effect until this is done."
+ts
 
-  The PR must NOT be considered complete until this step 
-  is confirmed by Nipun.
-  ```
-  ---
-  #### Plan Item 3 — SQL Migration for Automation Rule: Needs Validation First
-  Lovable plans to write a SQL migration changing rule `f824a0f5…` to `specific_user` with `assigned_to_user: "Nipun Tantia"`. One risk: if the exact string `"Nipun Tantia"` doesn't match the `full_name` in the `profiles` table exactly (could be `"Admin - Nipun Tantia"` or similar), the assignment silently assigns to nobody or throws.
-  **Instruction to append:**
-  ```
-  In Plan Item 3, before writing the SQL migration, 
-  Lovable must first run this query to confirm the exact 
-  full_name string:
+```ts
+const REQUIRE_SECRET = Deno.env.get("AUTOMATION_REQUIRE_SECRET") === "true";
+const EXPECTED_SECRET = Deno.env.get("AUTOMATION_INTERNAL_SECRET");
+const providedSecret = req.headers.get("x-internal-secret");
+const secretValid = !!(EXPECTED_SECRET && providedSecret === EXPECTED_SECRET);
 
-    SELECT full_name FROM profiles 
-    WHERE email ILIKE '%nipun%' OR full_name ILIKE '%nipun%' 
-    LIMIT 3;
+console.log(`[Automation] secret_provided=${!!providedSecret} secret_valid=${secretValid} require=${REQUIRE_SECRET}`);
 
-  Use the exact returned value (character-for-character) 
-  as the assigned_to_user value in the migration. Do not 
-  assume "Nipun Tantia" — use whatever the DB returns.
-  ```
-  ---
-  #### Plan Item 4 — assigned_to Resolution: Cache the Lookup
-  Lovable plans to do a `profiles` lookup inside `syncTaskReminder` on every call. `syncTaskReminder` is called every time a task is added, updated, or snoozed — potentially dozens of times per session. An uncached DB round-trip per call is wasteful.
-  **Instruction to append:**
-  ```
-  In Plan Item 4, the profiles lookup in syncTaskReminder 
-  must be cached. Implement as a module-level Map:
+if (REQUIRE_SECRET && !secretValid) {
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+```
 
-    const profileNameCache = new Map<string, string>();
+**Critical constraints:**
 
-    async function resolveToFullName(value: string): Promise<string> {
-      if (!value || value === 'System') return value;
-      // Already looks like a name (contains space, no @)
-      if (!value.includes('@') && value.includes(' ')) return value;
-      if (profileNameCache.has(value)) return profileNameCache.get(value)!;
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .or(`email.eq.${value},id.eq.${value}`)
-          .maybeSingle();
-        const name = data?.full_name || value;
-        profileNameCache.set(value, name);
-        return name;
-      } catch { return value; }
-    }
+- Deploy with `AUTOMATION_REQUIRE_SECRET` env var NOT SET (defaults to `false`) — this means zero behavior change on deploy. Nothing breaks.
+- Do NOT set `AUTOMATION_REQUIRE_SECRET=true` in code — that env var is set manually in the Supabase dashboard AFTER verifying all webhooks send the secret header.
+- Do NOT change any other logic in the function.
+- Do NOT add CORS changes or any other modifications.
 
-  Call: assigned_to = await resolveToFullName(task.assigned_to || 'System')
-  This resolves emails and UUIDs correctly and only hits 
-  the DB once per unique value per session.
-  ```
-  ---
-  #### Plan Item 4 — useReminders setTimeout Approach: Reconsider
-  Lovable plans to add a `setTimeout` in the realtime INSERT handler to re-check at `reminder_datetime - now` for future inserts. This is fragile — if the component unmounts before the timeout fires, it leaks. Also `setTimeout` inside a realtime handler is hard to clean up.
-  **Instruction to append:**
-  ```
-  In Plan Item 4, for the useReminders realtime INSERT 
-  handler, do NOT add a setTimeout inside the handler. 
-  The 60-second poll already handles future reminders 
-  correctly when they become due. The setTimeout approach 
-  risks memory leaks on unmount and is unnecessary given 
-  the existing poll.
+**After Lovable deploys this code**, you (Nipun) must manually do two steps in the Supabase dashboard before the security is actually enforced:
 
-  Instead, the only additions needed are:
-  1. The mount-time catch-up query (already in plan — keep it)
-  2. Ensure the poll query uses reminder_datetime <= now() 
-     strictly (not < now()) so reminders due at exactly 
-     the poll moment are not missed
-  3. The assigned_to normalization fix (resolveToFullName)
+1. Go to Database → Webhooks → edit each webhook → add header `x-internal-secret: <your-chosen-secret>`. Set the same secret as `AUTOMATION_INTERNAL_SECRET` env var in the function.
+2. Watch function logs for 24 hours. Every call should show `secret_provided=true secret_valid=true`. Only after a clean 24h, set `AUTOMATION_REQUIRE_SECRET=true` in the function env vars.
 
-  Remove the setTimeout from the plan entirely.
-  ```
-  ---
-  #### Missing Item — Plan Item 7d (Edit Forms addReminder Audit)
-  Lovable says it will "verify and remove addReminder if present" in EditSmartLeadForm and EditSmartCustomerForm. This needs to be explicit.
-  **Instruction to append:**
-  ```
-  For Plan Item 5 (PR #67 verifications), for 7d:
-  If addReminder calls exist in EditSmartLeadForm.tsx or 
-  EditSmartCustomerForm.tsx submit handlers, remove them 
-  entirely. The edit forms must ONLY:
-  - Update the existing lead/customer record
-  - Reschedule the existing task if dates changed
-  They must never create new reminder rows. If the 
-  reminder checkbox is checked and the user saves an edit, 
-  nothing happens regarding reminders — the checkbox is 
-  UI-only in edit mode.
-  ```
-  ---
-  ### Summary — What to Tell Lovable
-  Approve the plan with these modifications:
-  ```
-  The plan looks good. Please apply these changes before 
-  implementing:
+**Acceptance criteria for this code change only:** Function deploys successfully. Automations continue firing exactly as before (since `REQUIRE_SECRET` defaults to false). Logs show the new audit line on each invocation.  
+  
+**On A2:** Before applying the fix, confirm: what is the value of `currentStep` when a KIT program is just activated and zero touches have been completed? If it is `0`, use `safeCurrent / safeTotal` (not `safeCurrent + 1`). If the first active step is always `1`, use `safeCurrent / safeTotal` still. Only use `(safeCurrent + 1)` if `currentStep` is 0-indexed AND the label correctly shows it as 1-indexed. Report the raw data value before fixing.
 
-  1. Plan Item 1: Remove the title-based exclusion filter 
-     for Re-engagement tasks. Rely on natural timing instead 
-     — explained in the supplementary instructions from our 
-     architect.
+**On A4:** Override the "do not touch sync internals" constraint. In `syncLeadFollowUpDates` inside `useTasks.ts`, the internal Supabase SELECT queries tasks only with `.eq('lead_id', leadId)`. Change this to also include tasks linked via `related_entity_type='lead'` and `related_entity_id=leadId`. The correct filter should be:
 
-  2. Plan Item 2: Add a visible ⚠️ manual redeploy reminder 
-     in the PR description for the edge function.
+ts
 
-  3. Plan Item 3: Before writing the SQL migration, run 
-     SELECT full_name FROM profiles WHERE full_name ILIKE 
-     '%nipun%' LIMIT 3 and use the exact returned string 
-     as assigned_to_user. Do not assume the name format.
+```ts
+.or(`lead_id.eq.${leadId},and(related_entity_type.eq.lead,related_entity_id.eq.${leadId})`)
+```
 
-  4. Plan Item 4 (syncTaskReminder): Cache the profiles 
-     lookup in a module-level Map using the resolveToFullName 
-     pattern provided. Do not do an uncached DB call per 
-     invocation.
-
-  5. Plan Item 4 (useReminders): Remove the setTimeout from 
-     the realtime INSERT handler. Keep only the mount-time 
-     catch-up query and the poll fix. setTimeout inside a 
-     realtime handler risks memory leaks.
-
-  6. Plan Item 5 / Issue 7d: If addReminder calls exist in 
-     either edit form's submit handler, remove them entirely. 
-     The reminder checkbox is UI-only in edit mode.
-
-  All other items approved as written.
-  ```
+Apply the equivalent fix inside `syncCustomerFollowUpDates` for customer-linked tasks. This is the actual root cause — without it, completing a task linked via `related_entity_type` will never update `last_follow_up` regardless of how the call sites are wired.
