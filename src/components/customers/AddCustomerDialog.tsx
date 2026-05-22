@@ -202,6 +202,8 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
 
       if (editingCustomer) {
         await updateCustomer(editingCustomer.id, data);
+        onOpenChange(false);
+        resetForm();
       } else {
         const newCustomer = await addCustomer(data);
         if (createFollowUp && newCustomer?.id && followUpData.title.trim()) {
@@ -225,10 +227,9 @@ export function AddCustomerDialog({ open, onOpenChange, editingCustomer }: AddCu
             console.warn("Follow-up task creation failed", e);
           }
         }
+        onOpenChange(false);
+        resetForm();
       }
-
-      onOpenChange(false);
-      resetForm();
     } finally {
       setIsSubmitting(false);
     }
