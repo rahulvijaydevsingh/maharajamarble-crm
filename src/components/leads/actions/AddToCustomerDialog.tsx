@@ -98,17 +98,21 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
     const phone = leadData.phone?.replace(/\D/g, '');
     if (!phone || phone.length < 10) { setDupCheckDone(true); return; }
 
-    supabase
-      .from('customers')
-      .select('id, name, phone')
-      .ilike('phone', `%${phone.slice(-10)}`)
-      .limit(1)
-      .single()
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('customers')
+          .select('id, name, phone')
+          .ilike('phone', `%${phone.slice(-10)}`)
+          .limit(1)
+          .single();
         if (data) setExistingCustomer(data);
+      } catch {
+        // non-blocking: if check fails, proceed normally
+      } finally {
         setDupCheckDone(true);
-      })
-      .catch(() => setDupCheckDone(true)); // non-blocking: if check fails, proceed normally
+      }
+    })();
   }, [open, leadData.phone]);
 
   const handleConfirmConversion = () => {

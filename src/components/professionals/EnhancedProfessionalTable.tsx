@@ -47,7 +47,7 @@ interface DateRange {
   to: Date | undefined;
 }
 
-type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | null;
+type SortField = "name" | "phone" | "status" | "professional_type" | "city" | "rating" | "created_at" | "tasks" | null;
 type SortDirection = "asc" | "desc" | null;
 
 interface EnhancedProfessionalTableProps {
@@ -1013,6 +1013,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         bulkMode={true}
         bulkLeadCount={selectedItems.length}
         onBulkTaskSubmit={handleBulkTaskSubmit}
+        onTaskCreate={() => {}}
       />
 
       {/* Export Dialog */}
