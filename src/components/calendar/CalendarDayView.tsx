@@ -59,29 +59,28 @@ export function CalendarDayView({
           </div>
         </div>
 
-        {/* All-day events */}
-        {allDayEvents.length > 0 && (
-          <div className="border-b p-3 bg-muted/20">
-            <div className="text-sm font-medium text-muted-foreground mb-2">
-              All Day Events
-            </div>
-            <div className="space-y-2">
-              {allDayEvents.map((event) => (
-                <CalendarEventCard
-                  key={event.id}
-                  event={event}
-                  variant="full"
-                  onClick={() => onEventClick(event)}
-                  onComplete={event.source === "task" ? () => onEventComplete?.(event) : undefined}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Time slots */}
+        {/* Events */}
         <ScrollArea className="flex-1 min-h-0">
           <div className="relative">
+            {allDayEvents.length > 0 && (
+              <div className="border-b p-3 bg-muted/20">
+                <div className="text-sm font-medium text-muted-foreground mb-2">
+                  All Day Events
+                </div>
+                <div className="space-y-2">
+                  {allDayEvents.map((event) => (
+                    <CalendarEventCard
+                      key={event.id}
+                      event={event}
+                      variant="full"
+                      onClick={() => onEventClick(event)}
+                      onComplete={event.source === "task" ? () => onEventComplete?.(event) : undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {HOURS.map((hour) => {
               const hourEvents = getEventsForHour(hour);
               const isBusinessHour = hour >= 9 && hour <= 18;
