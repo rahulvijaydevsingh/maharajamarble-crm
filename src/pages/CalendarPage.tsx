@@ -289,7 +289,7 @@ const CalendarPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col gap-4 h-full">
+      <div className="flex flex-col gap-4 h-full min-h-0">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
           <div>
@@ -309,8 +309,8 @@ const CalendarPage = () => {
         </div>
 
         {/* Main Calendar Card */}
-        <Card className="flex-1 flex flex-col overflow-hidden">
-          <CardHeader className="pb-2 border-b">
+        <Card className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <CardHeader className="shrink-0 pb-2 border-b">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               {/* Navigation */}
               <div className="flex items-center gap-2">
@@ -365,13 +365,13 @@ const CalendarPage = () => {
             <CalendarActiveFilters filters={filters} onFiltersChange={setFilters} />
           </CardHeader>
 
-          <CardContent className="flex-1 p-0 overflow-hidden">
+          <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
             ) : (
-              <div className="h-full">
+              <div className="h-full min-h-0">
                 {view === "month" && (
                   <CalendarMonthView
                     currentDate={currentDate}
