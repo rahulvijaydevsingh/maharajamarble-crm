@@ -28,7 +28,8 @@ SELECT
         "id": "c1",
         "triggerType": "field_change",
         "triggerConfig": {
-          "when": "record_created"
+          "when": "record_created",
+          "field": "id"
         }
       }
     ],
