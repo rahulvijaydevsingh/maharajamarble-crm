@@ -498,9 +498,9 @@ export function LeadDetailView({
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-            <div className="border-b overflow-x-auto">
-              <TabsList className="h-12 bg-transparent gap-2 w-max px-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-x-hidden">
+            <div className="border-b overflow-x-auto shrink-0">
+              <TabsList className="h-auto py-1 bg-transparent gap-2 w-max px-6">
                 <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
                   <User className="h-4 w-4" />
                   Profile
