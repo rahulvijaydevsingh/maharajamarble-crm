@@ -431,9 +431,9 @@ export function CustomerDetailView({
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-            <div className="border-b overflow-x-auto">
-              <TabsList className="h-auto min-h-[44px] items-stretch bg-transparent gap-2 w-max px-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-x-hidden">
+            <div className="border-b overflow-x-auto pb-1">
+              <TabsList className="h-auto bg-transparent gap-2 w-max px-6">
                 <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
                   <User className="h-4 w-4" />
                   Profile
