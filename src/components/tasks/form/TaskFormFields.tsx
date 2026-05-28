@@ -306,6 +306,33 @@ export function TaskFormFields({
         </>
       )}
 
+      {/* Reminder — moved above description for quick access */}
+      {!hideReminder && (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="reminder"
+              checked={formData.reminder}
+              onCheckedChange={(checked) => onFormDataChange("reminder", !!checked)}
+            />
+            <Label htmlFor="reminder" className="text-sm cursor-pointer">Enable Reminder</Label>
+          </div>
+          {formData.reminder && (
+            <Select value={formData.reminderTime} onValueChange={(v) => onFormDataChange("reminderTime", v)}>
+              <SelectTrigger className={cn("text-xs h-8 w-40", errors.reminderTime && "border-destructive")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[200]">
+                {REMINDER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {errors.reminderTime && <p className="text-sm text-destructive">{errors.reminderTime}</p>}
+        </div>
+      )}
+
       {/* Description */}
       <div className="space-y-2">
         <Label>Description</Label>
@@ -329,33 +356,6 @@ export function TaskFormFields({
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-6 pt-4">
-          {/* Reminder */}
-          {!hideReminder && (
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="reminder"
-                  checked={formData.reminder}
-                  onCheckedChange={(checked) => onFormDataChange("reminder", !!checked)}
-                />
-                <Label htmlFor="reminder" className="text-sm cursor-pointer">Enable Reminder</Label>
-              </div>
-              {formData.reminder && (
-                <Select value={formData.reminderTime} onValueChange={(v) => onFormDataChange("reminderTime", v)}>
-                  <SelectTrigger className={cn("text-xs h-8 w-40", errors.reminderTime && "border-destructive")}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-[200]">
-                    {REMINDER_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {errors.reminderTime && <p className="text-sm text-destructive">{errors.reminderTime}</p>}
-            </div>
-          )}
-
           {/* Subtasks */}
           <SubtasksSection
             subtasks={subtasks}
