@@ -336,7 +336,7 @@ async function executeAction(
             .from("tasks")
             .select("id")
             .eq("related_entity_id", entityId)
-            .eq("related_entity_type", entityType)
+            .eq("related_entity_type", singularEntityType)
             .eq("title", taskTitle)
             .not("status", "in", ["Completed", "Cancelled"])
             .maybeSingle();
