@@ -321,7 +321,13 @@ async function executeAction(
 
         // Link to trigger entity if configured
         if (config.link_to_trigger && entityId) {
-          taskData.related_entity_type = entityType;
+          // Normalize entity type to singular form expected by frontend queries
+          const singularEntityType =
+            entityType === "customers" ? "customer" :
+            entityType === "leads" ? "lead" :
+            entityType === "professionals" ? "professional" :
+            entityType;
+          taskData.related_entity_type = singularEntityType;
           taskData.related_entity_id = entityId;
           if (entityType === "leads") taskData.lead_id = entityId;
 
