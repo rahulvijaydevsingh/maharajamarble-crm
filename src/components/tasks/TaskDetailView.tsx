@@ -844,8 +844,8 @@ export function TaskDetailView({
         }}
         onEdit={(professional) => {
           setEditingProfessional(professional);
-          setProfessionalDetailOpen(false);
           setProfEditDialogOpen(true);
+          setProfessionalDetailOpen(false);
         }}
         onDelete={async (id) => {
           await deleteProfessional(id);
