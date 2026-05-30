@@ -41,6 +41,12 @@ const Professionals = () => {
       setInitialTab(tab || undefined);
       setDetailViewOpen(true);
       pendingViewId.current = null;
+      // Clean up all deep-link params from URL
+      const next = new URLSearchParams(searchParams);
+      next.delete('view');
+      next.delete('selected');
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
     }
   }, [searchParams, professionals]);
 
@@ -55,9 +61,11 @@ const Professionals = () => {
     setDetailViewOpen(open);
     if (!open) {
       setSelectedProfessional(null);
-      searchParams.delete("selected");
-      searchParams.delete("tab");
-      setSearchParams(searchParams);
+      const next = new URLSearchParams(searchParams);
+      next.delete('view');
+      next.delete('selected');
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
     }
   };
 

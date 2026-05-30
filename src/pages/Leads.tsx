@@ -166,6 +166,7 @@ const Leads = () => {
             formData.assignedTo;
           await addReminder({
             title: `Follow-up: ${formData.fullName || formData.primaryPhone}`,
+            description: `Lead: ${formData.fullName || formData.primaryPhone}`,
             reminder_datetime: reminderDatetime.toISOString(),
             entity_type: "lead",
             entity_id: newLead.id,
