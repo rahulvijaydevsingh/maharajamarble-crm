@@ -18,6 +18,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, CheckSquare, LayoutList, Kanban } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
 import { usePermissions } from "@/hooks/usePermissions";
+import { ProfessionalDetailView } from "@/components/professionals/ProfessionalDetailView";
+import { AddProfessionalDialog } from "@/components/professionals/AddProfessionalDialog";
+import { useProfessionals } from "@/hooks/useProfessionals";
 
 const Tasks = () => {
   const [searchParams] = useSearchParams();
@@ -27,6 +30,11 @@ const Tasks = () => {
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const { tasks, updateTask, addTask } = useTasks();
   const { canCreate } = usePermissions();
+
+  const [selectedProfessional, setSelectedProfessional] = useState<any>(null);
+  const [professionalDetailOpen, setProfessionalDetailOpen] = useState(false);
+  const [profEditDialogOpen, setProfEditDialogOpen] = useState(false);
+  const { professionals, deleteProfessional } = useProfessionals();
 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
@@ -70,6 +78,14 @@ const Tasks = () => {
   const handleRequestComplete = (task: any) => {
     setTaskToComplete(task);
     setCompleteDialogOpen(true);
+  };
+
+  const handleProfessionalClick = (id: string) => {
+    const found = professionals.find((p) => p.id === id) || null;
+    if (found) {
+      setSelectedProfessional(found);
+      setProfessionalDetailOpen(true);
+    }
   };
 
   return (
@@ -122,6 +138,7 @@ const Tasks = () => {
                 initialRelatedToType={relatedToType}
                 initialRelatedToId={relatedToId}
                 initialRelatedToName={relatedToName}
+                onProfessionalClick={handleProfessionalClick}
               />
             ) : (
               <TaskKanbanView 
@@ -158,6 +175,40 @@ const Tasks = () => {
           task={taskToComplete}
           updateTask={updateTask}
           addTask={addTask}
+        />
+
+        <ProfessionalDetailView
+          professional={selectedProfessional}
+          open={professionalDetailOpen}
+          onOpenChange={(o) => {
+            setProfessionalDetailOpen(o);
+            if (!o) setSelectedProfessional(null);
+          }}
+          onEdit={(professional) => {
+            setSelectedProfessional(professional);
+            setProfessionalDetailOpen(false);
+            // Deferred mount: prevents Radix hideOthers collision between
+            // ProfessionalDetailView and AddProfessionalDialog closing/opening
+            // in the same render tick, which leaves pointer-events:none stuck
+            // on body. 200ms matches DialogContent close animation duration.
+            setTimeout(() => {
+              setProfEditDialogOpen(true);
+            }, 200);
+          }}
+          onDelete={async (id) => {
+            await deleteProfessional(id);
+            setProfessionalDetailOpen(false);
+            setSelectedProfessional(null);
+          }}
+        />
+
+        <AddProfessionalDialog
+          open={profEditDialogOpen}
+          onOpenChange={(o) => {
+            setProfEditDialogOpen(o);
+            if (!o) setSelectedProfessional(null);
+          }}
+          editingProfessional={selectedProfessional}
         />
       </div>
     </DashboardLayout>

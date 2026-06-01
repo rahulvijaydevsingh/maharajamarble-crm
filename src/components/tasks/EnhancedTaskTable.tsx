@@ -146,6 +146,7 @@ interface TaskTableProps {
   initialRelatedToId?: string | null;
   initialRelatedToName?: string | null;
   onRequestCompleteTask?: (task: Task) => void;
+  onProfessionalClick?: (id: string) => void;
 }
 
 // Multi-select filter component matching leads page style
@@ -381,6 +382,7 @@ export function EnhancedTaskTable({
   initialRelatedToId,
   initialRelatedToName,
   onRequestCompleteTask,
+  onProfessionalClick,
 }: TaskTableProps) {
   const { tasks, loading, updateTask, deleteTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
@@ -1135,7 +1137,11 @@ export function EnhancedTaskTable({
                   setCustomerDetailOpen(true);
                 }
               } else if (task.related_entity_type === 'professional') {
-                navigate(`/professionals?view=${task.related_entity_id}`);
+                if (onProfessionalClick) {
+                  onProfessionalClick(task.related_entity_id);
+                } else {
+                  navigate(`/professionals?view=${task.related_entity_id}`);
+                }
               }
             }}
             className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
