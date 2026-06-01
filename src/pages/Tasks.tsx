@@ -21,6 +21,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { ProfessionalDetailView } from "@/components/professionals/ProfessionalDetailView";
 import { AddProfessionalDialog } from "@/components/professionals/AddProfessionalDialog";
 import { useProfessionals } from "@/hooks/useProfessionals";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Tasks = () => {
   const [searchParams] = useSearchParams();
@@ -35,6 +37,7 @@ const Tasks = () => {
   const [professionalDetailOpen, setProfessionalDetailOpen] = useState(false);
   const [profEditDialogOpen, setProfEditDialogOpen] = useState(false);
   const { professionals, deleteProfessional } = useProfessionals();
+  const { toast } = useToast();
 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
@@ -80,11 +83,41 @@ const Tasks = () => {
     setCompleteDialogOpen(true);
   };
 
-  const handleProfessionalClick = (id: string) => {
+  const handleProfessionalClick = async (id: string) => {
     const found = professionals.find((p) => p.id === id) || null;
     if (found) {
       setSelectedProfessional(found);
       setProfessionalDetailOpen(true);
+      return;
+    }
+
+    // Gemini Fallback: Fetch directly from Supabase if local state cache misses
+    try {
+      const { data, error } = await supabase
+        .from("professionals")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setSelectedProfessional(data);
+        setProfessionalDetailOpen(true);
+      } else {
+        toast({
+          title: "Professional not found",
+          description: "Could not locate the requested professional profile details.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      console.error("Error fetching professional fallback details:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to load professional details from server.",
+        variant: "destructive",
+      });
     }
   };
 

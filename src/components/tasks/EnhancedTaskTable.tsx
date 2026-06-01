@@ -1136,7 +1136,7 @@ export function EnhancedTaskTable({
                   setSelectedCustomer(customerData);
                   setCustomerDetailOpen(true);
                 }
-              } else if (task.related_entity_type === 'professional') {
+              } else if (task.related_entity_type === 'professional' && task.related_entity_id) {
                 if (onProfessionalClick) {
                   onProfessionalClick(task.related_entity_id);
                 } else {
