@@ -36,6 +36,7 @@ import { TaskActivityTimeline } from "@/components/tasks/TaskActivityTimeline";
 import { LeadDetailView } from "@/components/leads/LeadDetailView";
 import { CustomerDetailView } from "@/components/customers/CustomerDetailView";
 import { ProfessionalDetailView } from "@/components/professionals/ProfessionalDetailView";
+import { AddProfessionalDialog } from "@/components/professionals/AddProfessionalDialog";
 import { useProfessionals, Professional } from "@/hooks/useProfessionals";
 import { TaskSubtasksCard } from "@/components/tasks/TaskSubtasksCard";
 import { useZLayer } from '@/contexts/ZLayerContext';
@@ -78,7 +79,7 @@ export function TaskDetailView({
   const { tasks, updateTask, addTask, deleteTask, snoozeTask } = useTasks();
   const { leads } = useLeads();
   const { customers } = useCustomers();
-  const { professionals } = useProfessionals();
+  const { professionals, deleteProfessional } = useProfessionals();
   const { staffMembers } = useActiveStaff();
   const { zIndex } = useZLayer(
     taskId ? `task-${taskId}` : '',
@@ -141,6 +142,8 @@ export function TaskDetailView({
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+  const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
+  const [profEditDialogOpen, setProfEditDialogOpen] = useState(false);
 
   // For chain navigation from timeline
   const [chainTaskId, setChainTaskId] = useState<string | null>(null);
@@ -839,6 +842,25 @@ export function TaskDetailView({
           setProfessionalDetailOpen(o);
           if (!o) setSelectedProfessional(null);
         }}
+        onEdit={(professional) => {
+          setEditingProfessional(professional);
+          setProfessionalDetailOpen(false);
+          setTimeout(() => setProfEditDialogOpen(true), 200);
+        }}
+        onDelete={async (id) => {
+          await deleteProfessional(id);
+          setProfessionalDetailOpen(false);
+          setSelectedProfessional(null);
+        }}
+      />
+
+      <AddProfessionalDialog
+        open={profEditDialogOpen}
+        onOpenChange={(o) => {
+          setProfEditDialogOpen(o);
+          if (!o) setEditingProfessional(null);
+        }}
+        editingProfessional={editingProfessional}
       />
 
       {/* Chain navigation - open another task */}

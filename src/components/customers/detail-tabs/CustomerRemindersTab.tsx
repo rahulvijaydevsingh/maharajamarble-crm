@@ -93,7 +93,7 @@ export function CustomerRemindersTab({ customer, onOpenAddReminder }: CustomerRe
     try {
       const result = await addReminder({
         title: data.title,
-        description: data.description,
+        description: data.description || `Customer: ${customer.name || 'Customer'}`,
         reminder_datetime: data.reminder_datetime,
         is_recurring: data.is_recurring,
         recurrence_pattern: data.recurrence_pattern as "daily" | "weekly" | "monthly" | "yearly" | null,

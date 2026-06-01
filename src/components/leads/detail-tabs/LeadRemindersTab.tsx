@@ -114,7 +114,7 @@ export function LeadRemindersTab({ lead, highlightReminderId, onOpenAddReminder 
     try {
       const result = await addReminder({
         title: data.title,
-        description: data.description,
+        description: data.description || `Lead: ${lead.name || 'Lead'}`,
         reminder_datetime: data.reminder_datetime,
         is_recurring: data.is_recurring,
         recurrence_pattern: data.recurrence_pattern as "daily" | "weekly" | "monthly" | "yearly" | null,
