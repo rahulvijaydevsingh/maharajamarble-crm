@@ -398,7 +398,8 @@ export function EnhancedTaskTable({
     resetToDefaults 
   } = useTablePreferences("tasks");
   const { toast } = useToast();
-  const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
+  const { canEdit, canDelete, canBulkAction, hasPermission, role } = usePermissions();
+  const isAdmin = role === "admin" || role === "super_admin";
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
 
@@ -751,7 +752,7 @@ export function EnhancedTaskTable({
   const handleBulkAction = async () => {
     if (selectedTasks.length === 0) return;
 
-    if (bulkActionType === "complete") {
+    if (bulkActionType === "complete" && !isAdmin) {
       toast({
         title: "Bulk complete not allowed",
         description: "Tasks must be completed one-by-one to capture outcome, next action, and notes.",
@@ -761,29 +762,20 @@ export function EnhancedTaskTable({
     }
 
     try {
-      for (const taskId of selectedTasks) {
-        if (bulkActionType === "status") {
-          await updateTask(taskId, { status: bulkActionValue });
-        } else if (bulkActionType === "priority") {
-          await updateTask(taskId, { priority: bulkActionValue });
-        } else if (bulkActionType === "assigned_to") {
-          await updateTask(taskId, { assigned_to: bulkActionValue });
-        } else if (bulkActionType === "type") {
-          await updateTask(taskId, { type: bulkActionValue });
-        } else if (bulkActionType === "reschedule" && bulkRescheduleDate) {
-          await updateTask(taskId, { due_date: format(bulkRescheduleDate, 'yyyy-MM-dd') });
-        } else if (bulkActionType === "complete") {
-          await updateTask(taskId, { status: "Completed" });
-        } else if (bulkActionType === "incomplete") {
-          await updateTask(taskId, { status: "Pending", completed_at: null });
-        } else if (bulkActionType === "star") {
-          await updateTask(taskId, { is_starred: true });
-        } else if (bulkActionType === "unstar") {
-          await updateTask(taskId, { is_starred: false });
-        } else if (bulkActionType === "delete") {
-          await deleteTask(taskId);
-        }
-      }
+      const nowIso = new Date().toISOString();
+      await Promise.all(selectedTasks.map((taskId) => {
+        if (bulkActionType === "status") return updateTask(taskId, { status: bulkActionValue });
+        if (bulkActionType === "priority") return updateTask(taskId, { priority: bulkActionValue });
+        if (bulkActionType === "assigned_to") return updateTask(taskId, { assigned_to: bulkActionValue });
+        if (bulkActionType === "type") return updateTask(taskId, { type: bulkActionValue });
+        if (bulkActionType === "reschedule" && bulkRescheduleDate) return updateTask(taskId, { due_date: format(bulkRescheduleDate, 'yyyy-MM-dd') });
+        if (bulkActionType === "complete") return updateTask(taskId, { status: "Completed", completed_at: nowIso });
+        if (bulkActionType === "incomplete") return updateTask(taskId, { status: "Pending", completed_at: null });
+        if (bulkActionType === "star") return updateTask(taskId, { is_starred: true });
+        if (bulkActionType === "unstar") return updateTask(taskId, { is_starred: false });
+        if (bulkActionType === "delete") return deleteTask(taskId);
+        return Promise.resolve();
+      }));
       const actionLabel = bulkActionType === "delete" ? "Deleted" : 
                           bulkActionType === "complete" ? "Completed" :
                           bulkActionType === "star" ? "Starred" :
@@ -815,7 +807,7 @@ export function EnhancedTaskTable({
   const handleBulkActionImmediate = async (type: string) => {
     if (selectedTasks.length === 0) return;
 
-    if (type === "complete") {
+    if (type === "complete" && !isAdmin) {
       toast({
         title: "Bulk complete not allowed",
         description: "Tasks must be completed one-by-one to capture outcome, next action, and notes.",
@@ -824,17 +816,14 @@ export function EnhancedTaskTable({
       return;
     }
     try {
-      for (const taskId of selectedTasks) {
-        if (type === "complete") {
-          await updateTask(taskId, { status: "Completed" });
-        } else if (type === "incomplete") {
-          await updateTask(taskId, { status: "Pending", completed_at: null });
-        } else if (type === "star") {
-          await updateTask(taskId, { is_starred: true });
-        } else if (type === "unstar") {
-          await updateTask(taskId, { is_starred: false });
-        }
-      }
+      const nowIso = new Date().toISOString();
+      await Promise.all(selectedTasks.map((taskId) => {
+        if (type === "complete") return updateTask(taskId, { status: "Completed", completed_at: nowIso });
+        if (type === "incomplete") return updateTask(taskId, { status: "Pending", completed_at: null });
+        if (type === "star") return updateTask(taskId, { is_starred: true });
+        if (type === "unstar") return updateTask(taskId, { is_starred: false });
+        return Promise.resolve();
+      }));
       const actionLabel = type === "complete" ? "Completed" :
                           type === "incomplete" ? "Reopened" :
                           type === "star" ? "Starred" : "Unstarred";
