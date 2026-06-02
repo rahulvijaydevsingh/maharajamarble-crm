@@ -25,9 +25,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link2, Users, Search, X, Phone, Mail, Building2, Loader2, CheckCircle, AlertCircle, PlusCircle } from "lucide-react";
+import { Link2, Users, Search, X, Phone, Mail, Building2, Loader2, PlusCircle, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LeadSource, ProfessionalRef } from "@/types/lead";
 import { LEAD_SOURCES as FALLBACK_LEAD_SOURCES } from "@/constants/leadConstants";
@@ -35,7 +41,6 @@ import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { useProfessionals } from "@/hooks/useProfessionals";
-import { supabase } from "@/integrations/supabase/client";
 
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
@@ -60,16 +65,28 @@ export function SourceRelationshipSection({
   const [searchQuery, setSearchQuery] = useState("");
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
-  const { professionals, loading: profLoading } = useProfessionals();
-  
-  // Inline professional phone check state
-  const [phoneCheckInput, setPhoneCheckInput] = useState("");
-  const [phoneCheckLoading, setPhoneCheckLoading] = useState(false);
-  const [phoneCheckResult, setPhoneCheckResult] = useState<{
-    status: "existing" | "new_added" | "error";
-    professional?: any;
-    message?: string;
-  } | null>(null);
+  const { professionals, addProfessional, loading: profLoading } = useProfessionals();
+
+  // Inline Quick-Add state
+  const [showInlineQuickAdd, setShowInlineQuickAdd] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [quickAddPhone, setQuickAddPhone] = useState("");
+  const [quickAddType, setQuickAddType] = useState("");
+  const [quickAddFirmName, setQuickAddFirmName] = useState("");
+  const [quickAddEmail, setQuickAddEmail] = useState("");
+  const [quickAddCity, setQuickAddCity] = useState("");
+  const [quickAddServiceCategory, setQuickAddServiceCategory] = useState("");
+  const [quickAddStatus, setQuickAddStatus] = useState("");
+  const [quickAddPriority, setQuickAddPriority] = useState("");
+  const [quickAddAdvancedOpen, setQuickAddAdvancedOpen] = useState(false);
+  const [quickAddLoading, setQuickAddLoading] = useState(false);
+
+  // Dynamic option lists from Control Panel
+  const professionalTypeOptions = useMemo(() => getFieldOptions("professionals", "professional_type"), [getFieldOptions]);
+  const professionalCityOptions = useMemo(() => getFieldOptions("professionals", "city"), [getFieldOptions]);
+  const professionalServiceCategoryOptions = useMemo(() => getFieldOptions("professionals", "service_category"), [getFieldOptions]);
+  const professionalStatusOptions = useMemo(() => getFieldOptions("professionals", "professional_status"), [getFieldOptions]);
+  const professionalPriorityOptions = useMemo(() => getFieldOptions("professionals", "priority"), [getFieldOptions]);
 
   // Map DB professionals to the format used by the UI
   const mappedProfessionals = useMemo(() => {
@@ -103,8 +120,8 @@ export function SourceRelationshipSection({
     if (!searchQuery) return mappedProfessionals;
     const query = searchQuery.toLowerCase();
     return mappedProfessionals.filter(
-      prof => 
-        prof.name.toLowerCase().includes(query) || 
+      prof =>
+        prof.name.toLowerCase().includes(query) ||
         prof.firmName.toLowerCase().includes(query) ||
         prof.phone?.includes(query) ||
         prof.email?.toLowerCase().includes(query) ||
@@ -112,16 +129,12 @@ export function SourceRelationshipSection({
     );
   }, [searchQuery, mappedProfessionals]);
 
-  const getProfessionalTypeLabel = (type: string) => {
-    switch (type) {
-      case "architect": return "Architect";
-      case "builder": return "Builder";
-      case "contractor": return "Contractor";
-      case "interior_designer": return "Interior Designer";
-      default: return type;
-    }
-  };
+  // Dynamic label lookup against Control Panel options
+  const getProfessionalTypeLabel = useCallback((type: string) => {
+    return professionalTypeOptions.find(o => o.value === type)?.label || type;
+  }, [professionalTypeOptions]);
 
+  // Cosmetic badge color mapping (preserved Tailwind colors)
   const getProfessionalTypeBadgeColor = (type: string) => {
     switch (type) {
       case "architect": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
@@ -131,37 +144,46 @@ export function SourceRelationshipSection({
       default: return "bg-gray-100 text-gray-800";
     }
   };
-  // Inline professional phone check
-  const handlePhoneCheck = useCallback(async () => {
-    const phone = phoneCheckInput.replace(/[\s\-()]/g, "");
-    if (!phone || phone.length < 7) return;
-    
-    setPhoneCheckLoading(true);
-    setPhoneCheckResult(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("check-professional", {
-        body: { phone, name: "", lead_id: null },
-      });
-      if (error) throw error;
-      setPhoneCheckResult(data);
-    } catch (err) {
-      setPhoneCheckResult({ status: "error", message: "Could not check professional. You can still proceed." });
-    } finally {
-      setPhoneCheckLoading(false);
-    }
-  }, [phoneCheckInput]);
 
-  const handleAcceptProfessional = (prof: any) => {
-    onReferredByChange({
-      id: prof.id,
-      name: prof.name,
-      firmName: prof.firm_name || "",
-      type: (prof.professional_type || "contractor") as "architect" | "builder" | "contractor" | "interior_designer",
-      phone: prof.phone,
-      email: prof.email,
-    });
-    setPhoneCheckResult(null);
-    setPhoneCheckInput("");
+  const resetQuickAdd = () => {
+    setShowInlineQuickAdd(false);
+    setQuickAddName(""); setQuickAddPhone(""); setQuickAddType("");
+    setQuickAddFirmName(""); setQuickAddEmail(""); setQuickAddCity("");
+    setQuickAddServiceCategory(""); setQuickAddStatus("");
+    setQuickAddPriority(""); setQuickAddAdvancedOpen(false);
+  };
+
+  const handleQuickAddSubmit = async () => {
+    if (!quickAddName.trim() || !quickAddPhone.trim() || !quickAddType) return;
+    setQuickAddLoading(true);
+    try {
+      const newProf: any = await addProfessional({
+        name: quickAddName.trim(),
+        phone: quickAddPhone.trim(),
+        professional_type: quickAddType,
+        firm_name: quickAddFirmName.trim() || null,
+        email: quickAddEmail.trim() || null,
+        city: quickAddCity || null,
+        service_category: quickAddServiceCategory || null,
+        status: quickAddStatus || "active",
+        priority: quickAddPriority ? Number(quickAddPriority) : null,
+      } as any);
+      if (newProf) {
+        onReferredByChange({
+          id: newProf.id,
+          name: newProf.name,
+          firmName: newProf.firm_name || "",
+          type: (newProf.professional_type || "contractor") as any,
+          phone: newProf.phone || undefined,
+          email: newProf.email || undefined,
+        });
+      }
+      resetQuickAdd();
+    } catch (err) {
+      // Errors/toasts gracefully handled by useProfessionals
+    } finally {
+      setQuickAddLoading(false);
+    }
   };
 
   return (
@@ -177,8 +199,8 @@ export function SourceRelationshipSection({
           {/* Lead Source */}
           <div className="space-y-2">
             <Label htmlFor="leadSource">Lead Source *</Label>
-            <Select 
-              value={leadSource} 
+            <Select
+              value={leadSource}
               onValueChange={(value) => onSourceChange(value as LeadSource)}
             >
               <SelectTrigger className={validationErrors.leadSource ? 'border-destructive' : ''}>
@@ -218,7 +240,6 @@ export function SourceRelationshipSection({
                     {idx < staffGroups.length - 1 && <SelectSeparator />}
                   </SelectGroup>
                 ))}
-                {/* Show current assigned_to if not in staff list */}
                 {assignedTo && !staffMembers.find(m => m.id === assignedTo) && (
                   <SelectItem key={assignedTo} value={assignedTo}>
                     Unassigned - {assignedTo}
@@ -240,7 +261,7 @@ export function SourceRelationshipSection({
               Referred By {referralRequired && "*"}
               {!referralRequired && <span className="text-muted-foreground text-xs">(Optional)</span>}
             </Label>
-            
+
             {referredBy ? (
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                 <div className="flex-1">
@@ -281,127 +302,256 @@ export function SourceRelationshipSection({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[450px] p-0" align="start">
-                  <Command>
-                    <CommandInput 
-                      placeholder="Search by name, phone, firm, designation, email..." 
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search by name, phone, firm, designation, email..."
                       value={searchQuery}
                       onValueChange={setSearchQuery}
                     />
                     <CommandList>
-                      <CommandEmpty>{profLoading ? "Loading professionals..." : "No professional found."}</CommandEmpty>
-                      <CommandGroup heading="Professionals">
-                        {filteredProfessionals.map((prof) => (
+                      {filteredProfessionals.length === 0 && !searchQuery.trim() && (
+                        <CommandEmpty>{profLoading ? "Loading professionals..." : "No professional found."}</CommandEmpty>
+                      )}
+                      {filteredProfessionals.length > 0 && (
+                        <CommandGroup heading="Professionals">
+                          {filteredProfessionals.map((prof) => (
+                            <CommandItem
+                              key={prof.id}
+                              value={`${prof.id}-${prof.name}-${prof.phone}-${prof.firmName}`}
+                              onSelect={() => {
+                                onReferredByChange({
+                                  id: prof.id,
+                                  name: prof.name,
+                                  firmName: prof.firmName,
+                                  type: prof.type as "architect" | "builder" | "contractor" | "interior_designer",
+                                  phone: prof.phone,
+                                  email: prof.email,
+                                });
+                                setProfessionalSearchOpen(false);
+                                setSearchQuery("");
+                              }}
+                              className="flex flex-col items-start gap-1 py-3"
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <div>
+                                  <p className="font-medium">{prof.name}</p>
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Building2 className="h-3 w-3" />
+                                      {prof.firmName}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                                    {prof.phone && (
+                                      <span className="flex items-center gap-1">
+                                        <Phone className="h-3 w-3" />
+                                        {prof.phone}
+                                      </span>
+                                    )}
+                                    {prof.email && (
+                                      <span className="flex items-center gap-1">
+                                        <Mail className="h-3 w-3" />
+                                        {prof.email}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Badge className={cn("ml-2 shrink-0", getProfessionalTypeBadgeColor(prof.type))}>
+                                  {getProfessionalTypeLabel(prof.type)}
+                                </Badge>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                      {searchQuery.trim() && (
+                        <CommandGroup>
                           <CommandItem
-                            key={prof.id}
-                            value={`${prof.id}-${prof.name}-${prof.phone}-${prof.firmName}`}
+                            value="__quick_add_new_professional__"
                             onSelect={() => {
-                              onReferredByChange({
-                                id: prof.id,
-                                name: prof.name,
-                                firmName: prof.firmName,
-                                type: prof.type as "architect" | "builder" | "contractor" | "interior_designer",
-                                phone: prof.phone,
-                                email: prof.email,
-                              });
+                              setQuickAddName(searchQuery.trim());
+                              setShowInlineQuickAdd(true);
                               setProfessionalSearchOpen(false);
                               setSearchQuery("");
                             }}
-                            className="flex flex-col items-start gap-1 py-3"
+                            className="flex items-center gap-2 text-primary font-medium py-3 px-3 border-t cursor-pointer"
                           >
-                            <div className="flex items-center justify-between w-full">
-                              <div>
-                                <p className="font-medium">{prof.name}</p>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Building2 className="h-3 w-3" />
-                                    {prof.firmName}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                                  {prof.phone && (
-                                    <span className="flex items-center gap-1">
-                                      <Phone className="h-3 w-3" />
-                                      {prof.phone}
-                                    </span>
-                                  )}
-                                  {prof.email && (
-                                    <span className="flex items-center gap-1">
-                                      <Mail className="h-3 w-3" />
-                                      {prof.email}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <Badge className={cn("ml-2 shrink-0", getProfessionalTypeBadgeColor(prof.type))}>
-                                {getProfessionalTypeLabel(prof.type)}
-                              </Badge>
-                            </div>
+                            <PlusCircle className="h-4 w-4" />
+                            Quick-Add "{searchQuery.trim()}" as New Professional
                           </CommandItem>
-                        ))}
-                      </CommandGroup>
+                        </CommandGroup>
+                      )}
                     </CommandList>
                   </Command>
                 </PopoverContent>
               </Popover>
             )}
 
-            {/* Inline Phone Check */}
-            {!referredBy && (
-              <div className="mt-3 space-y-2">
-                <Label className="text-xs text-muted-foreground">Or check by phone number</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter professional's phone..."
-                    value={phoneCheckInput}
-                    onChange={(e) => { setPhoneCheckInput(e.target.value); setPhoneCheckResult(null); }}
-                    className="flex-1"
-                  />
+            {/* Inline Quick-Add Expansion Panel */}
+            {showInlineQuickAdd && !referredBy && (
+              <div className="mt-3 rounded-lg border bg-muted/30 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-sm">Quick-Add New Professional</span>
+                  </div>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={handlePhoneCheck}
-                    disabled={phoneCheckLoading || phoneCheckInput.replace(/[\s\-()]/g, "").length < 7}
+                    onClick={resetQuickAdd}
+                    className="h-7 text-xs text-muted-foreground"
                   >
-                    {phoneCheckLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    Cancel
                   </Button>
                 </div>
 
-                {phoneCheckResult && phoneCheckResult.status === "existing" && (
-                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
-                    <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">Professional found: {phoneCheckResult.professional.name}</p>
-                      <p className="text-xs text-muted-foreground">{phoneCheckResult.professional.firm_name || phoneCheckResult.professional.professional_type}</p>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => handleAcceptProfessional(phoneCheckResult.professional)}>
-                      Select
-                    </Button>
+                {/* Mandatory triad */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Name *</Label>
+                    <Input
+                      value={quickAddName}
+                      onChange={(e) => setQuickAddName(e.target.value)}
+                      placeholder="Professional name"
+                    />
                   </div>
-                )}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Phone *</Label>
+                    <Input
+                      value={quickAddPhone}
+                      onChange={(e) => setQuickAddPhone(e.target.value)}
+                      placeholder="Phone number"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Category / Type *</Label>
+                    <Select value={quickAddType} onValueChange={setQuickAddType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {professionalTypeOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-                {phoneCheckResult && phoneCheckResult.status === "new_added" && (
-                  <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <PlusCircle className="h-4 w-4 text-blue-600 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">New professional added (pending verification)</p>
-                      <p className="text-xs text-muted-foreground">{phoneCheckResult.professional.name} — Admin notified</p>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => handleAcceptProfessional(phoneCheckResult.professional)}>
-                      Select
-                    </Button>
-                  </div>
-                )}
+                {/* Advanced options */}
+                <Accordion
+                  type="single"
+                  collapsible
+                  value={quickAddAdvancedOpen ? "advanced" : ""}
+                  onValueChange={(v) => setQuickAddAdvancedOpen(v === "advanced")}
+                >
+                  <AccordionItem value="advanced" className="border-b-0">
+                    <AccordionTrigger className="text-xs py-2 hover:no-underline">
+                      Advanced Options
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Firm Name</Label>
+                          <Input
+                            value={quickAddFirmName}
+                            onChange={(e) => setQuickAddFirmName(e.target.value)}
+                            placeholder="Company / firm name"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Email</Label>
+                          <Input
+                            type="email"
+                            value={quickAddEmail}
+                            onChange={(e) => setQuickAddEmail(e.target.value)}
+                            placeholder="email@example.com"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">City</Label>
+                          <Select value={quickAddCity} onValueChange={setQuickAddCity}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select city" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {professionalCityOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Service Category</Label>
+                          <Select value={quickAddServiceCategory} onValueChange={setQuickAddServiceCategory}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {professionalServiceCategoryOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Status</Label>
+                          <Select value={quickAddStatus} onValueChange={setQuickAddStatus}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {professionalStatusOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Priority</Label>
+                          <Select value={quickAddPriority} onValueChange={setQuickAddPriority}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select priority" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {professionalPriorityOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
 
-                {phoneCheckResult && phoneCheckResult.status === "error" && (
-                  <div className="flex items-center gap-2 p-2 text-sm text-amber-700 dark:text-amber-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>{phoneCheckResult.message}</span>
-                  </div>
-                )}
+                <Button
+                  type="button"
+                  onClick={handleQuickAddSubmit}
+                  disabled={
+                    quickAddLoading ||
+                    !quickAddName.trim() ||
+                    !quickAddPhone.trim() ||
+                    !quickAddType
+                  }
+                  className="w-full"
+                >
+                  {quickAddLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle className="h-4 w-4 mr-2" />
+                      Add & Select Professional
+                    </>
+                  )}
+                </Button>
               </div>
             )}
-            
+
             {validationErrors.referredBy && (
               <p className="text-sm text-destructive">{validationErrors.referredBy}</p>
             )}
