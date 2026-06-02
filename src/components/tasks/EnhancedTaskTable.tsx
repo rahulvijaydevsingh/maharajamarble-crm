@@ -398,7 +398,8 @@ export function EnhancedTaskTable({
     resetToDefaults 
   } = useTablePreferences("tasks");
   const { toast } = useToast();
-  const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
+  const { canEdit, canDelete, canBulkAction, hasPermission, role } = usePermissions();
+  const isAdmin = role === "admin" || role === "super_admin";
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
 
