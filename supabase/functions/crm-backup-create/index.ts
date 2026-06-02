@@ -50,8 +50,8 @@ async function fetchAllRows(admin: any, table: string) {
 
 async function discoverAllTables(admin: any): Promise<string[]> {
   const { data, error } = await admin.rpc("list_public_tables");
-  if (error) {
-    console.warn("discoverAllTables fallback:", error.message);
+  if (error || !data) {
+    if (error) console.warn("discoverAllTables fallback:", error.message);
     return [];
   }
   return (data as Array<{ table_name: string }>)
