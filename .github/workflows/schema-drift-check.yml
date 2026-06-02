@@ -24,11 +24,10 @@ jobs:
       - name: Check for schema drift
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          supabase db diff \
-            --project-ref ehuxwzbdnpyelmtckoac \
-            --schema public \
-            --file /tmp/schema_diff.sql
+          supabase link --project-ref ehuxwzbdnpyelmtckoac -p "$SUPABASE_DB_PASSWORD"
+          supabase db diff --schema public > /tmp/schema_diff.sql
 
           if [ -s /tmp/schema_diff.sql ]; then
             echo ""
