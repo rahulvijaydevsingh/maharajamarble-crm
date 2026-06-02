@@ -807,7 +807,7 @@ export function EnhancedTaskTable({
   const handleBulkActionImmediate = async (type: string) => {
     if (selectedTasks.length === 0) return;
 
-    if (type === "complete") {
+    if (type === "complete" && !isAdmin) {
       toast({
         title: "Bulk complete not allowed",
         description: "Tasks must be completed one-by-one to capture outcome, next action, and notes.",
@@ -816,17 +816,14 @@ export function EnhancedTaskTable({
       return;
     }
     try {
-      for (const taskId of selectedTasks) {
-        if (type === "complete") {
-          await updateTask(taskId, { status: "Completed" });
-        } else if (type === "incomplete") {
-          await updateTask(taskId, { status: "Pending", completed_at: null });
-        } else if (type === "star") {
-          await updateTask(taskId, { is_starred: true });
-        } else if (type === "unstar") {
-          await updateTask(taskId, { is_starred: false });
-        }
-      }
+      const nowIso = new Date().toISOString();
+      await Promise.all(selectedTasks.map((taskId) => {
+        if (type === "complete") return updateTask(taskId, { status: "Completed", completed_at: nowIso });
+        if (type === "incomplete") return updateTask(taskId, { status: "Pending", completed_at: null });
+        if (type === "star") return updateTask(taskId, { is_starred: true });
+        if (type === "unstar") return updateTask(taskId, { is_starred: false });
+        return Promise.resolve();
+      }));
       const actionLabel = type === "complete" ? "Completed" :
                           type === "incomplete" ? "Reopened" :
                           type === "star" ? "Starred" : "Unstarred";
