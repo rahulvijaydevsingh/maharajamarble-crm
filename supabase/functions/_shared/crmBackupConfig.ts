@@ -245,3 +245,13 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   user_roles: "user_id",
   custom_role_permissions: "role",
 };
+
+// Tables that must never appear in a backup payload.
+// crm_backups / crm_restores are operational metadata, not business data.
+// auth.* is managed separately via Supabase Auth dashboard export.
+export const BACKUP_EXCLUDED_TABLES: Set<string> = new Set([
+  "crm_backups",
+  "crm_restores",
+  "schema_migrations",
+  "supabase_migrations",
+]);
