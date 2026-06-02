@@ -3,11 +3,17 @@ import * as XLSX from "npm:xlsx@0.18.5";
 
 import { corsHeaders, jsonResponse, readJson } from "../_shared/http.ts";
 import { createAdminClient, requireAdmin } from "../_shared/authz.ts";
-import { BACKUP_MODULES, MODULE_TO_TABLES, type BackupModuleKey } from "../_shared/crmBackupConfig.ts";
+import {
+  BACKUP_MODULES,
+  MODULE_TO_TABLES,
+  BACKUP_EXCLUDED_TABLES,
+  type BackupModuleKey,
+} from "../_shared/crmBackupConfig.ts";
 
 type CreateBackupBody = {
   includeModules?: BackupModuleKey[];
   includeFiles?: boolean;
+  includeAll?: boolean;
 };
 
 type BackupJson = {
@@ -40,6 +46,17 @@ async function fetchAllRows(admin: any, table: string) {
     from += PAGE_SIZE;
   }
   return rows;
+}
+
+async function discoverAllTables(admin: any): Promise<string[]> {
+  const { data, error } = await admin.rpc("list_public_tables");
+  if (error || !data) {
+    if (error) console.warn("discoverAllTables fallback:", error.message);
+    return [];
+  }
+  return (data as Array<{ table_name: string }>)
+    .map((r) => r.table_name)
+    .filter((t) => !BACKUP_EXCLUDED_TABLES.has(t));
 }
 
 function dedupeTables(modules: BackupModuleKey[]): string[] {
@@ -142,7 +159,23 @@ serve(async (req) => {
     if (insErr) throw new Error(insErr.message);
 
     const backupId = backupRow.id as string;
-    const tablesToExport = dedupeTables(includeModules);
+
+    const allModulesSelected = includeModules.length === BACKUP_MODULES.length;
+    const useFullScan = Boolean(body.includeAll) || allModulesSelected;
+
+    let tablesToExport: string[];
+    if (useFullScan) {
+      const discovered = await discoverAllTables(admin);
+      if (discovered.length > 0) {
+        const fromConfig = dedupeTables(BACKUP_MODULES.map((m) => m.key));
+        const merged = new Set([...discovered, ...fromConfig]);
+        tablesToExport = [...merged].filter((t) => !BACKUP_EXCLUDED_TABLES.has(t));
+      } else {
+        tablesToExport = dedupeTables(includeModules);
+      }
+    } else {
+      tablesToExport = dedupeTables(includeModules);
+    }
 
     const tables: Record<string, any[]> = {};
     const counts: Record<string, number> = {};
@@ -194,6 +227,8 @@ serve(async (req) => {
       counts,
       includeModules,
       includeFiles,
+      fullScan: useFullScan,
+      tablesExported: tablesToExport,
       generatedAt: backupJson.meta.createdAt,
       warnings: [] as string[],
     };

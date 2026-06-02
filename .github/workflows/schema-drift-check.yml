@@ -1,0 +1,66 @@
+name: Supabase Schema Drift Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  schema-drift:
+    name: Detect Schema Drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check for schema drift
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "-------------------------------------------------------"
+            echo "  SKIPPING DRIFT CHECK: Access token not found."
+            echo "  Please follow instructions in the PR description"
+            echo "  to add SUPABASE_ACCESS_TOKEN to repo secrets."
+            echo "-------------------------------------------------------"
+            exit 0
+          fi
+
+          supabase link --project-ref ehuxwzbdnpyelmtckoac -p "$SUPABASE_DB_PASSWORD"
+          supabase db diff --linked --schema public > /tmp/schema_diff.sql
+
+          if [ -s /tmp/schema_diff.sql ]; then
+            echo ""
+            echo "============================================="
+            echo "  SCHEMA DRIFT DETECTED"
+            echo "============================================="
+            echo "  The live Supabase database contains tables"
+            echo "  or columns that have NO matching migration"
+            echo "  file in supabase/migrations/."
+            echo ""
+            echo "  Run: supabase db pull --project-ref ehuxwzbdnpyelmtckoac"
+            echo "  Then commit the generated migration file."
+            echo "============================================="
+            echo ""
+            cat /tmp/schema_diff.sql
+            exit 1
+          else
+            echo "Schema is in sync. No drift detected."
+          fi
+
+      - name: Upload diff artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-drift-diff
+          path: /tmp/schema_diff.sql
+          retention-days: 7
