@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -144,6 +144,7 @@ export function TaskDetailView({
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   const [profEditDialogOpen, setProfEditDialogOpen] = useState(false);
+  const pendingProfEdit = useRef<Professional | null>(null);
 
   // For chain navigation from timeline
   const [chainTaskId, setChainTaskId] = useState<string | null>(null);
@@ -840,11 +841,23 @@ export function TaskDetailView({
         open={professionalDetailOpen}
         onOpenChange={(o) => {
           setProfessionalDetailOpen(o);
-          if (!o) setSelectedProfessional(null);
+          if (!o) {
+            setSelectedProfessional(null);
+            if (pendingProfEdit.current !== null) {
+              const profToEdit = pendingProfEdit.current;
+              pendingProfEdit.current = null;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  setEditingProfessional(profToEdit);
+                  setProfEditDialogOpen(true);
+                });
+              });
+            }
+          }
         }}
         onEdit={(professional) => {
+          pendingProfEdit.current = professional;
           setEditingProfessional(professional);
-          setProfEditDialogOpen(true);
           setProfessionalDetailOpen(false);
         }}
         onDelete={async (id) => {
