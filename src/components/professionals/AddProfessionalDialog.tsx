@@ -289,7 +289,7 @@ export function AddProfessionalDialog({ open, onOpenChange, editingProfessional 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="z-[100] sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingProfessional ? "Edit Professional" : "Add New Professional"}</DialogTitle>
           <DialogDescription>
