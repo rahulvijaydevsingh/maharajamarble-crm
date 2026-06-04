@@ -149,6 +149,18 @@ export function TaskDetailView({
   // For chain navigation from timeline
   const [chainTaskId, setChainTaskId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!professionalDetailOpen && pendingProfEdit.current !== null) {
+      const profToEdit = pendingProfEdit.current;
+      pendingProfEdit.current = null;
+      const timerId = window.setTimeout(() => {
+        setEditingProfessional(profToEdit);
+        setProfEditDialogOpen(true);
+      }, 200);
+      return () => window.clearTimeout(timerId);
+    }
+  }, [professionalDetailOpen]);
+
   const fromStore = useMemo(
     () => (taskId ? tasks.find((t) => t.id === taskId) || null : null),
     [tasks, taskId]
@@ -841,19 +853,7 @@ export function TaskDetailView({
         open={professionalDetailOpen}
         onOpenChange={(o) => {
           setProfessionalDetailOpen(o);
-          if (!o) {
-            setSelectedProfessional(null);
-            if (pendingProfEdit.current !== null) {
-              const profToEdit = pendingProfEdit.current;
-              pendingProfEdit.current = null;
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  setEditingProfessional(profToEdit);
-                  setProfEditDialogOpen(true);
-                });
-              });
-            }
-          }
+          if (!o) setSelectedProfessional(null);
         }}
         onEdit={(professional) => {
           pendingProfEdit.current = professional;
