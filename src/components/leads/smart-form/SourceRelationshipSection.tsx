@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link2, Users, Search, X, Phone, Mail, Building2, Loader2, PlusCircle, UserPlus } from "lucide-react";
+import { Link2, Users, Search, X, Phone, Mail, Building2, Loader2, PlusCircle, UserPlus, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LeadSource, ProfessionalRef } from "@/types/lead";
 import { LEAD_SOURCES as FALLBACK_LEAD_SOURCES } from "@/constants/leadConstants";
@@ -41,6 +41,9 @@ import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { useProfessionals } from "@/hooks/useProfessionals";
+import { usePhoneDuplicateCheck, DuplicateCheckResult } from "@/hooks/usePhoneDuplicateCheck";
+import { useEffect } from "react";
+import { DuplicateLeadModal } from "@/components/leads/DuplicateLeadModal";
 
 interface SourceRelationshipSectionProps {
   leadSource: LeadSource;
@@ -66,6 +69,11 @@ export function SourceRelationshipSection({
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
   const { professionals, addProfessional, loading: profLoading } = useProfessionals();
+  const { checkDuplicate, results: dupResults, clearResult } = usePhoneDuplicateCheck();
+
+  // Lead duplicate local state
+  const [leadDupResult, setLeadDupResult] = useState<DuplicateCheckResult | null>(null);
+  const [leadDupModalOpen, setLeadDupModalOpen] = useState(false);
 
   // Inline Quick-Add state
   const [showInlineQuickAdd, setShowInlineQuickAdd] = useState(false);
@@ -151,12 +159,25 @@ export function SourceRelationshipSection({
     setQuickAddFirmName(""); setQuickAddEmail(""); setQuickAddCity("");
     setQuickAddServiceCategory(""); setQuickAddStatus("");
     setQuickAddPriority(""); setQuickAddAdvancedOpen(false);
+    clearResult("quickAddPhone");
+    setLeadDupResult(null);
   };
+
+  useEffect(() => {
+    const result = dupResults["quickAddPhone"];
+    if (result?.found && result.type === "lead") {
+      setLeadDupResult(result);
+      setLeadDupModalOpen(true);
+    } else {
+      setLeadDupResult(null);
+    }
+  }, [dupResults]);
 
   const handleQuickAddSubmit = async () => {
     if (!quickAddName.trim() || !quickAddPhone.trim() || !quickAddType) return;
     setQuickAddLoading(true);
     try {
+      const staff = staffMembers.find(m => m.id === assignedTo);
       const newProf: any = await addProfessional({
         name: quickAddName.trim(),
         phone: quickAddPhone.trim(),
@@ -166,7 +187,8 @@ export function SourceRelationshipSection({
         city: quickAddCity || null,
         service_category: quickAddServiceCategory || null,
         status: quickAddStatus || "active",
-        priority: quickAddPriority ? Number(quickAddPriority) : null,
+        priority: quickAddPriority ? Number(quickAddPriority) : undefined,
+        assigned_to: staff?.name || "System",
       } as any);
       if (newProf) {
         onReferredByChange({
@@ -177,8 +199,10 @@ export function SourceRelationshipSection({
           phone: newProf.phone || undefined,
           email: newProf.email || undefined,
         });
+        setProfessionalSearchOpen(false);
+        setShowInlineQuickAdd(false);
+        resetQuickAdd();
       }
-      resetQuickAdd();
     } catch (err) {
       // Errors/toasts gracefully handled by useProfessionals
     } finally {
@@ -364,7 +388,7 @@ export function SourceRelationshipSection({
                           ))}
                         </CommandGroup>
                       )}
-                      {searchQuery.trim() && (
+                      {searchQuery.trim().length > 1 && filteredProfessionals.length === 0 && (
                         <CommandGroup>
                           <CommandItem
                             value="__quick_add_new_professional__"
@@ -420,10 +444,37 @@ export function SourceRelationshipSection({
                     <Label className="text-xs">Phone *</Label>
                     <Input
                       value={quickAddPhone}
-                      onChange={(e) => setQuickAddPhone(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setQuickAddPhone(val);
+                        const digits = val.replace(/\D/g, "");
+                        if (digits.length === 10) {
+                          checkDuplicate(digits, "quickAddPhone");
+                        } else {
+                          clearResult("quickAddPhone");
+                          setLeadDupResult(null);
+                        }
+                      }}
                       placeholder="Phone number"
                     />
                   </div>
+                {dupResults["quickAddPhone"]?.found &&
+                  dupResults["quickAddPhone"]?.type === "lead" && (
+                  <div className="col-span-full flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-800 dark:text-amber-200">
+                        Lead already exists with this phone number
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {dupResults["quickAddPhone"].existingRecord?.name}
+                        {" · "}
+                        {dupResults["quickAddPhone"].existingRecord?.status}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                   <div className="space-y-1.5">
                     <Label className="text-xs">Category / Type *</Label>
                     <Select value={quickAddType} onValueChange={setQuickAddType}>
@@ -533,7 +584,9 @@ export function SourceRelationshipSection({
                     quickAddLoading ||
                     !quickAddName.trim() ||
                     !quickAddPhone.trim() ||
-                    !quickAddType
+                    !quickAddType ||
+                    (dupResults["quickAddPhone"]?.found &&
+                     dupResults["quickAddPhone"]?.type === "lead")
                   }
                   className="w-full"
                 >
@@ -558,6 +611,31 @@ export function SourceRelationshipSection({
           </div>
         )}
       </CardContent>
+
+      {/* Duplicate Lead Modal */}
+      {leadDupResult && (
+        <DuplicateLeadModal
+          open={leadDupModalOpen}
+          onOpenChange={setLeadDupModalOpen}
+          duplicateResult={leadDupResult}
+          onViewExisting={() => {
+            if (leadDupResult.existingRecord?.id) {
+              window.open(`/leads?view=${leadDupResult.existingRecord.id}`, "_blank");
+            }
+            setLeadDupModalOpen(false);
+          }}
+          onAddToExisting={() => {
+            if (leadDupResult.existingRecord?.id) {
+              window.open(`/leads?edit=${leadDupResult.existingRecord.id}`, "_blank");
+            }
+            setLeadDupModalOpen(false);
+          }}
+          onCancel={() => {
+            setLeadDupModalOpen(false);
+            resetQuickAdd();
+          }}
+        />
+      )}
     </Card>
   );
 }
