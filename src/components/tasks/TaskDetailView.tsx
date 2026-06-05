@@ -450,7 +450,7 @@ export function TaskDetailView({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
+          className="z-[90] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
           style={{ zIndex }}
         >
           <VisuallyHidden>
