@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,6 @@ import { buildStaffGroups } from "@/lib/staffSelect";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { useProfessionals } from "@/hooks/useProfessionals";
 import { usePhoneDuplicateCheck, DuplicateCheckResult } from "@/hooks/usePhoneDuplicateCheck";
-import { useEffect } from "react";
 import { DuplicateLeadModal } from "@/components/leads/DuplicateLeadModal";
 
 interface SourceRelationshipSectionProps {
@@ -180,12 +179,12 @@ export function SourceRelationshipSection({
     }
   }, [dupResults]);
 
-  const handleQuickAddSubmit = async () => {
+  const handleQuickAddSubmit = useCallback(async () => {
     if (!quickAddName.trim() || !quickAddPhone.trim() || !quickAddType) return;
     setQuickAddLoading(true);
     try {
       const staff = staffMembers.find(m => m.id === assignedTo);
-      const newProf: any = await addProfessional({
+      const newProf = await addProfessional({
         name: quickAddName.trim(),
         phone: quickAddPhone.replace(/\D/g, ""),
         professional_type: quickAddType,
@@ -195,8 +194,8 @@ export function SourceRelationshipSection({
         service_category: quickAddServiceCategory || null,
         status: quickAddStatus || "active",
         priority: quickAddPriority ? Number(quickAddPriority) : undefined,
-        assigned_to: staff?.name || null,
-      } as any);
+        assigned_to: staff?.full_name || null,
+      });
       if (newProf) {
         onReferredByChange({
           id: newProf.id,
@@ -210,12 +209,14 @@ export function SourceRelationshipSection({
         setShowInlineQuickAdd(false);
         resetQuickAdd();
       }
-    } catch (err) {
-      // Errors/toasts gracefully handled by useProfessionals
     } finally {
       setQuickAddLoading(false);
     }
-  };
+  }, [
+    quickAddName, quickAddPhone, quickAddType, quickAddFirmName, quickAddEmail,
+    quickAddCity, quickAddServiceCategory, quickAddStatus, quickAddPriority,
+    assignedTo, addProfessional, onReferredByChange, staffMembers
+  ]);
 
   return (
     <Card>
@@ -343,75 +344,71 @@ export function SourceRelationshipSection({
                       {filteredProfessionals.length === 0 && !searchQuery.trim() && (
                         <CommandEmpty>{profLoading ? "Loading professionals..." : "No professional found."}</CommandEmpty>
                       )}
-                      {filteredProfessionals.length > 0 && (
-                        <CommandGroup heading="Professionals">
-                          {filteredProfessionals.map((prof) => (
-                            <CommandItem
-                              key={prof.id}
-                              value={`${prof.id}-${prof.name}-${prof.phone}-${prof.firmName}`}
-                              onSelect={() => {
-                                onReferredByChange({
-                                  id: prof.id,
-                                  name: prof.name,
-                                  firmName: prof.firmName,
-                                  type: prof.type as "architect" | "builder" | "contractor" | "interior_designer",
-                                  phone: prof.phone,
-                                  email: prof.email,
-                                });
-                                setProfessionalSearchOpen(false);
-                                setSearchQuery("");
-                              }}
-                              className="flex flex-col items-start gap-1 py-3"
-                            >
-                              <div className="flex items-center justify-between w-full">
-                                <div>
-                                  <p className="font-medium">{prof.name}</p>
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <span className="flex items-center gap-1">
-                                      <Building2 className="h-3 w-3" />
-                                      {prof.firmName}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                                    {prof.phone && (
-                                      <span className="flex items-center gap-1">
-                                        <Phone className="h-3 w-3" />
-                                        {prof.phone}
-                                      </span>
-                                    )}
-                                    {prof.email && (
-                                      <span className="flex items-center gap-1">
-                                        <Mail className="h-3 w-3" />
-                                        {prof.email}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <Badge className={cn("ml-2 shrink-0", getProfessionalTypeBadgeColor(prof.type))}>
-                                  {getProfessionalTypeLabel(prof.type)}
-                                </Badge>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      )}
-                      {searchQuery.trim().length > 1 && filteredProfessionals.length === 0 && (
-                        <CommandGroup>
+                      <CommandGroup heading="Professionals">
+                        {filteredProfessionals.map((prof) => (
                           <CommandItem
-                            value="__quick_add_new_professional__"
+                            key={prof.id}
+                            value={`${prof.id}-${prof.name}-${prof.phone}-${prof.firmName}`}
+                            onSelect={() => {
+                              onReferredByChange({
+                                id: prof.id,
+                                name: prof.name,
+                                firmName: prof.firmName,
+                                type: prof.type as "architect" | "builder" | "contractor" | "interior_designer",
+                                phone: prof.phone,
+                                email: prof.email,
+                              });
+                              setProfessionalSearchOpen(false);
+                              setSearchQuery("");
+                            }}
+                            className="flex flex-col items-start gap-1 py-3"
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <div>
+                                <p className="font-medium">{prof.name}</p>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Building2 className="h-3 w-3" />
+                                    {prof.firmName}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                                  {prof.phone && (
+                                    <span className="flex items-center gap-1">
+                                      <Phone className="h-3 w-3" />
+                                      {prof.phone}
+                                    </span>
+                                  )}
+                                  {prof.email && (
+                                    <span className="flex items-center gap-1">
+                                      <Mail className="h-3 w-3" />
+                                      {prof.email}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge className={cn("ml-2 shrink-0", getProfessionalTypeBadgeColor(prof.type))}>
+                                {getProfessionalTypeLabel(prof.type)}
+                              </Badge>
+                            </div>
+                          </CommandItem>
+                        ))}
+                        {searchQuery.trim().length > 1 && filteredProfessionals.length === 0 && (
+                          <CommandItem
+                            value={`__quick_add__${searchQuery}`}
                             onSelect={() => {
                               setQuickAddName(searchQuery.trim());
                               setShowInlineQuickAdd(true);
                               setProfessionalSearchOpen(false);
                               setSearchQuery("");
                             }}
-                            className="flex items-center gap-2 text-primary font-medium py-3 px-3 border-t cursor-pointer"
+                            className="text-primary flex items-center gap-2 py-2"
                           >
                             <PlusCircle className="h-4 w-4" />
                             Quick-Add "{searchQuery.trim()}" as New Professional
                           </CommandItem>
-                        </CommandGroup>
-                      )}
+                        )}
+                      </CommandGroup>
                     </CommandList>
                   </Command>
                 </PopoverContent>
@@ -420,38 +417,26 @@ export function SourceRelationshipSection({
 
             {/* Inline Quick-Add Expansion Panel */}
             {showInlineQuickAdd && !referredBy && (
-              <div className="mt-3 rounded-lg border bg-muted/30 p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <UserPlus className="h-4 w-4 text-primary" />
-                    <span className="font-medium text-sm">Quick-Add New Professional</span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetQuickAdd}
-                    className="h-7 text-xs text-muted-foreground"
-                  >
-                    Cancel
-                  </Button>
-                </div>
+              <div className="mt-3 border rounded-lg p-4 space-y-3 bg-muted/30">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <PlusCircle className="h-4 w-4 text-primary" />
+                  Quick-Add New Professional
+                </p>
 
-                {/* Mandatory triad */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
                     <Label className="text-xs">Name *</Label>
                     <Input
                       value={quickAddName}
-                      onChange={(e) => setQuickAddName(e.target.value)}
-                      placeholder="Professional name"
+                      onChange={e => setQuickAddName(e.target.value)}
+                      placeholder="Full name"
                     />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     <Label className="text-xs">Phone *</Label>
                     <Input
                       value={quickAddPhone}
-                      onChange={(e) => {
+                      onChange={e => {
                         const val = e.target.value;
                         setQuickAddPhone(val);
                         const digits = val.replace(/\D/g, "");
@@ -465,6 +450,8 @@ export function SourceRelationshipSection({
                       placeholder="Phone number"
                     />
                   </div>
+                </div>
+
                 {dupResults["quickAddPhone"]?.found &&
                   dupResults["quickAddPhone"]?.type === "lead" && (
                   <div className="col-span-full flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
@@ -482,100 +469,66 @@ export function SourceRelationshipSection({
                   </div>
                 )}
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Category / Type *</Label>
-                    <Select value={quickAddType} onValueChange={setQuickAddType}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {professionalTypeOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Category / Type *</Label>
+                  <Select value={quickAddType} onValueChange={setQuickAddType}>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      {professionalTypeOptions.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {/* Advanced options */}
-                <Accordion
-                  type="single"
-                  collapsible
-                  value={quickAddAdvancedOpen ? "advanced" : ""}
-                  onValueChange={(v) => setQuickAddAdvancedOpen(v === "advanced")}
-                >
+                <Accordion type="single" collapsible>
                   <AccordionItem value="advanced" className="border-b-0">
-                    <AccordionTrigger className="text-xs py-2 hover:no-underline">
+                    <AccordionTrigger className="text-xs text-muted-foreground py-1 hover:no-underline">
                       Advanced Options
                     </AccordionTrigger>
                     <AccordionContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                        <div className="space-y-1.5">
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <div className="space-y-1">
                           <Label className="text-xs">Firm Name</Label>
-                          <Input
-                            value={quickAddFirmName}
-                            onChange={(e) => setQuickAddFirmName(e.target.value)}
-                            placeholder="Company / firm name"
-                          />
+                          <Input value={quickAddFirmName} onChange={e => setQuickAddFirmName(e.target.value)} placeholder="Firm / company" />
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs">Email</Label>
-                          <Input
-                            type="email"
-                            value={quickAddEmail}
-                            onChange={(e) => setQuickAddEmail(e.target.value)}
-                            placeholder="email@example.com"
-                          />
+                          <Input value={quickAddEmail} onChange={e => setQuickAddEmail(e.target.value)} placeholder="Email address" />
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs">City</Label>
                           <Select value={quickAddCity} onValueChange={setQuickAddCity}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select city" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
                             <SelectContent>
-                              {professionalCityOptions.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
+                              {professionalCityOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs">Service Category</Label>
                           <Select value={quickAddServiceCategory} onValueChange={setQuickAddServiceCategory}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select category" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                             <SelectContent>
-                              {professionalServiceCategoryOptions.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
+                              {professionalServiceCategoryOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs">Status</Label>
                           <Select value={quickAddStatus} onValueChange={setQuickAddStatus}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
                             <SelectContent>
-                              {professionalStatusOptions.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
+                              {professionalStatusOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <Label className="text-xs">Priority</Label>
                           <Select value={quickAddPriority} onValueChange={setQuickAddPriority}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select priority" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Priority" /></SelectTrigger>
                             <SelectContent>
-                              {professionalPriorityOptions.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
+                              {professionalPriorityOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
@@ -584,31 +537,31 @@ export function SourceRelationshipSection({
                   </AccordionItem>
                 </Accordion>
 
-                <Button
-                  type="button"
-                  onClick={handleQuickAddSubmit}
-                  disabled={
-                    quickAddLoading ||
-                    !quickAddName.trim() ||
-                    !quickAddPhone.trim() ||
-                    !quickAddType ||
-                    (dupResults["quickAddPhone"]?.found &&
-                     dupResults["quickAddPhone"]?.type === "lead")
-                  }
-                  className="w-full"
-                >
-                  {quickAddLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <PlusCircle className="h-4 w-4 mr-2" />
-                      Add & Select Professional
-                    </>
-                  )}
-                </Button>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    onClick={() => {
+                      resetQuickAdd();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button" size="sm"
+                    disabled={
+                      !quickAddName.trim() ||
+                      !quickAddPhone.trim() ||
+                      !quickAddType ||
+                      quickAddLoading ||
+                      (dupResults["quickAddPhone"]?.found &&
+                       dupResults["quickAddPhone"]?.type === "lead")
+                    }
+                    onClick={handleQuickAddSubmit}
+                  >
+                    {quickAddLoading && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                    Add Professional
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -630,12 +583,14 @@ export function SourceRelationshipSection({
               window.open(`/leads?view=${leadDupResult.existingRecord.id}`, "_blank");
             }
             setLeadDupModalOpen(false);
+            resetQuickAdd();
           }}
           onAddToExisting={() => {
             if (leadDupResult.existingRecord?.id) {
               window.open(`/leads?edit=${leadDupResult.existingRecord.id}`, "_blank");
             }
             setLeadDupModalOpen(false);
+            resetQuickAdd();
           }}
           onCancel={() => {
             setLeadDupModalOpen(false);

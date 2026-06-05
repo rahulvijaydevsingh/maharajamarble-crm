@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -144,9 +144,22 @@ export function TaskDetailView({
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   const [profEditDialogOpen, setProfEditDialogOpen] = useState(false);
+  const pendingProfEdit = useRef<Professional | null>(null);
 
   // For chain navigation from timeline
   const [chainTaskId, setChainTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!professionalDetailOpen && pendingProfEdit.current !== null) {
+      const profToEdit = pendingProfEdit.current;
+      pendingProfEdit.current = null;
+      const timerId = window.setTimeout(() => {
+        setEditingProfessional(profToEdit);
+        setProfEditDialogOpen(true);
+      }, 200);
+      return () => window.clearTimeout(timerId);
+    }
+  }, [professionalDetailOpen]);
 
   const fromStore = useMemo(
     () => (taskId ? tasks.find((t) => t.id === taskId) || null : null),
@@ -843,9 +856,9 @@ export function TaskDetailView({
           if (!o) setSelectedProfessional(null);
         }}
         onEdit={(professional) => {
+          pendingProfEdit.current = professional;
           setEditingProfessional(professional);
           setProfessionalDetailOpen(false);
-          setTimeout(() => setProfEditDialogOpen(true), 200);
         }}
         onDelete={async (id) => {
           await deleteProfessional(id);
