@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,7 @@ export function SourceRelationshipSection({
   // Lead duplicate local state
   const [leadDupResult, setLeadDupResult] = useState<DuplicateCheckResult | null>(null);
   const [leadDupModalOpen, setLeadDupModalOpen] = useState(false);
+  const lastOpenedPhoneRef = useRef<string>("");
 
   // Inline Quick-Add state
   const [showInlineQuickAdd, setShowInlineQuickAdd] = useState(false);
@@ -161,15 +162,21 @@ export function SourceRelationshipSection({
     setQuickAddPriority(""); setQuickAddAdvancedOpen(false);
     clearResult("quickAddPhone");
     setLeadDupResult(null);
+    lastOpenedPhoneRef.current = "";
   };
 
   useEffect(() => {
     const result = dupResults["quickAddPhone"];
     if (result?.found && result.type === "lead") {
       setLeadDupResult(result);
-      setLeadDupModalOpen(true);
+      const digits = quickAddPhone.replace(/\D/g, "");
+      if (digits !== lastOpenedPhoneRef.current) {
+        setLeadDupModalOpen(true);
+        lastOpenedPhoneRef.current = digits;
+      }
     } else {
       setLeadDupResult(null);
+      lastOpenedPhoneRef.current = "";
     }
   }, [dupResults]);
 
@@ -180,7 +187,7 @@ export function SourceRelationshipSection({
       const staff = staffMembers.find(m => m.id === assignedTo);
       const newProf: any = await addProfessional({
         name: quickAddName.trim(),
-        phone: quickAddPhone.trim(),
+        phone: quickAddPhone.replace(/\D/g, ""),
         professional_type: quickAddType,
         firm_name: quickAddFirmName.trim() || null,
         email: quickAddEmail.trim() || null,
@@ -188,7 +195,7 @@ export function SourceRelationshipSection({
         service_category: quickAddServiceCategory || null,
         status: quickAddStatus || "active",
         priority: quickAddPriority ? Number(quickAddPriority) : undefined,
-        assigned_to: staff?.name || "System",
+        assigned_to: staff?.name || null,
       } as any);
       if (newProf) {
         onReferredByChange({
