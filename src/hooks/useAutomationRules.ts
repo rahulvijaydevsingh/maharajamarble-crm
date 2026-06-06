@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { Json } from "@/integrations/supabase/types";
 import { toast } from "@/hooks/use-toast";
 import { 
   AutomationRule, 
@@ -32,7 +33,8 @@ export const useAutomationRules = (entityType?: EntityType) => {
         ...rule,
         trigger_config: rule.trigger_config as unknown as TriggerConfig,
         actions: (rule.actions as unknown as AutomationAction[]) || [],
-        exclude_conditions: rule.exclude_conditions as unknown as any,
+        exclude_conditions: rule.exclude_conditions as unknown as
+          Record<string, unknown> | null,
       })) as AutomationRule[];
     },
   });
@@ -57,7 +59,8 @@ export const useAutomationRule = (ruleId: string | undefined) => {
         ...data,
         trigger_config: data.trigger_config as unknown as TriggerConfig,
         actions: (data.actions as unknown as AutomationAction[]) || [],
-        exclude_conditions: data.exclude_conditions as unknown as any,
+        exclude_conditions: data.exclude_conditions as unknown as
+          Record<string, unknown> | null,
       } as AutomationRule;
     },
     enabled: !!ruleId,
@@ -77,8 +80,8 @@ export const useCreateAutomationRule = () => {
           rule_name: rule.rule_name,
           description: rule.description,
           trigger_type: rule.trigger_type,
-          trigger_config: rule.trigger_config as any,
-          actions: rule.actions as any,
+          trigger_config: rule.trigger_config as unknown as Json,
+          actions: rule.actions as unknown as Json,
           is_active: rule.is_active,
           execution_limit: rule.execution_limit,
           max_executions: rule.max_executions,
@@ -86,7 +89,7 @@ export const useCreateAutomationRule = () => {
           active_time_start: rule.active_time_start,
           active_time_end: rule.active_time_end,
           execution_order: rule.execution_order,
-          exclude_conditions: rule.exclude_conditions as any,
+          exclude_conditions: rule.exclude_conditions as unknown as Json | null,
           created_by: rule.created_by,
         })
         .select()
@@ -122,9 +125,9 @@ export const useUpdateAutomationRule = () => {
         .from("automation_rules")
         .update({
           ...updates,
-          trigger_config: updates.trigger_config as any,
-          actions: updates.actions as any,
-          exclude_conditions: updates.exclude_conditions as any,
+          trigger_config: updates.trigger_config as unknown as Json,
+          actions: updates.actions as unknown as Json,
+          exclude_conditions: updates.exclude_conditions as unknown as Json | null,
         })
         .eq("id", id)
         .select()
@@ -320,7 +323,7 @@ export const useAutomationExecutions = (ruleId?: string, limit = 50) => {
       
       return (data || []).map(exec => ({
         ...exec,
-        execution_log: (exec.execution_log as unknown as any[]) || [],
+        execution_log: (exec.execution_log as unknown as Record<string, unknown>[]) || [],
       })) as (AutomationExecution & { automation_rules: { rule_name: string } })[];
     },
   });
