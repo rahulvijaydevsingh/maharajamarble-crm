@@ -440,7 +440,7 @@ export function SourceRelationshipSection({
                         const val = e.target.value;
                         setQuickAddPhone(val);
                         const digits = val.replace(/\D/g, "");
-                        if (digits.length === 10) {
+                        if (digits.length >= 10) {
                           checkDuplicate(digits, "quickAddPhone");
                         } else {
                           clearResult("quickAddPhone");
