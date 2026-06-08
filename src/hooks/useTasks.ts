@@ -320,7 +320,7 @@ const resolveToFullName = async (value: string | null | undefined): Promise<stri
     else if (isUuid) q = q.eq('id', v);
     else q = q.eq('full_name', v);
     const { data } = await q.maybeSingle();
-    const name = (data as { full_name?: string })?.full_name || v;
+    const name = data?.full_name || v;
     profileNameCache.set(v, name);
     return name;
   } catch {
