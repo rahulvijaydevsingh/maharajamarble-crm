@@ -690,7 +690,7 @@ Deno.serve(async (req) => {
           });
 
         // Unique constraint violation = already executed for this record — skip
-        if (lockError && (lockError as any).code === "23505") {
+        if (lockError && (lockError as { code?: string }).code === "23505") {
           console.log(`[Automation] Rule "${rule.rule_name}" already executed for this record (lock held)`);
           results.push({ rule_id: rule.id, rule_name: rule.rule_name, matched: true, actions_run: 0 });
           continue;

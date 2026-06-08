@@ -6,6 +6,13 @@ import { calculateTaskStatus, TaskStatus } from "@/lib/taskStatusService";
 import { useLogActivity } from "@/hooks/useActivityLog";
 import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import { TablesInsert } from "@/integrations/supabase/types";
+
+interface TaskCompletionUpdates {
+  completion_outcome?: string;
+  completion_notes?: string;
+  [key: string]: unknown;
+}
 
 export interface Task {
   id: string;
@@ -313,7 +320,7 @@ const resolveToFullName = async (value: string | null | undefined): Promise<stri
     else if (isUuid) q = q.eq('id', v);
     else q = q.eq('full_name', v);
     const { data } = await q.maybeSingle();
-    const name = (data as any)?.full_name || v;
+    const name = data?.full_name || v;
     profileNameCache.set(v, name);
     return name;
   } catch {
@@ -391,7 +398,7 @@ const syncTaskReminder = async (
         is_dismissed: false,
         is_snoozed: false,
         assigned_to: await resolveToFullName(task.assigned_to || 'System'),
-      } as any);
+      } as TablesInsert<'reminders'>);
     } else {
       // Disabled / closed / past → remove any existing
       await supabase
@@ -665,8 +672,8 @@ export function useTasks() {
               .from('kit_touches')
               .update({
                 status: 'completed',
-                outcome: (updates as any).completion_outcome || 'completed_via_task',
-                outcome_notes: (updates as any).completion_notes || null,
+                outcome: (updates as TaskCompletionUpdates).completion_outcome || 'completed_via_task',
+                outcome_notes: (updates as TaskCompletionUpdates).completion_notes || null,
                 completed_at: new Date().toISOString(),
               })
               .eq('id', linkedTouch.id);
@@ -811,7 +818,7 @@ export function useTasks() {
       const newDueTime = snoozedUntil.toTimeString().slice(0, 5);
 
       // Atomic snooze: snooze_history + tasks update + task_activity_log + activity_log all in one TX
-      const { data: updatedRow, error: rpcError } = await (supabase as any).rpc('snooze_task', {
+      const { data: updatedRow, error: rpcError } = await supabase.rpc('snooze_task', {
         p_task_id: id,
         p_snoozed_until: snoozedUntil.toISOString(),
         p_due_date: newDueDate,
