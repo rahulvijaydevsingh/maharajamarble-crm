@@ -114,8 +114,14 @@ function compareValues(actual: string, expected: string, operator: string): bool
       return a.endsWith(e);
     case "greater_than":
       return parseFloat(actual) > parseFloat(expected);
+    case "greater_than_or_equal":
+    case "greater_or_equal":
+      return parseFloat(actual) >= parseFloat(expected);
     case "less_than":
       return parseFloat(actual) < parseFloat(expected);
+    case "less_than_or_equal":
+    case "less_or_equal":
+      return parseFloat(actual) <= parseFloat(expected);
     case "is_empty":
       return a === "" || a === "null" || a === "undefined";
     case "is_not_empty":

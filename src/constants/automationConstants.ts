@@ -306,6 +306,7 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
     { name: "lead_id", label: "Related Lead", type: "text", editable: true },
     { name: "related_entity_id", label: "Related Entity ID", type: "text", editable: true },
     { name: "snoozed_until", label: "Snoozed Until", type: "datetime", editable: true },
+    { name: "reschedule_count", label: "Reschedule Count", type: "number", editable: false },
     { name: "completed_at", label: "Completed At", type: "datetime", editable: false },
     { name: "created_at", label: "Created At", type: "datetime", editable: false },
     { name: "created_by", label: "Created By", type: "select", editable: false, dynamicOptions: "staff", options: [] },
