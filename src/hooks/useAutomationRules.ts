@@ -324,7 +324,7 @@ export const useAutomationExecutions = (ruleId?: string, limit = 50) => {
       return (data || []).map(exec => ({
         ...exec,
         execution_log: (exec.execution_log as unknown as Record<string, unknown>[]) || [],
-      })) as (AutomationExecution & { automation_rules: { rule_name: string } })[];
+      })) as unknown as (AutomationExecution & { automation_rules: { rule_name: string } })[];
     },
   });
 };
