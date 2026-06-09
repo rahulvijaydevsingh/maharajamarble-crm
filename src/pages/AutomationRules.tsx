@@ -401,10 +401,15 @@ const AutomationRules = () => {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSaveAsTemplate(rule)}>
+                                <BookmarkPlus className="h-4 w-4 mr-2" />
+                                Save as Template
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleDuplicate(rule.id)}>
                                 <Copy className="h-4 w-4 mr-2" />
                                 Duplicate
                               </DropdownMenuItem>
+
                               <DropdownMenuItem onClick={() => setViewingLogRuleId(rule.id)}>
                                 <History className="h-4 w-4 mr-2" />
                                 View Log
