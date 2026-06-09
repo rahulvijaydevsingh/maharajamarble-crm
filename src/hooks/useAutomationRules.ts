@@ -35,7 +35,7 @@ export const useAutomationRules = (entityType?: EntityType) => {
         actions: (rule.actions as unknown as AutomationAction[]) || [],
         exclude_conditions: rule.exclude_conditions as unknown as
           Record<string, unknown> | null,
-      })) as AutomationRule[];
+      })) as unknown as AutomationRule[];
     },
   });
 };
@@ -61,7 +61,7 @@ export const useAutomationRule = (ruleId: string | undefined) => {
         actions: (data.actions as unknown as AutomationAction[]) || [],
         exclude_conditions: data.exclude_conditions as unknown as
           Record<string, unknown> | null,
-      } as AutomationRule;
+      } as unknown as AutomationRule;
     },
     enabled: !!ruleId,
   });
@@ -324,7 +324,7 @@ export const useAutomationExecutions = (ruleId?: string, limit = 50) => {
       return (data || []).map(exec => ({
         ...exec,
         execution_log: (exec.execution_log as unknown as Record<string, unknown>[]) || [],
-      })) as (AutomationExecution & { automation_rules: { rule_name: string } })[];
+      })) as unknown as (AutomationExecution & { automation_rules: { rule_name: string } })[];
     },
   });
 };

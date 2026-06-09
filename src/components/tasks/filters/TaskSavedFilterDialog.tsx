@@ -124,6 +124,16 @@ const OPERATORS = {
     { value: "next_30_days", label: "next 30 days" },
     { value: "overdue", label: "is overdue" },
   ],
+  number: [
+    { value: "equals", label: "equals" },
+    { value: "not_equals", label: "not equals" },
+    { value: "greater_than", label: "greater than" },
+    { value: "greater_than_or_equal", label: "greater than or equal to" },
+    { value: "less_than", label: "less than" },
+    { value: "less_than_or_equal", label: "less than or equal to" },
+    { value: "is_empty", label: "is empty" },
+    { value: "is_not_empty", label: "is not empty" },
+  ],
   boolean: [
     { value: "is_true", label: "Yes" },
     { value: "is_false", label: "No" },
@@ -546,6 +556,15 @@ export function TaskSavedFilterDialog({
                             />
                           </PopoverContent>
                         </Popover>
+                      ) : getFieldType(rule.field) === "number" ? (
+                        <Input
+                          type="number"
+                          min={0}
+                          value={rule.value}
+                          onChange={(e) => updateRule(rule.id, { value: e.target.value })}
+                          placeholder="Enter number"
+                          className="flex-1"
+                        />
                       ) : (
                         <Input
                           value={rule.value}

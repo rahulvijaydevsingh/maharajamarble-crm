@@ -1,67 +1,78 @@
-# Plan
+# Filter Numeric Operators + Reschedule Automation
 
-## Section 1 — Backend (mostly already done, will verify)
+## Audit findings (Task 0)
 
-- **1a Edge function redeploy:** Use `supabase--deploy_edge_functions` to redeploy `run-automations` so the latest `singularEntityType` normalization is live.
-- **1b Metadata tables:** `company_settings`, `user_settings`, and `user_table_preferences` already exist in the live schema (visible in `data_export/`). I will NOT generate fresh `CREATE TABLE IF NOT EXISTS` migrations — running historical DDL on a live, populated DB is risky and we already exported all data. Instead I will:
-  - Run `supabase--read_query` to confirm each table exists and has RLS enabled.
-  - Only if RLS is OFF on any of them, ship a tiny migration that just runs `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` (no CREATE, no policy churn).
-  - Report findings either way.
+- **AUDIT-A**: `TaskSavedFilterDialog.tsx` OPERATORS — **does NOT have `number` key** (text/select/date/boolean only). ✅ Matches expectation. Same gap exists in `ProfessionalSavedFilterDialog.tsx`. `Leads` and `Customers` filter dialogs **already have a `number` key** but I'll verify and align operator naming.
+- **AUDIT-B**: `filterRuleEngine.ts` handles both `greater_than_or_equal` AND legacy `greater_or_equal` (same for `less_*`) in the switch — both strings are safe. I'll use the full `greater_than_or_equal` form per the prompt.
+- **AUDIT-C**: `AddAutomationRuleDialog.tsx` uses `ENTITY_FIELDS` from `src/constants/automationConstants.ts`. The `tasks` entry (lines 267–312) **does NOT list `reschedule_count**` — needs to be added.
+- **AUDIT-D**: `run-automations/index.ts` **has** `singularEntityType` normalization (line 325) — the customer "---" fix is in code. It just needs redeployment. Separately, `compareValues` (lines 100–126) only handles `equals/not_equals/contains/starts_with/ends_with/greater_than/less_than/is_empty/is_not_empty` — **missing `greater_than_or_equal` and `less_than_or_equal**`.
 
-## Section 2 — `SourceRelationshipSection.tsx` rewrite
+## Changes
 
-Single file: `src/components/leads/smart-form/SourceRelationshipSection.tsx`.
+### Task 1 — Numeric operators in filter dialogs
 
-Remove:
+1. `TaskSavedFilterDialog.tsx`: add `number` block to OPERATORS (equals, not_equals, greater_than, greater_than_or_equal, less_than, less_than_or_equal, is_empty, is_not_empty). Extend value renderer: when `getFieldType(rule.field) === "number"`, render `<Input type="number" min={0} />`.
+2. `ProfessionalSavedFilterDialog.tsx`: same OPERATORS addition + number input renderer (currently falls back to text input for `rating`/`total_projects`).
+3. `SavedFilterDialog.tsx` (leads) and `CustomerSavedFilterDialog.tsx`: verify the existing `number` block matches the canonical operator names; if it uses legacy `greater_or_equal`/`less_or_equal`, update to `greater_than_or_equal`/`less_than_or_equal` for consistency. Verify number input is used.
 
-- State `phoneCheckInput`, `phoneCheckLoading`, `phoneCheckResult`.
-- Functions `handlePhoneCheck`, `handleAcceptProfessional`.
-- Entire "Or check by phone number" block (lines ~348–403) including the 3 result branches.
-- `supabase` import and the `check-professional` invoke call.
-- Static `getProfessionalTypeLabel` switch (replaced by dynamic lookup).
-- Keep `getProfessionalTypeBadgeColor` as-is per spec (it's already the same mapping).
+### Task 2 — Reschedule count as automation trigger
 
-Add:
+1. `src/constants/automationConstants.ts` — in the `tasks` ENTITY_FIELDS array add:
+  ```ts
+   { name: "reschedule_count", label: "Reschedule Count", type: "number", editable: false }
+  ```
+2. `src/components/automation/TriggerConditionBlock.tsx` — the field_matches operator list (lines 274–283) is hardcoded; extend it so when `selectedField?.type === "number"` it shows the full numeric operator set including `greater_than_or_equal` and `less_than_or_equal` (and uses `<Input type="number" min={0} />` in `FieldValueSelector` path). Confirm `FieldValueSelector` already renders a number input for `type === "number"` fields; if not, no change needed beyond passing the field through.
+3. `supabase/functions/run-automations/index.ts` — extend `compareValues` switch with:
+  ```ts
+   case "greater_than_or_equal": return parseFloat(actual) >= parseFloat(expected);
+   case "less_than_or_equal":    return parseFloat(actual) <= parseFloat(expected);
+  ```
 
-- New state: `showInlineQuickAdd`, `quickAddName/Phone/Type/FirmName/Email/City/ServiceCategory/Status/Priority`, `quickAddAdvancedOpen`, `quickAddLoading`.
-- Destructure `addProfessional` from `useProfessionals` (already imports `professionals, loading`).
-- Dynamic option lists via existing `getFieldOptions("professionals", …)` for type, city, service_category, professional_status, priority.
-- Dynamic `getProfessionalTypeLabel` via `useCallback` against `professionalTypeOptions`.
-- `handleQuickAddSubmit` that calls `addProfessional(...)`, then `onReferredByChange(...)` with the returned record, resets state, closes panel.
-- Inside `<CommandList>`: keep `CommandEmpty`, and append a sticky "+ Quick-Add '&nbsp;' as New Professional" `CommandItem` when `searchQuery.trim()` is non-empty. Selecting it seeds `quickAddName` with the query, opens the inline panel, closes the popover.
-- Inline Quick-Add panel rendered directly below the `Popover` (NOT a Dialog): bordered card with header + Cancel; required triad (Name, Phone, Category/Type) in a 3-col responsive grid; collapsible `Accordion` ("Advanced Options") containing Firm Name, Email, City, Service Category, Status, Priority; primary "Add & Select Professional" button (disabled when required fields empty or loading; shows spinner while loading).
-- Add missing imports: `Accordion, AccordionContent, AccordionItem, AccordionTrigger` from `@/components/ui/accordion`. `useCallback` already present.
+### Task 3 — Redeploy run-automations
 
-Keep all design-system tokens (no hard-coded colors beyond the existing badge-color mapping spec preserves).
+Use `supabase--deploy_edge_functions` with `["run-automations"]` after the edge-function code edits above land. This redeploys the already-merged singular-entity-type fix and the new numeric operator support together.
 
-## Section 3 — Admin bulk task completion
+## Out of scope
 
-`src/components/tasks/EnhancedTaskTable.tsx`:
+All items in the prompt's explicit out-of-scope list.
 
-- Import `useAuth` (or reuse `usePermissions`) to detect admin.
-- In `handleBulkAction` and `handleBulkActionImmediate`, replace the unconditional "Bulk complete not allowed" guard with: if user is admin → proceed with `updateTask(taskId, { status: "Completed", completed_at: new Date().toISOString() })` for each selected; else keep the existing toast block.
-- Ensure the "Bulk Complete" menu item in the bulk-actions UI is enabled for admins (it's already rendered; just permits execution).
-- Toast message: `Completed N tasks` on success.
+## Acceptance check
 
-No DB / schema changes. No other files touched.
-
-## Section 4 — Verification
-
-- Type-check via build pipeline.
-- Confirm via preview: phone-check UI gone; Quick-Add CommandItem shows on unmatched search; inline panel expands in-form (no modal); selecting created pro populates "Referred By"; admin sees Bulk Complete working, non-admin still blocked.
-
-## Out of scope / not doing
-
-- I will NOT touch `index.html` (gptengineer.js tag is preserved).
-- I will NOT regenerate migrations for tables that already exist and are populated — running stale CREATE statements on a live DB is unsafe even with `IF NOT EXISTS` (column drift). I'll only enable RLS if any of the three tables is missing it.  
+After edits + deploy: Tasks filter shows numeric operators for Reschedule Count (AC-1/2/4), Automation rule on `reschedule_count >= 7` can be created (AC-3), and any automation creating a customer-linked task shows the customer name (AC-5).  
   
   
-also check if the following improvemets are applicable.  
-Please incorporate the following critical optimizations and technical guardrails directly into your execution plan before writing code:
-  ### 1. Refinement for Section 2 (SourceRelationshipSection.tsx)
-  - **Command Filtering Guard:** Because shadcn's `<CommandList>` handles structural filtering automatically, ensure that the Quick-Add `CommandItem` uses a hardcoded, un-filterable bypass value or is structurally positioned so that `cmdk` doesn't hide it when there are 0 matching results.
-  - **Immediate State Injection:** Ensure that `onReferredByChange` properly passes the newly created professional object back to the parent component immediately, so the form updates instantly even before the global list hook revalidation completes.
-  ### 2. Refinement for Section 3 (Admin Bulk Task Completion)
-  - **Role Verification:** Check `src/components/tasks/EnhancedTaskTable.tsx` to see how user roles are evaluated elsewhere in the file. If a hook like `usePermissions()` exists, use its boolean flag (e.g., `isAdmin`). If not, securely check the user metadata role via `useAuth()`.
-  - **Concurrent Batching:** Instead of awaiting `updateTask` sequentially inside a `for...of` loop (which causes sequential network lag), batch the updates concurrently using `Promise.all(selectedIds.map(id => updateTask(...)))` to ensure snappy execution and a single, unified success toast message.
-  Please update your plan tracking notes with these enhancements and proceed directly with the execution sequence.
+CORRECTION TO TASK 1:
+
+For src/components/leads/filters/SavedFilterDialog.tsx and
+
+src/components/customers/filters/CustomerSavedFilterDialog.tsx:
+
+DO NOT change or rename existing number operators.
+
+These files already have a working number operator block using
+
+"greater_or_equal" and "less_or_equal". Leave those strings
+
+exactly as they are.
+
+Only verify that:
+
+(a) the number type block exists in OPERATORS
+
+(b) the value input for number fields renders as
+
+    <Input type="number" min={0} /> — fix ONLY if it is
+
+    currently a text input
+
+For TaskSavedFilterDialog.tsx and ProfessionalSavedFilterDialog.tsx
+
+(which are new additions with no existing saved filters):
+
+Use "greater_than_or_equal" and "less_than_or_equal" as specified.
+
+Rationale: filterRuleEngine.ts handles both string variants.
+
+Changing the leads/customers dialogs would orphan existing
+
+saved filter records stored in Supabase with the old strings.

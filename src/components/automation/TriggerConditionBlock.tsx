@@ -271,16 +271,28 @@ export const TriggerConditionBlock = ({
                               <SelectValue />
                             </SelectTrigger>
                              <SelectContent className="z-[220]">
-                              {[
-                                { value: "equals", label: "Equals" },
-                                { value: "not_equals", label: "Not equals" },
-                                { value: "contains", label: "Contains" },
-                                { value: "starts_with", label: "Starts with" },
-                                { value: "greater_than", label: "Greater than" },
-                                { value: "less_than", label: "Less than" },
-                                { value: "is_empty", label: "Is empty" },
-                                { value: "is_not_empty", label: "Is not empty" },
-                              ].map(o => (
+                              {(selectedField?.type === "number"
+                                ? [
+                                    { value: "equals", label: "Equals" },
+                                    { value: "not_equals", label: "Not equals" },
+                                    { value: "greater_than", label: "Greater than" },
+                                    { value: "greater_than_or_equal", label: "Greater than or equal to" },
+                                    { value: "less_than", label: "Less than" },
+                                    { value: "less_than_or_equal", label: "Less than or equal to" },
+                                    { value: "is_empty", label: "Is empty" },
+                                    { value: "is_not_empty", label: "Is not empty" },
+                                  ]
+                                : [
+                                    { value: "equals", label: "Equals" },
+                                    { value: "not_equals", label: "Not equals" },
+                                    { value: "contains", label: "Contains" },
+                                    { value: "starts_with", label: "Starts with" },
+                                    { value: "greater_than", label: "Greater than" },
+                                    { value: "less_than", label: "Less than" },
+                                    { value: "is_empty", label: "Is empty" },
+                                    { value: "is_not_empty", label: "Is not empty" },
+                                  ]
+                              ).map(o => (
                                 <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                               ))}
                             </SelectContent>
