@@ -14,7 +14,10 @@ export type BackupModuleKey =
   | "kit"
   | "performance"
   | "staff_logs"
-  | "whatsapp";
+  | "whatsapp"
+  | "hr_attendance"
+  | "api_access";
+
 
 export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; description: string }> = [
   { key: "leads", label: "Leads", description: "Leads + related activity" },
