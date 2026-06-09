@@ -36,7 +36,10 @@ export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; descri
   { key: "performance", label: "Performance", description: "Performance targets, notes, triggers, widget prefs" },
   { key: "staff_logs", label: "Staff Activity Logs", description: "Staff activity log + notifications" },
   { key: "whatsapp", label: "WhatsApp", description: "WhatsApp settings, sessions, messages, queue" },
+  { key: "hr_attendance", label: "HR & Attendance", description: "Attendance logs, clock-in/out history, and leave tracking" },
+  { key: "api_access", label: "API Access", description: "API keys and rate limits" },
 ];
+
 
 export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   leads: ["leads", "activity_log"],
