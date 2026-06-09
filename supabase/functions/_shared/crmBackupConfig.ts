@@ -223,7 +223,22 @@ export const RESTORE_INSERT_ORDER: string[] = [
   "whatsapp_sessions",
   "whatsapp_messages",
   "whatsapp_queue",
+  // System extras
+  "system_settings",
+  "lead_lost_reasons",
+  // HR & Attendance
+  "staff_hr_settings",
+  "public_holidays",
+  "attendance_records",
+  "leave_balances",
+  "leave_requests",
+  "salary_records",
+  "work_delegations",
+  // API
+  "api_keys",
+  "api_rate_limits",
 ];
+
 
 export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   // Common
