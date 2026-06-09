@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/hooks/use-toast";
+
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,12 +51,14 @@ import {
   ChevronRight,
   Loader2,
   FileText,
+  BookmarkPlus,
   Users,
   UserPlus,
   Briefcase,
   CheckSquare,
   HeartHandshake,
   Activity,
+
 } from "lucide-react";
 import { format } from "date-fns";
 import { 
@@ -105,6 +111,28 @@ const AutomationRules = () => {
   const toggleRule = useToggleAutomationRule();
   const deleteRule = useDeleteAutomationRule();
   const duplicateRule = useDuplicateAutomationRule();
+  const queryClient = useQueryClient();
+
+  const handleSaveAsTemplate = async (rule: AutomationRule) => {
+    try {
+      const { error } = await supabase.from("automation_templates").insert({
+        template_name: rule.rule_name,
+        description: rule.description ?? null,
+        entity_type: rule.entity_type,
+        trigger_type: rule.trigger_type,
+        trigger_config: rule.trigger_config as never,
+        actions: rule.actions as never,
+        is_system: false,
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["automation-templates"] });
+      toast({ title: "Template saved", description: `"${rule.rule_name}" added to templates.` });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to save template";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    }
+  };
+
   
   const filteredRules = (rules || []).filter(rule => {
     const matchesSearch = rule.rule_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -373,10 +401,15 @@ const AutomationRules = () => {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSaveAsTemplate(rule)}>
+                                <BookmarkPlus className="h-4 w-4 mr-2" />
+                                Save as Template
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleDuplicate(rule.id)}>
                                 <Copy className="h-4 w-4 mr-2" />
                                 Duplicate
                               </DropdownMenuItem>
+
                               <DropdownMenuItem onClick={() => setViewingLogRuleId(rule.id)}>
                                 <History className="h-4 w-4 mr-2" />
                                 View Log

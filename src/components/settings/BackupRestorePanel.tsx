@@ -26,7 +26,13 @@ const MODULES: Array<{ key: BackupModuleKey; label: string; description: string 
   { key: "todo", label: "Todo Lists", description: "Todo lists and items" },
   { key: "attachments_files", label: "Attachments/Files", description: "Attachment metadata + stored objects" },
   { key: "kit", label: "Keep in Touch", description: "KIT subscriptions, touches, presets" },
+  { key: "performance", label: "Performance", description: "Targets, notes, widget prefs" },
+  { key: "staff_logs", label: "Staff Activity Logs", description: "Staff activity log + notifications" },
+  { key: "whatsapp", label: "WhatsApp", description: "Settings, sessions, messages, queue" },
+  { key: "hr_attendance", label: "HR & Attendance", description: "Attendance logs, clock-in/out history, and leave tracking" },
+  { key: "api_access", label: "API Access", description: "API keys and rate limits" },
 ];
+
 
 const ALL_MODULE_KEYS = MODULES.map((m) => m.key);
 

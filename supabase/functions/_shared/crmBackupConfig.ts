@@ -14,7 +14,10 @@ export type BackupModuleKey =
   | "kit"
   | "performance"
   | "staff_logs"
-  | "whatsapp";
+  | "whatsapp"
+  | "hr_attendance"
+  | "api_access";
+
 
 export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; description: string }> = [
   { key: "leads", label: "Leads", description: "Leads + related activity" },
@@ -33,7 +36,10 @@ export const BACKUP_MODULES: Array<{ key: BackupModuleKey; label: string; descri
   { key: "performance", label: "Performance", description: "Performance targets, notes, triggers, widget prefs" },
   { key: "staff_logs", label: "Staff Activity Logs", description: "Staff activity log + notifications" },
   { key: "whatsapp", label: "WhatsApp", description: "WhatsApp settings, sessions, messages, queue" },
+  { key: "hr_attendance", label: "HR & Attendance", description: "Attendance logs, clock-in/out history, and leave tracking" },
+  { key: "api_access", label: "API Access", description: "API keys and rate limits" },
 ];
+
 
 export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   leads: ["leads", "activity_log"],
@@ -59,6 +65,7 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   users_access: ["profiles", "user_roles", "custom_role_permissions"],
   company_system: [
     "company_settings",
+    "system_settings",
     "control_panel_options",
     "control_panel_option_values",
     "saved_filters",
@@ -66,6 +73,7 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
     "user_settings",
     "user_status",
     "user_table_preferences",
+    "lead_lost_reasons",
   ],
   todo: ["todo_lists", "todo_items"],
   attachments_files: ["entity_attachments", "quotation_attachments", "messages"],
@@ -73,7 +81,18 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   performance: ["performance_targets", "staff_performance_notes", "performance_trigger_log", "widget_preferences"],
   staff_logs: ["staff_activity_log", "notifications"],
   whatsapp: ["whatsapp_settings", "whatsapp_sessions", "whatsapp_messages", "whatsapp_queue"],
+  hr_attendance: [
+    "staff_hr_settings",
+    "attendance_records",
+    "leave_balances",
+    "leave_requests",
+    "salary_records",
+    "public_holidays",
+    "work_delegations",
+  ],
+  api_access: ["api_keys", "api_rate_limits"],
 };
+
 
 // Deletion order for REPLACE restores: children first.
 export const REPLACE_DELETE_ORDER: string[] = [
@@ -131,7 +150,22 @@ export const REPLACE_DELETE_ORDER: string[] = [
   "kit_presets",
   "kit_outcomes",
   "kit_touch_methods",
+  // HR & Attendance
+  "salary_records",
+  "leave_requests",
+  "leave_balances",
+  "attendance_records",
+  "work_delegations",
+  "public_holidays",
+  "staff_hr_settings",
+  // System extras
+  "system_settings",
+  "lead_lost_reasons",
+  // API
+  "api_rate_limits",
+  "api_keys",
 ];
+
 
 // Insert order for restores: parents first.
 export const RESTORE_INSERT_ORDER: string[] = [
@@ -189,7 +223,22 @@ export const RESTORE_INSERT_ORDER: string[] = [
   "whatsapp_sessions",
   "whatsapp_messages",
   "whatsapp_queue",
+  // System extras
+  "system_settings",
+  "lead_lost_reasons",
+  // HR & Attendance
+  "staff_hr_settings",
+  "public_holidays",
+  "attendance_records",
+  "leave_balances",
+  "leave_requests",
+  "salary_records",
+  "work_delegations",
+  // API
+  "api_keys",
+  "api_rate_limits",
 ];
+
 
 export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   // Common
@@ -244,7 +293,25 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   // Non-id PKs
   user_roles: "user_id",
   custom_role_permissions: "role",
+
+  // HR & Attendance
+  staff_hr_settings: "id",
+  attendance_records: "id",
+  leave_balances: "id",
+  leave_requests: "id",
+  salary_records: "id",
+  public_holidays: "id",
+  work_delegations: "id",
+
+  // System extras
+  system_settings: "id",
+  lead_lost_reasons: "id",
+
+  // API
+  api_keys: "id",
+  api_rate_limits: "id",
 };
+
 
 // Tables that must never appear in a backup payload.
 // crm_backups / crm_restores are operational metadata, not business data.

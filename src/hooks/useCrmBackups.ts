@@ -17,7 +17,10 @@ export type BackupModuleKey =
   | "kit"
   | "performance"
   | "staff_logs"
-  | "whatsapp";
+  | "whatsapp"
+  | "hr_attendance"
+  | "api_access";
+
 
 export type CrmBackupRow = {
   id: string;
