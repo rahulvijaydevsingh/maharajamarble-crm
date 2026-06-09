@@ -65,6 +65,7 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   users_access: ["profiles", "user_roles", "custom_role_permissions"],
   company_system: [
     "company_settings",
+    "system_settings",
     "control_panel_options",
     "control_panel_option_values",
     "saved_filters",
@@ -72,6 +73,7 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
     "user_settings",
     "user_status",
     "user_table_preferences",
+    "lead_lost_reasons",
   ],
   todo: ["todo_lists", "todo_items"],
   attachments_files: ["entity_attachments", "quotation_attachments", "messages"],
@@ -79,7 +81,18 @@ export const MODULE_TO_TABLES: Record<BackupModuleKey, string[]> = {
   performance: ["performance_targets", "staff_performance_notes", "performance_trigger_log", "widget_preferences"],
   staff_logs: ["staff_activity_log", "notifications"],
   whatsapp: ["whatsapp_settings", "whatsapp_sessions", "whatsapp_messages", "whatsapp_queue"],
+  hr_attendance: [
+    "staff_hr_settings",
+    "attendance_records",
+    "leave_balances",
+    "leave_requests",
+    "salary_records",
+    "public_holidays",
+    "work_delegations",
+  ],
+  api_access: ["api_keys", "api_rate_limits"],
 };
+
 
 // Deletion order for REPLACE restores: children first.
 export const REPLACE_DELETE_ORDER: string[] = [
