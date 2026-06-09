@@ -293,7 +293,25 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   // Non-id PKs
   user_roles: "user_id",
   custom_role_permissions: "role",
+
+  // HR & Attendance
+  staff_hr_settings: "id",
+  attendance_records: "id",
+  leave_balances: "id",
+  leave_requests: "id",
+  salary_records: "id",
+  public_holidays: "id",
+  work_delegations: "id",
+
+  // System extras
+  system_settings: "id",
+  lead_lost_reasons: "id",
+
+  // API
+  api_keys: "id",
+  api_rate_limits: "id",
 };
+
 
 // Tables that must never appear in a backup payload.
 // crm_backups / crm_restores are operational metadata, not business data.
