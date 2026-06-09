@@ -150,7 +150,22 @@ export const REPLACE_DELETE_ORDER: string[] = [
   "kit_presets",
   "kit_outcomes",
   "kit_touch_methods",
+  // HR & Attendance
+  "salary_records",
+  "leave_requests",
+  "leave_balances",
+  "attendance_records",
+  "work_delegations",
+  "public_holidays",
+  "staff_hr_settings",
+  // System extras
+  "system_settings",
+  "lead_lost_reasons",
+  // API
+  "api_rate_limits",
+  "api_keys",
 ];
+
 
 // Insert order for restores: parents first.
 export const RESTORE_INSERT_ORDER: string[] = [
