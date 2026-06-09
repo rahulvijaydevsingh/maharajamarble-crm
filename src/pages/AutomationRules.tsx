@@ -111,6 +111,28 @@ const AutomationRules = () => {
   const toggleRule = useToggleAutomationRule();
   const deleteRule = useDeleteAutomationRule();
   const duplicateRule = useDuplicateAutomationRule();
+  const queryClient = useQueryClient();
+
+  const handleSaveAsTemplate = async (rule: AutomationRule) => {
+    try {
+      const { error } = await supabase.from("automation_templates").insert({
+        template_name: rule.rule_name,
+        description: rule.description ?? null,
+        entity_type: rule.entity_type,
+        trigger_type: rule.trigger_type,
+        trigger_config: rule.trigger_config as never,
+        actions: rule.actions as never,
+        is_system: false,
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["automation-templates"] });
+      toast({ title: "Template saved", description: `"${rule.rule_name}" added to templates.` });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to save template";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    }
+  };
+
   
   const filteredRules = (rules || []).filter(rule => {
     const matchesSearch = rule.rule_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
