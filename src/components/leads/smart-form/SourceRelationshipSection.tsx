@@ -194,7 +194,7 @@ export function SourceRelationshipSection({
         service_category: quickAddServiceCategory || null,
         status: quickAddStatus || "active",
         priority: quickAddPriority ? Number(quickAddPriority) : undefined,
-        assigned_to: staff?.full_name || null,
+        assigned_to: staff?.name || null,
       });
       if (newProf) {
         onReferredByChange({

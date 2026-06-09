@@ -35,7 +35,7 @@ export const useAutomationRules = (entityType?: EntityType) => {
         actions: (rule.actions as unknown as AutomationAction[]) || [],
         exclude_conditions: rule.exclude_conditions as unknown as
           Record<string, unknown> | null,
-      })) as AutomationRule[];
+      })) as unknown as AutomationRule[];
     },
   });
 };
@@ -61,7 +61,7 @@ export const useAutomationRule = (ruleId: string | undefined) => {
         actions: (data.actions as unknown as AutomationAction[]) || [],
         exclude_conditions: data.exclude_conditions as unknown as
           Record<string, unknown> | null,
-      } as AutomationRule;
+      } as unknown as AutomationRule;
     },
     enabled: !!ruleId,
   });
