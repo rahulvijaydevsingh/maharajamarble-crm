@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { useTasks } from "@/hooks/useTasks";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { useNavigate } from "react-router-dom";
 import { useMemo } from "react";
 import { format, isPast, isToday } from "date-fns";
@@ -16,6 +17,7 @@ const priorities: Record<string, { label: string; className: string }> = {
 };
 
 export function TaskList() {
+  const { getOptionLabel } = useControlPanelSettings();
   const { tasks, loading, updateTask } = useTasks();
   const { openTask } = useTaskDetailModal();
   const navigate = useNavigate();
@@ -83,7 +85,7 @@ export function TaskList() {
                       {format(new Date(task.due_date), 'dd MMM yyyy')}
                     </span>
                     <span className="text-xs">
-                      {task.type}
+                      {getOptionLabel('tasks', 'type', task.type)}
                     </span>
                     <span className="text-xs truncate">
                       {task.assigned_to}

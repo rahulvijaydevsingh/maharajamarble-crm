@@ -14,6 +14,7 @@ import { format, isPast, isToday, parseISO } from "date-fns";
 import { Task } from "@/hooks/useTasks";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 
 interface TaskKanbanViewProps {
   tasks: Task[];
@@ -60,6 +61,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompleteTask }: TaskKanbanViewProps) {
+  const { getOptionLabel } = useControlPanelSettings();
   const { openTask } = useTaskDetailModal();
   const [groupBy, setGroupBy] = useState("status");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -279,7 +281,7 @@ export function TaskKanbanView({ tasks, onTaskUpdate, onEditTask, onRequestCompl
                               {task.priority}
                             </Badge>
                             <Badge variant="outline" className="text-xs">
-                              {task.type}
+                              {getOptionLabel('tasks', 'type', task.type)}
                             </Badge>
                           </div>
                           

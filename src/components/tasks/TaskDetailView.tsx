@@ -8,6 +8,7 @@ import { useCustomers, Customer } from "@/hooks/useCustomers";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
@@ -75,6 +76,7 @@ export function TaskDetailView({
 }) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { getOptionLabel } = useControlPanelSettings();
   const { canEdit, canDelete } = usePermissions();
   const { tasks, updateTask, addTask, deleteTask, snoozeTask } = useTasks();
   const { leads } = useLeads();
@@ -464,7 +466,7 @@ export function TaskDetailView({
 
               {task && (
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <Badge variant="outline">{task.type}</Badge>
+                  <Badge variant="outline">{getOptionLabel('tasks', 'type', task.type)}</Badge>
                   <Badge variant="secondary">{task.priority}</Badge>
                   <Badge variant={task.status === "Completed" ? "secondary" : "outline"}>{task.status}</Badge>
                 </div>

@@ -32,6 +32,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 
 interface LeadProfileTabProps {
   lead: Lead;
@@ -58,16 +59,8 @@ const PRIORITY_LEVELS: Record<number, { label: string; color: string; bgColor: s
   5: { label: 'Very Low', color: 'text-gray-700', bgColor: 'bg-gray-50' },
 };
 
-const sourceLabels: Record<string, string> = {
-  'walk_in': 'Walk-in',
-  'field_visit': 'Field Visit',
-  'cold_call': 'Cold Call',
-  'online_enquiry': 'Online Enquiry',
-  'professional_referral': 'Professional Referral',
-  'customer_conversion': 'Customer Conversion',
-};
-
 export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }: LeadProfileTabProps) {
+  const { getOptionLabel } = useControlPanelSettings();
   const { updateLead } = useLeads();
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
@@ -257,7 +250,7 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
         <Card className="border-0 shadow-sm bg-muted/30">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</div>
-            <div className="font-medium">{sourceLabels[lead.source] || lead.source}</div>
+            <div className="font-medium">{getOptionLabel('leads', 'source', lead.source)}</div>
           </CardContent>
         </Card>
 

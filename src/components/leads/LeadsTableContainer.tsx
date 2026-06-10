@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { Lead } from "@/hooks/useLeads";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { ColumnConfig } from "@/hooks/useTablePreferences";
 import { PhoneLink } from "@/components/shared/PhoneLink";
@@ -134,6 +135,7 @@ export function LeadsTableContainer({
   handleCreateQuotation,
   handleAddToCustomer,
 }: LeadsTableContainerProps) {
+  const { getOptionLabel } = useControlPanelSettings();
   
   // Render table header for a column
   const renderTableHeader = (columnKey: string, columnLabel: string) => {
@@ -284,7 +286,7 @@ export function LeadsTableContainer({
           />
         );
       case "source":
-        return <span className="capitalize">{lead.source.replace(/_/g, " ")}</span>;
+        return <span>{getOptionLabel('leads', 'source', lead.source)}</span>;
       case "status":
         return (
           <Badge variant="secondary" className={statuses[lead.status]?.className}>
