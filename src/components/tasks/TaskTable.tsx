@@ -36,6 +36,7 @@ import {
   Trash2
 } from "lucide-react";
 import { PhoneLink } from "@/components/shared/PhoneLink";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 
 // Task interface
 interface Task {
@@ -142,6 +143,7 @@ interface TaskTableProps {
 }
 
 export function TaskTable({ onEditTask }: TaskTableProps) {
+  const { getOptionLabel } = useControlPanelSettings();
   const [tasks, setTasks] = useState<Task[]>(sampleTasks);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -243,7 +245,7 @@ export function TaskTable({ onEditTask }: TaskTableProps) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline">{task.type}</Badge>
+                  <Badge variant="outline">{getOptionLabel('tasks', 'type', task.type)}</Badge>
                 </TableCell>
                 <TableCell>
                   <Badge 

@@ -55,6 +55,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { useControlPanelSettings, SystemOption, OptionModule } from "@/hooks/useControlPanelSettings";
 
 // Color presets
@@ -120,7 +121,10 @@ export function ControlPanel() {
     const newOption: SystemOption = {
       id: crypto.randomUUID(),
       label: newOptionLabel.trim(),
-      value: newOptionValue.trim() || newOptionLabel.trim().toLowerCase().replace(/\s+/g, '_'),
+      value: newOptionValue.trim() ||
+        (addingToField?.module === 'tasks' && addingToField?.field === 'type'
+          ? newOptionLabel.trim()
+          : newOptionLabel.trim().toLowerCase().replace(/\s+/g, '_')),
       color: addingToField.allowColors ? newOptionColor : undefined,
       isActive: true,
       isDefault: newOptionIsDefault,
@@ -236,6 +240,36 @@ export function ControlPanel() {
     setEditingField({ module: moduleName, field: fieldName });
   };
 
+  const handleOptionDragEnd = (
+    result: DropResult,
+    moduleName: string,
+    fieldName: string
+  ) => {
+    if (!result.destination) return;
+    if (result.source.index === result.destination.index) return;
+    setSystemOptions(
+      systemOptions.map((module) => {
+        if (module.moduleName !== moduleName) return module;
+        return {
+          ...module,
+          fields: module.fields.map((field) => {
+            if (field.fieldName !== fieldName) return field;
+            const reordered = Array.from(field.options);
+            const [moved] = reordered.splice(result.source.index, 1);
+            reordered.splice(result.destination!.index, 0, moved);
+            return {
+              ...field,
+              options: reordered.map((opt, idx) => ({
+                ...opt,
+                sortOrder: idx + 1,
+              })),
+            };
+          }),
+        };
+      })
+    );
+  };
+
   if (loading) {
     return (
       <Card>
@@ -324,61 +358,115 @@ export function ControlPanel() {
                         </Button>
                       </div>
                       
-                      <div className="space-y-2">
-                        {field.options.map((option) => (
-                          <div 
-                            key={option.id} 
-                            className={`flex items-center justify-between p-2 rounded border ${
-                              option.isActive ? 'bg-background' : 'bg-muted/50 opacity-60'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                              {option.color && (
-                                <div 
-                                  className="w-4 h-4 rounded-full border"
-                                  style={{ backgroundColor: option.color }}
-                                />
-                              )}
-                              <span className={option.isActive ? '' : 'line-through'}>{option.label}</span>
-                              {option.isDefault && (
-                                <Badge variant="secondary" className="text-xs">Default</Badge>
-                              )}
-                              {option.isSystemReserved && (
-                                <Badge variant="outline" className="text-xs">System</Badge>
-                              )}
-                              {!option.isActive && (
-                                <Badge variant="secondary" className="text-xs">(Inactive)</Badge>
-                              )}
+                      <DragDropContext
+                        onDragEnd={(result) =>
+                          handleOptionDragEnd(result, module.moduleName, field.fieldName)
+                        }
+                      >
+                        <Droppable droppableId={`${module.moduleName}--${field.fieldName}`}>
+                          {(droppableProvided) => (
+                            <div
+                              className="space-y-2"
+                              ref={droppableProvided.innerRef}
+                              {...droppableProvided.droppableProps}
+                            >
+                              {field.options.map((option, optionIndex) => (
+                                <Draggable
+                                  key={option.id}
+                                  draggableId={option.id}
+                                  index={optionIndex}
+                                  isDragDisabled={option.isSystemReserved}
+                                >
+                                  {(draggableProvided) => (
+                                    <div
+                                      ref={draggableProvided.innerRef}
+                                      {...draggableProvided.draggableProps}
+                                      className={`flex items-center justify-between p-2 rounded border ${
+                                        option.isActive ? 'bg-background' : 'bg-muted/50 opacity-60'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <span {...draggableProvided.dragHandleProps}>
+                                          <GripVertical
+                                            className={`h-4 w-4 ${
+                                              option.isSystemReserved
+                                                ? 'text-muted-foreground/30 cursor-not-allowed'
+                                                : 'text-muted-foreground cursor-grab'
+                                            }`}
+                                          />
+                                        </span>
+                                        {option.color && (
+                                          <div
+                                            className="w-4 h-4 rounded-full border"
+                                            style={{ backgroundColor: option.color }}
+                                          />
+                                        )}
+                                        <span className={option.isActive ? '' : 'line-through'}>
+                                          {option.label}
+                                        </span>
+                                        {option.isDefault && (
+                                          <Badge variant="secondary" className="text-xs">
+                                            Default
+                                          </Badge>
+                                        )}
+                                        {option.isSystemReserved && (
+                                          <Badge variant="outline" className="text-xs">
+                                            System
+                                          </Badge>
+                                        )}
+                                        {!option.isActive && (
+                                          <Badge variant="secondary" className="text-xs">
+                                            (Inactive)
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Switch
+                                          checked={option.isActive}
+                                          onCheckedChange={() =>
+                                            handleToggleActive(
+                                              module.moduleName,
+                                              field.fieldName,
+                                              option.id
+                                            )
+                                          }
+                                          disabled={option.isSystemReserved}
+                                        />
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() =>
+                                            openEditDialog(option, module.moduleName, field.fieldName)
+                                          }
+                                        >
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 text-destructive"
+                                          disabled={option.isSystemReserved}
+                                          onClick={() =>
+                                            setDeleteConfirmOption({
+                                              option,
+                                              module: module.moduleName,
+                                              field: field.fieldName,
+                                            })
+                                          }
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </Draggable>
+                              ))}
+                              {droppableProvided.placeholder}
                             </div>
-                            
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={option.isActive}
-                                onCheckedChange={() => handleToggleActive(module.moduleName, field.fieldName, option.id)}
-                                disabled={option.isSystemReserved}
-                              />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => openEditDialog(option, module.moduleName, field.fieldName)}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive"
-                                disabled={option.isSystemReserved}
-                                onClick={() => setDeleteConfirmOption({ option, module: module.moduleName, field: field.fieldName })}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          )}
+                        </Droppable>
+                      </DragDropContext>
                     </div>
                   ))}
                 </div>

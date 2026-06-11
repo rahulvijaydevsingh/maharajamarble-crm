@@ -520,6 +520,19 @@ export function useControlPanelSettings() {
     return field?.options.filter(o => o.isActive) || [];
   }, [systemOptions]);
 
+  const getOptionLabel = useCallback(
+    (moduleName: string, fieldName: string, value: string): string => {
+      if (!value) return value;
+      const mod = systemOptions.find((m) => m.moduleName === moduleName);
+      if (!mod) return value;
+      const field = mod.fields.find((f) => f.fieldName === fieldName);
+      if (!field) return value;
+      const option = field.options.find((o) => o.value === value);
+      return option?.label ?? value;
+    },
+    [systemOptions]
+  );
+
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
@@ -533,5 +546,6 @@ export function useControlPanelSettings() {
     saveSettings,
     loadSettings,
     getFieldOptions,
+    getOptionLabel,
   };
 }

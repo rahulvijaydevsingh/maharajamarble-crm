@@ -33,6 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { useLogActivity } from '@/hooks/useActivityLog';
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -40,17 +41,8 @@ interface CustomerProfileTabProps {
   onViewActivityLog?: () => void;
 }
 
-const sourceLabels: Record<string, string> = {
-  'direct': 'Direct',
-  'referral': 'Referral',
-  'website': 'Website',
-  'social_media': 'Social Media',
-  'marketing': 'Marketing',
-  'lead_conversion': 'Lead Conversion',
-  'customer_conversion': 'Customer Conversion',
-};
-
 export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: CustomerProfileTabProps) {
+  const { getOptionLabel } = useControlPanelSettings();
   const { updateCustomer } = useCustomers();
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
@@ -207,7 +199,9 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
         <Card className="border-0 shadow-sm bg-muted/30">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</div>
-            <div className="font-medium">{sourceLabels[customer.source || ''] || customer.source || '-'}</div>
+            <div className="font-medium">
+              {customer.source ? getOptionLabel('customers', 'customer_source', customer.source) : '-'}
+            </div>
           </CardContent>
         </Card>
 
