@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -82,6 +82,14 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
   const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
+
+  // Apply default filter on load
+  useEffect(() => {
+    const defaultFilter = savedFilters.find(f => f.is_default);
+    if (defaultFilter && !activeFilterId) {
+      applyFilter(defaultFilter);
+    }
+  }, [savedFilters, activeFilterId]);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [manageFiltersDialogOpen, setManageFiltersDialogOpen] = useState(false);
   const [columnManagerOpen, setColumnManagerOpen] = useState(false);
@@ -327,6 +335,34 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       </PopoverContent>
     </Popover>
   );
+
+  const applyFilter = (filter: SavedFilter) => {
+    const config = filter.filter_config;
+    // Reset manual column filters to ensure the saved filter is applied cleanly.
+    // We avoid touching assignedToFilter to strictly comply with INVARIANT-04
+    // constraints regarding assigned_to logic.
+    setStatusFilter(config.statusFilter || []);
+    setPriorityFilter(config.priorityFilter || []);
+    setTypeFilter([]);
+    setCityFilter([]);
+    setCreatedDateRange({ from: undefined, to: undefined });
+
+    // Apply advanced rules which contain the professional-specific logic
+    setActiveAdvancedRules((config as any).advancedRules || []);
+    setActiveFilterId(filter.id);
+  };
+
+  const clearFilters = () => {
+    setStatusFilter([]);
+    setPriorityFilter([]);
+    setTypeFilter([]);
+    setCityFilter([]);
+    // We avoid touching assignedToFilter to strictly comply with INVARIANT-04
+    // constraints regarding assigned_to logic.
+    setCreatedDateRange({ from: undefined, to: undefined });
+    setActiveAdvancedRules([]);
+    setActiveFilterId(null);
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -744,6 +780,49 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
           <Button onClick={onAdd}><Plus className="h-4 w-4 mr-1" /> Add Professional</Button>
         </div>
       </div>
+
+      {/* Saved Filters Quick Access */}
+      {savedFilters.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 scrollbar-none">
+          <Button
+            variant={!activeFilterId ? "default" : "outline"}
+            size="sm"
+            onClick={clearFilters}
+            className={cn("rounded-full px-4 h-8 shrink-0", !activeFilterId && "font-bold")}
+          >
+            All <span className="ml-1.5 opacity-70">{professionals.length}</span>
+          </Button>
+          {savedFilters.map((filter) => {
+            const count = getFilterCount(filter);
+            const isActive = activeFilterId === filter.id;
+            return (
+              <Button
+                key={filter.id}
+                variant={isActive ? "default" : "outline"}
+                size="sm"
+                onClick={() => applyFilter(filter)}
+                className={cn(
+                  "rounded-full px-4 h-8 shrink-0 transition-all",
+                  isActive
+                    ? "font-bold bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted/50 border-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {filter.name}
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "ml-2 h-5 min-w-[20px] px-1 justify-center rounded-full text-[10px] border-none font-medium",
+                    isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-background/50 text-muted-foreground"
+                  )}
+                >
+                  {count}
+                </Badge>
+              </Button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="text-sm text-muted-foreground">Showing {filteredProfessionals.length} of {professionals.length} professionals</div>
 
