@@ -137,13 +137,18 @@ export function ProfessionalSavedFilterDialog({
       setIsShared(editingFilter.is_shared);
       setIsDefault(editingFilter.is_default);
       const config = editingFilter.filter_config;
-      const newRules: FilterRule[] = config.advancedRules?.map((rule: any) => ({
-        id: crypto.randomUUID(),
-        field: rule.field,
-        operator: rule.operator,
-        value: rule.value,
-        logic: rule.logic || "and",
-      })) || [createEmptyRule()];
+      const newRules: FilterRule[] = config.advancedRules?.map((rule: any) => {
+        let operator = rule.operator;
+        if (operator === "greater_or_equal") operator = "greater_than_or_equal";
+        if (operator === "less_or_equal") operator = "less_than_or_equal";
+        return {
+          id: crypto.randomUUID(),
+          field: rule.field,
+          operator,
+          value: rule.value,
+          logic: rule.logic || "and",
+        };
+      }) || [createEmptyRule()];
       setRules(newRules);
     } else {
       resetForm();
