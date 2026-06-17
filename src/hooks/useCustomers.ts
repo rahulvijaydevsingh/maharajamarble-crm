@@ -32,6 +32,7 @@ export interface Customer {
   is_repeat_customer: boolean | null;
   original_lead_id: string | null;
   site_plus_code?: string | null;
+  updated_by?: string | null;
 }
 
 export interface CustomerInsert {
@@ -57,6 +58,7 @@ export interface CustomerInsert {
   last_follow_up?: string | null;
   next_follow_up?: string | null;
   site_plus_code?: string | null;
+  updated_by?: string | null;
 }
 
 async function getSessionUser() {
@@ -124,9 +126,22 @@ export function useCustomers() {
 
   const updateCustomer = async (id: string, updates: Partial<CustomerInsert>) => {
     try {
+      // INVARIANT-04: updated_by must store full_name string, never UUID/email
+      let updatedBy: string | null = null;
+      try {
+        const u = await getSessionUser();
+        if (u) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', u.id)
+            .maybeSingle();
+          updatedBy = prof?.full_name ?? null;
+        }
+      } catch (_) {}
       const { data, error } = await supabase
         .from("customers")
-        .update(updates)
+        .update({ ...updates, updated_by: updatedBy })
         .eq("id", id)
         .select()
         .single();
