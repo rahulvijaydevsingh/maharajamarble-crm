@@ -743,6 +743,159 @@ export function TaskCompletionDialog({
     );
   }
 
+  // Shared reminder row JSX — rendered inline in reschedule (between
+  // Date/Time and Reason) and after the follow-up due time block.
+  const reminderRow = (
+    <div className="space-y-2 border-t border-border/40 pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 shrink-0">
+          <Bell className="h-3.5 w-3.5" /> Reminder:
+        </span>
+        {[
+          { label: "1 hr", hours: "1" },
+          { label: "2 hr", hours: "2" },
+          { label: "3 hr", hours: "3" },
+          { label: "1 day", hours: "24" },
+          { label: "2 days", hours: "48" },
+          { label: "Custom", hours: "custom" },
+          { label: "None", hours: "" },
+        ].map(({ label, hours }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => {
+              if (hours === "custom") {
+                setShowCustomReminder(prev => !prev);
+                if (reminderOffsetHours !== "custom") {
+                  setReminderOffsetHours("custom");
+                }
+              } else {
+                setReminderOffsetHours(hours);
+                setShowCustomReminder(false);
+                if (hours === "") setCustomReminderAt("");
+              }
+            }}
+            className={cn(
+              "text-xs px-2.5 py-1 rounded-full border transition-colors",
+              (reminderOffsetHours === hours ||
+                (hours === "custom" && reminderOffsetHours === "custom"))
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {showCustomReminder && (
+        <div className="flex flex-wrap items-center gap-2 pl-1">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-7 text-xs justify-start font-normal w-32",
+                  !customReminderAt && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-1.5 h-3 w-3" />
+                {customReminderAt
+                  ? format(new Date(customReminderAt), "MMM d")
+                  : "Pick date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 z-[200]" align="start">
+              <Calendar
+                mode="single"
+                selected={customReminderAt
+                  ? new Date(customReminderAt) : undefined}
+                onSelect={(d) => {
+                  if (!d) { setCustomReminderAt(""); return; }
+                  const existingTime = customReminderAt
+                    ? customReminderAt.split("T")[1] || "09:00"
+                    : "09:00";
+                  setCustomReminderAt(
+                    `${format(d, "yyyy-MM-dd")}T${existingTime}`
+                  );
+                }}
+                initialFocus
+                disabled={(date) =>
+                  date < new Date(new Date().setHours(0, 0, 0, 0))}
+                className="pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+
+          <Select
+            value={customReminderAt
+              ? customReminderAt.split("T")[1]?.slice(0, 5) || ""
+              : ""}
+            onValueChange={(t) => {
+              const datePart = customReminderAt
+                ? customReminderAt.split("T")[0]
+                : format(new Date(), "yyyy-MM-dd");
+              setCustomReminderAt(`${datePart}T${t}`);
+            }}
+          >
+            <SelectTrigger className="h-7 w-24 text-xs">
+              <SelectValue placeholder="Time" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[180px] z-[200]">
+              <SelectGroup>
+                {BUSINESS_HOUR_SLOTS.filter((slot) => {
+                  const datePart = customReminderAt
+                    ? customReminderAt.split("T")[0]
+                    : format(new Date(), "yyyy-MM-dd");
+                  const isToday =
+                    datePart === format(new Date(), "yyyy-MM-dd");
+                  return !isToday ||
+                    slot.value >= format(new Date(), "HH:mm");
+                }).map((slot) => (
+                  <SelectItem key={slot.value} value={slot.value}>
+                    {slot.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          {customReminderAt && (
+            <button
+              type="button"
+              onClick={() => {
+                setCustomReminderAt("");
+                setShowCustomReminder(false);
+                setReminderOffsetHours("");
+              }}
+              className="text-xs text-destructive hover:underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
+      {customReminderAt && (
+        <p className="text-xs text-muted-foreground pl-1">
+          Reminder: {format(new Date(customReminderAt), "MMM d 'at' h:mm a")}
+        </p>
+      )}
+      {reminderOffsetHours && reminderOffsetHours !== "" &&
+       reminderOffsetHours !== "custom" && (
+        <p className="text-xs text-muted-foreground pl-1">
+          Reminder {
+            reminderOffsetHours === "1" ? "1 hour" :
+            reminderOffsetHours === "24" ? "1 day" :
+            reminderOffsetHours === "48" ? "2 days" :
+            `${reminderOffsetHours} hours`
+          } before scheduled time.
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
 <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto z-[100]" overlayClassName="z-[100]">
