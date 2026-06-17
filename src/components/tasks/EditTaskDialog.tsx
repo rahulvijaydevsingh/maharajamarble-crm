@@ -760,7 +760,14 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave, contentCl
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     checked={formData.reminder}
-                    onCheckedChange={(checked) => setFormData({ ...formData, reminder: !!checked })}
+                    onCheckedChange={(checked) => {
+                      const enabled = !!checked;
+                      setFormData({
+                        ...formData,
+                        reminder: enabled,
+                        reminderTime: enabled && !formData.reminderTime ? "15" : formData.reminderTime,
+                      });
+                    }}
                   />
                   <span className="text-sm">Enable</span>
                 </div>
