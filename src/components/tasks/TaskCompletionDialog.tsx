@@ -1085,6 +1085,9 @@ export function TaskCompletionDialog({
                 </div>
               </div>
 
+              {/* Reminder row — sits directly under Next Date / Next Time */}
+              {reminderRow}
+
               {/* Reschedule reason */}
               <div className="space-y-2">
                 <Label>Reschedule Reason *</Label>
