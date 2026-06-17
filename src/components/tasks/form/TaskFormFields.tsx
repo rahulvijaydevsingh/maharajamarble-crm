@@ -313,7 +313,13 @@ export function TaskFormFields({
             <Checkbox
               id="reminder"
               checked={formData.reminder}
-              onCheckedChange={(checked) => onFormDataChange("reminder", !!checked)}
+              onCheckedChange={(checked) => {
+                const enabled = !!checked;
+                onFormDataChange("reminder", enabled);
+                if (enabled && !formData.reminderTime) {
+                  onFormDataChange("reminderTime", "15");
+                }
+              }}
             />
             <Label htmlFor="reminder" className="text-sm cursor-pointer">Enable Reminder</Label>
           </div>
