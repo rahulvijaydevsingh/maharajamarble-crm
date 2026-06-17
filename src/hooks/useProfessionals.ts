@@ -30,6 +30,7 @@ export interface Professional {
   verified?: boolean;
   verified_at?: string | null;
   verified_by?: string | null;
+  updated_by?: string | null;
 }
 
 export interface ProfessionalInsert {
@@ -56,6 +57,7 @@ export interface ProfessionalInsert {
   verified?: boolean;
   verified_at?: string | null;
   verified_by?: string | null;
+  updated_by?: string | null;
 }
 
 async function getSessionUser() {
@@ -122,9 +124,22 @@ export function useProfessionals() {
 
   const updateProfessional = async (id: string, updates: Partial<ProfessionalInsert>) => {
     try {
+      // INVARIANT-04: updated_by must store full_name string, never UUID/email
+      let updatedBy: string | null = null;
+      try {
+        const u = await getSessionUser();
+        if (u) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', u.id)
+            .maybeSingle();
+          updatedBy = prof?.full_name ?? null;
+        }
+      } catch (_) {}
       const { data, error } = await supabase
         .from("professionals")
-        .update(updates)
+        .update({ ...updates, updated_by: updatedBy })
         .eq("id", id)
         .select()
         .single();

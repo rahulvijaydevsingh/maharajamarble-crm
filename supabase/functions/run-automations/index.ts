@@ -415,7 +415,7 @@ async function executeAction(
             oldValue = String((newRow as any)?.status || (oldRow as any)?.status || "");
           }
 
-          const { error } = await supabase.from(tableName).update({ [field]: value }).eq("id", entityId);
+          const { error } = await supabase.from(tableName).update({ [field]: value, updated_by: 'automation' }).eq("id", entityId);
           if (error) return { status: "failed", error: error.message };
 
           // Log status changes to activity_log for leads
@@ -477,7 +477,7 @@ async function executeAction(
 
           const { error } = await supabase
             .from(relatedTable)
-            .update({ [field]: value })
+            .update({ [field]: value, updated_by: 'automation' })
             .eq("id", relatedId);
           if (error) return { status: "failed", error: error.message };
           return { status: "success", details: `Updated ${relatedTable}.${field} → ${value} (id=${relatedId})` };
@@ -537,12 +537,12 @@ async function executeAction(
           let updateData: Record<string, unknown> = {};
 
           if (operation === "cancel_all") {
-            updateData = { status: "Cancelled" };
+            updateData = { status: "Cancelled", updated_by: 'automation' };
           } else if (operation === "complete_all") {
-            updateData = { status: "Completed", completed_at: new Date().toISOString() };
+            updateData = { status: "Completed", completed_at: new Date().toISOString(), updated_by: 'automation' };
           } else if (operation === "reassign_all") {
             const reassignTo = String(config.reassign_to_user || newRow.assigned_to || "");
-            updateData = { assigned_to: reassignTo };
+            updateData = { assigned_to: reassignTo, updated_by: 'automation' };
           }
 
           if (Object.keys(updateData).length > 0) {

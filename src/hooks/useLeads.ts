@@ -32,6 +32,7 @@ export interface Lead {
   address: string | null;
   last_follow_up: string | null;
   next_follow_up: string | null;
+  updated_by?: string | null;
 }
 
 export interface LeadInsert {
@@ -57,6 +58,7 @@ export interface LeadInsert {
   notes?: string | null;
   address?: string | null;
   created_by?: string;
+  updated_by?: string | null;
 }
 
 export function useLeads() {
@@ -114,9 +116,23 @@ export function useLeads() {
   const updateLead = async (id: string, updates: Partial<LeadInsert>) => {
     try {
       const prevLead = leads.find((l) => l.id === id);
+      // INVARIANT-04: updated_by must store full_name string, never UUID/email
+      let updatedBy: string | null = null;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const uid = sessionData.session?.user?.id;
+        if (uid) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', uid)
+            .maybeSingle();
+          updatedBy = prof?.full_name ?? null;
+        }
+      } catch (_) {}
       const { data, error } = await supabase
         .from("leads")
-        .update(updates)
+        .update({ ...updates, updated_by: updatedBy })
         .eq("id", id)
         .select()
         .single();

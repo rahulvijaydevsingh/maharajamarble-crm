@@ -81,6 +81,7 @@ export interface Task {
   subtasks_completed?: number;
   // Calculated status (computed, not stored)
   calculatedStatus?: TaskStatus;
+  updated_by?: string | null;
 }
 
 export interface TaskInsert {
@@ -131,6 +132,7 @@ export interface TaskInsert {
   reschedule_reason?: string | null;
   reminder_offset_hours?: number | null;
   custom_reminder_at?: string | null;
+  updated_by?: string | null;
 }
 
 // Helper function to calculate next due date based on recurrence settings
@@ -579,7 +581,7 @@ export function useTasks() {
 
       const { data, error } = await supabase
         .from("tasks")
-        .update(updates)
+        .update({ ...updates, updated_by: profile?.full_name ?? null })
         .eq("id", id)
         .select(`
           *,
