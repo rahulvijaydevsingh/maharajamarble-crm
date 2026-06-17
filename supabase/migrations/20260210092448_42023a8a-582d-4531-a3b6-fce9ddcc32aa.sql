@@ -1,0 +1,4 @@
+
+ALTER TABLE kit_touches 
+ADD COLUMN IF NOT EXISTS linked_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+ADD COLUMN IF NOT EXISTS linked_reminder_id UUID REFERENCES reminders(id) ON DELETE SET NULL;

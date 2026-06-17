@@ -1,0 +1,720 @@
+import { useState, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Trash2, Zap, Clock, Hash, Filter, ChevronDown, ChevronUp, Gauge } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { EntityType, TriggerType, ConditionLogic, EntityField } from "@/types/automation";
+import { 
+  TRIGGER_TYPES, 
+  ENTITY_FIELDS, 
+  FIELD_CHANGE_WHEN_OPTIONS, 
+  TIME_OFFSET_UNITS, 
+  TIME_OFFSET_DIRECTIONS, 
+  SAVED_FILTER_CONDITIONS,
+  CHECK_FREQUENCY_OPTIONS,
+  THRESHOLD_OPERATORS,
+  PERFORMANCE_METRICS,
+  PERFORMANCE_CONDITIONS,
+  PERFORMANCE_STAFF_SCOPE,
+  PERFORMANCE_SCHEDULE_FREQUENCY,
+} from "@/constants/automationConstants";
+import { FieldValueSelector } from "./triggers/FieldValueSelector";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+
+export interface TriggerConditionData {
+  id: string;
+  triggerType: TriggerType;
+  triggerConfig: Record<string, any>;
+}
+
+interface TriggerConditionBlockProps {
+  condition: TriggerConditionData;
+  conditionIndex: number;
+  entityType: EntityType;
+  savedFilters: Array<{ id: string; name: string; is_shared?: boolean }>;
+  onUpdate: (id: string, updates: Partial<TriggerConditionData>) => void;
+  onRemove: (id: string) => void;
+  showLogic: boolean;
+  logic: ConditionLogic;
+  onLogicChange: (logic: ConditionLogic) => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}
+
+export const TriggerConditionBlock = ({
+  condition,
+  conditionIndex,
+  entityType,
+  savedFilters,
+  onUpdate,
+  onRemove,
+  showLogic,
+  logic,
+  onLogicChange,
+  isExpanded,
+  onToggleExpand,
+}: TriggerConditionBlockProps) => {
+  const { staffMembers } = useActiveStaff();
+  const entityFields = useMemo(() => {
+    const fields = ENTITY_FIELDS[entityType] || [];
+    // Dynamically populate staff_activity user_email field with active staff
+    if (entityType === "staff_activity") {
+      return fields.map(f => {
+        if (f.name === "user_email") {
+          return { ...f, options: staffMembers.map(s => ({ value: s.email || s.name, label: s.name })) };
+        }
+        return f;
+      });
+    }
+    return fields;
+  }, [entityType, staffMembers]);
+  const selectedField = entityFields.find(f => f.name === condition.triggerConfig.field);
+
+  const getTriggerIcon = (type: TriggerType) => {
+    switch (type) {
+      case "field_change": return <Zap className="h-4 w-4" />;
+      case "time_based": return <Clock className="h-4 w-4" />;
+      case "count_based": return <Hash className="h-4 w-4" />;
+      case "saved_filter": return <Filter className="h-4 w-4" />;
+      case "performance": return <Gauge className="h-4 w-4" />;
+      default: return <Zap className="h-4 w-4" />;
+    }
+  };
+
+  const getTriggerSummary = () => {
+    const { triggerType, triggerConfig } = condition;
+    switch (triggerType) {
+      case "field_change":
+        if (triggerConfig.when === "field_changes_to" && triggerConfig.field) {
+          return `${triggerConfig.field} changes to ${triggerConfig.value || "..."}`;
+        }
+        if (triggerConfig.when === "field_changes_from_to" && triggerConfig.field) {
+          return `${triggerConfig.field}: ${triggerConfig.from_value || "any"} → ${triggerConfig.to_value || "..."}`;
+        }
+        if (triggerConfig.when === "record_created") {
+          return "Record created";
+        }
+        if (triggerConfig.when === "field_matches" && triggerConfig.field) {
+          return `${triggerConfig.field} ${triggerConfig.operator || "equals"} ${triggerConfig.value || "..."}`;
+        }
+        return "Field change";
+      case "time_based":
+        if (triggerConfig.offset_value && triggerConfig.field) {
+          return `${triggerConfig.offset_value} ${triggerConfig.offset_unit || "days"} ${triggerConfig.offset_direction || "after"} ${triggerConfig.field}`;
+        }
+        return "Time-based";
+      case "count_based":
+        if (triggerConfig.threshold_value) {
+          return `Count ${triggerConfig.threshold_operator || ">"} ${triggerConfig.threshold_value}`;
+        }
+        return "Count-based";
+      case "saved_filter":
+        return triggerConfig.saved_filter_id ? "Saved filter trigger" : "Saved Filter";
+      case "performance": {
+        const metricLabel = PERFORMANCE_METRICS.find(m => m.value === triggerConfig.metric)?.label || "metric";
+        const condLabel = PERFORMANCE_CONDITIONS.find(c => c.value === triggerConfig.condition)?.label || "";
+        return triggerConfig.metric ? `${metricLabel} ${condLabel} ${triggerConfig.threshold_value || ""}` : "Performance trigger";
+      }
+      default:
+        return "Configure trigger...";
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* AND/OR Logic selector - shown between conditions */}
+      {showLogic && (
+        <div className="flex items-center justify-center py-2">
+          <div className="flex items-center gap-3 px-4 py-1.5 bg-muted rounded-full">
+            <RadioGroup
+              value={logic}
+              onValueChange={(v) => onLogicChange(v as ConditionLogic)}
+              className="flex gap-4"
+            >
+              <div className="flex items-center space-x-1.5">
+                <RadioGroupItem value="and" id={`logic-and-${condition.id}`} className="h-4 w-4" />
+                <Label htmlFor={`logic-and-${condition.id}`} className="text-sm font-semibold cursor-pointer">AND</Label>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <RadioGroupItem value="or" id={`logic-or-${condition.id}`} className="h-4 w-4" />
+                <Label htmlFor={`logic-or-${condition.id}`} className="text-sm font-semibold cursor-pointer">OR</Label>
+              </div>
+            </RadioGroup>
+          </div>
+        </div>
+      )}
+
+      <Card className="border-2 border-dashed">
+        <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="py-3 cursor-pointer hover:bg-muted/50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono">
+                    {conditionIndex + 1}
+                  </Badge>
+                  {getTriggerIcon(condition.triggerType)}
+                  <span className="font-medium">
+                    {TRIGGER_TYPES.find(t => t.value === condition.triggerType)?.label}
+                  </span>
+                  {!isExpanded && (
+                    <span className="text-xs text-muted-foreground ml-2 truncate max-w-[200px]">
+                      {getTriggerSummary()}
+                    </span>
+                  )}
+                </CardTitle>
+                <div className="flex items-center gap-1">
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {conditionIndex > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(condition.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          
+          <CollapsibleContent>
+            <CardContent className="pt-0 space-y-4">
+              {/* Trigger Type Selector */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Trigger Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {TRIGGER_TYPES.map(t => (
+                    <Button
+                      key={t.value}
+                      variant={condition.triggerType === t.value ? "default" : "outline"}
+                      className="justify-start h-auto py-2 px-3"
+                      onClick={() => onUpdate(condition.id, { 
+                        triggerType: t.value, 
+                        triggerConfig: {} 
+                      })}
+                    >
+                      <div className="text-left w-full overflow-hidden">
+                        <div className="font-medium text-xs">{t.label}</div>
+                        <div className="text-[10px] opacity-70 truncate">{t.description}</div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Field Change Config */}
+              {condition.triggerType === "field_change" && (
+                <div className="space-y-3 pt-2 border-t">
+                  <Select
+                    value={condition.triggerConfig.when || ""}
+                    onValueChange={(v) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, when: v } 
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select when to trigger..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[220]">
+                      {FIELD_CHANGE_WHEN_OPTIONS.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {(condition.triggerConfig.when === "field_changes_to" || condition.triggerConfig.when === "record_created" || condition.triggerConfig.when === "field_matches") && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Select Field</Label>
+                        <Select
+                          value={condition.triggerConfig.field || ""}
+                          onValueChange={(v) => onUpdate(condition.id, { 
+                            triggerConfig: { ...condition.triggerConfig, field: v, value: "", operator: condition.triggerConfig.when === "field_matches" ? "equals" : undefined } 
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select field..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-[220]">
+                            {entityFields.map(f => (
+                              <SelectItem key={f.name} value={f.name}>
+                                <div className="flex items-center gap-2">
+                                  <span>{f.label}</span>
+                                  <Badge variant="outline" className="text-[10px]">{f.type}</Badge>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {condition.triggerConfig.when === "field_matches" && condition.triggerConfig.field && (
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Operator</Label>
+                          <Select
+                            value={condition.triggerConfig.operator || "equals"}
+                            onValueChange={(v) => onUpdate(condition.id, { 
+                              triggerConfig: { ...condition.triggerConfig, operator: v } 
+                            })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                             <SelectContent className="z-[220]">
+                              {(selectedField?.type === "number"
+                                ? [
+                                    { value: "equals", label: "Equals" },
+                                    { value: "not_equals", label: "Not equals" },
+                                    { value: "greater_than", label: "Greater than" },
+                                    { value: "greater_than_or_equal", label: "Greater than or equal to" },
+                                    { value: "less_than", label: "Less than" },
+                                    { value: "less_than_or_equal", label: "Less than or equal to" },
+                                    { value: "is_empty", label: "Is empty" },
+                                    { value: "is_not_empty", label: "Is not empty" },
+                                  ]
+                                : [
+                                    { value: "equals", label: "Equals" },
+                                    { value: "not_equals", label: "Not equals" },
+                                    { value: "contains", label: "Contains" },
+                                    { value: "starts_with", label: "Starts with" },
+                                    { value: "greater_than", label: "Greater than" },
+                                    { value: "less_than", label: "Less than" },
+                                    { value: "is_empty", label: "Is empty" },
+                                    { value: "is_not_empty", label: "Is not empty" },
+                                  ]
+                              ).map(o => (
+                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {condition.triggerConfig.field && 
+                       !(condition.triggerConfig.when === "field_matches" && 
+                         (condition.triggerConfig.operator === "is_empty" || condition.triggerConfig.operator === "is_not_empty")) && (
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Value to match</Label>
+                          <FieldValueSelector
+                            field={selectedField}
+                            value={condition.triggerConfig.value}
+                            onChange={(v) => onUpdate(condition.id, { 
+                              triggerConfig: { ...condition.triggerConfig, value: v } 
+                            })}
+                            placeholder="Select or enter value..."
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {condition.triggerConfig.when === "field_changes_from_to" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Select Field</Label>
+                        <Select
+                          value={condition.triggerConfig.field || ""}
+                          onValueChange={(v) => onUpdate(condition.id, { 
+                            triggerConfig: { ...condition.triggerConfig, field: v, from_value: "", to_value: "" } 
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select field..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-[220]">
+                            {entityFields.map(f => (
+                              <SelectItem key={f.name} value={f.name}>{f.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {condition.triggerConfig.field && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">From</Label>
+                            <FieldValueSelector
+                              field={selectedField}
+                              value={condition.triggerConfig.from_value}
+                              onChange={(v) => onUpdate(condition.id, { 
+                                triggerConfig: { ...condition.triggerConfig, from_value: v } 
+                              })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">To</Label>
+                            <FieldValueSelector
+                              field={selectedField}
+                              value={condition.triggerConfig.to_value}
+                              onChange={(v) => onUpdate(condition.id, { 
+                                triggerConfig: { ...condition.triggerConfig, to_value: v } 
+                              })}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Time Based Config */}
+              {condition.triggerType === "time_based" && (
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input
+                      type="number"
+                      value={condition.triggerConfig.offset_value || ""}
+                      onChange={(e) => onUpdate(condition.id, { 
+                        triggerConfig: { ...condition.triggerConfig, offset_value: parseInt(e.target.value) } 
+                      })}
+                      placeholder="Value"
+                    />
+                    <Select
+                      value={condition.triggerConfig.offset_unit || "days"}
+                      onValueChange={(v) => onUpdate(condition.id, { 
+                        triggerConfig: { ...condition.triggerConfig, offset_unit: v } 
+                      })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {TIME_OFFSET_UNITS.map(u => (
+                          <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={condition.triggerConfig.offset_direction || "after"}
+                      onValueChange={(v) => onUpdate(condition.id, { 
+                        triggerConfig: { ...condition.triggerConfig, offset_direction: v } 
+                      })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {TIME_OFFSET_DIRECTIONS.map(d => (
+                          <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Select
+                    value={condition.triggerConfig.field || ""}
+                    onValueChange={(v) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, field: v } 
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Relative to field..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[220]">
+                      {entityFields.filter(f => f.type === "date" || f.type === "datetime").map(f => (
+                        <SelectItem key={f.name} value={f.name}>{f.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Count Based Config */}
+              {condition.triggerType === "count_based" && (
+                <div className="space-y-3 pt-2 border-t">
+                  <Select
+                    value={condition.triggerConfig.threshold_operator || "greater_than"}
+                    onValueChange={(v) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, threshold_operator: v } 
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Condition..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[220]">
+                      {THRESHOLD_OPERATORS.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    value={condition.triggerConfig.threshold_value || ""}
+                    onChange={(e) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, threshold_value: parseInt(e.target.value) } 
+                    })}
+                    placeholder="Threshold count"
+                  />
+                  <Select
+                    value={condition.triggerConfig.check_frequency || "hourly"}
+                    onValueChange={(v) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, check_frequency: v } 
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Check frequency" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[220]">
+                      {CHECK_FREQUENCY_OPTIONS.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Saved Filter Config */}
+              {condition.triggerType === "saved_filter" && (
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Saved Filter</Label>
+                    <Select
+                      value={condition.triggerConfig.saved_filter_id || ""}
+                      onValueChange={(v) => onUpdate(condition.id, { 
+                        triggerConfig: { ...condition.triggerConfig, saved_filter_id: v } 
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a saved filter..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {savedFilters.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground">
+                            No saved filters found for {entityType}
+                          </div>
+                        ) : (
+                          savedFilters.map(filter => (
+                            <SelectItem key={filter.id} value={filter.id}>
+                              <div className="flex items-center gap-2">
+                                <Filter className="h-3 w-3" />
+                                {filter.name}
+                                {filter.is_shared && <Badge variant="secondary" className="text-[10px]">Shared</Badge>}
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Select
+                    value={condition.triggerConfig.condition || "count_above"}
+                    onValueChange={(v) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, condition: v } 
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Condition" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[220]">
+                      {SAVED_FILTER_CONDITIONS.map(c => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(condition.triggerConfig.condition === "count_above" || 
+                    condition.triggerConfig.condition === "count_below" || 
+                    condition.triggerConfig.condition === "count_changes_by") && (
+                    <Input
+                      type="number"
+                      value={condition.triggerConfig.threshold || ""}
+                      onChange={(e) => onUpdate(condition.id, { 
+                        triggerConfig: { ...condition.triggerConfig, threshold: parseInt(e.target.value) } 
+                      })}
+                      placeholder="Threshold value"
+                    />
+                  )}
+                  <Select
+                    value={condition.triggerConfig.check_frequency || "hourly"}
+                    onValueChange={(v) => onUpdate(condition.id, { 
+                      triggerConfig: { ...condition.triggerConfig, check_frequency: v } 
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Check frequency" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[220]">
+                      {CHECK_FREQUENCY_OPTIONS.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Performance Trigger Config */}
+              {condition.triggerType === "performance" && (
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Performance Metric</Label>
+                    <Select
+                      value={condition.triggerConfig.metric || ""}
+                      onValueChange={(v) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, metric: v }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select metric..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {PERFORMANCE_METRICS.map(m => (
+                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Condition</Label>
+                    <Select
+                      value={condition.triggerConfig.condition || ""}
+                      onValueChange={(v) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, condition: v }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select condition..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {PERFORMANCE_CONDITIONS.map(c => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {condition.triggerConfig.condition && !["below_target", "above_target"].includes(condition.triggerConfig.condition) && (
+                    <Input
+                      type="number"
+                      value={condition.triggerConfig.threshold_value || ""}
+                      onChange={(e) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, threshold_value: parseFloat(e.target.value) }
+                      })}
+                      placeholder={condition.triggerConfig.condition === "dropped_by_percent" ? "% drop threshold" :
+                        condition.triggerConfig.condition === "no_change_days" ? "Days" :
+                        condition.triggerConfig.condition === "bottom_percent" ? "Bottom X%" : "Threshold value"}
+                    />
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Staff Scope</Label>
+                    <Select
+                      value={condition.triggerConfig.staff_scope || "all"}
+                      onValueChange={(v) => onUpdate(condition.id, {
+                        triggerConfig: { ...condition.triggerConfig, staff_scope: v }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[220]">
+                        {PERFORMANCE_STAFF_SCOPE.map(s => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {condition.triggerConfig.staff_scope === "specific" && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Staff Member</Label>
+                      <Select
+                        value={condition.triggerConfig.specific_staff_id || ""}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, specific_staff_id: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select staff..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          {staffMembers.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {condition.triggerConfig.staff_scope === "by_role" && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Role Filter</Label>
+                      <Select
+                        value={condition.triggerConfig.role_filter || ""}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, role_filter: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select role..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          <SelectItem value="field_agent">Field Agent</SelectItem>
+                          <SelectItem value="sales_user">Sales User</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Evaluation Schedule</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select
+                        value={condition.triggerConfig.schedule_frequency || "daily"}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, schedule_frequency: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          {PERFORMANCE_SCHEDULE_FREQUENCY.map(f => (
+                            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="time"
+                        value={condition.triggerConfig.schedule_time || "18:00"}
+                        onChange={(e) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, schedule_time: e.target.value }
+                        })}
+                      />
+                    </div>
+                    {condition.triggerConfig.schedule_frequency === "weekly" && (
+                      <Select
+                        value={condition.triggerConfig.schedule_day || "mon"}
+                        onValueChange={(v) => onUpdate(condition.id, {
+                          triggerConfig: { ...condition.triggerConfig, schedule_day: v }
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Day of week" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[220]">
+                          <SelectItem value="mon">Monday</SelectItem>
+                          <SelectItem value="tue">Tuesday</SelectItem>
+                          <SelectItem value="wed">Wednesday</SelectItem>
+                          <SelectItem value="thu">Thursday</SelectItem>
+                          <SelectItem value="fri">Friday</SelectItem>
+                          <SelectItem value="sat">Saturday</SelectItem>
+                          <SelectItem value="sun">Sunday</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+    </div>
+  );
+};

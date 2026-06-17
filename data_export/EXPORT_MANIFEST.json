@@ -1,0 +1,262 @@
+{
+    "exported_at": "2026-05-25T08:56:18Z",
+    "source_project": "ehuxwzbdnpyelmtckoac",
+    "tables": [
+        {
+            "table": "activity_log",
+            "row_count": 3117
+        },
+        {
+            "table": "announcement_reads",
+            "row_count": 0
+        },
+        {
+            "table": "announcements",
+            "row_count": 0
+        },
+        {
+            "table": "api_keys",
+            "row_count": 1
+        },
+        {
+            "table": "api_rate_limits",
+            "row_count": 5
+        },
+        {
+            "table": "attendance_records",
+            "row_count": 60
+        },
+        {
+            "table": "automation_executions",
+            "row_count": 1204
+        },
+        {
+            "table": "automation_rule_executions_tracking",
+            "row_count": 280
+        },
+        {
+            "table": "automation_rules",
+            "row_count": 6
+        },
+        {
+            "table": "automation_settings",
+            "row_count": 0
+        },
+        {
+            "table": "automation_templates",
+            "row_count": 3
+        },
+        {
+            "table": "company_settings",
+            "row_count": 0
+        },
+        {
+            "table": "control_panel_option_values",
+            "row_count": 136
+        },
+        {
+            "table": "control_panel_options",
+            "row_count": 20
+        },
+        {
+            "table": "conversations",
+            "row_count": 2
+        },
+        {
+            "table": "crm_backups",
+            "row_count": 3
+        },
+        {
+            "table": "crm_restores",
+            "row_count": 2
+        },
+        {
+            "table": "custom_role_permissions",
+            "row_count": 1
+        },
+        {
+            "table": "customers",
+            "row_count": 5
+        },
+        {
+            "table": "entity_attachments",
+            "row_count": 278
+        },
+        {
+            "table": "kit_outcomes",
+            "row_count": 5
+        },
+        {
+            "table": "kit_presets",
+            "row_count": 3
+        },
+        {
+            "table": "kit_subscriptions",
+            "row_count": 27
+        },
+        {
+            "table": "kit_touch_methods",
+            "row_count": 5
+        },
+        {
+            "table": "kit_touches",
+            "row_count": 84
+        },
+        {
+            "table": "lead_lost_reasons",
+            "row_count": 8
+        },
+        {
+            "table": "leads",
+            "row_count": 145
+        },
+        {
+            "table": "leave_balances",
+            "row_count": 0
+        },
+        {
+            "table": "leave_requests",
+            "row_count": 0
+        },
+        {
+            "table": "messages",
+            "row_count": 3
+        },
+        {
+            "table": "notifications",
+            "row_count": 152
+        },
+        {
+            "table": "performance_targets",
+            "row_count": 0
+        },
+        {
+            "table": "performance_trigger_log",
+            "row_count": 0
+        },
+        {
+            "table": "professionals",
+            "row_count": 104
+        },
+        {
+            "table": "profiles",
+            "row_count": 9
+        },
+        {
+            "table": "public_holidays",
+            "row_count": 0
+        },
+        {
+            "table": "quotation_attachments",
+            "row_count": 0
+        },
+        {
+            "table": "quotation_items",
+            "row_count": 3
+        },
+        {
+            "table": "quotations",
+            "row_count": 1
+        },
+        {
+            "table": "reminders",
+            "row_count": 88
+        },
+        {
+            "table": "salary_records",
+            "row_count": 0
+        },
+        {
+            "table": "saved_filter_monitoring",
+            "row_count": 0
+        },
+        {
+            "table": "saved_filters",
+            "row_count": 11
+        },
+        {
+            "table": "staff_activity_log",
+            "row_count": 3546
+        },
+        {
+            "table": "staff_hr_settings",
+            "row_count": 0
+        },
+        {
+            "table": "staff_performance_notes",
+            "row_count": 0
+        },
+        {
+            "table": "system_settings",
+            "row_count": 1
+        },
+        {
+            "table": "task_activity_log",
+            "row_count": 650
+        },
+        {
+            "table": "task_completion_templates",
+            "row_count": 0
+        },
+        {
+            "table": "task_snooze_history",
+            "row_count": 30
+        },
+        {
+            "table": "task_subtasks",
+            "row_count": 0
+        },
+        {
+            "table": "tasks",
+            "row_count": 273
+        },
+        {
+            "table": "todo_items",
+            "row_count": 0
+        },
+        {
+            "table": "todo_lists",
+            "row_count": 2
+        },
+        {
+            "table": "user_roles",
+            "row_count": 8
+        },
+        {
+            "table": "user_settings",
+            "row_count": 0
+        },
+        {
+            "table": "user_status",
+            "row_count": 0
+        },
+        {
+            "table": "user_table_preferences",
+            "row_count": 8
+        },
+        {
+            "table": "whatsapp_messages",
+            "row_count": 0
+        },
+        {
+            "table": "whatsapp_queue",
+            "row_count": 0
+        },
+        {
+            "table": "whatsapp_sessions",
+            "row_count": 0
+        },
+        {
+            "table": "whatsapp_settings",
+            "row_count": 1
+        },
+        {
+            "table": "widget_preferences",
+            "row_count": 0
+        },
+        {
+            "table": "work_delegations",
+            "row_count": 0
+        }
+    ]
+}

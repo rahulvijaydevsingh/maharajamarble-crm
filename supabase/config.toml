@@ -1,0 +1,13 @@
+project_id = "ehuxwzbdnpyelmtckoac"
+
+[functions.log-login]
+verify_jwt = false
+
+[functions.hr-leave-request]
+verify_jwt = false
+
+[functions.hr-generate-salary]
+verify_jwt = false
+
+[functions.crm-backup-worker]
+verify_jwt = false

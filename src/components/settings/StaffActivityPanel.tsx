@@ -1,0 +1,305 @@
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Activity, Search, Filter, X, Loader2, Download } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
+import { useStaffManagement } from "@/hooks/useStaffManagement";
+import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
+import { format } from "date-fns";
+
+const ACTION_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  login: { label: "Login", color: "bg-green-100 text-green-700" },
+  logout: { label: "Logout", color: "bg-gray-100 text-gray-700" },
+  create_lead: { label: "Lead Created", color: "bg-blue-100 text-blue-700" },
+  update_lead: { label: "Lead Updated", color: "bg-blue-100 text-blue-700" },
+  update_lead_status: { label: "Lead Status Changed", color: "bg-indigo-100 text-indigo-700" },
+  delete_lead: { label: "Lead Deleted", color: "bg-red-100 text-red-700" },
+  lead_assigned: { label: "Lead Assigned", color: "bg-blue-100 text-blue-700" },
+  restore_lead: { label: "Lead Restored", color: "bg-green-100 text-green-700" },
+  permanent_delete_lead: { label: "Lead Permanently Deleted", color: "bg-red-100 text-red-700" },
+  mark_lead_lost: { label: "Lead Marked Lost", color: "bg-red-100 text-red-700" },
+  create_task: { label: "Task Created", color: "bg-purple-100 text-purple-700" },
+  update_task: { label: "Task Updated", color: "bg-purple-100 text-purple-700" },
+  task_completed: { label: "Task Completed", color: "bg-green-100 text-green-700" },
+  task_deleted: { label: "Task Deleted", color: "bg-red-100 text-red-700" },
+  task_snoozed: { label: "Task Snoozed", color: "bg-amber-100 text-amber-700" },
+  create_customer: { label: "Customer Created", color: "bg-orange-100 text-orange-700" },
+  update_customer: { label: "Customer Updated", color: "bg-orange-100 text-orange-700" },
+  delete_customer: { label: "Customer Deleted", color: "bg-red-100 text-red-700" },
+  create_professional: { label: "Professional Created", color: "bg-teal-100 text-teal-700" },
+  update_professional: { label: "Professional Updated", color: "bg-teal-100 text-teal-700" },
+  delete_professional: { label: "Professional Deleted", color: "bg-red-100 text-red-700" },
+  create_quotation: { label: "Quotation Created", color: "bg-yellow-100 text-yellow-700" },
+  delete_quotation: { label: "Quotation Deleted", color: "bg-red-100 text-red-700" },
+  quotation_status_changed: { label: "Quotation Status Changed", color: "bg-yellow-100 text-yellow-700" },
+  create_reminder: { label: "Reminder Created", color: "bg-cyan-100 text-cyan-700" },
+  dismiss_reminder: { label: "Reminder Dismissed", color: "bg-gray-100 text-gray-700" },
+  add_note: { label: "Note Added", color: "bg-emerald-100 text-emerald-700" },
+  activate_kit: { label: "KIT Activated", color: "bg-pink-100 text-pink-700" },
+  view_profile: { label: "Profile Viewed", color: "bg-slate-100 text-slate-700" },
+  delete_staff: { label: "Staff Deleted", color: "bg-red-100 text-red-700" },
+  convert_lead: { label: "Lead Converted", color: "bg-green-100 text-green-700" },
+  bulk_upload_leads: { label: "Bulk Upload Leads", color: "bg-blue-100 text-blue-700" },
+};
+
+export function StaffActivityPanel() {
+  const navigate = useNavigate();
+  const { openTask } = useTaskDetailModal();
+  const { activities, loading, fetchActivities } = useStaffActivityLog();
+  const { staffMembers } = useStaffManagement();
+  const [userFilter, setUserFilter] = useState("all");
+  const [actionFilter, setActionFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateRange, setDateRange] = useState("all");
+
+  useEffect(() => {
+    const filters: any = {};
+    if (userFilter !== "all") filters.userId = userFilter;
+    if (actionFilter !== "all") filters.actionType = actionFilter;
+    if (dateRange !== "all") {
+      const now = new Date();
+      if (dateRange === "today") {
+        filters.startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      } else if (dateRange === "7days") {
+        const d = new Date(); d.setDate(d.getDate() - 7);
+        filters.startDate = d.toISOString();
+      } else if (dateRange === "30days") {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        filters.startDate = d.toISOString();
+      }
+    }
+    fetchActivities(filters);
+  }, [userFilter, actionFilter, dateRange]);
+
+  const filteredActivities = searchQuery
+    ? activities.filter(
+        (a) =>
+          a.action_description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          a.user_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          a.action_type.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : activities;
+
+  const uniqueActionTypes = [...new Set(activities.map((a) => a.action_type))];
+  const hasFilters = userFilter !== "all" || actionFilter !== "all" || searchQuery || dateRange !== "all";
+
+  const getActionLabel = (type: string) => ACTION_TYPE_LABELS[type] || { label: type, color: "bg-gray-100 text-gray-700" };
+  const getStaffName = (email: string) => {
+    const staff = staffMembers.find((s) => s.email === email);
+    return staff?.full_name || email;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Staff Activity Log
+            </CardTitle>
+            <CardDescription>
+              Track all staff actions — login, logout, and everything in between
+            </CardDescription>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 mt-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search activity..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+
+            <Select value={userFilter} onValueChange={setUserFilter}>
+              <SelectTrigger className="w-[180px] h-9">
+                <SelectValue placeholder="Staff Member" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Staff</SelectItem>
+                {staffMembers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.full_name || s.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={actionFilter} onValueChange={setActionFilter}>
+              <SelectTrigger className="w-[160px] h-9">
+                <SelectValue placeholder="Action Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                {uniqueActionTypes.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {getActionLabel(type).label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue placeholder="Date Range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="7days">Last 7 Days</SelectItem>
+                <SelectItem value="30days">Last 30 Days</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setUserFilter("all");
+                  setActionFilter("all");
+                  setSearchQuery("");
+                  setDateRange("all");
+                }}
+                className="h-9"
+              >
+                <X className="mr-1 h-4 w-4" />
+                Clear
+              </Button>
+            )}
+
+            <div className="ml-auto text-sm text-muted-foreground">
+              {filteredActivities.length} activities
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredActivities.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No activity recorded yet.</p>
+            <p className="text-sm mt-1">Staff actions will be logged here automatically.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Time</TableHead>
+                <TableHead>Staff</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Entity</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredActivities.map((activity) => {
+                const actionLabel = getActionLabel(activity.action_type);
+                return (
+                  <TableRow key={activity.id}>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      {format(new Date(activity.created_at), "dd MMM yyyy, hh:mm a")}
+                    </TableCell>
+                    <TableCell className="font-medium text-sm">
+                      {getStaffName(activity.user_email)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={actionLabel.color}>
+                        {actionLabel.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[300px] truncate">
+                      {activity.action_description || "—"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {activity.entity_type ? (
+                        (() => {
+                          const isClickable = activity.entity_id && [
+                            'task', 'lead', 'customer', 'professional'
+                          ].includes(activity.entity_type);
+
+                          const handleClick = () => {
+                            if (!activity.entity_id) return;
+
+                            switch (activity.entity_type) {
+                              case 'task':
+                                openTask(activity.entity_id);
+                                break;
+                              case 'lead':
+                                navigate(`/leads?view=${activity.entity_id}`);
+                                break;
+                              case 'customer':
+                                navigate(`/customers?view=${activity.entity_id}`);
+                                break;
+                              case 'professional':
+                                navigate(`/professionals?view=${activity.entity_id}`);
+                                break;
+                            }
+                          };
+
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={`
+                                capitalize
+                                ${isClickable ? 'cursor-pointer hover:bg-accent transition-colors duration-150' : ''}
+                              `}
+                              onClick={isClickable ? handleClick : undefined}
+                              title={isClickable ? `View ${activity.entity_type}` : undefined}
+                            >
+                              {activity.entity_type}
+                            </Badge>
+                          );
+                        })()
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
