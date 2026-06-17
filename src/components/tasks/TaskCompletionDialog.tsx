@@ -1133,26 +1133,6 @@ export function TaskCompletionDialog({
           {/* Reminder row — for follow-up only (reschedule renders above) */}
           {nextAction === "follow_up" && reminderRow}
 
-              {/* Confirmation line */}
-              {customReminderAt && (
-                <p className="text-xs text-muted-foreground pl-1">
-                  Reminder: {format(new Date(customReminderAt), "MMM d 'at' h:mm a")}
-                </p>
-              )}
-              {reminderOffsetHours && reminderOffsetHours !== "" &&
-               reminderOffsetHours !== "custom" && (
-                <p className="text-xs text-muted-foreground pl-1">
-                  Reminder {
-                    reminderOffsetHours === "1" ? "1 hour" :
-                    reminderOffsetHours === "24" ? "1 day" :
-                    reminderOffsetHours === "48" ? "2 days" :
-                    `${reminderOffsetHours} hours`
-                  } before scheduled time.
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Follow-up Due Date & Time — shown above the form for quick entry */}
           {nextAction === "follow_up" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
