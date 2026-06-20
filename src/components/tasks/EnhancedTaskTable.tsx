@@ -610,7 +610,11 @@ export function EnhancedTaskTable({
       
       const advancedMatch = activeAdvancedRules.length === 0 ||
         evaluateRules(
-          { ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>,
+          {
+            ...task,
+            status: task.computedStatus || task.calculatedStatus || task.status,
+            lead_status: task.lead?.status ?? null,
+          } as Record<string, any>,
           activeAdvancedRules,
           { staffMembers }
         );
@@ -656,7 +660,11 @@ export function EnhancedTaskTable({
       const typeMatch = (config.sourceFilter?.length || 0) === 0 || config.sourceFilter?.includes(task.type);
       const advancedMatch = ((config as any).advancedRules?.length || 0) === 0 ||
         evaluateRules(
-          { ...task, status: task.computedStatus || task.calculatedStatus || task.status } as Record<string, any>,
+          {
+            ...task,
+            status: task.computedStatus || task.calculatedStatus || task.status,
+            lead_status: task.lead?.status ?? null,
+          } as Record<string, any>,
           (config as any).advancedRules || [],
           { staffMembers }
         );
