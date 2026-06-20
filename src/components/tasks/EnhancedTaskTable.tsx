@@ -457,6 +457,7 @@ export function EnhancedTaskTable({
   const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedLeadStatuses, setSelectedLeadStatuses] = useState<string[]>([]);
   const [dueDateRange, setDueDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [relatedToFilter, setRelatedToFilter] = useState<string | null>(null);
@@ -520,6 +521,14 @@ export function EnhancedTaskTable({
   const uniqueTypes = useMemo(() => [...new Set(transformedTasks.map(task => task.type))], [transformedTasks]);
   const uniquePriorities = useMemo(() => [...new Set(transformedTasks.map(task => task.priority))], [transformedTasks]);
   const uniqueStatuses = useMemo(() => [...new Set(transformedTasks.map(task => task.computedStatus))], [transformedTasks]);
+  const uniqueLeadStatuses = useMemo(
+    () => [...new Set(
+      transformedTasks
+        .map(task => task.lead?.status)
+        .filter((s): s is string => Boolean(s))
+    )],
+    [transformedTasks]
+  );
 
   // Build staff-based assignee filter: resolve all assigned_to values to staff profiles
   const resolveAssignedToStaff = useMemo(() => {
@@ -584,6 +593,8 @@ export function EnhancedTaskTable({
         )
       );
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(task.computedStatus);
+      const matchesLeadStatus = selectedLeadStatuses.length === 0 ||
+        (task.lead?.status ? selectedLeadStatuses.includes(task.lead.status) : false);
       
       // Date range filters
       const dueDateMatch = !dueDateRange.from || !dueDateRange.to || 
@@ -603,7 +614,7 @@ export function EnhancedTaskTable({
           activeAdvancedRules,
           { staffMembers }
         );
-      return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && dueDateMatch && createdDateMatch && matchesRelatedTo && advancedMatch;
+      return matchesSearch && matchesType && matchesPriority && matchesAssignee && matchesStatus && matchesLeadStatus && dueDateMatch && createdDateMatch && matchesRelatedTo && advancedMatch;
     });
 
     // Apply sorting
@@ -625,7 +636,7 @@ export function EnhancedTaskTable({
     }
 
     return result;
-  }, [transformedTasks, searchTerm, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules]);
+  }, [transformedTasks, searchTerm, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, selectedLeadStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules]);
 
   // Saved filter counts - reuse existing filter config structure
   const getFilterCount = (filter: SavedFilter): number => {
@@ -850,6 +861,7 @@ export function EnhancedTaskTable({
     setSelectedPriorities([]);
     setSelectedAssignees([]);
     setSelectedStatuses([]);
+    setSelectedLeadStatuses([]);
     setDueDateRange({ from: undefined, to: undefined });
     setCreatedDateRange({ from: undefined, to: undefined });
     setActiveAdvancedRules([]);
@@ -970,7 +982,17 @@ export function EnhancedTaskTable({
           </div>
         );
       case "relatedTo":
-        return columnLabel;
+        return (
+          <div className="flex items-center gap-1">
+            {columnLabel}
+            <MultiSelectFilter
+              options={uniqueLeadStatuses}
+              selectedValues={selectedLeadStatuses}
+              onSelectionChange={setSelectedLeadStatuses}
+              placeholder="Lead Status"
+            />
+          </div>
+        );
       case "sitePlusCode":
         return columnLabel;
       case "dueDate":
@@ -1318,7 +1340,7 @@ export function EnhancedTaskTable({
   };
 
   const hasActiveFilters = selectedTypes.length > 0 || selectedPriorities.length > 0 || 
-    selectedAssignees.length > 0 || selectedStatuses.length > 0 || 
+    selectedAssignees.length > 0 || selectedStatuses.length > 0 || selectedLeadStatuses.length > 0 ||
     dueDateRange.from || createdDateRange.from || relatedToFilter;
 
   if (loading) {
