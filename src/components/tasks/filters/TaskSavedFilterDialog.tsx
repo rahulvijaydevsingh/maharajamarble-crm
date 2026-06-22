@@ -89,6 +89,7 @@ const FIELD_OPTIONS = [
   // Relationship
   { value: "related_entity_type", label: "Related To Type", type: "select", category: "Relationship" },
   { value: "lead_id", label: "Has Related Lead", type: "boolean", category: "Relationship" },
+  { value: "lead_status", label: "Lead Status", type: "select", category: "Relationship" },
 ];
 
 // Operators by field type
@@ -180,6 +181,14 @@ const RELATED_ENTITY_OPTIONS = [
   { value: "lead", label: "Lead" },
   { value: "professional", label: "Professional" },
   { value: "customer", label: "Customer" },
+];
+
+const LEAD_STATUS_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "in-progress", label: "In Progress" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
+  { value: "deleted", label: "Deleted" },
 ];
 
 export function TaskSavedFilterDialog({
@@ -316,6 +325,8 @@ export function TaskSavedFilterDialog({
         return SUBTASKS_STATUS_OPTIONS;
       case "related_entity_type":
         return RELATED_ENTITY_OPTIONS;
+      case "lead_status":
+        return LEAD_STATUS_OPTIONS;
       default:
         return [];
     }
