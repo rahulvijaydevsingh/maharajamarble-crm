@@ -107,6 +107,7 @@ export function LeadDetailView({
   const [isEditing, setIsEditing] = useState(false);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(highlightTaskId || null);
   const [focusReminderId, setFocusReminderId] = useState<string | null>(highlightReminderId || null);
+  const [currentLeadState, setCurrentLeadState] = useState<Lead | null>(lead);
   const { leads, updateLead, refetch } = useLeads();
   const { logActivity } = useLogActivity();
   const { toast } = useToast();
@@ -168,11 +169,12 @@ export function LeadDetailView({
   }, [user]);
   
   // Get the fresh lead data from the leads array (to ensure we have latest after refetch)
-  const currentLead = leads.find(l => l.id === lead?.id) || lead;
+  const currentLead = leads.find(l => l.id === lead?.id) || currentLeadState || lead;
 
-  // Reset to profile tab when lead changes (but respect initialTab on first open)
+  // Sync currentLeadState with lead prop and reset state when lead changes
   useEffect(() => {
     if (lead) {
+      setCurrentLeadState(lead);
       setActiveTab(initialTab || 'profile');
       setIsEditing(false);
       setFocusTaskId(highlightTaskId || null);
@@ -238,7 +240,10 @@ export function LeadDetailView({
       changes.push({ field: fieldLabels[key] || key, from: String(fromVal || 'Not set'), to: String(toVal || 'Not set') });
     }
 
-    await updateLead(leadId, updatedData as any);
+    const updated = await updateLead(leadId, updatedData as any);
+    if (updated) {
+      setCurrentLeadState(updated);
+    }
     
     if (changes.length > 0) {
       const changesDescription = changes.map(c => `${c.field}: "${c.from}" → "${c.to}"`).join('\n');

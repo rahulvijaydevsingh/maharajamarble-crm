@@ -30,10 +30,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LEAD_SOURCES as LEAD_SOURCES_DATA, MATERIAL_INTERESTS as MATERIAL_INTERESTS_DATA } from "@/constants/leadConstants";
+import { MATERIAL_INTERESTS as MATERIAL_INTERESTS_DATA } from "@/constants/leadConstants";
 
 interface UnifiedLeadFormProps {
   open: boolean;
@@ -43,7 +44,6 @@ interface UnifiedLeadFormProps {
   onSave: (formData: any) => void;
 }
 
-const LEAD_SOURCES = LEAD_SOURCES_DATA.map(s => s.label);
 const MATERIAL_INTERESTS = MATERIAL_INTERESTS_DATA.map(m => m.label);
 
 const LEAD_STATUSES = [
@@ -75,6 +75,11 @@ const roleLabels: Record<string, string> = {
 export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: UnifiedLeadFormProps) {
   const { staffMembers } = useActiveStaff();
   const { user } = useAuth();
+  const { getFieldOptions } = useControlPanelSettings();
+
+  const sourceOptions = getFieldOptions('leads', 'source');
+  const constructionStageOptions = getFieldOptions('leads', 'construction_stage');
+
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -90,6 +95,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
     assignedTo: "",
     priority: 3,
     notes: "",
+    construction_stage: "",
     nextFollowUp: new Date(),
     lastContact: mode === "edit" ? new Date() : undefined
   });
@@ -114,6 +120,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
         assignedTo: leadData.assignedTo || "",
         priority: leadData.priority || 3,
         notes: leadData.notes || "",
+        construction_stage: leadData.construction_stage || "",
         nextFollowUp: leadData.nextFollowUp ? new Date(leadData.nextFollowUp) : new Date(),
         lastContact: leadData.lastContact ? new Date(leadData.lastContact) : new Date()
       });
@@ -139,6 +146,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
         assignedTo: defaultAssignee,
         priority: 3,
         notes: "",
+        construction_stage: "",
         nextFollowUp: new Date(),
         lastContact: undefined
       });
@@ -205,6 +213,24 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
       toast({
         title: "Error",
         description: "Please assign the lead to a team member.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.source) {
+      toast({
+        title: "Error",
+        description: "Lead source is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.construction_stage) {
+      toast({
+        title: "Error",
+        description: "Construction stage is required.",
         variant: "destructive",
       });
       return;
@@ -298,16 +324,30 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Lead Details</h3>
               
+              <div className="space-y-2">
+                <Label htmlFor="source">Lead Source *</Label>
+                <Select value={formData.source} onValueChange={(value) => handleInputChange("source", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sourceOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="source">Lead Source *</Label>
-                  <Select value={formData.source} onValueChange={(value) => handleInputChange("source", value)}>
+                  <Label htmlFor="construction_stage">Construction Stage *</Label>
+                  <Select value={formData.construction_stage} onValueChange={(value) => handleInputChange("construction_stage", value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select source" />
+                      <SelectValue placeholder="Select stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      {LEAD_SOURCES.map((source) => (
-                        <SelectItem key={source} value={source}>{source}</SelectItem>
+                      {constructionStageOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

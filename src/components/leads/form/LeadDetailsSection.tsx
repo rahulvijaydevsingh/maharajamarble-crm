@@ -43,8 +43,8 @@ export function LeadDetailsSection({
       <CardContent className="space-y-4">
         {/* Source */}
         <div className="space-y-2">
-          <Label htmlFor="source">Lead Source *</Label>
-          <Select value={formData.source} onValueChange={(value) => onSelectChange("source", value)} required>
+          <Label htmlFor="source">Lead Source</Label>
+          <Select value={formData.source} onValueChange={(value) => onSelectChange("source", value)}>
             <SelectTrigger className={validationErrors.source ? "border-red-500" : ""}>
               <SelectValue placeholder="Select source" />
             </SelectTrigger>
