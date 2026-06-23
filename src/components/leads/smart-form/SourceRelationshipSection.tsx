@@ -235,7 +235,7 @@ export function SourceRelationshipSection({
               value={leadSource}
               onValueChange={(value) => onSourceChange(value as LeadSource)}
             >
-              <SelectTrigger className={validationErrors.leadSource ? 'border-destructive' : ''}>
+              <SelectTrigger className={validationErrors.leadSource ? 'border-red-500' : ''}>
                 <SelectValue placeholder="Select lead source" />
               </SelectTrigger>
               <SelectContent>
@@ -247,7 +247,7 @@ export function SourceRelationshipSection({
               </SelectContent>
             </Select>
             {validationErrors.leadSource && (
-              <p className="text-sm text-destructive">{validationErrors.leadSource}</p>
+              <p className="text-sm text-red-500 mt-1">{validationErrors.leadSource}</p>
             )}
           </div>
 

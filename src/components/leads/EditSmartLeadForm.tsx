@@ -154,8 +154,14 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
     if (!siteLocation.trim()) {
       errors.siteLocation = "Site location is required";
     }
+    if (!constructionStage) {
+      errors.constructionStage = "Construction stage is required";
+    }
     if (materialInterests.length === 0) {
       errors.materialInterests = "At least one material interest is required";
+    }
+    if (!leadSource) {
+      errors.leadSource = "Lead source is required";
     }
 
     setValidationErrors(errors);

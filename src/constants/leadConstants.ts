@@ -22,16 +22,19 @@ export const MATERIAL_INTERESTS = [
 // Legacy export for backward compatibility
 export const MATERIALS = MATERIAL_INTERESTS.map(m => m.label);
 
-// Unified Lead Sources (8 canonical values)
+// Unified Lead Sources (canonical snake_case values)
 export const LEAD_SOURCES = [
-  { value: "Walk-in", label: "Walk-in", autoFollowUpHours: 48 },
-  { value: "Referral", label: "Referral", autoFollowUpHours: 24 },
-  { value: "Instagram", label: "Instagram", autoFollowUpHours: 24 },
-  { value: "Facebook", label: "Facebook", autoFollowUpHours: 24 },
-  { value: "Google", label: "Google", autoFollowUpHours: 24 },
-  { value: "JustDial", label: "JustDial", autoFollowUpHours: 24 },
-  { value: "Architect/Designer", label: "Architect/Designer", autoFollowUpHours: 24 },
-  { value: "Other", label: "Other", autoFollowUpHours: 24 },
+  { value: "walk_in", label: "Walk-in", autoFollowUpHours: 48 },
+  { value: "referral", label: "Referral", autoFollowUpHours: 24 },
+  { value: "instagram", label: "Instagram", autoFollowUpHours: 24 },
+  { value: "facebook", label: "Facebook", autoFollowUpHours: 24 },
+  { value: "google", label: "Google", autoFollowUpHours: 24 },
+  { value: "justdial", label: "JustDial", autoFollowUpHours: 24 },
+  { value: "architect_designer", label: "Architect/Designer", autoFollowUpHours: 24 },
+  { value: "field_visit", label: "Field Visit", autoFollowUpHours: 24 },
+  { value: "cold_call", label: "Cold Call", autoFollowUpHours: 24 },
+  { value: "online_enquiry", label: "Online Enquiry", autoFollowUpHours: 24 },
+  { value: "other", label: "Other", autoFollowUpHours: 24 },
 ];
 
 // Construction Stages with urgency levels

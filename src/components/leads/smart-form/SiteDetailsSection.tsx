@@ -212,10 +212,10 @@ export function SiteDetailsSection({
             onChange={(e) => onSiteLocationChange(e.target.value)}
             placeholder="Enter complete site address for delivery planning..."
             rows={2}
-            className={validationErrors.siteLocation ? 'border-destructive' : ''}
+            className={validationErrors.siteLocation ? 'border-red-500' : ''}
           />
           {validationErrors.siteLocation && (
-            <p className="text-sm text-destructive">{validationErrors.siteLocation}</p>
+            <p className="text-sm text-red-500 mt-1">{validationErrors.siteLocation}</p>
           )}
         </div>
 
@@ -282,7 +282,7 @@ export function SiteDetailsSection({
               value={constructionStage}
               onValueChange={(value) => onConstructionStageChange(value as ConstructionStage)}
             >
-              <SelectTrigger className={validationErrors.constructionStage ? 'border-destructive' : ''}>
+              <SelectTrigger className={validationErrors.constructionStage ? 'border-red-500' : ''}>
                 <SelectValue placeholder="Select construction stage" />
               </SelectTrigger>
               <SelectContent>
@@ -299,7 +299,7 @@ export function SiteDetailsSection({
               </SelectContent>
             </Select>
             {validationErrors.constructionStage && (
-              <p className="text-sm text-destructive">{validationErrors.constructionStage}</p>
+              <p className="text-sm text-red-500 mt-1">{validationErrors.constructionStage}</p>
             )}
           </div>
 
@@ -387,7 +387,7 @@ export function SiteDetailsSection({
           )}
 
           {validationErrors.materialInterests && (
-            <p className="text-sm text-destructive">{validationErrors.materialInterests}</p>
+            <p className="text-sm text-red-500 mt-1">{validationErrors.materialInterests}</p>
           )}
         </div>
       </CardContent>

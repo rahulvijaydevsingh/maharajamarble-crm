@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LeadFormData } from "@/types/lead";
-import { MATERIALS } from "@/constants/leadConstants";
+import { MATERIALS, LEAD_SOURCES } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 
 interface LeadDetailsSectionProps {
@@ -49,13 +49,11 @@ export function LeadDetailsSection({
               <SelectValue placeholder="Select source" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="website">Website</SelectItem>
-              <SelectItem value="referral">Referral</SelectItem>
-              <SelectItem value="walk-in">Walk-in</SelectItem>
-              <SelectItem value="exhibition">Exhibition</SelectItem>
-              <SelectItem value="google">Google Search</SelectItem>
-              <SelectItem value="social-media">Social Media</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
+              {LEAD_SOURCES.map((source) => (
+                <SelectItem key={source.value} value={source.value}>
+                  {source.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {validationErrors.source && (

@@ -30,10 +30,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LEAD_SOURCES as LEAD_SOURCES_DATA, MATERIAL_INTERESTS as MATERIAL_INTERESTS_DATA } from "@/constants/leadConstants";
+import { MATERIAL_INTERESTS as MATERIAL_INTERESTS_DATA } from "@/constants/leadConstants";
 
 interface UnifiedLeadFormProps {
   open: boolean;
@@ -43,7 +44,6 @@ interface UnifiedLeadFormProps {
   onSave: (formData: any) => void;
 }
 
-const LEAD_SOURCES = LEAD_SOURCES_DATA.map(s => s.label);
 const MATERIAL_INTERESTS = MATERIAL_INTERESTS_DATA.map(m => m.label);
 
 const LEAD_STATUSES = [
@@ -75,6 +75,11 @@ const roleLabels: Record<string, string> = {
 export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: UnifiedLeadFormProps) {
   const { staffMembers } = useActiveStaff();
   const { user } = useAuth();
+  const { getFieldOptions } = useControlPanelSettings();
+
+  const sourceOptions = getFieldOptions('leads', 'source');
+  const constructionStageOptions = getFieldOptions('leads', 'construction_stage');
+
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -90,6 +95,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
     assignedTo: "",
     priority: 3,
     notes: "",
+    construction_stage: "",
     nextFollowUp: new Date(),
     lastContact: mode === "edit" ? new Date() : undefined
   });
@@ -114,6 +120,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
         assignedTo: leadData.assignedTo || "",
         priority: leadData.priority || 3,
         notes: leadData.notes || "",
+        construction_stage: leadData.construction_stage || "",
         nextFollowUp: leadData.nextFollowUp ? new Date(leadData.nextFollowUp) : new Date(),
         lastContact: leadData.lastContact ? new Date(leadData.lastContact) : new Date()
       });
@@ -139,6 +146,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
         assignedTo: defaultAssignee,
         priority: 3,
         notes: "",
+        construction_stage: "",
         nextFollowUp: new Date(),
         lastContact: undefined
       });
@@ -192,7 +200,34 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
       return;
     }
 
-    if (formData.interests.length === 0) {
+    if (!formData.address?.trim()) {
+      toast({
+        title: "Error",
+        description: "Site location / address is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.source) {
+      toast({
+        title: "Error",
+        description: "Lead source is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.construction_stage) {
+      toast({
+        title: "Error",
+        description: "Construction stage is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.interests || formData.interests.length === 0) {
       toast({
         title: "Error",
         description: "At least one material interest is required.",
@@ -284,7 +319,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
+                <Label htmlFor="address">Site Location *</Label>
                 <Textarea
                   id="address"
                   value={formData.address}
@@ -306,13 +341,29 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                       <SelectValue placeholder="Select source" />
                     </SelectTrigger>
                     <SelectContent>
-                      {LEAD_SOURCES.map((source) => (
-                        <SelectItem key={source} value={source}>{source}</SelectItem>
+                      {sourceOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="construction_stage">Construction Stage *</Label>
+                  <Select value={formData.construction_stage} onValueChange={(value) => handleInputChange("construction_stage", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {constructionStageOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
@@ -323,36 +374,6 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                       {LEAD_STATUSES.map((status) => (
                         <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="assignedTo">Assigned To *</Label>
-                  <Select value={formData.assignedTo} onValueChange={(value) => handleInputChange("assignedTo", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select team member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {staffMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
-                          <div className="flex items-center justify-between gap-3 w-full">
-                            <span className="truncate">{member.name}</span>
-                            {member.role && (
-                              <span className="text-xs text-muted-foreground shrink-0">
-                                {roleLabels[member.role] || member.role}
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                      {formData.assignedTo && !staffMembers.find(m => m.id === formData.assignedTo) && (
-                        <SelectItem key={formData.assignedTo} value={formData.assignedTo}>
-                          {formData.assignedTo}
-                        </SelectItem>
-                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -370,6 +391,34 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assignedTo">Assigned To *</Label>
+                <Select value={formData.assignedTo} onValueChange={(value) => handleInputChange("assignedTo", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {staffMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <span className="truncate">{member.name}</span>
+                          {member.role && (
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {roleLabels[member.role] || member.role}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {formData.assignedTo && !staffMembers.find(m => m.id === formData.assignedTo) && (
+                      <SelectItem key={formData.assignedTo} value={formData.assignedTo}>
+                        {formData.assignedTo}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
