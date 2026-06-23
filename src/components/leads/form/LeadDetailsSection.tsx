@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LeadFormData } from "@/types/lead";
-import { MATERIALS } from "@/constants/leadConstants";
+import { MATERIALS, LEAD_SOURCES } from "@/constants/leadConstants";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 
 interface LeadDetailsSectionProps {
@@ -43,19 +43,17 @@ export function LeadDetailsSection({
       <CardContent className="space-y-4">
         {/* Source */}
         <div className="space-y-2">
-          <Label htmlFor="source">Lead Source</Label>
-          <Select value={formData.source} onValueChange={(value) => onSelectChange("source", value)}>
+          <Label htmlFor="source">Lead Source *</Label>
+          <Select value={formData.source} onValueChange={(value) => onSelectChange("source", value)} required>
             <SelectTrigger className={validationErrors.source ? "border-red-500" : ""}>
               <SelectValue placeholder="Select source" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="website">Website</SelectItem>
-              <SelectItem value="referral">Referral</SelectItem>
-              <SelectItem value="walk-in">Walk-in</SelectItem>
-              <SelectItem value="exhibition">Exhibition</SelectItem>
-              <SelectItem value="google">Google Search</SelectItem>
-              <SelectItem value="social-media">Social Media</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
+              {LEAD_SOURCES.map((source) => (
+                <SelectItem key={source.value} value={source.value}>
+                  {source.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {validationErrors.source && (

@@ -200,19 +200,10 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
       return;
     }
 
-    if (formData.interests.length === 0) {
+    if (!formData.address?.trim()) {
       toast({
         title: "Error",
-        description: "At least one material interest is required.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!formData.assignedTo) {
-      toast({
-        title: "Error",
-        description: "Please assign the lead to a team member.",
+        description: "Site location / address is required.",
         variant: "destructive",
       });
       return;
@@ -231,6 +222,24 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
       toast({
         title: "Error",
         description: "Construction stage is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.interests || formData.interests.length === 0) {
+      toast({
+        title: "Error",
+        description: "At least one material interest is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.assignedTo) {
+      toast({
+        title: "Error",
+        description: "Please assign the lead to a team member.",
         variant: "destructive",
       });
       return;
@@ -310,7 +319,7 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
+                <Label htmlFor="address">Site Location *</Label>
                 <Textarea
                   id="address"
                   value={formData.address}
@@ -324,21 +333,21 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Lead Details</h3>
               
-              <div className="space-y-2">
-                <Label htmlFor="source">Lead Source *</Label>
-                <Select value={formData.source} onValueChange={(value) => handleInputChange("source", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select source" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sourceOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="source">Lead Source *</Label>
+                  <Select value={formData.source} onValueChange={(value) => handleInputChange("source", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sourceOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="construction_stage">Construction Stage *</Label>
                   <Select value={formData.construction_stage} onValueChange={(value) => handleInputChange("construction_stage", value)}>
@@ -352,7 +361,9 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
@@ -363,36 +374,6 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                       {LEAD_STATUSES.map((status) => (
                         <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="assignedTo">Assigned To *</Label>
-                  <Select value={formData.assignedTo} onValueChange={(value) => handleInputChange("assignedTo", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select team member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {staffMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
-                          <div className="flex items-center justify-between gap-3 w-full">
-                            <span className="truncate">{member.name}</span>
-                            {member.role && (
-                              <span className="text-xs text-muted-foreground shrink-0">
-                                {roleLabels[member.role] || member.role}
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                      {formData.assignedTo && !staffMembers.find(m => m.id === formData.assignedTo) && (
-                        <SelectItem key={formData.assignedTo} value={formData.assignedTo}>
-                          {formData.assignedTo}
-                        </SelectItem>
-                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -410,6 +391,34 @@ export function UnifiedLeadForm({ open, onOpenChange, mode, leadData, onSave }: 
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assignedTo">Assigned To *</Label>
+                <Select value={formData.assignedTo} onValueChange={(value) => handleInputChange("assignedTo", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {staffMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <span className="truncate">{member.name}</span>
+                          {member.role && (
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {roleLabels[member.role] || member.role}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {formData.assignedTo && !staffMembers.find(m => m.id === formData.assignedTo) && (
+                      <SelectItem key={formData.assignedTo} value={formData.assignedTo}>
+                        {formData.assignedTo}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
