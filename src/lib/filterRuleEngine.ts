@@ -9,10 +9,8 @@ export type FilterOperator =
   | "is_not_empty"
   | "greater_than"
   | "greater_than_or_equal"
-  | "greater_or_equal"
   | "less_than"
   | "less_than_or_equal"
-  | "less_or_equal"
   | "before"
   | "after"
   | "today"
@@ -199,7 +197,7 @@ export function evaluateRule(record: Record<string, any>, rule: AdvancedRule, co
   const numValue = parseFloat(String(fieldValue ?? 0));
   const numRule  = parseFloat(String(rule.value  ?? 0));
 
-  switch (rule.operator) {
+  switch (rule.operator as string) {
     case "equals":        return strValue === strRule;
     case "not_equals":    return strValue !== strRule;
     case "contains":      return strValue.includes(strRule);

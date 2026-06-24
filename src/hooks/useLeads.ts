@@ -93,7 +93,7 @@ export function useLeads() {
     try {
       // Don't pass created_by — let DB default (get_current_user_email()) handle it
       // This ensures RLS is_assigned_to_me() works for non-admin users
-      const { created_by: _cb, ...leadWithoutCreatedBy } = lead as any;
+      const { created_by: _cb, ...leadWithoutCreatedBy } = lead;
       const { data, error } = await supabase
         .from("leads")
         .insert([leadWithoutCreatedBy])
@@ -146,7 +146,9 @@ export function useLeads() {
         const u = session.data.session?.user;
         if (u) {
           const changedFields = Object.keys(updates).filter(
-            (k) => prevLead && String((prevLead as any)[k]) !== String((updates as any)[k])
+            (k) => prevLead &&
+              String((prevLead as unknown as Record<string, unknown>)[k] ?? '') !==
+              String((updates as unknown as Record<string, unknown>)[k] ?? '')
           );
           const actionType = updates.status && prevLead?.status !== updates.status 
             ? "update_lead_status" 

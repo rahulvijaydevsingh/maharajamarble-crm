@@ -91,7 +91,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   const addReminder = async (reminder: ReminderInsert) => {
     try {
       // Don't pass created_by — let DB default handle it
-      const { created_by: _cb, ...reminderWithoutCb } = reminder as any;
+      const { created_by: _cb, ...reminderWithoutCb } = reminder;
       const { data, error } = await supabase
         .from("reminders")
         .insert([reminderWithoutCb])

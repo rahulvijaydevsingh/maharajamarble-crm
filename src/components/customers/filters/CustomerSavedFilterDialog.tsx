@@ -94,8 +94,8 @@ const OPERATORS = {
     { value: "not_equals", label: "not equals" },
     { value: "greater_than", label: "greater than" },
     { value: "less_than", label: "less than" },
-    { value: "greater_or_equal", label: "greater than or equal" },
-    { value: "less_or_equal", label: "less than or equal" },
+    { value: "greater_than_or_equal", label: "greater than or equal" },
+    { value: "less_than_or_equal", label: "less than or equal" },
     { value: "is_empty", label: "is empty" },
     { value: "is_not_empty", label: "is not empty" },
   ],
@@ -138,13 +138,20 @@ export function CustomerSavedFilterDialog({
       setIsShared(editingFilter.is_shared);
       setIsDefault(editingFilter.is_default);
       const config = editingFilter.filter_config;
-      const newRules: FilterRule[] = config.advancedRules?.map((rule: any) => ({
-        id: crypto.randomUUID(),
-        field: rule.field,
-        operator: rule.operator,
-        value: rule.value,
-        logic: rule.logic || "and",
-      })) || [createEmptyRule()];
+      const newRules: FilterRule[] = config.advancedRules?.map((rule: any) => {
+        let operator = rule.operator;
+        // Normalize legacy operator aliases when loading saved filters
+        if (operator === "greater_or_equal") operator = "greater_than_or_equal";
+        if (operator === "less_or_equal") operator = "less_than_or_equal";
+
+        return {
+          id: crypto.randomUUID(),
+          field: rule.field,
+          operator,
+          value: rule.value,
+          logic: rule.logic || "and",
+        };
+      }) || [createEmptyRule()];
       setRules(newRules);
     } else {
       resetForm();
