@@ -446,6 +446,17 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     toast({ title: "Column settings reset to defaults" });
   }, [toast]);
 
+  const applyFilter = (filter: SavedFilter) => {
+    const config = filter.filter_config as any;
+    setStatusFilter(config.statusFilter || []);
+    setTypeFilter(config.typeFilter || []);
+    setPriorityFilter(config.priorityFilter || []);
+    setAssignedToFilter(config.assignedToFilter || []);
+    setCityFilter(config.cityFilter || []);
+    setActiveAdvancedRules(config.advancedRules || []);
+    setActiveFilterId(filter.id);
+  };
+
   const clearFilters = () => {
     setStatusFilter([]);
     setTypeFilter([]);
@@ -917,30 +928,45 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     <div className="space-y-4">
       {/* Saved Filters Quick Access */}
       {savedFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {savedFilters.map((filter) => (
-            <Button
-              key={filter.id}
-              variant={activeFilterId === filter.id ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                const config = filter.filter_config as any;
-                setStatusFilter(config.statusFilter || []);
-                setTypeFilter(config.typeFilter || []);
-                setPriorityFilter(config.priorityFilter || []);
-                setAssignedToFilter(config.assignedToFilter || []);
-                setCityFilter(config.cityFilter || []);
-                setActiveAdvancedRules(config.advancedRules || []);
-                setActiveFilterId(filter.id);
-              }}
-              className="gap-1"
-            >
-              <span className="font-semibold">{getFilterCount(filter)}</span>
-              <span>{filter.name}</span>
-            </Button>
-          ))}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          {savedFilters.map((filter) => {
+            const count = getFilterCount(filter);
+            const isActive = activeFilterId === filter.id;
+            return (
+              <Button
+                key={filter.id}
+                variant={isActive ? "default" : "outline"}
+                size="sm"
+                onClick={() => applyFilter(filter)}
+                className={cn(
+                  "rounded-full px-4 h-8 shrink-0 transition-all",
+                  isActive
+                    ? "font-bold bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted/50 border-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <span>{filter.name}</span>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "ml-2 h-5 min-w-[20px] px-1 justify-center rounded-full text-[10px] border-none font-medium",
+                    isActive
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-background/50 text-muted-foreground"
+                  )}
+                >
+                  {count}
+                </Badge>
+              </Button>
+            );
+          })}
           {activeFilterId && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-8 rounded-full text-muted-foreground hover:text-foreground shrink-0"
+            >
               <X className="h-4 w-4 mr-1" />
               Clear
             </Button>
