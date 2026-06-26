@@ -915,6 +915,39 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
 
   return (
     <div className="space-y-4">
+      {/* Saved Filters Quick Access */}
+      {savedFilters.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {savedFilters.map((filter) => (
+            <Button
+              key={filter.id}
+              variant={activeFilterId === filter.id ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                const config = filter.filter_config as any;
+                setStatusFilter(config.statusFilter || []);
+                setTypeFilter(config.typeFilter || []);
+                setPriorityFilter(config.priorityFilter || []);
+                setAssignedToFilter(config.assignedToFilter || []);
+                setCityFilter(config.cityFilter || []);
+                setActiveAdvancedRules(config.advancedRules || []);
+                setActiveFilterId(filter.id);
+              }}
+              className="gap-1"
+            >
+              <span className="font-semibold">{getFilterCount(filter)}</span>
+              <span>{filter.name}</span>
+            </Button>
+          ))}
+          {activeFilterId && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="relative flex-1 max-w-md">
