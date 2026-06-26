@@ -1,4 +1,4 @@
-name: AI PR Reviewer (Gemini 3.1 Pro)
+name: AI PR Reviewer (Gemini 3.1 Pro Fixed)
 
 on:
   pull_request:
@@ -20,8 +20,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          config.model: "gemini/gemini-3.1-pro"
-          config.fallback_models: '["gemini/gemini-3.1-pro"]'
+          config.model: "gemini/gemini-3.1-pro-preview"
+          config.fallback_models: '["gemini/gemini-1.5-pro"]'
+          config.custom_model_max_tokens: "2097152"
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "true"
