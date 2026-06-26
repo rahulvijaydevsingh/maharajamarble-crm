@@ -377,8 +377,22 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         else if (toEnd) createdDateMatch = date <= toEnd;
       }
 
+      const customerTaskInfo = getCustomerTasks(c.id);
+      const pendingTasksCategory =
+        customerTaskInfo.overdue > 0   ? "has_overdue" :
+        customerTaskInfo.dueToday > 0  ? "due_today"   :
+        customerTaskInfo.total > 0     ? "has_pending"  :
+                                         "no_pending";
       const advancedMatch = activeAdvancedRules.length === 0 ||
-        evaluateRules(c as Record<string, any>, activeAdvancedRules, { getCustomerTasks });
+        evaluateRules(
+          {
+            ...c,
+            pending_tasks: pendingTasksCategory,
+            pending_tasks_count: customerTaskInfo.total,
+          } as Record<string, any>,
+          activeAdvancedRules,
+          { getCustomerTasks }
+        );
       return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch && advancedMatch;
     });
 
@@ -453,8 +467,22 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
       const assignedMatch = (config.assignedToFilter?.length || 0) === 0 || (config.assignedToFilter || []).includes(resolvedAssignee);
       const cityMatch = (config.cityFilter?.length || 0) === 0 || (config.cityFilter || []).includes(c.city || "");
+      const customerTaskInfo = getCustomerTasks(c.id);
+      const pendingTasksCategory =
+        customerTaskInfo.overdue > 0   ? "has_overdue" :
+        customerTaskInfo.dueToday > 0  ? "due_today"   :
+        customerTaskInfo.total > 0     ? "has_pending"  :
+                                         "no_pending";
       const advancedMatch = ((config.advancedRules?.length) || 0) === 0 ||
-        evaluateRules(c as Record<string, any>, config.advancedRules || [], { getCustomerTasks });
+        evaluateRules(
+          {
+            ...c,
+            pending_tasks: pendingTasksCategory,
+            pending_tasks_count: customerTaskInfo.total,
+          } as Record<string, any>,
+          config.advancedRules || [],
+          { getCustomerTasks }
+        );
       return statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && advancedMatch;
     }).length;
   };
