@@ -1,24 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bell, Clock, Check, ChevronRight, AlertCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Bell, Clock, Check, ChevronRight } from "lucide-react";
 import { format, parseISO, isPast, isToday, isTomorrow, differenceInHours } from "date-fns";
 import { useReminders } from "@/hooks/useReminders";
 import { useNavigate } from "react-router-dom";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useActiveStaffOptions } from "@/hooks/useActiveStaff";
 import { cn } from "@/lib/utils";
 
 export function RemindersWidget() {
-  const { reminders, loading, dismissReminder } = useReminders();
+  const { profile, isAdmin } = useAuth();
+  const admin = isAdmin();
+  const { options: staffOptions } = useActiveStaffOptions();
+
+  // Admin can pick any staff (default "all"); non-admins are locked to themselves.
+  const [selectedStaff, setSelectedStaff] = useState<string>("all");
+  const effectiveAssignee = admin
+    ? selectedStaff === "all"
+      ? undefined
+      : selectedStaff
+    : profile?.full_name || undefined;
+
+  const { reminders, loading, dismissReminder } = useReminders(undefined, undefined, effectiveAssignee);
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
-  
-  const activeReminders = reminders.filter(r => !r.is_dismissed);
-  const sortedReminders = activeReminders.sort((a, b) => 
-    new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
-  ).slice(0, 5);
+
+  const activeReminders = useMemo(
+    () => reminders.filter((r) => !r.is_dismissed),
+    [reminders]
+  );
+  const sortedReminders = useMemo(
+    () =>
+      [...activeReminders]
+        .sort(
+          (a, b) =>
+            new Date(a.reminder_datetime).getTime() - new Date(b.reminder_datetime).getTime()
+        )
+        .slice(0, 5),
+    [activeReminders]
+  );
 
   const getTimeLabel = (datetime: string) => {
     const date = parseISO(datetime);
@@ -43,15 +68,20 @@ export function RemindersWidget() {
 
   const handleReminderClick = (reminder: any) => {
     const type = reminder.entity_type?.toLowerCase();
-    if (type === 'lead') {
+    if (type === "lead") {
       navigate(`/leads?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
-    } else if (type === 'customer') {
+    } else if (type === "customer") {
       navigate(`/customers?view=${reminder.entity_id}&tab=reminders&highlightReminder=${reminder.id}`);
-    } else if (type === 'task') {
+    } else if (type === "task") {
       openTask(reminder.entity_id);
-    } else if (type === 'professional') {
+    } else if (type === "professional") {
       navigate(`/professionals?view=${reminder.entity_id}`);
     }
+  };
+
+  const handleViewAll = () => {
+    // No dedicated reminders route — Tasks page hosts the unified reminders workspace.
+    navigate("/tasks");
   };
 
   if (loading) {
@@ -75,16 +105,39 @@ export function RemindersWidget() {
   return (
     <Card className="marble-card">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Bell className="h-5 w-5 text-primary" />
             Reminders
           </CardTitle>
-          {activeReminders.length > 0 && (
-            <Badge variant="secondary">{activeReminders.length}</Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {admin && staffOptions.length > 0 && (
+              <Select value={selectedStaff} onValueChange={setSelectedStaff}>
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue placeholder="All Users" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Users</SelectItem>
+                  {staffOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.name}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {activeReminders.length > 0 && (
+              <Badge variant="secondary">{activeReminders.length}</Badge>
+            )}
+          </div>
         </div>
-        <CardDescription>Upcoming and overdue reminders</CardDescription>
+        <CardDescription>
+          {admin && selectedStaff !== "all"
+            ? `Showing reminders for ${selectedStaff}`
+            : admin
+            ? "Showing reminders for all users"
+            : "Upcoming and overdue reminders"}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {sortedReminders.length === 0 ? (
@@ -101,8 +154,8 @@ export function RemindersWidget() {
                   onClick={() => handleReminderClick(reminder)}
                   className={cn(
                     "p-3 rounded-lg border transition-colors cursor-pointer",
-                    isPast(parseISO(reminder.reminder_datetime)) 
-                      ? "bg-destructive/5 border-destructive/20 hover:bg-destructive/10" 
+                    isPast(parseISO(reminder.reminder_datetime))
+                      ? "bg-destructive/5 border-destructive/20 hover:bg-destructive/10"
                       : "bg-muted/50 hover:bg-muted"
                   )}
                 >
@@ -135,8 +188,8 @@ export function RemindersWidget() {
             </div>
           </ScrollArea>
         )}
-        {activeReminders.length > 5 && (
-          <Button variant="link" className="w-full mt-2 text-xs">
+        {activeReminders.length > 0 && (
+          <Button variant="link" className="w-full mt-2 text-xs" onClick={handleViewAll}>
             View all {activeReminders.length} reminders
             <ChevronRight className="h-3 w-3 ml-1" />
           </Button>

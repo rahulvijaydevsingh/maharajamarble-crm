@@ -852,31 +852,41 @@ export function useTasks() {
         void syncCustomerFollowUpDates(task.related_entity_id);
       }
 
-      // Snooze the task's linked reminder (if any) — keep PR #62 behavior
+      // RESURRECTION: Snoozing is explicit consent to be reminded again.
+      // Even if the user previously dismissed the bell (is_dismissed=true) or
+      // toggled tasks.reminder OFF, snooze must re-arm the alarm track so the
+      // lead can't go silent. See plan Task 2.
       try {
-        const { data: taskReminders } = await supabase
-          .from("reminders")
-          .select("id")
-          .eq("entity_type", "task")
-          .eq("entity_id", id)
-          .eq("is_dismissed", false);
-
-        if (taskReminders && taskReminders.length > 0) {
-          await supabase
-            .from("reminders")
-            .update({
-              is_snoozed: true,
-              snooze_until: snoozedUntil.toISOString(),
-            })
-            .in("id", taskReminders.map((r: { id: string }) => r.id));
-        }
+        await supabase
+          .from("tasks")
+          .update({
+            reminder: true,
+            reminder_time: task.reminder_time ?? '0',
+          })
+          .eq("id", id);
+        // Reflect locally so the EditTask dialog toggle shows ON immediately
+        setTasks((prev) => prev.map((t) =>
+          t.id === id ? { ...t, reminder: true, reminder_time: t.reminder_time ?? '0' } as Task : t
+        ));
       } catch (e: any) {
-        console.warn("[useTasks/snoozeTask] Failed to snooze linked task reminder:", e?.message || e);
+        console.warn("[useTasks/snoozeTask] Failed to re-arm task reminder flag:", e?.message || e);
+      }
+
+      // Clean ALL prior reminders rows for this task (including dismissed/snoozed
+      // ones) so we never inherit stale state. syncTaskReminder then inserts a
+      // single fresh active row keyed to the wake time.
+      try {
+        await supabase
+          .from("reminders")
+          .delete()
+          .eq("entity_type", "task")
+          .eq("entity_id", id);
+      } catch (e: any) {
+        console.warn("[useTasks/snoozeTask] Failed to clear prior task reminders:", e?.message || e);
       }
 
       // Always sync reminder for any snooze duration so the bell fires
       // at the wake time regardless of whether the snooze is short or long.
-      // Replaces any existing reminders row for this task, so we never end up with duplicates.
       await syncTaskReminder(
         {
           id,

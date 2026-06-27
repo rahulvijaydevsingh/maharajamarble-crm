@@ -926,47 +926,23 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
 
   return (
     <div className="space-y-4">
-      {/* Saved Filters Quick Access */}
+      {/* Saved Filters Quick Access — matches Leads page styling */}
       {savedFilters.length > 0 && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-          {savedFilters.map((filter) => {
-            const count = getFilterCount(filter);
-            const isActive = activeFilterId === filter.id;
-            return (
-              <Button
-                key={filter.id}
-                variant={isActive ? "default" : "outline"}
-                size="sm"
-                onClick={() => applyFilter(filter)}
-                className={cn(
-                  "rounded-full px-4 h-8 shrink-0 transition-all",
-                  isActive
-                    ? "font-bold bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted/50 border-none text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <span>{filter.name}</span>
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "ml-2 h-5 min-w-[20px] px-1 justify-center rounded-full text-[10px] border-none font-medium",
-                    isActive
-                      ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-background/50 text-muted-foreground"
-                  )}
-                >
-                  {count}
-                </Badge>
-              </Button>
-            );
-          })}
-          {activeFilterId && (
+        <div className="flex flex-wrap gap-2">
+          {savedFilters.map((filter) => (
             <Button
-              variant="ghost"
+              key={filter.id}
+              variant={activeFilterId === filter.id ? "default" : "outline"}
               size="sm"
-              onClick={clearFilters}
-              className="h-8 rounded-full text-muted-foreground hover:text-foreground shrink-0"
+              onClick={() => applyFilter(filter)}
+              className="gap-1"
             >
+              <span className="font-semibold">{getFilterCount(filter)}</span>
+              <span>{filter.name}</span>
+            </Button>
+          ))}
+          {activeFilterId && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
               <X className="h-4 w-4 mr-1" />
               Clear
             </Button>
