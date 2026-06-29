@@ -408,7 +408,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
             pending_tasks: pendingTasksCategory,
             pending_tasks_count: customerTaskInfo.total,
           } as Record<string, any>,
-          activeAdvancedRules,
+          normalizePendingTasksRules(activeAdvancedRules),
           { getCustomerTasks }
         );
       return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch && advancedMatch;
@@ -509,7 +509,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
             pending_tasks: pendingTasksCategory,
             pending_tasks_count: customerTaskInfo.total,
           } as Record<string, any>,
-          config.advancedRules || [],
+          normalizePendingTasksRules(config.advancedRules || []),
           { getCustomerTasks }
         );
       return statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && advancedMatch;
