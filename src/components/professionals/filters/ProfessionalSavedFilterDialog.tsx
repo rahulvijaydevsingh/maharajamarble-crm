@@ -405,8 +405,13 @@ export function ProfessionalSavedFilterDialog({
 
           <div className="space-y-4 pt-4 border-t">
             <div className="space-y-2">
-              <Label htmlFor="filterName">Filter Name</Label>
+              <Label htmlFor="filterName">
+                <span className="text-destructive">*</span> Filter Name
+              </Label>
               <Input id="filterName" value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Enter filter name" />
+              {!filterName.trim() && (
+                <p className="text-xs text-destructive">Filter name is required to save.</p>
+              )}
             </div>
             <div className="flex items-center justify-between">
               <Label htmlFor="isShared">Share with team</Label>
