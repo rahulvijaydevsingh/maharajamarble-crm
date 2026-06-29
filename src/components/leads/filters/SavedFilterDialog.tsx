@@ -628,6 +628,9 @@ export function SavedFilterDialog({
               value={filterName}
               onChange={(e) => setFilterName(e.target.value)}
             />
+            {saveFilter && !filterName.trim() && (
+              <p className="text-xs text-destructive">Filter name is required to save.</p>
+            )}
           </div>
 
           {/* Options */}
