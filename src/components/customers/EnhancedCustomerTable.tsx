@@ -333,6 +333,24 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const uniqueCities = useMemo(() => Array.from(new Set(customers.map(c => c.city).filter(Boolean) as string[])), [customers]);
   const uniqueStatuses = useMemo(() => Object.keys(CUSTOMER_STATUSES), []);
   const uniqueTypes = useMemo(() => CUSTOMER_TYPES.map(t => t.value), []);
+  // Backward-compat: older saved filters stored the human label
+  // (e.g. "Has Overdue Tasks") instead of the canonical snake_case value.
+  // Normalize before evaluation so old filters still match.
+  const PENDING_TASKS_VALUE_NORMALIZE: Record<string, string> = {
+    "has overdue tasks": "has_overdue",
+    "has pending tasks": "has_pending",
+    "no pending tasks": "no_pending",
+    "tasks due today": "due_today",
+  };
+  const normalizePendingTasksRules = (rules: any[] = []) =>
+    rules.map((r) => {
+      if (r?.field !== "pending_tasks" || typeof r.value !== "string") return r;
+      const key = r.value.trim().toLowerCase();
+      return PENDING_TASKS_VALUE_NORMALIZE[key]
+        ? { ...r, value: PENDING_TASKS_VALUE_NORMALIZE[key] }
+        : r;
+    });
+
 
   const filteredCustomers = useMemo(() => {
     let result = customers.filter(c => {
