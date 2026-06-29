@@ -866,8 +866,16 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
             {PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.label || customer.priority}
           </span>
         );
-      case "assignedTo":
-        return assigneeDisplayMap.get(customer.assigned_to) || getStaffDisplayName(customer.assigned_to, staffMembers);
+      case "assignedTo": {
+        const resolvedKey =
+          resolveAssignedToStaff.get((customer.assigned_to || "").toLowerCase()) ||
+          customer.assigned_to;
+        return (
+          assigneeDisplayMap.get(resolvedKey) ||
+          customer.assigned_to ||
+          "Unassigned"
+        );
+      }
       case "tasks":
         return (
           <PendingTasksBadge 
