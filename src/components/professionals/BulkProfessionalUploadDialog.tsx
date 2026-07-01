@@ -283,7 +283,7 @@ export function BulkProfessionalUploadDialog({
 
         const name = getColumnValue(row, ["Name*", "Name"]);
         const phoneRaw = getColumnValue(row, ["Mobile 1*", "Mobile 1", "Phone*", "Phone"]);
-        const profType = getColumnValue(row, ["Professional Type*", "Professional Type"]);
+        const profType = getColumnValue(row, ["Designation*", "Designation", "Professional Type*", "Professional Type"]);
         const mobile2Raw = getColumnValue(row, ["Mobile 2"]);
         const mobile3Raw = getColumnValue(row, ["Mobile 3"]);
         const landline = getColumnValue(row, ["Landline"]);
