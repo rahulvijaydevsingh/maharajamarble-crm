@@ -93,6 +93,7 @@ interface ParsedLead {
   estimated_quantity: string;
   referred_by: string;
   next_action_date: string;
+  site_plus_code: string;
   rowNumber: number;
   errors: string[];
   warnings: string[];
