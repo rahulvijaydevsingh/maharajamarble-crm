@@ -147,6 +147,8 @@ interface TaskTableProps {
   initialRelatedToName?: string | null;
   onRequestCompleteTask?: (task: Task) => void;
   onProfessionalClick?: (id: string) => void;
+  boardMode?: "active" | "lost" | "recycle";
+  readOnly?: boolean;
 }
 
 // Multi-select filter component matching leads page style
@@ -383,6 +385,8 @@ export function EnhancedTaskTable({
   initialRelatedToName,
   onRequestCompleteTask,
   onProfessionalClick,
+  boardMode = "active",
+  readOnly = false,
 }: TaskTableProps) {
   const { tasks, loading, updateTask, deleteTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
@@ -511,11 +515,19 @@ export function EnhancedTaskTable({
 
   // Transform tasks to include computed status
   const transformedTasks = useMemo(() => {
-    return tasks.map(task => ({
+    const mapped = tasks.map(task => ({
       ...task,
       computedStatus: task.calculatedStatus || calculateTaskStatus(task) || task.status
     }));
-  }, [tasks]);
+    if (boardMode === "lost") {
+      return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
+    }
+    if (boardMode === "recycle") {
+      return mapped.filter(t => t.lead?.status === "deleted" || t.status === "Cancelled");
+    }
+    // active (default)
+    return mapped.filter(t => t.lead?.status !== "deleted" && t.status !== "Cancelled");
+  }, [tasks, boardMode]);
 
   // Get unique values for filters
   const uniqueTypes = useMemo(() => [...new Set(transformedTasks.map(task => task.type))], [transformedTasks]);

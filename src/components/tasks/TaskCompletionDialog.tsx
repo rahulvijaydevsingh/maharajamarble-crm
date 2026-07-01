@@ -316,6 +316,7 @@ export function TaskCompletionDialog({
 
   const nextActionOptions = useMemo(() => {
     return [
+      { value: "__none__", label: "— None / Close without follow-up —", disabled: false },
       { value: "follow_up" as NextActionType, label: "Create Follow-up" },
       { value: "reschedule" as NextActionType, label: "Reschedule" },
       { value: "convert_to_deal" as NextActionType, label: "Convert to Deal", disabled: isUnsuccessful },
@@ -949,13 +950,22 @@ export function TaskCompletionDialog({
             <div className="space-y-2">
               <Label>Next Action {!closeTask && "*"}</Label>
               <Select
-                value={nextAction}
-                onValueChange={(v) => { setNextAction(v as any); setErrors((p) => ({ ...p, nextAction: undefined })); }}
+                value={nextAction || undefined}
+                onValueChange={(v) => {
+                  const clear = v === "__none__";
+                  setNextAction(clear ? "" : (v as any));
+                  if (clear) {
+                    setNextDate(undefined);
+                    setNextTime("10:00");
+                    setRescheduleReason("");
+                  }
+                  setErrors((p) => ({ ...p, nextAction: undefined }));
+                }}
               >
                 <SelectTrigger className={cn(errors.nextAction && "border-destructive")}>
                   <SelectValue placeholder="Select next action" />
                 </SelectTrigger>
-<SelectContent className="z-[200]">
+                <SelectContent className="z-[200]">
                   {nextActionOptions.map((a) => (
                     <SelectItem key={a.value} value={a.value} disabled={a.disabled}>{a.label}</SelectItem>
                   ))}
@@ -1373,7 +1383,26 @@ export function TaskCompletionDialog({
             <Checkbox
               id="close-task"
               checked={closeTask}
-              onCheckedChange={(checked) => setCloseTask(checked === true)}
+              onCheckedChange={(checked) => {
+                const on = checked === true;
+                setCloseTask(on);
+                if (on) {
+                  setNextAction("");
+                  setNextDate(undefined);
+                  setNextTime("10:00");
+                  setRescheduleReason("");
+                  setReminderOffsetHours("");
+                  setCustomReminderAt("");
+                  setShowCustomReminder(false);
+                  setErrors((prev) => ({
+                    ...prev,
+                    nextAction: undefined,
+                    nextDate: undefined,
+                    nextTime: undefined,
+                    rescheduleReason: undefined,
+                  }));
+                }
+              }}
             />
             <div className="flex flex-col">
               <Label htmlFor="close-task" className="cursor-pointer font-medium">
