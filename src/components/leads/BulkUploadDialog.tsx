@@ -548,6 +548,7 @@ export function BulkUploadDialog({
           estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
           referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
           next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
+          site_plus_code: getColumnValue(row, ["Site Plus Code", "SITE PLUS CODE", "SitePlusCode", "plus_code"]),
           rowNumber: actualRowNumber,
           errors,
           warnings,
