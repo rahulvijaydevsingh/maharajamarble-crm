@@ -271,115 +271,132 @@ export function BulkUploadDialog({
   };
 
   // Enhanced template download with multiple sheets
-  const downloadTemplate = () => {
-    const workbook = XLSX.utils.book_new();
+  const downloadTemplate = async () => {
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Lead Template");
 
-    // Sheet 1: Lead Template with example data
-    const templateHeaders = [
-      "Name*", "Phone*", "Email", "Source*", "Address", "Priority", 
-      "Assigned To", "Materials", "Notes", "Status", "Construction Stage",
-      "Estimated Quantity", "Site Photo URL", "Referred By", "Next Action Date", "Initial Note"
-    ];
-    
-    const exampleRow = [
-      "John Doe", "1234567890", "john@example.com", "Walk In", 
-      "123 Main Street, City", "3 - Medium", staffMembers[0]?.name || "Staff Member",
-      "Tiles, Marbles", "Sample lead", "new", "Medium Density",
-      "500 sq ft", "", "", format(addDays(new Date(), 7), "dd-MM-yyyy"), "Follow up on tiles selection"
-    ];
+      const cpSourceOptions = getFieldOptions("leads", "source");
+      const cpStageOptions = getFieldOptions("leads", "construction_stage");
+      const cpMaterialOptions = getFieldOptions("materials", "materials");
 
-    const templateData = [templateHeaders, exampleRow];
-    const templateSheet = XLSX.utils.aoa_to_sheet(templateData);
-    
-    // Set column widths
-    templateSheet['!cols'] = [
-      { wch: 20 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 35 },
-      { wch: 15 }, { wch: 18 }, { wch: 25 }, { wch: 30 }, { wch: 12 },
-      { wch: 18 }, { wch: 15 }, { wch: 30 }, { wch: 20 }, { wch: 15 }, { wch: 30 }
-    ];
-    
-    XLSX.utils.book_append_sheet(workbook, templateSheet, "Lead Template");
+      const sourceLabels = (cpSourceOptions.length > 0 ? cpSourceOptions : LEAD_SOURCES).map((s: any) => s.label);
+      const stageLabels = (cpStageOptions.length > 0 ? cpStageOptions : CONSTRUCTION_STAGES).map((s: any) => s.label);
+      const materialLabels = (cpMaterialOptions.length > 0 ? cpMaterialOptions : MATERIAL_INTERESTS).map((m: any) => m.label);
+      const staffNames = staffMembers.map(m => m.name);
+      const statusLabels = ["new", "in-progress", "quoted", "won", "pending_lost", "lost"];
+      const priorityLabels = PRIORITY_OPTIONS.map(p => p.label);
 
-    // Sheet 2: Options Reference
-    const cpSourceOptions = getFieldOptions("leads", "source");
-    const cpStageOptions = getFieldOptions("leads", "construction_stage");
-    const cpMaterialOptions = getFieldOptions("materials", "materials");
+      const columns = [
+        { key: "name", header: "Name*", width: 22, list: null as string[] | null },
+        { key: "phone", header: "Phone*", width: 16, list: null },
+        { key: "email", header: "Email", width: 26, list: null },
+        { key: "source", header: "Source*", width: 18, list: sourceLabels },
+        { key: "address", header: "Address", width: 36, list: null },
+        { key: "site_plus_code", header: "Site Plus Code", width: 20, list: null },
+        { key: "priority", header: "Priority", width: 16, list: priorityLabels },
+        { key: "assigned_to", header: "Assigned To", width: 20, list: staffNames },
+        { key: "materials", header: "Materials", width: 26, list: null },
+        { key: "notes", header: "Notes", width: 32, list: null },
+        { key: "status", header: "Status", width: 14, list: statusLabels },
+        { key: "construction_stage", header: "Construction Stage", width: 20, list: stageLabels },
+        { key: "estimated_quantity", header: "Estimated Quantity", width: 18, list: null },
+        { key: "referred_by", header: "Referred By", width: 22, list: null },
+        { key: "next_action_date", header: "Next Action Date", width: 16, list: null },
+        { key: "initial_note", header: "Initial Note", width: 32, list: null },
+      ];
 
-    const optionsData = [
-      ["FIELD OPTIONS REFERENCE"],
-      [""],
-      ["Status Options"],
-      ...STATUS_OPTIONS.map(s => [s]),
-      [""],
-      ["Priority Options"],
-      ...PRIORITY_OPTIONS.map(p => [p.label]),
-      [""],
-      ["Assigned To Options"],
-      ...staffMembers.map(m => [m.name]),
-      [""],
-      ["Source Options"],
-      ...(cpSourceOptions.length > 0 ? cpSourceOptions : LEAD_SOURCES).map((s: any) => [s.label]),
-      [""],
-      ["Construction Stage Options"],
-      ...(cpStageOptions.length > 0 ? cpStageOptions : CONSTRUCTION_STAGES).map((s: any) => [s.label]),
-      [""],
-      ["Materials Options"],
-      ...(cpMaterialOptions.length > 0 ? cpMaterialOptions : MATERIAL_INTERESTS).map((m: any) => [m.label]),
-    ];
-    const optionsSheet = XLSX.utils.aoa_to_sheet(optionsData);
-    optionsSheet['!cols'] = [{ wch: 30 }];
-    XLSX.utils.book_append_sheet(workbook, optionsSheet, "Options");
+      sheet.columns = columns.map(c => ({ key: c.key, header: c.header, width: c.width }));
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: "FF1A1A2E" } };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC9A84C" } };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
+      headerRow.height = 20;
 
-    // Sheet 3: Instructions
-    const instructionsData = [
-      ["📋 LEAD IMPORT TEMPLATE - INSTRUCTIONS"],
-      [""],
-      ["REQUIRED FIELDS:"],
-      ["- Name: Lead/customer full name (text)"],
-      ["- Phone: Contact number - NO DUPLICATES ALLOWED (format: 10 digits)"],
-      ["- Source: Lead acquisition source (must match options in 'Options' sheet)"],
-      [""],
-      ["OPTIONAL FIELDS:"],
-      ["- Email: Valid email address (format: name@domain.com)"],
-      ["- Priority: Use values from 'Options' sheet (1-Very High to 5-Very Low)"],
-      ["- Assigned To: Team member name - must exactly match names in 'Options' sheet"],
-      ["- Status: Lead status - must match values in 'Options' sheet (default: 'new')"],
-      ["- Materials: Comma-separated list (e.g., 'Tiles, Marbles, Sanitary')"],
-      ["- Construction Stage: Project stage from 'Options' sheet"],
-      ["- Estimated Quantity: Expected order quantity (e.g., '500 sq ft')"],
-      ["- Next Action Date: Format DD-MM-YYYY (e.g., 25-12-2025)"],
-      [""],
-      ["IMPORTANT NOTES:"],
-      ["1. DUPLICATE PHONE NUMBERS: System will reject leads with phone numbers that already exist"],
-      ["2. Column order must match the template exactly"],
-      ["3. Do not delete or rename column headers"],
-      ["4. Maximum 1000 leads per upload"],
-      ["5. File size limit: 5MB"],
-      ["6. Date format: DD-MM-YYYY (e.g., 25-12-2025)"],
-      [""],
-      ["VALIDATION ERRORS:"],
-      ["If upload fails, you will receive a detailed error report showing:"],
-      ["- Row number with error"],
-      ["- Field name with issue"],
-      ["- Error description"],
-      ["- Suggested fix"],
-      [""],
-      ["STEPS TO IMPORT:"],
-      ["1. Fill in your lead data starting from Row 3"],
-      ["2. Save the file (keep it as .xlsx format)"],
-      ["3. Go to Leads Management → Bulk Upload → Excel Upload"],
-      ["4. Upload your file"],
-      ["5. Review validation results"],
-      ["6. Confirm import"],
-      [""],
-      ["For questions, contact system administrator."],
-    ];
-    const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionsData);
-    instructionsSheet['!cols'] = [{ wch: 80 }];
-    XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instructions");
+      const exampleRow = sheet.addRow({
+        name: "Rajesh Kumar",
+        phone: "9876543210",
+        email: "rajesh@example.com",
+        source: sourceLabels[0] || "Walk-in",
+        address: "123 Main Street, Mohali",
+        site_plus_code: "",
+        priority: "3 - Medium",
+        assigned_to: staffNames[0] || "Staff Member",
+        materials: materialLabels.slice(0, 2).join(", "),
+        notes: "Interested in floor tiles",
+        status: "new",
+        construction_stage: stageLabels[0] || "",
+        estimated_quantity: "500 sq ft",
+        referred_by: "",
+        next_action_date: format(addDays(new Date(), 7), "dd-MM-yyyy"),
+        initial_note: "Initial contact made at showroom",
+      });
+      exampleRow.font = { color: { argb: "FF666666" }, italic: true };
 
-    XLSX.writeFile(workbook, "lead_import_template.xlsx");
-    toast({ title: "Template Downloaded", description: "Fill in the template starting from row 3 and upload it back." });
+      columns.forEach((col, idx) => {
+        if (!col.list || col.list.length === 0) return;
+        const colLetter = sheet.getColumn(idx + 1).letter;
+        const formula = `"${col.list.slice(0, 50).join(",")}"`;
+        for (let row = 3; row <= 1001; row++) {
+          sheet.getCell(`${colLetter}${row}`).dataValidation = {
+            type: "list",
+            allowBlank: true,
+            formulae: [formula],
+            showErrorMessage: true,
+            errorTitle: "Invalid value",
+            error: "Please select a value from the dropdown list",
+          };
+        }
+      });
+
+      // Options Reference sheet
+      const optSheet = workbook.addWorksheet("Options Reference");
+      const optData: string[][] = [
+        ["FIELD OPTIONS REFERENCE - Do not edit this sheet"], [""],
+        ["Status Options"], ...statusLabels.map(s => [s]), [""],
+        ["Priority Options"], ...priorityLabels.map(p => [p]), [""],
+        ["Source Options"], ...sourceLabels.map(s => [s]), [""],
+        ["Construction Stage Options"], ...stageLabels.map(s => [s]), [""],
+        ["Materials Options"], ...materialLabels.map(m => [m]), [""],
+        ["Assigned To Options"], ...staffNames.map(n => [n]),
+      ];
+      optData.forEach(r => optSheet.addRow(r));
+      optSheet.getColumn(1).width = 35;
+
+      // Instructions sheet
+      const instrSheet = workbook.addWorksheet("Instructions");
+      [
+        ["LEAD IMPORT TEMPLATE - INSTRUCTIONS"], [""],
+        ["REQUIRED FIELDS (marked with *):"],
+        ["  Name*, Phone* (10 digits, unique), Source*"],
+        [""],
+        ["OPTIONAL FIELDS:"],
+        ["  Site Plus Code: Google Maps Plus Code (e.g. 7JWF+XC Mohali)"],
+        ["  Priority, Assigned To, Status, Materials (comma-separated),"],
+        ["  Construction Stage, Next Action Date (DD-MM-YYYY)"],
+        [""],
+        ["NOTES:"],
+        ["  1. Data starts from Row 3 (Row 2 is an example - delete it)"],
+        ["  2. Dropdowns pre-filled from live CRM settings"],
+        ["  3. Max 1000 leads, 5MB file size"],
+      ].forEach(r => instrSheet.addRow(r));
+      instrSheet.getColumn(1).width = 80;
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "lead_import_template.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({ title: "Template Downloaded", description: "Dropdowns are pre-filled with your live CRM staff and settings." });
+    } catch (err) {
+      console.error("Template generation failed:", err);
+      toast({ title: "Failed to generate template", variant: "destructive" });
+    }
   };
 
   // Helper function to get column value with flexible header matching (case-insensitive)
