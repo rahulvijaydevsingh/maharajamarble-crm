@@ -92,94 +92,131 @@ export function BulkProfessionalUploadDialog({
     setIsImporting(false);
   };
 
-  const downloadTemplate = () => {
-    const workbook = XLSX.utils.book_new();
+  const downloadTemplate = async () => {
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Professional Template");
 
-    // Get options from control panel
-    const typeOptions = getFieldOptions("professionals", "professional_type");
-    const categoryOptions = getFieldOptions("professionals", "service_category");
-    const cityOptions = getFieldOptions("professionals", "city");
-    const statusOptions = getFieldOptions("professionals", "professional_status");
-    const priorityOptions = getFieldOptions("professionals", "priority");
+      const typeOptions = getFieldOptions("professionals", "professional_type");
+      const categoryOptions = getFieldOptions("professionals", "service_category");
+      const cityOptions = getFieldOptions("professionals", "city");
+      const statusOptions = getFieldOptions("professionals", "professional_status");
+      const priorityOptions = getFieldOptions("professionals", "priority");
 
-    // Sheet 1: Template
-    const templateHeaders = [
-      "Name*", "Mobile 1*", "Mobile 2", "Mobile 3", "Landline", "Email", "Firm Name",
-      "Professional Type*", "Service Category", "City", "Status",
-      "Priority", "Assigned To", "Address", "Additional Address", "Notes"
-    ];
-    const exampleRow = [
-      "John Smith", "9876543210", "", "", "", "john@example.com", "Smith Constructions",
-      typeOptions[0]?.label || "Contractor", categoryOptions[0]?.label || "Construction",
-      cityOptions[0]?.label || "Jaipur", statusOptions[0]?.label || "Active",
-      "3 - Medium", staffMembers[0]?.name || "Staff Member", "123 Main St", "", "Sample professional"
-    ];
-    const templateData = [templateHeaders, exampleRow];
-    const templateSheet = XLSX.utils.aoa_to_sheet(templateData);
-    templateSheet['!cols'] = templateHeaders.map(() => ({ wch: 20 }));
-    XLSX.utils.book_append_sheet(workbook, templateSheet, "Professional Template");
+      const typeLabels = typeOptions.map(o => o.label);
+      const categoryLabels = categoryOptions.map(o => o.label);
+      const cityLabels = cityOptions.map(o => o.label);
+      const statusLabels = statusOptions.length > 0 ? statusOptions.map(o => o.label) : ["Active", "Inactive"];
+      const priorityLabels = priorityOptions.length > 0 ? priorityOptions.map(o => o.label) : ["1 - Very High", "2 - High", "3 - Medium", "4 - Low", "5 - Very Low"];
+      const staffNames = staffMembers.map(m => m.name);
 
-    // Sheet 2: Options Reference
-    const optionsData: string[][] = [
-      ["FIELD OPTIONS REFERENCE"],
-      [""],
-      ["Professional Type Options"],
-      ...typeOptions.map(o => [o.label]),
-      [""],
-      ["Service Category Options"],
-      ...categoryOptions.map(o => [o.label]),
-      [""],
-      ["City Options"],
-      ...cityOptions.map(o => [o.label]),
-      [""],
-      ["Status Options"],
-      ...statusOptions.map(o => [o.label]),
-      [""],
-      ["Priority Options"],
-      ...priorityOptions.map(o => [o.label]),
-      [""],
-      ["Assigned To Options"],
-      ...staffMembers.map(m => [m.name]),
-    ];
-    const optionsSheet = XLSX.utils.aoa_to_sheet(optionsData);
-    optionsSheet['!cols'] = [{ wch: 30 }];
-    XLSX.utils.book_append_sheet(workbook, optionsSheet, "Options");
+      const columns = [
+        { key: "name", header: "Name*", width: 22, list: null as string[] | null },
+        { key: "mobile1", header: "Mobile 1*", width: 16, list: null },
+        { key: "mobile2", header: "Mobile 2", width: 16, list: null },
+        { key: "mobile3", header: "Mobile 3", width: 16, list: null },
+        { key: "landline", header: "Landline", width: 16, list: null },
+        { key: "email", header: "Email", width: 26, list: null },
+        { key: "firm_name", header: "Firm Name", width: 24, list: null },
+        { key: "professional_type", header: "Designation*", width: 20, list: typeLabels },
+        { key: "service_category", header: "Service Category", width: 20, list: categoryLabels },
+        { key: "city", header: "City", width: 16, list: cityLabels },
+        { key: "status", header: "Status", width: 14, list: statusLabels },
+        { key: "priority", header: "Priority", width: 16, list: priorityLabels },
+        { key: "assigned_to", header: "Assigned To", width: 20, list: staffNames },
+        { key: "address", header: "Address", width: 32, list: null },
+        { key: "additional_address", header: "Additional Address", width: 32, list: null },
+        { key: "notes", header: "Notes", width: 32, list: null },
+      ];
 
-    // Sheet 3: Instructions
-    const instructionsData = [
-      ["📋 PROFESSIONAL IMPORT TEMPLATE - INSTRUCTIONS"],
-      [""],
-      ["REQUIRED FIELDS:"],
-      ["- Name: Full name of the professional"],
-      ["- Mobile 1: 10-digit mobile number (starts with 6-9)"],
-      ["- Professional Type: Must match options in 'Options' sheet"],
-      [""],
-      ["PHONE COLUMNS:"],
-      ["- Mobile 1: Primary mobile (required, 10 digits)"],
-      ["- Mobile 2: Secondary mobile (optional, 10 digits)"],
-      ["- Mobile 3: Third mobile (optional, 10 digits)"],
-      ["- Landline: Landline numbers (optional, can have multiple comma-separated)"],
-      [""],
-      ["ADDRESS COLUMNS:"],
-      ["- Address: Primary address"],
-      ["- Additional Address: Secondary/site address"],
-      [""],
-      ["OPTIONAL FIELDS:"],
-      ["- All other fields are optional"],
-      ["- Values should match the 'Options' sheet where applicable"],
-      [""],
-      ["IMPORTANT NOTES:"],
-      ["1. Mobile 1 numbers must be unique - duplicates will be flagged"],
-      ["2. Column order must match the template exactly"],
-      ["3. Maximum 1000 professionals per upload"],
-      ["4. Do not delete or rename column headers"],
-    ];
-    const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionsData);
-    instructionsSheet['!cols'] = [{ wch: 60 }];
-    XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instructions");
+      sheet.columns = columns.map(c => ({ key: c.key, header: c.header, width: c.width }));
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: "FF1A1A2E" } };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC9A84C" } };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
+      headerRow.height = 20;
 
-    XLSX.writeFile(workbook, "professional_import_template.xlsx");
-    toast({ title: "Template Downloaded" });
+      const exampleRow = sheet.addRow({
+        name: "John Smith",
+        mobile1: "9876543210",
+        mobile2: "",
+        mobile3: "",
+        landline: "",
+        email: "john@example.com",
+        firm_name: "Smith Constructions",
+        professional_type: typeLabels[0] || "Contractor",
+        service_category: categoryLabels[0] || "",
+        city: cityLabels[0] || "",
+        status: statusLabels[0] || "Active",
+        priority: "3 - Medium",
+        assigned_to: staffNames[0] || "",
+        address: "123 Main St",
+        additional_address: "",
+        notes: "Sample professional",
+      });
+      exampleRow.font = { color: { argb: "FF666666" }, italic: true };
+
+      columns.forEach((col, idx) => {
+        if (!col.list || col.list.length === 0) return;
+        const colLetter = sheet.getColumn(idx + 1).letter;
+        const formula = `"${col.list.slice(0, 50).join(",")}"`;
+        for (let row = 3; row <= 1001; row++) {
+          sheet.getCell(`${colLetter}${row}`).dataValidation = {
+            type: "list",
+            allowBlank: true,
+            formulae: [formula],
+            showErrorMessage: true,
+            errorTitle: "Invalid value",
+            error: "Please select a value from the dropdown list",
+          };
+        }
+      });
+
+      const optSheet = workbook.addWorksheet("Options Reference");
+      const optData: string[][] = [
+        ["FIELD OPTIONS REFERENCE"], [""],
+        ["Designation Options"], ...typeLabels.map(s => [s]), [""],
+        ["Service Category Options"], ...categoryLabels.map(s => [s]), [""],
+        ["City Options"], ...cityLabels.map(s => [s]), [""],
+        ["Status Options"], ...statusLabels.map(s => [s]), [""],
+        ["Priority Options"], ...priorityLabels.map(s => [s]), [""],
+        ["Assigned To Options"], ...staffNames.map(s => [s]),
+      ];
+      optData.forEach(r => optSheet.addRow(r));
+      optSheet.getColumn(1).width = 35;
+
+      const instrSheet = workbook.addWorksheet("Instructions");
+      [
+        ["PROFESSIONAL IMPORT TEMPLATE - INSTRUCTIONS"], [""],
+        ["REQUIRED FIELDS (marked with *):"],
+        ["  Name*, Mobile 1* (10 digits, starts with 6-9), Designation*"],
+        [""],
+        ["OPTIONAL FIELDS:"],
+        ["  Mobile 2/3, Landline, Email, Firm Name, Service Category,"],
+        ["  City, Status, Priority, Assigned To, Address, Notes"],
+        [""],
+        ["NOTES:"],
+        ["  1. Data starts from Row 3 (Row 2 is an example - delete it)"],
+        ["  2. Dropdowns pre-filled from live CRM settings"],
+        ["  3. Duplicate Mobile 1 numbers will be flagged"],
+      ].forEach(r => instrSheet.addRow(r));
+      instrSheet.getColumn(1).width = 70;
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "professional_import_template.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({ title: "Template Downloaded", description: "Dropdowns are pre-filled with your live CRM settings." });
+    } catch (err) {
+      console.error("Template generation failed:", err);
+      toast({ title: "Failed to generate template", variant: "destructive" });
+    }
   };
 
   const getColumnValue = (row: Record<string, any>, possibleHeaders: string[]): string => {
