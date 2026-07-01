@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { EnhancedTaskTable } from "@/components/tasks/EnhancedTaskTable";
@@ -7,6 +7,7 @@ import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
 import { EditTaskDialog } from "@/components/tasks/EditTaskDialog";
 import { TaskCompletionDialog } from "@/components/tasks/TaskCompletionDialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -14,10 +15,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, CheckSquare, LayoutList, Kanban } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useAuth } from "@/contexts/AuthContext";
 import { ProfessionalDetailView } from "@/components/professionals/ProfessionalDetailView";
 import { AddProfessionalDialog } from "@/components/professionals/AddProfessionalDialog";
 import { useProfessionals } from "@/hooks/useProfessionals";
@@ -25,13 +27,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const Tasks = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [addTaskDialogOpen, setAddTaskDialogOpen] = useState(false);
   const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
+  const [boardTab, setBoardTab] = useState<"active" | "lost" | "recycle">("active");
   const { tasks, updateTask, addTask } = useTasks();
   const { canCreate } = usePermissions();
+  const { hasRole } = useAuth();
+  const showAdminTabs = hasRole("manager");
 
   const [selectedProfessional, setSelectedProfessional] = useState<any>(null);
   const [professionalDetailOpen, setProfessionalDetailOpen] = useState(false);
@@ -41,11 +46,50 @@ const Tasks = () => {
 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
-  
+
   // Get URL params for filtering
   const relatedToType = searchParams.get("related_to_type");
   const relatedToId = searchParams.get("related_to_id");
   const relatedToName = searchParams.get("related_to_name");
+
+  // Handle ?view=reminders — surface reminders info (no dedicated reminders panel on Tasks page)
+  useEffect(() => {
+    const v = searchParams.get("view") || searchParams.get("tab");
+    if (v === "reminders") {
+      toast({
+        title: "Reminders",
+        description: "Use the bell icon or the Reminders widget on the Dashboard to view all reminders.",
+      });
+      searchParams.delete("view");
+      searchParams.delete("tab");
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Counts for tab badges
+  const tabCounts = useMemo(() => {
+    let active = 0, lost = 0, recycle = 0;
+    for (const t of tasks) {
+      const leadStatus = t.lead?.status;
+      if (leadStatus === "deleted" || t.status === "Cancelled") recycle++;
+      else if (leadStatus === "lost" || leadStatus === "pending_lost") lost++;
+      else active++;
+    }
+    return { active, lost, recycle };
+  }, [tasks]);
+
+  // Filter kanban tasks by tab
+  const kanbanTasks = useMemo(() => {
+    if (boardTab === "lost") {
+      return tasks.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
+    }
+    if (boardTab === "recycle") {
+      return tasks.filter(t => t.lead?.status === "deleted" || t.status === "Cancelled");
+    }
+    return tasks.filter(t => t.lead?.status !== "deleted" && t.status !== "Cancelled");
+  }, [tasks, boardTab]);
+
 
   const handleTaskCreate = (taskData: any) => {
     console.log("New task created:", taskData);
