@@ -208,6 +208,24 @@ const Tasks = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {showAdminTabs && (
+              <Tabs value={boardTab} onValueChange={(v) => setBoardTab(v as any)} className="mb-4">
+                <TabsList>
+                  <TabsTrigger value="active" className="gap-2">
+                    Active Tasks
+                    <Badge variant="secondary" className="ml-1">{tabCounts.active}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="lost" className="gap-2">
+                    Lost Lead Tasks
+                    <Badge variant="secondary" className="ml-1">{tabCounts.lost}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="recycle" className="gap-2">
+                    Recycle Bin
+                    <Badge variant="secondary" className="ml-1">{tabCounts.recycle}</Badge>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
             {viewMode === "list" ? (
               <EnhancedTaskTable 
                 onEditTask={handleEditTask}
@@ -216,10 +234,12 @@ const Tasks = () => {
                 initialRelatedToId={relatedToId}
                 initialRelatedToName={relatedToName}
                 onProfessionalClick={handleProfessionalClick}
+                boardMode={showAdminTabs ? boardTab : "active"}
+                readOnly={showAdminTabs && boardTab === "recycle"}
               />
             ) : (
               <TaskKanbanView 
-                tasks={tasks} 
+                tasks={kanbanTasks} 
                 onTaskUpdate={handleKanbanUpdate} 
                 onEditTask={handleEditTask} 
                 onRequestCompleteTask={handleRequestComplete}
@@ -227,6 +247,7 @@ const Tasks = () => {
             )}
           </CardContent>
         </Card>
+
 
         <AddTaskDialog
           open={addTaskDialogOpen}
