@@ -1383,7 +1383,26 @@ export function TaskCompletionDialog({
             <Checkbox
               id="close-task"
               checked={closeTask}
-              onCheckedChange={(checked) => setCloseTask(checked === true)}
+              onCheckedChange={(checked) => {
+                const on = checked === true;
+                setCloseTask(on);
+                if (on) {
+                  setNextAction("");
+                  setNextDate(undefined);
+                  setNextTime("10:00");
+                  setRescheduleReason("");
+                  setReminderOffsetHours("");
+                  setCustomReminderAt("");
+                  setShowCustomReminder(false);
+                  setErrors((prev) => ({
+                    ...prev,
+                    nextAction: undefined,
+                    nextDate: undefined,
+                    nextTime: undefined,
+                    rescheduleReason: undefined,
+                  }));
+                }
+              }}
             />
             <div className="flex flex-col">
               <Label htmlFor="close-task" className="cursor-pointer font-medium">
