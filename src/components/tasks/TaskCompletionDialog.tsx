@@ -316,6 +316,7 @@ export function TaskCompletionDialog({
 
   const nextActionOptions = useMemo(() => {
     return [
+      { value: "__none__", label: "— None / Close without follow-up —", disabled: false },
       { value: "follow_up" as NextActionType, label: "Create Follow-up" },
       { value: "reschedule" as NextActionType, label: "Reschedule" },
       { value: "convert_to_deal" as NextActionType, label: "Convert to Deal", disabled: isUnsuccessful },
