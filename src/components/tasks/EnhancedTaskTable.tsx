@@ -385,6 +385,8 @@ export function EnhancedTaskTable({
   initialRelatedToName,
   onRequestCompleteTask,
   onProfessionalClick,
+  boardMode = "active",
+  readOnly = false,
 }: TaskTableProps) {
   const { tasks, loading, updateTask, deleteTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
