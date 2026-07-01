@@ -515,11 +515,19 @@ export function EnhancedTaskTable({
 
   // Transform tasks to include computed status
   const transformedTasks = useMemo(() => {
-    return tasks.map(task => ({
+    const mapped = tasks.map(task => ({
       ...task,
       computedStatus: task.calculatedStatus || calculateTaskStatus(task) || task.status
     }));
-  }, [tasks]);
+    if (boardMode === "lost") {
+      return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
+    }
+    if (boardMode === "recycle") {
+      return mapped.filter(t => t.lead?.status === "deleted" || t.status === "Cancelled");
+    }
+    // active (default)
+    return mapped.filter(t => t.lead?.status !== "deleted" && t.status !== "Cancelled");
+  }, [tasks, boardMode]);
 
   // Get unique values for filters
   const uniqueTypes = useMemo(() => [...new Set(transformedTasks.map(task => task.type))], [transformedTasks]);
