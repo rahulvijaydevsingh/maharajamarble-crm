@@ -622,6 +622,7 @@ export function BulkUploadDialog({
           notes: lead.notes || null,
           construction_stage: lead.construction_stage || null,
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
+          site_plus_code: lead.site_plus_code || null,
           // created_by omitted - database default get_current_user_email() handles it for RLS compliance
         })
         .select('id')
