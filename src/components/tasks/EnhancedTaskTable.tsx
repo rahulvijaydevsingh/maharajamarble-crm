@@ -147,6 +147,8 @@ interface TaskTableProps {
   initialRelatedToName?: string | null;
   onRequestCompleteTask?: (task: Task) => void;
   onProfessionalClick?: (id: string) => void;
+  boardMode?: "active" | "lost" | "recycle";
+  readOnly?: boolean;
 }
 
 // Multi-select filter component matching leads page style
