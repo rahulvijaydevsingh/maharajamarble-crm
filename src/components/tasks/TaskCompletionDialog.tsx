@@ -950,13 +950,22 @@ export function TaskCompletionDialog({
             <div className="space-y-2">
               <Label>Next Action {!closeTask && "*"}</Label>
               <Select
-                value={nextAction}
-                onValueChange={(v) => { setNextAction(v as any); setErrors((p) => ({ ...p, nextAction: undefined })); }}
+                value={nextAction || undefined}
+                onValueChange={(v) => {
+                  const clear = v === "__none__";
+                  setNextAction(clear ? "" : (v as any));
+                  if (clear) {
+                    setNextDate(undefined);
+                    setNextTime("10:00");
+                    setRescheduleReason("");
+                  }
+                  setErrors((p) => ({ ...p, nextAction: undefined }));
+                }}
               >
                 <SelectTrigger className={cn(errors.nextAction && "border-destructive")}>
                   <SelectValue placeholder="Select next action" />
                 </SelectTrigger>
-<SelectContent className="z-[200]">
+                <SelectContent className="z-[200]">
                   {nextActionOptions.map((a) => (
                     <SelectItem key={a.value} value={a.value} disabled={a.disabled}>{a.label}</SelectItem>
                   ))}
