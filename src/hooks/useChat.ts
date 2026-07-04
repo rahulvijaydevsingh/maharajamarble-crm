@@ -85,6 +85,7 @@ export const useConversations = () => {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
+          queryClient.invalidateQueries({ queryKey: ["unread-counts", user.id] });
         }
       )
       .on(
@@ -96,6 +97,7 @@ export const useConversations = () => {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
+          queryClient.invalidateQueries({ queryKey: ["unread-counts", user.id] });
         }
       )
       .subscribe();
@@ -361,6 +363,9 @@ export const useMarkMessagesRead = () => {
     onSuccess: (_, conversationId) => {
       queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      // Badge count lives in a separate query — without this it never learns
+      // a message was just marked read and keeps showing the stale count.
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
     },
   });
 };
@@ -382,6 +387,7 @@ export const useAnnouncements = () => {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["announcements"] });
+          queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
         }
       )
       .subscribe();
@@ -493,6 +499,9 @@ export const useMarkAnnouncementRead = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["announcements"] });
+      // Same fix as useMarkMessagesRead — the badge aggregates messages AND
+      // announcements, so this side needs the same invalidation.
+      queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
     },
   });
 };
