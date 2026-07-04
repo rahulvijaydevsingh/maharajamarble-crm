@@ -523,10 +523,13 @@ export function EnhancedTaskTable({
       return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
     }
     if (boardMode === "recycle") {
-      return mapped.filter(t => t.lead?.status === "deleted" || t.status === "Cancelled");
+      // t.lead === null: parent lead was hard-deleted before the 3-tab board
+      // existed (orphaned task). Must land here, not fall through every tab.
+      return mapped.filter(t => t.lead === null || t.lead?.status === "deleted" || t.status === "Cancelled");
     }
-    // active (default)
-    return mapped.filter(t => t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    // active (default) — explicitly excludes t.lead === null so it can never
+    // also match here, keeping the three boardMode branches mutually exhaustive.
+    return mapped.filter(t => t.lead !== null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
   }, [tasks, boardMode]);
 
   // Get unique values for filters
