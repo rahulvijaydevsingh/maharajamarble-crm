@@ -523,13 +523,15 @@ export function EnhancedTaskTable({
       return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
     }
     if (boardMode === "recycle") {
-      // t.lead === null: parent lead was hard-deleted before the 3-tab board
-      // existed (orphaned task). Must land here, not fall through every tab.
-      return mapped.filter(t => t.lead === null || t.lead?.status === "deleted" || t.status === "Cancelled");
+      // t.lead == null (loose equality — catches both null and undefined,
+      // matching the Task type's `lead?:` optional-and-nullable typing):
+      // parent lead was hard-deleted before the 3-tab board existed
+      // (orphaned task). Must land here, not fall through every tab.
+      return mapped.filter(t => t.lead == null || t.lead?.status === "deleted" || t.status === "Cancelled");
     }
-    // active (default) — explicitly excludes t.lead === null so it can never
+    // active (default) — explicitly excludes t.lead == null so it can never
     // also match here, keeping the three boardMode branches mutually exhaustive.
-    return mapped.filter(t => t.lead !== null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    return mapped.filter(t => t.lead != null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
   }, [tasks, boardMode]);
 
   // Get unique values for filters
@@ -1483,7 +1485,7 @@ export function EnhancedTaskTable({
               {canEdit("tasks") && (
                 <>
                   <DropdownMenuItem onClick={() => openBulkActionDialog("type")}>
-                    <Tag className="mr-2 h-4 w-4" /> Change Type
+                    <Tag className="mr-2 h-4 w-4" /> Change Task Type
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => openBulkActionDialog("priority")}>
                     <ArrowUpDown className="mr-2 h-4 w-4" /> Change Priority

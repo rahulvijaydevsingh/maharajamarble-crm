@@ -68,15 +68,17 @@ const Tasks = () => {
   }, []);
 
   // Counts for tab badges
-  // NOTE: t.lead === null is treated as an orphan (parent lead was hard-deleted
-  // before the 3-tab board existed) and must land in Recycle Bin, not silently
-  // vanish. Each branch below is mutually exclusive with the other two so a
-  // task can never be counted in more than one tab, or none.
+  // NOTE: t.lead == null (loose equality, catches both null and undefined —
+  // the Task type's `lead?:` marks it optional as well as nullable) is
+  // treated as an orphan (parent lead was hard-deleted before the 3-tab
+  // board existed) and must land in Recycle Bin, not silently vanish. Each
+  // branch below is mutually exclusive with the other two so a task can
+  // never be counted in more than one tab, or none.
   const tabCounts = useMemo(() => {
     let active = 0, lost = 0, recycle = 0;
     for (const t of tasks) {
       const leadStatus = t.lead?.status;
-      if (t.lead === null || leadStatus === "deleted" || t.status === "Cancelled") recycle++;
+      if (t.lead == null || leadStatus === "deleted" || t.status === "Cancelled") recycle++;
       else if (leadStatus === "lost" || leadStatus === "pending_lost") lost++;
       else active++;
     }
@@ -84,7 +86,7 @@ const Tasks = () => {
   }, [tasks]);
 
   // Filter kanban tasks by tab
-  // Same orphan-handling rule as tabCounts above: t.lead === null routes to
+  // Same orphan-handling rule as tabCounts above: t.lead == null routes to
   // Recycle Bin, and is explicitly excluded from the active branch so the
   // three branches stay mutually exhaustive.
   const kanbanTasks = useMemo(() => {
@@ -92,9 +94,9 @@ const Tasks = () => {
       return tasks.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
     }
     if (boardTab === "recycle") {
-      return tasks.filter(t => t.lead === null || t.lead?.status === "deleted" || t.status === "Cancelled");
+      return tasks.filter(t => t.lead == null || t.lead?.status === "deleted" || t.status === "Cancelled");
     }
-    return tasks.filter(t => t.lead !== null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    return tasks.filter(t => t.lead != null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
   }, [tasks, boardTab]);
 
 
