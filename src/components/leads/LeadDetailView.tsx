@@ -282,7 +282,7 @@ export function LeadDetailView({
 
   const handleMarkAsLost = async (reasonKey: string, notes: string) => {
     if (!currentLead) return;
-    const reasonLabel = getOptionLabel('leads', 'lost_reason', reasonKey);
+    const reasonLabel = reasonKey ? getOptionLabel('leads', 'lost_reason', reasonKey) : 'N/A';
     await updateLead(currentLead.id, {
       status: 'pending_lost',
       lost_reason: reasonKey,
@@ -297,7 +297,7 @@ export function LeadDetailView({
       metadata: { old_status: currentLead.status, new_status: 'pending_lost', lost_reason: reasonKey },
     });
     // Sweep open tasks immediately on pending_lost so nothing remains overdue
-    // while awaiting admin approval.
+    // while awaiting manager approval.
     await cancelOpenLeadTasks(currentLead.id, 'Cancelled — Lead marked Pending Lost');
     await refetch();
     toast({ title: "Lost Request Submitted", description: "Awaiting manager approval." });
@@ -321,10 +321,12 @@ export function LeadDetailView({
     // First pass — cancel all existing open tasks immediately (both link types)
     await cancelOpenLeadTasks(leadId, 'Cancelled — Lead marked Lost');
 
+    const lostReason = (currentLead as any).lost_reason;
+    const reasonLabel = lostReason ? getOptionLabel('leads', 'lost_reason', lostReason) : 'N/A';
     await logActivity({
       lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
       title: 'Lead Marked Lost — Approved',
-      description: `Lead marked as lost. Reason: ${getOptionLabel('leads', 'lost_reason', (currentLead as any).lost_reason || '')}`,
+      description: `Lead marked as lost. Reason: ${reasonLabel}`,
     });
 
     // Wait for any in-flight automation-created tasks (e.g. approval task), then sweep again.
