@@ -120,21 +120,18 @@ export const useConversations = () => {
       
       if (error) throw error;
       
-      // Fetch other participant details and last message for each conversation
       const conversationsWithDetails = await Promise.all(
         (data || []).map(async (conv) => {
           const otherParticipantId = conv.participant_1 === user.id 
             ? conv.participant_2 
             : conv.participant_1;
           
-          // Get other participant profile
           const { data: profileData } = await supabase
             .from("profiles")
             .select("id, email, full_name, avatar_url")
             .eq("id", otherParticipantId)
             .maybeSingle();
           
-          // Get last message
           const { data: lastMessageData } = await supabase
             .from("messages")
             .select("*")
@@ -144,7 +141,6 @@ export const useConversations = () => {
             .limit(1)
             .maybeSingle();
           
-          // Count unread messages
           const { count: unreadCount } = await supabase
             .from("messages")
             .select("*", { count: "exact", head: true })
@@ -212,7 +208,6 @@ export const useMessages = (conversationId: string | null) => {
       
       if (error) throw error;
       
-      // Fetch sender details for each message
       const messagesWithSenders = await Promise.all(
         (data || []).map(async (msg) => {
           const { data: senderData } = await supabase
@@ -277,7 +272,6 @@ export const useSendMessage = () => {
       
       if (error) throw error;
       
-      // Update conversation last_message_at
       await supabase
         .from("conversations")
         .update({ last_message_at: new Date().toISOString() })
@@ -301,7 +295,6 @@ export const useCreateConversation = () => {
     mutationFn: async (otherUserId: string) => {
       if (!user?.id) throw new Error("Not authenticated");
       
-      // Check if conversation already exists
       const { data: existing } = await supabase
         .from("conversations")
         .select("*")
@@ -310,7 +303,6 @@ export const useCreateConversation = () => {
       
       if (existing) return existing;
       
-      // Create new conversation
       const { data, error } = await supabase
         .from("conversations")
         .insert({
@@ -338,7 +330,6 @@ export const useMarkMessagesRead = () => {
     mutationFn: async (conversationId: string) => {
       if (!user?.id) throw new Error("Not authenticated");
       
-      // Get unread messages
       const { data: unreadMessages } = await supabase
         .from("messages")
         .select("id, read_by")
@@ -348,7 +339,6 @@ export const useMarkMessagesRead = () => {
       
       if (!unreadMessages || unreadMessages.length === 0) return;
       
-      // Update each message to add user to read_by
       for (const msg of unreadMessages) {
         const currentReadBy = Array.isArray(msg.read_by) ? msg.read_by : [];
         await supabase
@@ -363,8 +353,6 @@ export const useMarkMessagesRead = () => {
     onSuccess: (_, conversationId) => {
       queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      // Badge count lives in a separate query — without this it never learns
-      // a message was just marked read and keeps showing the stale count.
       queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
     },
   });
@@ -395,7 +383,7 @@ export const useAnnouncements = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [user?.id, queryClient]);
   
   return useQuery({
     queryKey: ["announcements", user?.id],
@@ -412,7 +400,6 @@ export const useAnnouncements = () => {
       
       if (error) throw error;
       
-      // Filter by target audience
       const filteredAnnouncements = (data || []).filter(ann => {
         if (ann.target_audience === 'all') return true;
         if (ann.target_audience === 'roles' && ann.target_roles?.includes(role || '')) return true;
@@ -420,7 +407,6 @@ export const useAnnouncements = () => {
         return false;
       });
       
-      // Check which ones are read
       const { data: reads } = await supabase
         .from("announcement_reads")
         .select("announcement_id")
@@ -428,7 +414,6 @@ export const useAnnouncements = () => {
       
       const readIds = new Set((reads || []).map(r => r.announcement_id));
       
-      // Get creator details
       const announcementsWithDetails = await Promise.all(
         filteredAnnouncements.map(async (ann) => {
           const { data: creatorData } = await supabase
@@ -494,13 +479,10 @@ export const useMarkAnnouncementRead = () => {
           user_id: user.id,
         });
       
-      // Ignore duplicate error
       if (error && !error.message.includes("duplicate")) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["announcements"] });
-      // Same fix as useMarkMessagesRead — the badge aggregates messages AND
-      // announcements, so this side needs the same invalidation.
       queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
     },
   });
@@ -533,7 +515,6 @@ export const useUnreadCounts = () => {
         totalUnreadMessages += count || 0;
       }
       
-      // Count unread announcements
       const { data: announcements } = await supabase
         .from("announcements")
         .select("id")
