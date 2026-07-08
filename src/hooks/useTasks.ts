@@ -69,6 +69,10 @@ export interface Task {
   reschedule_reason?: string | null;
   reminder_offset_hours?: number | null;
   custom_reminder_at?: string | null;
+  // Soft-delete / Recycle Bin fields
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   // Joined lead data
   lead?: {
     id: string;
@@ -926,9 +930,25 @@ export function useTasks() {
   const deleteTask = async (id: string) => {
     try {
       const taskToDelete = tasks.find((t) => t.id === id) || null;
-      const { error } = await supabase.from("tasks").delete().eq("id", id);
+      // Soft delete: tasks are never hard-removed by this action anymore.
+      // Recycle Bin is the safety net an employee deleting a task by mistake
+      // (or a lead getting cleaned up) needs — the row stays fully intact
+      // and admin-restorable, only is_deleted/deleted_at/deleted_by change.
+      const { data, error } = await supabase
+        .from("tasks")
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          deleted_by: profile?.full_name ?? null,
+        } as any)
+        .eq("id", id)
+        .select(`
+          *,
+          lead:leads(id, name, phone, site_plus_code, status)
+        `)
+        .single();
       if (error) throw error;
-      setTasks((prev) => prev.filter((task) => task.id !== id));
+      setTasks((prev) => prev.map((task) => (task.id === id ? data : task)));
 
       try {
         const leadId = taskToDelete?.lead_id || undefined;
@@ -940,6 +960,7 @@ export function useTasks() {
           activity_type: "task_deleted",
           activity_category: "task",
           title: `Task Deleted: ${taskToDelete?.title || "(unknown)"}`,
+          description: `Moved to Recycle Bin by ${profile?.full_name ?? "unknown"}. Restorable by an admin.`,
           metadata: {
             task_id: id,
             task: taskToDelete,
@@ -954,7 +975,7 @@ export function useTasks() {
       // Log to staff_activity_log
       try {
         if (user) {
-          await logToStaffActivity("task_deleted", user.email || "", user.id, `Deleted task: ${taskToDelete?.title || id}`, "task", id);
+          await logToStaffActivity("task_deleted", user.email || "", user.id, `Deleted task (moved to Recycle Bin): ${taskToDelete?.title || id}`, "task", id);
         }
       } catch (_) {
         // Staff activity log is non-critical — failure is acceptable
@@ -969,7 +990,8 @@ export function useTasks() {
       if (taskToDelete?.related_entity_type === 'customer' && taskToDelete?.related_entity_id) {
         void syncCustomerFollowUpDates(taskToDelete.related_entity_id);
       }
-      // Remove any reminders row mirrored from this task
+      // Remove any reminders row mirrored from this task — a soft-deleted
+      // task sitting in Recycle Bin should not keep alerting anyone.
       void syncTaskReminder({
         id,
         title: taskToDelete?.title || '',
@@ -979,6 +1001,89 @@ export function useTasks() {
     } catch (error: any) {
       toast({
         title: "Error deleting task",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  // Restore a soft-deleted task out of the Recycle Bin. Admin-only at the UI
+  // layer (gated in EnhancedTaskTable.tsx) — this function itself doesn't
+  // re-check role, matching how deleteTask/updateTask above don't either.
+  const restoreTask = async (id: string) => {
+    try {
+      const taskToRestore = tasks.find((t) => t.id === id) || null;
+      const { data, error } = await supabase
+        .from("tasks")
+        .update({
+          is_deleted: false,
+          deleted_at: null,
+          deleted_by: null,
+        } as any)
+        .eq("id", id)
+        .select(`
+          *,
+          lead:leads(id, name, phone, site_plus_code, status)
+        `)
+        .single();
+      if (error) throw error;
+      setTasks((prev) => prev.map((task) => (task.id === id ? data : task)));
+
+      try {
+        const leadId = taskToRestore?.lead_id || undefined;
+        const customerId = taskToRestore?.related_entity_type === "customer" ? (taskToRestore?.related_entity_id || undefined) : undefined;
+        const deletedByNote = (taskToRestore as any)?.deleted_by ? ` Originally deleted by ${(taskToRestore as any).deleted_by}.` : "";
+
+        await logActivity({
+          lead_id: leadId,
+          customer_id: customerId,
+          activity_type: "task_restored",
+          activity_category: "task",
+          title: `Task Restored: ${taskToRestore?.title || "(unknown)"}`,
+          description: `Restored from Recycle Bin by ${profile?.full_name ?? "unknown"}.${deletedByNote}`,
+          metadata: {
+            task_id: id,
+            previously_deleted_by: (taskToRestore as any)?.deleted_by ?? null,
+            previously_deleted_at: (taskToRestore as any)?.deleted_at ?? null,
+          },
+          related_entity_type: taskToRestore?.related_entity_type || undefined,
+          related_entity_id: taskToRestore?.related_entity_id || undefined,
+        });
+      } catch (e) {
+        console.warn("Failed to log task_restored activity", e);
+      }
+
+      try {
+        if (user) {
+          await logToStaffActivity("task_restored", user.email || "", user.id, `Restored task from Recycle Bin: ${taskToRestore?.title || id}`, "task", id);
+        }
+      } catch (_) {
+        // Staff activity log is non-critical — failure is acceptable
+      }
+
+      // Restore the reminder too, if the task originally had one enabled.
+      // syncTaskReminder only recreates it if the computed fire time is
+      // still in the future — a task that sat in Recycle Bin long enough
+      // for its reminder time to have already passed won't get a reminder
+      // back (there's nothing sensible to fire), which is correct, not a bug.
+      void syncTaskReminder({
+        id,
+        title: taskToRestore?.title || '',
+        status: taskToRestore?.status,
+        reminder: taskToRestore?.reminder,
+        reminder_time: (taskToRestore as any)?.reminder_time,
+        due_date: taskToRestore?.due_date,
+        due_time: taskToRestore?.due_time,
+        assigned_to: taskToRestore?.assigned_to,
+        created_by: taskToRestore?.created_by,
+        lead_id: taskToRestore?.lead_id,
+        related_entity_type: taskToRestore?.related_entity_type,
+        related_entity_id: taskToRestore?.related_entity_id,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error restoring task",
         description: error.message,
         variant: "destructive",
       });
@@ -1013,6 +1118,7 @@ export function useTasks() {
     addTask,
     updateTask,
     deleteTask,
+    restoreTask,
     completeRecurringTask,
     snoozeTask,
     toggleStar,
