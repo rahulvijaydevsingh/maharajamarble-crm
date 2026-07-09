@@ -18,14 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-
-interface LostReason {
-  id: string;
-  reason_key: string;
-  reason_label: string;
-  cooling_off_days: number | null;
-}
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface MarkAsLostDialogProps {
   open: boolean;
@@ -40,30 +33,22 @@ export function MarkAsLostDialog({
   leadName,
   onSubmit,
 }: MarkAsLostDialogProps) {
-  const [reasons, setReasons] = useState<LostReason[]>([]);
+  // Reasons are admin-managed via Settings → Control Panel → Leads →
+  // Lost Reason (control_panel_option_values, entity='leads', field='lost_reason').
+  // Do NOT reintroduce a query against the legacy `lead_lost_reasons` table —
+  // it is dead schema and disconnected from the control panel system.
+  const { getFieldOptions, loading } = useControlPanelSettings();
+  const reasons = getFieldOptions("leads", "lost_reason");
   const [selectedReason, setSelectedReason] = useState("");
   const [notes, setNotes] = useState("");
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setSelectedReason("");
       setNotes("");
-      fetchReasons();
     }
   }, [open]);
-
-  const fetchReasons = async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from("lead_lost_reasons")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order");
-    setReasons((data as LostReason[]) || []);
-    setLoading(false);
-  };
 
   const handleSubmit = async () => {
     if (!selectedReason) return;
@@ -98,8 +83,8 @@ export function MarkAsLostDialog({
               </SelectTrigger>
               <SelectContent className="z-[220]">
                 {reasons.map((r) => (
-                  <SelectItem key={r.reason_key} value={r.reason_key}>
-                    {r.reason_label}
+                  <SelectItem key={r.id} value={r.value}>
+                    {r.label}
                   </SelectItem>
                 ))}
               </SelectContent>

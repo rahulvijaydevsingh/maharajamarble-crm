@@ -37,6 +37,7 @@ import {
  import { HeartHandshake } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
 import { useLogActivity } from '@/hooks/useActivityLog';
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { useReminders } from '@/hooks/useReminders';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -109,6 +110,7 @@ export function LeadDetailView({
   const [focusReminderId, setFocusReminderId] = useState<string | null>(highlightReminderId || null);
   const { leads, updateLead, refetch } = useLeads();
   const { logActivity } = useLogActivity();
+  const { getOptionLabel } = useControlPanelSettings();
   const { toast } = useToast();
 
   // Reminder save handler for sibling dialog
@@ -280,6 +282,7 @@ export function LeadDetailView({
 
   const handleMarkAsLost = async (reasonKey: string, notes: string) => {
     if (!currentLead) return;
+    const reasonLabel = reasonKey ? getOptionLabel('leads', 'lost_reason', reasonKey) : 'N/A';
     await updateLead(currentLead.id, {
       status: 'pending_lost',
       lost_reason: reasonKey,
@@ -290,11 +293,11 @@ export function LeadDetailView({
     await logActivity({
       lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
       title: 'Lost Request Submitted',
-      description: `Lead marked as Pending Lost. Reason: ${reasonKey}${notes ? ` — ${notes}` : ''}`,
+      description: `Lead marked as Pending Lost. Reason: ${reasonLabel}${notes ? ` — ${notes}` : ''}`,
       metadata: { old_status: currentLead.status, new_status: 'pending_lost', lost_reason: reasonKey },
     });
     // Sweep open tasks immediately on pending_lost so nothing remains overdue
-    // while awaiting admin approval.
+    // while awaiting manager approval.
     await cancelOpenLeadTasks(currentLead.id, 'Cancelled — Lead marked Pending Lost');
     await refetch();
     toast({ title: "Lost Request Submitted", description: "Awaiting manager approval." });
@@ -318,10 +321,12 @@ export function LeadDetailView({
     // First pass — cancel all existing open tasks immediately (both link types)
     await cancelOpenLeadTasks(leadId, 'Cancelled — Lead marked Lost');
 
+    const lostReason = (currentLead as any).lost_reason;
+    const reasonLabel = lostReason ? getOptionLabel('leads', 'lost_reason', lostReason) : 'N/A';
     await logActivity({
       lead_id: currentLead.id, activity_type: 'status_change', activity_category: 'status_change',
       title: 'Lead Marked Lost — Approved',
-      description: `Lead approved as Lost. Reason: ${(currentLead as any).lost_reason || 'N/A'}`,
+      description: `Lead marked as lost. Reason: ${reasonLabel}`,
     });
 
     // Wait for any in-flight automation-created tasks (e.g. approval task), then sweep again.
