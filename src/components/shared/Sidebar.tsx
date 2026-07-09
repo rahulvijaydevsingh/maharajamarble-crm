@@ -117,7 +117,8 @@ export function SidebarNav() {
           supabase
             .from("tasks")
             .select("id", { count: "exact", head: true })
-            .neq("status", "Completed"),
+            .neq("status", "Completed")
+            .eq("is_deleted", false),
         ]);
 
       if (leadsError) throw leadsError;

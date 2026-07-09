@@ -72,7 +72,8 @@ import {
   Repeat,
   AlarmClock,
   Building2,
-  UserCheck
+  UserCheck,
+  Undo2
 } from "lucide-react";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
@@ -388,7 +389,7 @@ export function EnhancedTaskTable({
   boardMode = "active",
   readOnly = false,
 }: TaskTableProps) {
-  const { tasks, loading, updateTask, deleteTask, refetch, toggleStar, snoozeTask } = useTasks();
+  const { tasks, loading, updateTask, deleteTask, restoreTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
@@ -523,10 +524,16 @@ export function EnhancedTaskTable({
       return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
     }
     if (boardMode === "recycle") {
-      return mapped.filter(t => t.lead?.status === "deleted" || t.status === "Cancelled");
+      // t.is_deleted covers tasks a user explicitly deleted.
+      // t.lead == null (loose equality — catches both null and undefined,
+      // matching the Task type's `lead?:` optional-and-nullable typing):
+      // parent lead was hard-deleted before the 3-tab board existed
+      // (orphaned task). Must land here, not fall through every tab.
+      return mapped.filter(t => t.is_deleted || t.lead == null || t.lead?.status === "deleted" || t.status === "Cancelled");
     }
-    // active (default)
-    return mapped.filter(t => t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    // active (default) — explicitly excludes t.is_deleted and t.lead == null so it can never
+    // also match here, keeping the three boardMode branches mutually exhaustive.
+    return mapped.filter(t => !t.is_deleted && t.lead != null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
   }, [tasks, boardMode]);
 
   // Get unique values for filters
@@ -769,13 +776,22 @@ export function EnhancedTaskTable({
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (confirm("Are you sure you want to delete this task?")) {
+    if (confirm("Delete this task? It will move to the Recycle Bin and can be restored by an admin.")) {
       try {
         await deleteTask(taskId);
-        toast({ title: "Task deleted" });
+        toast({ title: "Task moved to Recycle Bin" });
       } catch (error) {
         console.error("Failed to delete task:", error);
       }
+    }
+  };
+
+  const handleRestoreTask = async (taskId: string) => {
+    try {
+      await restoreTask(taskId);
+      toast({ title: "Task restored" });
+    } catch (error) {
+      console.error("Failed to restore task:", error);
     }
   };
 
@@ -1291,66 +1307,81 @@ export function EnhancedTaskTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {task.status !== 'Completed' && (
+              {readOnly ? (
+                isAdmin ? (
+                  <DropdownMenuItem onClick={() => handleRestoreTask(task.id)}>
+                    <Undo2 className="mr-2 h-4 w-4" />
+                    Restore Task
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem disabled>
+                    Admin access required to restore
+                  </DropdownMenuItem>
+                )
+              ) : (
                 <>
-                  <DropdownMenuItem 
-                    onClick={() => handleCompleteTask(task.id)}
-                    className="text-green-600"
+                  {task.status !== 'Completed' && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => handleCompleteTask(task.id)}
+                        className="text-green-600"
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Mark Complete
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Snooze</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 1)}>
+                        <AlarmClock className="mr-2 h-4 w-4" />
+                        1 Hour
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 4)}>
+                        <AlarmClock className="mr-2 h-4 w-4" />
+                        4 Hours
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 24)}>
+                        <AlarmClock className="mr-2 h-4 w-4" />
+                        Tomorrow
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onClick={() => handleToggleStar(task.id)}>
+                    <Star className={cn("mr-2 h-4 w-4", task.is_starred && "fill-yellow-400 text-yellow-400")} />
+                    {task.is_starred ? "Unstar" : "Star"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onEditTask?.({
+                    id: task.id,
+                    title: task.title,
+                    type: task.type,
+                    priority: task.priority,
+                    assignedTo: task.assigned_to,
+                    relatedTo: task.lead ? {
+                      id: task.lead.id,
+                      name: task.lead.name,
+                      phone: task.lead.phone,
+                      type: 'Lead' as const
+                    } : null,
+                    dueDate: task.due_date,
+                    dueTime: task.due_time,
+                    status: task.status,
+                    description: task.description,
+                    reminder: task.reminder,
+                    is_recurring: task.is_recurring,
+                    recurrence_frequency: task.recurrence_frequency,
+                  })}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Task
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleDeleteTask(task.id)}
+                    className="text-red-600"
                   >
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Mark Complete
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">Snooze</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 1)}>
-                    <AlarmClock className="mr-2 h-4 w-4" />
-                    1 Hour
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 4)}>
-                    <AlarmClock className="mr-2 h-4 w-4" />
-                    4 Hours
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleQuickSnooze(task.id, 24)}>
-                    <AlarmClock className="mr-2 h-4 w-4" />
-                    Tomorrow
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuItem onClick={() => handleToggleStar(task.id)}>
-                <Star className={cn("mr-2 h-4 w-4", task.is_starred && "fill-yellow-400 text-yellow-400")} />
-                {task.is_starred ? "Unstar" : "Star"}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEditTask?.({
-                id: task.id,
-                title: task.title,
-                type: task.type,
-                priority: task.priority,
-                assignedTo: task.assigned_to,
-                relatedTo: task.lead ? {
-                  id: task.lead.id,
-                  name: task.lead.name,
-                  phone: task.lead.phone,
-                  type: 'Lead' as const
-                } : null,
-                dueDate: task.due_date,
-                dueTime: task.due_time,
-                status: task.status,
-                description: task.description,
-                reminder: task.reminder,
-                is_recurring: task.is_recurring,
-                recurrence_frequency: task.recurrence_frequency,
-              })}>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Task
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handleDeleteTask(task.id)}
-                className="text-red-600"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -1434,7 +1465,7 @@ export function EnhancedTaskTable({
       </div>
 
       {/* Bulk Actions Bar - only show if user has bulk action permission */}
-      {selectedTasks.length > 0 && canBulkAction("tasks") && (
+      {selectedTasks.length > 0 && canBulkAction("tasks") && !readOnly && (
         <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg flex-wrap">
           <span className="text-sm font-semibold text-primary">{selectedTasks.length} selected</span>
           <div className="h-4 w-px bg-border" />
@@ -1480,7 +1511,7 @@ export function EnhancedTaskTable({
               {canEdit("tasks") && (
                 <>
                   <DropdownMenuItem onClick={() => openBulkActionDialog("type")}>
-                    <Tag className="mr-2 h-4 w-4" /> Change Type
+                    <Tag className="mr-2 h-4 w-4" /> Change Task Type
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => openBulkActionDialog("priority")}>
                     <ArrowUpDown className="mr-2 h-4 w-4" /> Change Priority

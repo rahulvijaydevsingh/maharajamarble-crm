@@ -34,7 +34,8 @@ const Tasks = () => {
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [boardTab, setBoardTab] = useState<"active" | "lost" | "recycle">("active");
   const { tasks, updateTask, addTask } = useTasks();
-  const { canCreate } = usePermissions();
+  const { canCreate, role } = usePermissions();
+  const isAdmin = role === "admin" || role === "super_admin";
   const { hasRole } = useAuth();
   const showAdminTabs = hasRole("manager");
 
@@ -67,12 +68,22 @@ const Tasks = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Counts for tab badges
+  // NOTE: a task is an orphan ONLY if it was meant to link to a lead
+  // (lead_id is set) but that lead no longer resolves (t.lead comes back
+  // null/undefined). Checking t.lead alone is wrong — tasks linked to a
+  // Customer or Professional never had a lead_id and would otherwise be
+  // misclassified as orphans and dumped into Recycle Bin. is_deleted covers
+  // tasks a user explicitly deleted (individually or in bulk) — deleteTask
+  // now soft-deletes rather than hard-deleting, specifically so this Recycle
+  // Bin acts as a safety net: an admin can see what was deleted, by whom,
+  // and restore it if needed. Each branch below is mutually exclusive with
+  // the other two so a task can never be counted in more than one tab, or none.
   const tabCounts = useMemo(() => {
     let active = 0, lost = 0, recycle = 0;
     for (const t of tasks) {
       const leadStatus = t.lead?.status;
-      if (leadStatus === "deleted" || t.status === "Cancelled") recycle++;
+      const isOrphanLeadTask = t.lead_id != null && t.lead == null;
+      if (t.is_deleted || isOrphanLeadTask || leadStatus === "deleted" || t.status === "Cancelled") recycle++;
       else if (leadStatus === "lost" || leadStatus === "pending_lost") lost++;
       else active++;
     }
@@ -80,14 +91,18 @@ const Tasks = () => {
   }, [tasks]);
 
   // Filter kanban tasks by tab
+  // Same rule as tabCounts above: is_deleted (user-deleted task) OR a set
+  // lead_id whose lead no longer resolves routes to Recycle Bin. Customer
+  // and Professional tasks (lead_id always null) bypass the orphan check
+  // entirely and stay in Active unless independently deleted.
   const kanbanTasks = useMemo(() => {
     if (boardTab === "lost") {
       return tasks.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
     }
     if (boardTab === "recycle") {
-      return tasks.filter(t => t.lead?.status === "deleted" || t.status === "Cancelled");
+      return tasks.filter(t => t.is_deleted || (t.lead_id != null && t.lead == null) || t.lead?.status === "deleted" || t.status === "Cancelled");
     }
-    return tasks.filter(t => t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    return tasks.filter(t => !t.is_deleted && !(t.lead_id != null && t.lead == null) && t.lead?.status !== "deleted" && t.status !== "Cancelled");
   }, [tasks, boardTab]);
 
 
@@ -219,10 +234,12 @@ const Tasks = () => {
                     Lost Lead Tasks
                     <Badge variant="secondary" className="ml-1">{tabCounts.lost}</Badge>
                   </TabsTrigger>
-                  <TabsTrigger value="recycle" className="gap-2">
-                    Recycle Bin
-                    <Badge variant="secondary" className="ml-1">{tabCounts.recycle}</Badge>
-                  </TabsTrigger>
+                  {isAdmin && (
+                    <TabsTrigger value="recycle" className="gap-2">
+                      Recycle Bin
+                      <Badge variant="secondary" className="ml-1">{tabCounts.recycle}</Badge>
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </Tabs>
             )}
@@ -234,8 +251,8 @@ const Tasks = () => {
                 initialRelatedToId={relatedToId}
                 initialRelatedToName={relatedToName}
                 onProfessionalClick={handleProfessionalClick}
-                boardMode={showAdminTabs ? boardTab : "active"}
-                readOnly={showAdminTabs && boardTab === "recycle"}
+                boardMode={showAdminTabs && isAdmin ? boardTab : "active"}
+                readOnly={showAdminTabs && isAdmin && boardTab === "recycle"}
               />
             ) : (
               <TaskKanbanView 
