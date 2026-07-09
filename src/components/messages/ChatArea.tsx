@@ -47,12 +47,18 @@ export function ChatArea({ conversationId }: ChatAreaProps) {
     }
   }, [messages]);
 
-  // Mark messages as read when conversation is opened
+  // Mark messages as read when conversation is opened, AND whenever new
+  // messages arrive while it's already open. Depending on conversationId
+  // alone meant this only fired on switching conversations — a message
+  // arriving in an already-open chat never got marked read, which is why
+  // the badge stayed stuck even while the user was actively looking at it.
+  // Safe to re-run on every new message: markRead's mutationFn only
+  // touches rows not already in read_by, so it's a no-op once caught up.
   useEffect(() => {
     if (conversationId) {
       markRead.mutate(conversationId);
     }
-  }, [conversationId]);
+  }, [conversationId, messages?.length]);
 
   const handleSend = async () => {
     if (!messageText.trim() || !conversationId) return;
