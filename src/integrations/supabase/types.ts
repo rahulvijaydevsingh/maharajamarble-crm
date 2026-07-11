@@ -2558,6 +2558,7 @@ export type Database = {
       system_settings: {
         Row: {
           created_at: string
+          default_reminders_enabled: boolean
           hr_module_enabled: boolean
           hr_module_toggled_at: string | null
           hr_module_toggled_by: string | null
@@ -2566,6 +2567,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_reminders_enabled?: boolean
           hr_module_enabled?: boolean
           hr_module_toggled_at?: string | null
           hr_module_toggled_by?: string | null
@@ -2574,6 +2576,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_reminders_enabled?: boolean
           hr_module_enabled?: boolean
           hr_module_toggled_at?: string | null
           hr_module_toggled_by?: string | null
