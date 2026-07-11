@@ -41,6 +41,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { getAllEventTypes, CalendarEventType } from "@/hooks/useCalendarEvents";
 
 interface AddCalendarEventDialogProps {
@@ -94,6 +95,7 @@ export function AddCalendarEventDialog({
   const [saving, setSaving] = useState(false);
   const { staffMembers } = useActiveStaff();
   const { user, profile } = useAuth();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const eventTypes = getAllEventTypes();
 
   const defaultTime = initialTime
@@ -116,6 +118,13 @@ export function AddCalendarEventDialog({
       reminderTime: "15",
     },
   });
+
+  // Sync default reminder preference each time the dialog opens
+  React.useEffect(() => {
+    if (open) {
+      form.setValue("setReminder", !!defaultRemindersEnabled);
+    }
+  }, [open, defaultRemindersEnabled]);
 
   const watchAllDay = form.watch("allDay");
   const watchCreateTask = form.watch("createTask");

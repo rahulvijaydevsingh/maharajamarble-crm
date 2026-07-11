@@ -1,0 +1,1 @@
+ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS default_reminders_enabled BOOLEAN NOT NULL DEFAULT false;

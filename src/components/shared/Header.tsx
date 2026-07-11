@@ -81,10 +81,10 @@ export function Header() {
 
     try {
       const [leadsRes, customersRes, professionalsRes, tasksRes, quotationsRes] = await Promise.all([
-        supabase.from("leads").select("id, name, phone, email, status").or(`name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`).limit(5),
-        supabase.from("customers").select("id, name, phone, email").or(`name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`).limit(5),
-        supabase.from("professionals").select("id, name, phone, firm_name").or(`name.ilike.${pattern},phone.ilike.${pattern},firm_name.ilike.${pattern}`).limit(5),
-        supabase.from("tasks").select("id, title, status, assigned_to").or(`title.ilike.${pattern}`).limit(5),
+        supabase.from("leads").select("id, name, phone, alternate_phone, email, status, address, site_location, construction_stage, firm_name").or(`name.ilike.${pattern},phone.ilike.${pattern},alternate_phone.ilike.${pattern},email.ilike.${pattern},address.ilike.${pattern},site_location.ilike.${pattern},firm_name.ilike.${pattern},construction_stage.ilike.${pattern}`).limit(5),
+        supabase.from("customers").select("id, name, phone, alternate_phone, email, address, company_name").or(`name.ilike.${pattern},phone.ilike.${pattern},alternate_phone.ilike.${pattern},email.ilike.${pattern},address.ilike.${pattern},company_name.ilike.${pattern}`).limit(5),
+        supabase.from("professionals").select("id, name, phone, alternate_phone, email, firm_name, address").or(`name.ilike.${pattern},phone.ilike.${pattern},alternate_phone.ilike.${pattern},email.ilike.${pattern},firm_name.ilike.${pattern},address.ilike.${pattern}`).limit(5),
+        supabase.from("tasks").select("id, title, description, status, assigned_to").or(`title.ilike.${pattern},description.ilike.${pattern}`).limit(5),
         supabase.from("quotations").select("id, quotation_number, client_name, status").or(`quotation_number.ilike.${pattern},client_name.ilike.${pattern}`).limit(5),
       ]);
 

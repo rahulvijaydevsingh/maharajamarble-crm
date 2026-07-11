@@ -52,6 +52,7 @@ export type ActivityType =
   | 'task_updated'
   | 'task_completed'
   | 'task_deleted'
+  | 'task_restored'
   | 'task_reassigned'
   | 'task_snoozed'
   | 'quotation_created'

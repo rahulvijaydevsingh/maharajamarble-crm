@@ -2558,6 +2558,7 @@ export type Database = {
       system_settings: {
         Row: {
           created_at: string
+          default_reminders_enabled: boolean
           hr_module_enabled: boolean
           hr_module_toggled_at: string | null
           hr_module_toggled_by: string | null
@@ -2566,6 +2567,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_reminders_enabled?: boolean
           hr_module_enabled?: boolean
           hr_module_toggled_at?: string | null
           hr_module_toggled_by?: string | null
@@ -2574,6 +2576,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_reminders_enabled?: boolean
           hr_module_enabled?: boolean
           hr_module_toggled_at?: string | null
           hr_module_toggled_by?: string | null
@@ -2778,10 +2781,13 @@ export type Database = {
           custom_reminder_at: string | null
           deal_ready: boolean
           deal_ready_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           description: string | null
           due_date: string
           due_time: string | null
           id: string
+          is_deleted: boolean
           is_recurring: boolean | null
           is_starred: boolean | null
           last_attempt_at: string | null
@@ -2839,10 +2845,13 @@ export type Database = {
           custom_reminder_at?: string | null
           deal_ready?: boolean
           deal_ready_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           due_date: string
           due_time?: string | null
           id?: string
+          is_deleted?: boolean
           is_recurring?: boolean | null
           is_starred?: boolean | null
           last_attempt_at?: string | null
@@ -2900,10 +2909,13 @@ export type Database = {
           custom_reminder_at?: string | null
           deal_ready?: boolean
           deal_ready_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           due_date?: string
           due_time?: string | null
           id?: string
+          is_deleted?: boolean
           is_recurring?: boolean | null
           is_starred?: boolean | null
           last_attempt_at?: string | null
@@ -3572,10 +3584,13 @@ export type Database = {
           custom_reminder_at: string | null
           deal_ready: boolean
           deal_ready_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           description: string | null
           due_date: string
           due_time: string | null
           id: string
+          is_deleted: boolean
           is_recurring: boolean | null
           is_starred: boolean | null
           last_attempt_at: string | null

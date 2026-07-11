@@ -81,6 +81,7 @@ interface BulkUploadDialogProps {
 interface ParsedLead {
   name: string;
   phone: string;
+  alternate_phone: string;
   email: string;
   source: string;
   address: string;
@@ -292,6 +293,7 @@ export function BulkUploadDialog({
       const columns = [
         { key: "name", header: "Name*", width: 22, list: null as string[] | null },
         { key: "phone", header: "Phone*", width: 16, list: null },
+        { key: "alternate_phone", header: "Alternate Phone", width: 16, list: null },
         { key: "email", header: "Email", width: 26, list: null },
         { key: "source", header: "Source*", width: 18, list: sourceLabels },
         { key: "address", header: "Address", width: 36, list: null },
@@ -299,13 +301,12 @@ export function BulkUploadDialog({
         { key: "priority", header: "Priority", width: 16, list: priorityLabels },
         { key: "assigned_to", header: "Assigned To", width: 20, list: staffNames },
         { key: "materials", header: "Materials", width: 26, list: null },
-        { key: "notes", header: "Notes", width: 32, list: null },
         { key: "status", header: "Status", width: 14, list: statusLabels },
         { key: "construction_stage", header: "Construction Stage", width: 20, list: stageLabels },
         { key: "estimated_quantity", header: "Estimated Quantity", width: 18, list: null },
         { key: "referred_by", header: "Referred By", width: 22, list: null },
         { key: "next_action_date", header: "Next Action Date", width: 16, list: null },
-        { key: "initial_note", header: "Initial Note", width: 32, list: null },
+        { key: "initial_note", header: "Initial Note", width: 40, list: null },
       ];
 
       sheet.columns = columns.map(c => ({ key: c.key, header: c.header, width: c.width }));
@@ -318,6 +319,7 @@ export function BulkUploadDialog({
       const exampleRow = sheet.addRow({
         name: "Rajesh Kumar",
         phone: "9876543210",
+        alternate_phone: "9812345678",
         email: "rajesh@example.com",
         source: sourceLabels[0] || "Walk-in",
         address: "123 Main Street, Mohali",
@@ -325,7 +327,6 @@ export function BulkUploadDialog({
         priority: "3 - Medium",
         assigned_to: staffNames[0] || "Staff Member",
         materials: materialLabels.slice(0, 2).join(", "),
-        notes: "Interested in floor tiles",
         status: "new",
         construction_stage: stageLabels[0] || "",
         estimated_quantity: "500 sq ft",
@@ -474,8 +475,28 @@ export function BulkUploadDialog({
         // Map columns (handle multiple header variations, case-insensitive fallback)
         const name = getColumnValue(row, ["Name*", "Name", "NAME", "name", "Full Name", "FULL NAME"]);
         const phoneRaw = getColumnValue(row, ["Phone*", "Phone", "PHONE", "phone", "Mobile", "MOBILE", "Mobile 1", "Contact"]);
-        const source = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
-        
+        const altPhoneRaw = getColumnValue(row, ["Alternate Phone", "ALTERNATE PHONE", "alternate phone", "Alt Phone", "Mobile 2", "Secondary Phone"]);
+        const sourceLabel = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
+        const stageLabel = getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]);
+
+        // Resolve source label -> canonical value (edit dropdown binds to canonical values)
+        const cpSourceOptsResolved = getFieldOptions("leads", "source");
+        const sourceMaster = cpSourceOptsResolved.length > 0 ? cpSourceOptsResolved : LEAD_SOURCES;
+        const sourceMatch = sourceMaster.find((o: any) =>
+          String(o.label).toLowerCase() === sourceLabel.toLowerCase() ||
+          String(o.value).toLowerCase() === sourceLabel.toLowerCase()
+        );
+        const source = sourceMatch?.value || sourceLabel;
+
+        // Resolve construction_stage label -> canonical value
+        const cpStageOptsResolved = getFieldOptions("leads", "construction_stage");
+        const stageMaster = cpStageOptsResolved.length > 0 ? cpStageOptsResolved : CONSTRUCTION_STAGES;
+        const stageMatch = stageMaster.find((o: any) =>
+          String(o.label).toLowerCase() === stageLabel.toLowerCase() ||
+          String(o.value).toLowerCase() === stageLabel.toLowerCase()
+        );
+        const construction_stage = stageMatch?.value || stageLabel;
+
         // Check required fields
         if (!name) {
           errors.push("Name is required");
@@ -488,11 +509,16 @@ export function BulkUploadDialog({
           errors.push("Phone must be 10 digits");
         }
 
-        if (!source) {
+        const alternate_phone = altPhoneRaw ? altPhoneRaw.replace(/\D/g, "").slice(-10) : "";
+        if (alternate_phone && alternate_phone.length !== 10) {
+          warnings.push("Alternate Phone must be 10 digits — dropped");
+        }
+
+        if (!sourceLabel) {
           errors.push("Source is required");
         }
 
-        // Check for duplicates
+        // Check for duplicates (primary phone)
         const isDuplicate = existingPhones.has(phone);
         let duplicateInfo = "";
         if (isDuplicate) {
@@ -530,21 +556,27 @@ export function BulkUploadDialog({
         );
         const assignedToName = matchedStaff?.name || assignedToRaw || staffMembers[0]?.name || "Unassigned";
 
+        // Notes: prefer "Initial Note" (matches manual form), fall back to legacy "Notes" column
+        const initialNote = getColumnValue(row, ["Initial Note", "INITIAL NOTE", "initial note", "InitialNote"]);
+        const legacyNote = getColumnValue(row, ["Notes", "NOTES", "notes"]);
+        const notes = initialNote || legacyNote;
+
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
 
         parsed.push({
           name,
           phone,
+          alternate_phone,
           email,
-          source: source || "Other",
+          source: source || "other",
           address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
           status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
           assigned_to: assignedToName,
           materials,
-          notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
-          construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
+          notes,
+          construction_stage,
           estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
           referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
           next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
@@ -612,6 +644,7 @@ export function BulkUploadDialog({
           .insert({
           name: lead.name,
           phone: lead.phone,
+          alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
           email: lead.email || null,
           source: lead.source,
           address: lead.address || null,

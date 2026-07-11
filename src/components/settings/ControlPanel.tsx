@@ -57,6 +57,8 @@ import {
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { useControlPanelSettings, SystemOption, OptionModule } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { Bell } from "lucide-react";
 
 // Color presets
 const COLOR_PRESETS = [
@@ -282,6 +284,8 @@ export function ControlPanel() {
   }
 
   return (
+    <div className="space-y-4">
+      <GlobalPreferencesCard />
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -668,6 +672,38 @@ export function ControlPanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </Card>
+    </div>
+  );
+}
+
+function GlobalPreferencesCard() {
+  const { defaultRemindersEnabled, setDefaultRemindersEnabled, loading, saving } = useSystemSettings();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Bell className="h-4 w-4" />
+          Global Preferences
+        </CardTitle>
+        <CardDescription>Defaults applied when creating tasks, reschedules, and calendar events.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <div className="space-y-0.5 pr-4">
+            <Label className="text-sm font-medium">Default Reminders On</Label>
+            <p className="text-xs text-muted-foreground">
+              When enabled, the "Set Reminder" checkbox is pre-checked on new tasks, reschedules, and calendar events.
+              Users can still uncheck it per item.
+            </p>
+          </div>
+          <Switch
+            checked={!!defaultRemindersEnabled}
+            disabled={loading || saving}
+            onCheckedChange={setDefaultRemindersEnabled}
+          />
+        </div>
+      </CardContent>
     </Card>
   );
 }

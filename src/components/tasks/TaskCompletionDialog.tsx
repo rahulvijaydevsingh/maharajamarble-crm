@@ -94,6 +94,7 @@ export interface TaskCompletionDialogProps {
   task: Task | null;
   updateTask: (id: string, updates: any) => Promise<any>;
   addTask: (task: TaskInsert) => Promise<any>;
+  createNextRecurringInstance?: (id: string) => Promise<any | null>;
 }
 
 export function TaskCompletionDialog({
@@ -102,6 +103,7 @@ export function TaskCompletionDialog({
   task,
   updateTask,
   addTask,
+  createNextRecurringInstance,
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
   const { user, profile } = useAuth();
@@ -677,6 +679,25 @@ export function TaskCompletionDialog({
             closed_by: user?.id,
             reason: "Auto-closed: follow-up task created",
           });
+        }
+      }
+
+      // 4c) Recurring auto-continuation: if task is recurring AND being closed AND no follow-up was
+      // created (follow-up path already spawns the next instance via its own recurrence checkbox),
+      // silently create the next occurrence per the task's recurrence rule.
+      if (
+        task.is_recurring &&
+        closeTask &&
+        nextAction !== "follow_up" &&
+        createNextRecurringInstance
+      ) {
+        try {
+          const next = await createNextRecurringInstance(task.id);
+          if (next) {
+            toast({ title: "Next recurring task created", description: `Due ${next.due_date}` });
+          }
+        } catch (e) {
+          console.error("Failed to create next recurring instance:", e);
         }
       }
 

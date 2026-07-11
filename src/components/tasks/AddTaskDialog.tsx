@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface RelatedEntity {
@@ -83,6 +84,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const { logStaffAction } = useStaffActivityLog();
   const { user, profile, loading: authLoading } = useAuth();
 
@@ -158,6 +160,8 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
   // Reset form when dialog opens/closes
   useEffect(() => {
     if (open) {
+      // Apply admin's global "Default Reminders On" preference each time dialog opens
+      setFormData((prev) => ({ ...prev, reminder: !!defaultRemindersEnabled }));
       if (prefilledData?.relatedTo) {
         setSelectedEntity(prefilledData.relatedTo);
         setRelatedEntityType(prefilledData.relatedTo.type);
@@ -165,7 +169,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
     } else {
       resetForm();
     }
-  }, [open, prefilledData]);
+  }, [open, prefilledData, defaultRemindersEnabled]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));

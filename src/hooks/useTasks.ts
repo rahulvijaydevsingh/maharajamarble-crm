@@ -815,6 +815,107 @@ export function useTasks() {
     }
   };
 
+  /**
+   * Compute (without persisting) what the next occurrence's due_date would be for a recurring task.
+   * Returns null if the series has ended or the task isn't recurring.
+   * When `fromNow` is true, base is today (used when recurrence_reset_from_completion is true).
+   */
+  const previewNextRecurringDueDate = (
+    id: string,
+    fromNow?: boolean
+  ): string | null => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task || !task.is_recurring) return null;
+
+    if (task.recurrence_end_type === "after_occurrences" && task.recurrence_occurrences_limit) {
+      if (task.recurrence_occurrences_count + 1 >= task.recurrence_occurrences_limit) return null;
+    }
+    if (task.recurrence_end_type === "on_date" && task.recurrence_end_date) {
+      if (new Date() >= new Date(task.recurrence_end_date)) return null;
+    }
+
+    const useFromNow = fromNow ?? !!task.recurrence_reset_from_completion;
+    const baseDate = useFromNow
+      ? new Date().toISOString().split("T")[0]
+      : task.due_date;
+
+    return calculateNextDueDate(
+      baseDate,
+      task.recurrence_frequency || "daily",
+      task.recurrence_interval || 1,
+      task.recurrence_days_of_week
+    );
+  };
+
+  /**
+   * Create ONLY the next occurrence of a recurring task (without changing the current task's status).
+   * Used by the Task Completion flow, which has already handled the status update itself.
+   * No-op if series is finished or task is not recurring.
+   */
+  const createNextRecurringInstance = async (id: string): Promise<any | null> => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task || !task.is_recurring) return null;
+
+    // End conditions
+    if (task.recurrence_end_type === "after_occurrences" && task.recurrence_occurrences_limit) {
+      if (task.recurrence_occurrences_count + 1 >= task.recurrence_occurrences_limit) return null;
+    }
+    if (task.recurrence_end_type === "on_date" && task.recurrence_end_date) {
+      if (new Date() >= new Date(task.recurrence_end_date)) return null;
+    }
+
+    const baseDate = task.recurrence_reset_from_completion
+      ? new Date().toISOString().split("T")[0]
+      : task.due_date;
+    const nextDueDate = calculateNextDueDate(
+      baseDate,
+      task.recurrence_frequency || "daily",
+      task.recurrence_interval || 1,
+      task.recurrence_days_of_week
+    );
+
+    const nextTask: TaskInsert = {
+      title: task.title,
+      description: task.description,
+      type: task.type,
+      priority: task.priority,
+      status: "Pending",
+      assigned_to: task.assigned_to,
+      due_date: nextDueDate,
+      due_time: task.due_time,
+      lead_id: task.lead_id,
+      reminder: task.reminder,
+      reminder_time: task.reminder_time,
+      created_by: task.created_by,
+      is_starred: task.is_starred,
+      related_entity_type: task.related_entity_type,
+      related_entity_id: task.related_entity_id,
+      is_recurring: true,
+      recurrence_frequency: task.recurrence_frequency,
+      recurrence_interval: task.recurrence_interval,
+      recurrence_days_of_week: task.recurrence_days_of_week,
+      recurrence_day_of_month: task.recurrence_day_of_month,
+      recurrence_month: task.recurrence_month,
+      recurrence_reset_from_completion: task.recurrence_reset_from_completion,
+      recurrence_end_type: task.recurrence_end_type,
+      recurrence_end_date: task.recurrence_end_date,
+      recurrence_occurrences_limit: task.recurrence_occurrences_limit,
+      parent_task_id: task.parent_task_id || task.id,
+      original_due_date: task.original_due_date,
+    };
+
+    if (task.parent_task_id) {
+      await supabase
+        .from("tasks")
+        .update({ recurrence_occurrences_count: task.recurrence_occurrences_count + 1 })
+        .eq("id", task.parent_task_id);
+    }
+
+    return await addTask(nextTask);
+  };
+
+
+
   const snoozeTask = async (id: string, hoursToAdd: number) => {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
@@ -1120,6 +1221,8 @@ export function useTasks() {
     deleteTask,
     restoreTask,
     completeRecurringTask,
+    createNextRecurringInstance,
+    previewNextRecurringDueDate,
     snoozeTask,
     toggleStar,
     refetch: fetchTasks,
