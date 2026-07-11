@@ -41,6 +41,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { getAllEventTypes, CalendarEventType } from "@/hooks/useCalendarEvents";
 
 interface AddCalendarEventDialogProps {
