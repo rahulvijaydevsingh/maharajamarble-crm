@@ -1221,6 +1221,8 @@ export function useTasks() {
     deleteTask,
     restoreTask,
     completeRecurringTask,
+    createNextRecurringInstance,
+    previewNextRecurringDueDate,
     snoozeTask,
     toggleStar,
     refetch: fetchTasks,
