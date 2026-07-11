@@ -160,6 +160,8 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
   // Reset form when dialog opens/closes
   useEffect(() => {
     if (open) {
+      // Apply admin's global "Default Reminders On" preference each time dialog opens
+      setFormData((prev) => ({ ...prev, reminder: !!defaultRemindersEnabled }));
       if (prefilledData?.relatedTo) {
         setSelectedEntity(prefilledData.relatedTo);
         setRelatedEntityType(prefilledData.relatedTo.type);
@@ -167,7 +169,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
     } else {
       resetForm();
     }
-  }, [open, prefilledData]);
+  }, [open, prefilledData, defaultRemindersEnabled]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
