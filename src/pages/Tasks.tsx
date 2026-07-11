@@ -290,6 +290,7 @@ const Tasks = () => {
           task={taskToComplete}
           updateTask={updateTask}
           addTask={addTask}
+          createNextRecurringInstance={createNextRecurringInstance}
         />
 
         <ProfessionalDetailView
