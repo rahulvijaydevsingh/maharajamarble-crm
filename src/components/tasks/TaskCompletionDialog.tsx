@@ -94,6 +94,7 @@ export interface TaskCompletionDialogProps {
   task: Task | null;
   updateTask: (id: string, updates: any) => Promise<any>;
   addTask: (task: TaskInsert) => Promise<any>;
+  createNextRecurringInstance?: (id: string) => Promise<any | null>;
 }
 
 export function TaskCompletionDialog({
