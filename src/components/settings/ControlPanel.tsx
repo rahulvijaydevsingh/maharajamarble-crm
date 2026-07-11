@@ -57,6 +57,8 @@ import {
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { useControlPanelSettings, SystemOption, OptionModule } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { Bell } from "lucide-react";
 
 // Color presets
 const COLOR_PRESETS = [
