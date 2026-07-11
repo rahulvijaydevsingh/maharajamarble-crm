@@ -103,6 +103,7 @@ export function TaskCompletionDialog({
   task,
   updateTask,
   addTask,
+  createNextRecurringInstance,
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
   const { user, profile } = useAuth();
