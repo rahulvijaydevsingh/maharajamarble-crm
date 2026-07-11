@@ -293,6 +293,7 @@ export function BulkUploadDialog({
       const columns = [
         { key: "name", header: "Name*", width: 22, list: null as string[] | null },
         { key: "phone", header: "Phone*", width: 16, list: null },
+        { key: "alternate_phone", header: "Alternate Phone", width: 16, list: null },
         { key: "email", header: "Email", width: 26, list: null },
         { key: "source", header: "Source*", width: 18, list: sourceLabels },
         { key: "address", header: "Address", width: 36, list: null },
@@ -300,13 +301,12 @@ export function BulkUploadDialog({
         { key: "priority", header: "Priority", width: 16, list: priorityLabels },
         { key: "assigned_to", header: "Assigned To", width: 20, list: staffNames },
         { key: "materials", header: "Materials", width: 26, list: null },
-        { key: "notes", header: "Notes", width: 32, list: null },
         { key: "status", header: "Status", width: 14, list: statusLabels },
         { key: "construction_stage", header: "Construction Stage", width: 20, list: stageLabels },
         { key: "estimated_quantity", header: "Estimated Quantity", width: 18, list: null },
         { key: "referred_by", header: "Referred By", width: 22, list: null },
         { key: "next_action_date", header: "Next Action Date", width: 16, list: null },
-        { key: "initial_note", header: "Initial Note", width: 32, list: null },
+        { key: "initial_note", header: "Initial Note", width: 40, list: null },
       ];
 
       sheet.columns = columns.map(c => ({ key: c.key, header: c.header, width: c.width }));
