@@ -81,6 +81,7 @@ interface BulkUploadDialogProps {
 interface ParsedLead {
   name: string;
   phone: string;
+  alternate_phone: string;
   email: string;
   source: string;
   address: string;
