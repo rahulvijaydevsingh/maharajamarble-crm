@@ -95,6 +95,7 @@ export function AddCalendarEventDialog({
   const [saving, setSaving] = useState(false);
   const { staffMembers } = useActiveStaff();
   const { user, profile } = useAuth();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const eventTypes = getAllEventTypes();
 
   const defaultTime = initialTime
@@ -117,6 +118,13 @@ export function AddCalendarEventDialog({
       reminderTime: "15",
     },
   });
+
+  // Sync default reminder preference each time the dialog opens
+  React.useEffect(() => {
+    if (open) {
+      form.setValue("setReminder", !!defaultRemindersEnabled);
+    }
+  }, [open, defaultRemindersEnabled]);
 
   const watchAllDay = form.watch("allDay");
   const watchCreateTask = form.watch("createTask");
