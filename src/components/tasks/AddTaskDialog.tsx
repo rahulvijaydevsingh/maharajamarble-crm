@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/select";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface RelatedEntity {
