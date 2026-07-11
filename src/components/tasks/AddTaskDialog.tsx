@@ -84,6 +84,7 @@ export function AddTaskDialog({ open, onOpenChange, onTaskCreate, prefilledData,
   const { addTask } = useTasks();
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const { logStaffAction } = useStaffActivityLog();
   const { user, profile, loading: authLoading } = useAuth();
 
