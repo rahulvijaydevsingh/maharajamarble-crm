@@ -644,6 +644,7 @@ export function BulkUploadDialog({
           .insert({
           name: lead.name,
           phone: lead.phone,
+          alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
           email: lead.email || null,
           source: lead.source,
           address: lead.address || null,
