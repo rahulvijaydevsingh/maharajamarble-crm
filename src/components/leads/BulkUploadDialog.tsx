@@ -319,6 +319,7 @@ export function BulkUploadDialog({
       const exampleRow = sheet.addRow({
         name: "Rajesh Kumar",
         phone: "9876543210",
+        alternate_phone: "9812345678",
         email: "rajesh@example.com",
         source: sourceLabels[0] || "Walk-in",
         address: "123 Main Street, Mohali",
@@ -326,7 +327,6 @@ export function BulkUploadDialog({
         priority: "3 - Medium",
         assigned_to: staffNames[0] || "Staff Member",
         materials: materialLabels.slice(0, 2).join(", "),
-        notes: "Interested in floor tiles",
         status: "new",
         construction_stage: stageLabels[0] || "",
         estimated_quantity: "500 sq ft",
