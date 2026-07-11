@@ -682,6 +682,25 @@ export function TaskCompletionDialog({
         }
       }
 
+      // 4c) Recurring auto-continuation: if task is recurring AND being closed AND no follow-up was
+      // created (follow-up path already spawns the next instance via its own recurrence checkbox),
+      // silently create the next occurrence per the task's recurrence rule.
+      if (
+        task.is_recurring &&
+        closeTask &&
+        nextAction !== "follow_up" &&
+        createNextRecurringInstance
+      ) {
+        try {
+          const next = await createNextRecurringInstance(task.id);
+          if (next) {
+            toast({ title: "Next recurring task created", description: `Due ${next.due_date}` });
+          }
+        } catch (e) {
+          console.error("Failed to create next recurring instance:", e);
+        }
+      }
+
       // 5) Log to lead activity_log if lead_id exists
       if (task.lead_id) {
         const title = closeTask
