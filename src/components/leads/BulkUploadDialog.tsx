@@ -475,8 +475,28 @@ export function BulkUploadDialog({
         // Map columns (handle multiple header variations, case-insensitive fallback)
         const name = getColumnValue(row, ["Name*", "Name", "NAME", "name", "Full Name", "FULL NAME"]);
         const phoneRaw = getColumnValue(row, ["Phone*", "Phone", "PHONE", "phone", "Mobile", "MOBILE", "Mobile 1", "Contact"]);
-        const source = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
-        
+        const altPhoneRaw = getColumnValue(row, ["Alternate Phone", "ALTERNATE PHONE", "alternate phone", "Alt Phone", "Mobile 2", "Secondary Phone"]);
+        const sourceLabel = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
+        const stageLabel = getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]);
+
+        // Resolve source label -> canonical value (edit dropdown binds to canonical values)
+        const cpSourceOptsResolved = getFieldOptions("leads", "source");
+        const sourceMaster = cpSourceOptsResolved.length > 0 ? cpSourceOptsResolved : LEAD_SOURCES;
+        const sourceMatch = sourceMaster.find((o: any) =>
+          String(o.label).toLowerCase() === sourceLabel.toLowerCase() ||
+          String(o.value).toLowerCase() === sourceLabel.toLowerCase()
+        );
+        const source = sourceMatch?.value || sourceLabel;
+
+        // Resolve construction_stage label -> canonical value
+        const cpStageOptsResolved = getFieldOptions("leads", "construction_stage");
+        const stageMaster = cpStageOptsResolved.length > 0 ? cpStageOptsResolved : CONSTRUCTION_STAGES;
+        const stageMatch = stageMaster.find((o: any) =>
+          String(o.label).toLowerCase() === stageLabel.toLowerCase() ||
+          String(o.value).toLowerCase() === stageLabel.toLowerCase()
+        );
+        const construction_stage = stageMatch?.value || stageLabel;
+
         // Check required fields
         if (!name) {
           errors.push("Name is required");
@@ -489,11 +509,16 @@ export function BulkUploadDialog({
           errors.push("Phone must be 10 digits");
         }
 
-        if (!source) {
+        const alternate_phone = altPhoneRaw ? altPhoneRaw.replace(/\D/g, "").slice(-10) : "";
+        if (alternate_phone && alternate_phone.length !== 10) {
+          warnings.push("Alternate Phone must be 10 digits — dropped");
+        }
+
+        if (!sourceLabel) {
           errors.push("Source is required");
         }
 
-        // Check for duplicates
+        // Check for duplicates (primary phone)
         const isDuplicate = existingPhones.has(phone);
         let duplicateInfo = "";
         if (isDuplicate) {
@@ -531,21 +556,27 @@ export function BulkUploadDialog({
         );
         const assignedToName = matchedStaff?.name || assignedToRaw || staffMembers[0]?.name || "Unassigned";
 
+        // Notes: prefer "Initial Note" (matches manual form), fall back to legacy "Notes" column
+        const initialNote = getColumnValue(row, ["Initial Note", "INITIAL NOTE", "initial note", "InitialNote"]);
+        const legacyNote = getColumnValue(row, ["Notes", "NOTES", "notes"]);
+        const notes = initialNote || legacyNote;
+
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
 
         parsed.push({
           name,
           phone,
+          alternate_phone,
           email,
-          source: source || "Other",
+          source: source || "other",
           address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
           status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
           priority,
           assigned_to: assignedToName,
           materials,
-          notes: getColumnValue(row, ["Notes", "NOTES", "notes"]),
-          construction_stage: getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]),
+          notes,
+          construction_stage,
           estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
           referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
           next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
