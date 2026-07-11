@@ -284,6 +284,8 @@ export function ControlPanel() {
   }
 
   return (
+    <div className="space-y-4">
+      <GlobalPreferencesCard />
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
