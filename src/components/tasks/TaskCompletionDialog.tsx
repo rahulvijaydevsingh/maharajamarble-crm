@@ -1118,6 +1118,29 @@ export function TaskCompletionDialog({
                 </div>
               </div>
 
+              {task?.is_recurring && previewNextRecurringDueDate && (() => {
+                const suggested = previewNextRecurringDueDate(task.id);
+                if (!suggested) return null;
+                return (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-marble-accent/40 bg-marble-accent/5 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">
+                      This is a recurring task — next occurrence would normally be{" "}
+                      <span className="font-medium text-foreground">{format(new Date(suggested), "PPP")}</span>.
+                    </span>
+                    <button
+                      type="button"
+                      className="text-marble-accent hover:underline shrink-0"
+                      onClick={() => {
+                        setNextDate(new Date(suggested));
+                        setErrors((p) => ({ ...p, nextDate: undefined }));
+                      }}
+                    >
+                      Use this date
+                    </button>
+                  </div>
+                );
+              })()}
+
               {/* Reminder row — sits directly under Next Date / Next Time */}
               {reminderRow}
 
