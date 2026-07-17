@@ -305,8 +305,25 @@ export function TaskCompletionDialog({
         description: notes || "",
       }));
       setFollowUpExpanded(false);
+
+      // Carry the source task's recurrence forward onto the follow-up by
+      // default when the source was recurring. User can still edit/turn off
+      // via "Customise".
+      if (task.is_recurring) {
+        setFollowUpRecurrence({
+          isRecurring: true,
+          frequency: task.recurrence_frequency || "daily",
+          interval: task.recurrence_interval || 1,
+          daysOfWeek: task.recurrence_days_of_week || [],
+          dayOfMonth: task.recurrence_day_of_month ?? null,
+          resetFromCompletion: !!task.recurrence_reset_from_completion,
+          endType: task.recurrence_end_type || "never",
+          endDate: task.recurrence_end_date ? new Date(task.recurrence_end_date) : undefined,
+          occurrencesLimit: task.recurrence_occurrences_limit ?? null,
+        });
+      }
     }
-  }, [nextAction]);
+  }, [nextAction, task]);
 
   useEffect(() => {
     if (!selectedTemplate) return;
