@@ -272,17 +272,6 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
       const generatedTask = generateTask();
       const formData = buildFormData();
 
-      // If referred by a professional, increment their referral count
-      if (referredBy) {
-        console.log(`Incrementing referral count for ${referredBy.name}`);
-      }
-
-      // Notify assigned user if different from current user
-      const currentUserId = user?.id;
-      if (currentUserId && assignedTo && assignedTo !== currentUserId) {
-        console.log(`Sending notification to ${assignedTo}: New ${followUpPriority === "urgent" ? "Hot" : ""} Lead Assigned: Visit ${siteLocation}`);
-      }
-
       onSave(formData, generatedTask);
 
       toast({
