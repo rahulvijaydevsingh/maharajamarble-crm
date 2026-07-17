@@ -84,12 +84,35 @@ const Leads = () => {
       const newLead = await addLead(leadData);
       if (newLead) {
         logStaffAction('create_lead', `Created lead: ${formData.fullName}`, 'leads', newLead.id);
+
+        // Notify the assigned staff member if the lead was assigned to
+        // someone other than the person creating it. Replaces a dead
+        // console.log stub in SmartLeadForm.tsx.
+        const assignedStaff = staffMembers.find(m => m.id === formData.assignedTo);
+        if (assignedStaff?.email && user?.id && formData.assignedTo !== user.id) {
+          try {
+            await supabase.from("notifications").insert({
+              user_id: assignedStaff.email,
+              title: formData.followUpPriority === "urgent" ? "Hot Lead Assigned" : "New Lead Assigned",
+              message: `${formData.fullName || formData.primaryPhone} — visit at ${formData.siteLocation || "site location not set"}.`,
+              type: "lead_assigned",
+              entity_type: "lead",
+              entity_id: newLead.id,
+            });
+          } catch (notifyErr) {
+            console.error("Failed to notify assigned staff:", notifyErr);
+          }
+        }
       }
 
       // Auto-create Professionals for professional-designation contacts.
-      // If a phone already exists in Professionals, we skip creating the Professional (but keep the Lead).
+      // Track the professional whose phone matches the lead's primary phone,
+      // so we can link the initial follow-up task to that professional's
+      // profile too (in addition to the lead).
+      let primaryProfessionalId: string | null = null;
       if (Array.isArray(formData?.contacts) && formData.contacts.length > 0) {
         const assignedToName = staffMembers.find(m => m.id === formData.assignedTo)?.name || formData.assignedTo;
+        const primaryPhone = normalizePhone(formData.primaryPhone || formData.contacts[0]?.phone || "");
 
         const createdPhones = new Set<string>();
         const professionalContacts = formData.contacts.filter((c: any) => c?.isProfessional);
@@ -99,6 +122,7 @@ const Leads = () => {
           if (phone.length !== 10) continue;
           if (createdPhones.has(phone)) continue;
           createdPhones.add(phone);
+          const isPrimaryContact = phone === primaryPhone;
 
           const { data: existing } = await supabase
             .from("professionals")
@@ -107,25 +131,32 @@ const Leads = () => {
             .limit(1);
 
           if (existing && existing.length > 0) {
-            // Skip duplicates silently.
+            if (isPrimaryContact) primaryProfessionalId = existing[0].id;
             continue;
           }
 
-          await supabase.from("professionals").insert([
-            {
-              name: c.name,
-              phone,
-              alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-              email: c.email || null,
-              firm_name: c.firmName || null,
-              address: formData.siteLocation || null,
-              professional_type: c.designation,
-              status: "active",
-              priority: 3,
-              assigned_to: assignedToName,
-              site_plus_code: formData.sitePlusCode || null,
-            },
-          ]);
+          const { data: insertedProfessional } = await supabase
+            .from("professionals")
+            .insert([
+              {
+                name: c.name,
+                phone,
+                alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+                email: c.email || null,
+                firm_name: c.firmName || null,
+                address: formData.siteLocation || null,
+                professional_type: c.designation,
+                status: "active",
+                priority: 3,
+                assigned_to: assignedToName,
+                site_plus_code: formData.sitePlusCode || null,
+                added_via_lead_id: newLead?.id || null,
+              },
+            ])
+            .select("id")
+            .single();
+
+          if (isPrimaryContact && insertedProfessional) primaryProfessionalId = insertedProfessional.id;
         }
       }
 
@@ -150,6 +181,9 @@ const Leads = () => {
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
           created_by: profile?.full_name || user?.email || "unknown",
+          ...(primaryProfessionalId
+            ? { related_entity_type: "professional", related_entity_id: primaryProfessionalId }
+            : {}),
         });
       }
 
