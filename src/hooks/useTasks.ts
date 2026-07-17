@@ -905,7 +905,7 @@ export function useTasks() {
     };
 
     const nextOccurrenceCount = (task.recurrence_occurrences_count || 0) + 1;
-    nextTask.recurrence_occurrences_count = nextOccurrenceCount;
+    (nextTask as any).recurrence_occurrences_count = nextOccurrenceCount;
 
     const rootId = task.parent_task_id || task.id;
     await supabase
