@@ -95,6 +95,7 @@ export interface TaskCompletionDialogProps {
   updateTask: (id: string, updates: any) => Promise<any>;
   addTask: (task: TaskInsert) => Promise<any>;
   createNextRecurringInstance?: (id: string) => Promise<any | null>;
+  previewNextRecurringDueDate?: (id: string, fromNow?: boolean) => string | null;
 }
 
 export function TaskCompletionDialog({
@@ -104,6 +105,7 @@ export function TaskCompletionDialog({
   updateTask,
   addTask,
   createNextRecurringInstance,
+  previewNextRecurringDueDate,
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
   const { user, profile } = useAuth();
@@ -303,8 +305,25 @@ export function TaskCompletionDialog({
         description: notes || "",
       }));
       setFollowUpExpanded(false);
+
+      // Carry the source task's recurrence forward onto the follow-up by
+      // default when the source was recurring. User can still edit/turn off
+      // via "Customise".
+      if (task.is_recurring) {
+        setFollowUpRecurrence({
+          isRecurring: true,
+          frequency: task.recurrence_frequency || "daily",
+          interval: task.recurrence_interval || 1,
+          daysOfWeek: task.recurrence_days_of_week || [],
+          dayOfMonth: task.recurrence_day_of_month ?? null,
+          resetFromCompletion: !!task.recurrence_reset_from_completion,
+          endType: task.recurrence_end_type || "never",
+          endDate: task.recurrence_end_date ? new Date(task.recurrence_end_date) : undefined,
+          occurrencesLimit: task.recurrence_occurrences_limit ?? null,
+        });
+      }
     }
-  }, [nextAction]);
+  }, [nextAction, task]);
 
   useEffect(() => {
     if (!selectedTemplate) return;
@@ -683,8 +702,10 @@ export function TaskCompletionDialog({
       }
 
       // 4c) Recurring auto-continuation: if task is recurring AND being closed AND no follow-up was
-      // created (follow-up path already spawns the next instance via its own recurrence checkbox),
-      // silently create the next occurrence per the task's recurrence rule.
+      // chosen, silently spawn the next occurrence. The follow-up path is skipped here because it
+      // pre-fills its own recurrence copied from this task (user can turn it off via Customise),
+      // so we'd otherwise double-create.
+
       if (
         task.is_recurring &&
         closeTask &&
@@ -1116,6 +1137,29 @@ export function TaskCompletionDialog({
                 </div>
               </div>
 
+              {task?.is_recurring && previewNextRecurringDueDate && (() => {
+                const suggested = previewNextRecurringDueDate(task.id);
+                if (!suggested) return null;
+                return (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-marble-accent/40 bg-marble-accent/5 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">
+                      This is a recurring task — next occurrence would normally be{" "}
+                      <span className="font-medium text-foreground">{format(new Date(suggested), "PPP")}</span>.
+                    </span>
+                    <button
+                      type="button"
+                      className="text-marble-accent hover:underline shrink-0"
+                      onClick={() => {
+                        setNextDate(new Date(suggested));
+                        setErrors((p) => ({ ...p, nextDate: undefined }));
+                      }}
+                    >
+                      Use this date
+                    </button>
+                  </div>
+                );
+              })()}
+
               {/* Reminder row — sits directly under Next Date / Next Time */}
               {reminderRow}
 
@@ -1282,6 +1326,11 @@ export function TaskCompletionDialog({
                     <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
                       {followUpFormData.priority}
                     </span>
+                    {followUpRecurrence.isRecurring && (
+                      <span className="text-xs text-marble-accent bg-marble-accent/10 px-2 py-0.5 rounded-full shrink-0">
+                        🔁 Recurring
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button

@@ -117,6 +117,20 @@ interface ProfessionalDetailViewProps {
 
 // ---- Profile Tab ----
 function ProfessionalProfileTab({ professional, onEdit }: { professional: Professional; onEdit?: () => void }) {
+  const [referredLeadsCount, setReferredLeadsCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('referred_by->>id', professional.id)
+      .then(({ count }) => {
+        if (!cancelled) setReferredLeadsCount(count ?? 0);
+      });
+    return () => { cancelled = true; };
+  }, [professional.id]);
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Card>
@@ -187,6 +201,10 @@ function ProfessionalProfileTab({ professional, onEdit }: { professional: Profes
           <div className="flex justify-between">
             <span className="text-muted-foreground">Total Projects</span>
             <span>{professional.total_projects || 0}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Leads Referred</span>
+            <span>{referredLeadsCount ?? '—'}</span>
           </div>
         </CardContent>
       </Card>

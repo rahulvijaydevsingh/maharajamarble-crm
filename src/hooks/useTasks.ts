@@ -904,12 +904,14 @@ export function useTasks() {
       original_due_date: task.original_due_date,
     };
 
-    if (task.parent_task_id) {
-      await supabase
-        .from("tasks")
-        .update({ recurrence_occurrences_count: task.recurrence_occurrences_count + 1 })
-        .eq("id", task.parent_task_id);
-    }
+    const nextOccurrenceCount = (task.recurrence_occurrences_count || 0) + 1;
+    (nextTask as any).recurrence_occurrences_count = nextOccurrenceCount;
+
+    const rootId = task.parent_task_id || task.id;
+    await supabase
+      .from("tasks")
+      .update({ recurrence_occurrences_count: nextOccurrenceCount })
+      .eq("id", rootId);
 
     return await addTask(nextTask);
   };
