@@ -702,8 +702,10 @@ export function TaskCompletionDialog({
       }
 
       // 4c) Recurring auto-continuation: if task is recurring AND being closed AND no follow-up was
-      // created (follow-up path already spawns the next instance via its own recurrence checkbox),
-      // silently create the next occurrence per the task's recurrence rule.
+      // chosen, silently spawn the next occurrence. The follow-up path is skipped here because it
+      // pre-fills its own recurrence copied from this task (user can turn it off via Customise),
+      // so we'd otherwise double-create.
+
       if (
         task.is_recurring &&
         closeTask &&
