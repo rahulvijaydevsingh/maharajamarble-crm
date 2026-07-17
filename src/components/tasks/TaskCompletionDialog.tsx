@@ -95,6 +95,7 @@ export interface TaskCompletionDialogProps {
   updateTask: (id: string, updates: any) => Promise<any>;
   addTask: (task: TaskInsert) => Promise<any>;
   createNextRecurringInstance?: (id: string) => Promise<any | null>;
+  previewNextRecurringDueDate?: (id: string, fromNow?: boolean) => string | null;
 }
 
 export function TaskCompletionDialog({
@@ -104,6 +105,7 @@ export function TaskCompletionDialog({
   updateTask,
   addTask,
   createNextRecurringInstance,
+  previewNextRecurringDueDate,
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
   const { user, profile } = useAuth();
