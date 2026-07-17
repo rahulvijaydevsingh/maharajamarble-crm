@@ -291,6 +291,7 @@ const Tasks = () => {
           updateTask={updateTask}
           addTask={addTask}
           createNextRecurringInstance={createNextRecurringInstance}
+          previewNextRecurringDueDate={previewNextRecurringDueDate}
         />
 
         <ProfessionalDetailView
