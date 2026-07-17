@@ -33,7 +33,7 @@ const Tasks = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [boardTab, setBoardTab] = useState<"active" | "lost" | "recycle">("active");
-  const { tasks, updateTask, addTask, createNextRecurringInstance } = useTasks();
+  const { tasks, updateTask, addTask, createNextRecurringInstance, previewNextRecurringDueDate } = useTasks();
   const { canCreate, role } = usePermissions();
   const isAdmin = role === "admin" || role === "super_admin";
   const { hasRole } = useAuth();
