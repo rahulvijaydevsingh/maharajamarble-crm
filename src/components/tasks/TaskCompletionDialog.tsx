@@ -1324,6 +1324,11 @@ export function TaskCompletionDialog({
                     <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
                       {followUpFormData.priority}
                     </span>
+                    {followUpRecurrence.isRecurring && (
+                      <span className="text-xs text-marble-accent bg-marble-accent/10 px-2 py-0.5 rounded-full shrink-0">
+                        🔁 Recurring
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button
