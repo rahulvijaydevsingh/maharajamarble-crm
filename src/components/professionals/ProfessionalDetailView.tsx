@@ -202,6 +202,10 @@ function ProfessionalProfileTab({ professional, onEdit }: { professional: Profes
             <span className="text-muted-foreground">Total Projects</span>
             <span>{professional.total_projects || 0}</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Leads Referred</span>
+            <span>{referredLeadsCount ?? '—'}</span>
+          </div>
         </CardContent>
       </Card>
 
