@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, ArrowLeft, Sliders } from "lucide-react";
 import { addDays, format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 import { ContactDetailsSection, ContactPerson } from "./smart-form/ContactDetailsSection";
 import { SiteDetailsSection } from "./smart-form/SiteDetailsSection";
