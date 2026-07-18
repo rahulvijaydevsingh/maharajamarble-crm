@@ -490,6 +490,7 @@ export function BulkUploadDialog({
         const altPhoneRaw = getColumnValue(row, ["Alternate Phone", "ALTERNATE PHONE", "alternate phone", "Alt Phone", "Mobile 2", "Secondary Phone"]);
         const sourceLabel = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
         const stageLabel = getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]);
+        const designationLabel = getColumnValue(row, ["Designation", "DESIGNATION", "designation"]);
 
         // Resolve source label -> canonical value (edit dropdown binds to canonical values)
         const cpSourceOptsResolved = getFieldOptions("leads", "source");
@@ -508,6 +509,17 @@ export function BulkUploadDialog({
           String(o.value).toLowerCase() === stageLabel.toLowerCase()
         );
         const construction_stage = stageMatch?.value || stageLabel;
+
+        // Resolve designation label -> canonical snake_case value. Default
+        // to "owner" only when the column is genuinely blank for this row.
+        const designationMatch = DESIGNATIONS.find(d =>
+          d.value.toLowerCase() === designationLabel.toLowerCase() ||
+          d.label.toLowerCase() === designationLabel.toLowerCase()
+        );
+        const designation = designationMatch?.value || "owner";
+        if (designationLabel && !designationMatch) {
+          warnings.push(`Unrecognized designation "${designationLabel}" — defaulted to Owner`);
+        }
 
         // Check required fields
         if (!name) {
