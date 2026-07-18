@@ -669,7 +669,7 @@ export function BulkUploadDialog({
     setImportProgress(0);
 
     const validLeads = parsedLeads.filter(
-      (lead) => lead.errors.length === 0 && (!skipDuplicates || !lead.isDuplicate)
+      (lead) => lead.errors.length === 0 && (!skipDuplicates || !lead.isDuplicate) && !lead.excluded
     );
 
     // Upload the Excel file once and attach it to every created lead
@@ -681,18 +681,22 @@ export function BulkUploadDialog({
         await uploadToAttachmentsBucket(excelFile, excelAttachmentPath);
       } catch (e) {
         console.error('Excel upload failed:', e);
-        // Non-blocking: importing leads should still work
         excelAttachmentPath = null;
       }
     }
 
     let imported = 0;
     let errors = 0;
+    let professionalsCreated = 0;
+    let professionalsLinked = 0;
 
     for (let i = 0; i < validLeads.length; i++) {
       const lead = validLeads[i];
 
       try {
+        const dueDate = lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd");
+        const dueTime = lead.next_action_time || "10:00";
+
         const { data: insertedLead, error } = await supabase
           .from("leads")
           .insert({
@@ -700,6 +704,7 @@ export function BulkUploadDialog({
           phone: lead.phone,
           alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
           email: lead.email || null,
+          designation: lead.designation,
           source: lead.source,
           address: lead.address || null,
           status: lead.status,
@@ -710,7 +715,7 @@ export function BulkUploadDialog({
           construction_stage: lead.construction_stage || null,
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
           site_plus_code: lead.site_plus_code || null,
-          // created_by omitted - database default get_current_user_email() handles it for RLS compliance
+          next_follow_up: dueDate,
         })
         .select('id')
         .single();
@@ -721,7 +726,44 @@ export function BulkUploadDialog({
         } else {
           imported++;
 
-          // Create auto-task for Excel import
+          // Auto-create or link a Professional when the lead's designation is
+          // professional-category (mirrors manual Add Lead flow).
+          let primaryProfessionalId: string | null = null;
+          if (isProfessionalDesignation(lead.designation) && lead.phone) {
+            const { data: existingProfessional } = await supabase
+              .from("professionals")
+              .select("id")
+              .or(`phone.eq.${lead.phone},alternate_phone.eq.${lead.phone}`)
+              .limit(1);
+
+            if (existingProfessional && existingProfessional.length > 0) {
+              primaryProfessionalId = existingProfessional[0].id;
+              professionalsLinked++;
+            } else {
+              const { data: insertedProfessional } = await supabase
+                .from("professionals")
+                .insert([{
+                  name: lead.name,
+                  phone: lead.phone,
+                  alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
+                  email: lead.email || null,
+                  address: lead.address || null,
+                  professional_type: lead.designation,
+                  status: "active",
+                  priority: 3,
+                  assigned_to: lead.assigned_to,
+                  site_plus_code: lead.site_plus_code || null,
+                  added_via_lead_id: insertedLead?.id || null,
+                }])
+                .select("id")
+                .single();
+              if (insertedProfessional) {
+                primaryProfessionalId = insertedProfessional.id;
+                professionalsCreated++;
+              }
+            }
+          }
+
           if (insertedLead?.id) {
             try {
               await addTask({
@@ -731,9 +773,15 @@ export function BulkUploadDialog({
                 priority: lead.priority === 1 ? "High" : lead.priority === 2 ? "High" : lead.priority === 3 ? "Medium" : "Low",
                 status: "Pending",
                 assigned_to: lead.assigned_to,
-                due_date: lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd"),
+                due_date: dueDate,
+                due_time: dueTime,
+                reminder: defaultRemindersEnabled,
+                reminder_time: defaultRemindersEnabled ? "30" : null,
                 lead_id: insertedLead.id,
                 created_by: profile?.full_name || user?.email || "unknown",
+                ...(primaryProfessionalId
+                  ? { related_entity_type: "professional", related_entity_id: primaryProfessionalId }
+                  : {}),
               });
             } catch (taskError) {
               console.error("Auto-task creation failed for imported lead:", taskError);
@@ -762,12 +810,14 @@ export function BulkUploadDialog({
     }
 
     const skipped = parsedLeads.filter(
-      (lead) => lead.errors.length > 0 || (skipDuplicates && lead.isDuplicate)
+      (lead) => lead.errors.length > 0 || (skipDuplicates && lead.isDuplicate) || lead.excluded
     ).length;
 
     setImportedCount(imported);
     setSkippedCount(skipped);
     setErrorCount(errors);
+    setProfessionalsCreatedCount(professionalsCreated);
+    setProfessionalsLinkedCount(professionalsLinked);
     setIsImporting(false);
     setStep("complete");
     onLeadsCreated();
