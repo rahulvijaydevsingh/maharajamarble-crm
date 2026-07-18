@@ -128,6 +128,7 @@ export interface TaskInsert {
   recurrence_end_type?: string;
   recurrence_end_date?: string | null;
   recurrence_occurrences_limit?: number | null;
+  recurrence_occurrences_count?: number;
   parent_task_id?: string | null;
   original_due_date?: string | null;
   // Closure & scheduling fields
