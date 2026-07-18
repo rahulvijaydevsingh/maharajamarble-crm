@@ -59,8 +59,11 @@ import {
   MATERIAL_INTERESTS, 
   LEAD_SOURCES,
   FOLLOW_UP_PRIORITIES,
+  DESIGNATIONS,
+  isProfessionalDesignation,
 } from "@/constants/leadConstants";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { extractGPSFromExif, coordinatesToPlusCode } from "@/lib/plusCode";
 import { ConstructionStage, LeadSource, FollowUpPriority } from "@/types/lead";
 import {
@@ -94,12 +97,15 @@ interface ParsedLead {
   estimated_quantity: string;
   referred_by: string;
   next_action_date: string;
+  next_action_time: string;
   site_plus_code: string;
+  designation: string;
   rowNumber: number;
   errors: string[];
   warnings: string[];
   isDuplicate: boolean;
   duplicateInfo?: string;
+  excluded: boolean;
 }
 
 interface PhotoLeadData {
@@ -154,6 +160,7 @@ export function BulkUploadDialog({
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
   const { getFieldOptions } = useControlPanelSettings();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,6 +218,8 @@ export function BulkUploadDialog({
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
+  const [professionalsCreatedCount, setProfessionalsCreatedCount] = useState(0);
+  const [professionalsLinkedCount, setProfessionalsLinkedCount] = useState(0);
   const [duplicateAttachedCount, setDuplicateAttachedCount] = useState(0);
 
   // Keyboard shortcuts
@@ -289,12 +298,14 @@ export function BulkUploadDialog({
       const staffNames = staffMembers.map(m => m.name);
       const statusLabels = ["new", "in-progress", "quoted", "won", "pending_lost", "lost"];
       const priorityLabels = PRIORITY_OPTIONS.map(p => p.label);
+      const designationLabels = DESIGNATIONS.map(d => d.label);
 
       const columns = [
         { key: "name", header: "Name*", width: 22, list: null as string[] | null },
         { key: "phone", header: "Phone*", width: 16, list: null },
         { key: "alternate_phone", header: "Alternate Phone", width: 16, list: null },
         { key: "email", header: "Email", width: 26, list: null },
+        { key: "designation", header: "Designation", width: 18, list: designationLabels },
         { key: "source", header: "Source*", width: 18, list: sourceLabels },
         { key: "address", header: "Address", width: 36, list: null },
         { key: "site_plus_code", header: "Site Plus Code", width: 20, list: null },
@@ -306,6 +317,7 @@ export function BulkUploadDialog({
         { key: "estimated_quantity", header: "Estimated Quantity", width: 18, list: null },
         { key: "referred_by", header: "Referred By", width: 22, list: null },
         { key: "next_action_date", header: "Next Action Date", width: 16, list: null },
+        { key: "next_action_time", header: "Next Action Time", width: 16, list: null },
         { key: "initial_note", header: "Initial Note", width: 40, list: null },
       ];
 
@@ -321,6 +333,7 @@ export function BulkUploadDialog({
         phone: "9876543210",
         alternate_phone: "9812345678",
         email: "rajesh@example.com",
+        designation: "Owner",
         source: sourceLabels[0] || "Walk-in",
         address: "123 Main Street, Mohali",
         site_plus_code: "",
@@ -332,6 +345,7 @@ export function BulkUploadDialog({
         estimated_quantity: "500 sq ft",
         referred_by: "",
         next_action_date: format(addDays(new Date(), 7), "dd-MM-yyyy"),
+        next_action_time: "10:00",
         initial_note: "Initial contact made at showroom",
       });
       exampleRow.font = { color: { argb: "FF666666" }, italic: true };
@@ -478,6 +492,7 @@ export function BulkUploadDialog({
         const altPhoneRaw = getColumnValue(row, ["Alternate Phone", "ALTERNATE PHONE", "alternate phone", "Alt Phone", "Mobile 2", "Secondary Phone"]);
         const sourceLabel = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
         const stageLabel = getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]);
+        const designationLabel = getColumnValue(row, ["Designation", "DESIGNATION", "designation"]);
 
         // Resolve source label -> canonical value (edit dropdown binds to canonical values)
         const cpSourceOptsResolved = getFieldOptions("leads", "source");
@@ -496,6 +511,17 @@ export function BulkUploadDialog({
           String(o.value).toLowerCase() === stageLabel.toLowerCase()
         );
         const construction_stage = stageMatch?.value || stageLabel;
+
+        // Resolve designation label -> canonical snake_case value. Default
+        // to "owner" only when the column is genuinely blank for this row.
+        const designationMatch = DESIGNATIONS.find(d =>
+          d.value.toLowerCase() === designationLabel.toLowerCase() ||
+          d.label.toLowerCase() === designationLabel.toLowerCase()
+        );
+        const designation = designationMatch?.value || "owner";
+        if (designationLabel && !designationMatch) {
+          warnings.push(`Unrecognized designation "${designationLabel}" — defaulted to Owner`);
+        }
 
         // Check required fields
         if (!name) {
@@ -580,14 +606,29 @@ export function BulkUploadDialog({
           estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
           referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
           next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
+          next_action_time: getColumnValue(row, ["Next Action Time", "NEXT ACTION TIME", "next action time"]),
           site_plus_code: getColumnValue(row, ["Site Plus Code", "SITE PLUS CODE", "SitePlusCode", "plus_code"]),
+          designation,
           rowNumber: actualRowNumber,
           errors,
           warnings,
           isDuplicate,
           duplicateInfo,
+          excluded: false,
         });
       }
+
+      // Flag phones that repeat within this same file (DB snapshot above
+      // only catches numbers that already existed before this upload).
+      const phoneOccurrences = new Map<string, number>();
+      parsed.forEach(p => {
+        if (p.phone) phoneOccurrences.set(p.phone, (phoneOccurrences.get(p.phone) || 0) + 1);
+      });
+      parsed.forEach(p => {
+        if (p.phone && (phoneOccurrences.get(p.phone) || 0) > 1) {
+          p.warnings.push("Same phone appears more than once in this file");
+        }
+      });
 
       setParsedLeads(parsed);
     } catch (error) {
@@ -600,11 +641,24 @@ export function BulkUploadDialog({
   };
 
   const fetchExistingPhones = async (): Promise<Map<string, string>> => {
-    const { data } = await supabase.from("leads").select("phone, alternate_phone, name");
+    // Checks leads, professionals, AND customers.
+    const [leadsRes, professionalsRes, customersRes] = await Promise.all([
+      supabase.from("leads").select("phone, alternate_phone, name"),
+      supabase.from("professionals").select("phone, alternate_phone, name, professional_type"),
+      supabase.from("customers").select("phone, alternate_phone, name"),
+    ]);
     const map = new Map<string, string>();
-    data?.forEach((lead) => {
-      if (lead.phone) map.set(lead.phone, lead.name);
-      if (lead.alternate_phone) map.set(lead.alternate_phone, lead.name);
+    leadsRes.data?.forEach((lead: any) => {
+      if (lead.phone) map.set(lead.phone, `Lead: ${lead.name}`);
+      if (lead.alternate_phone) map.set(lead.alternate_phone, `Lead: ${lead.name}`);
+    });
+    professionalsRes.data?.forEach((p: any) => {
+      if (p.phone) map.set(p.phone, `Professional: ${p.name} (${p.professional_type})`);
+      if (p.alternate_phone) map.set(p.alternate_phone, `Professional: ${p.name} (${p.professional_type})`);
+    });
+    customersRes.data?.forEach((c: any) => {
+      if (c.phone) map.set(c.phone, `Customer: ${c.name}`);
+      if (c.alternate_phone) map.set(c.alternate_phone, `Customer: ${c.name}`);
     });
     return map;
   };
@@ -615,7 +669,7 @@ export function BulkUploadDialog({
     setImportProgress(0);
 
     const validLeads = parsedLeads.filter(
-      (lead) => lead.errors.length === 0 && (!skipDuplicates || !lead.isDuplicate)
+      (lead) => lead.errors.length === 0 && (!skipDuplicates || !lead.isDuplicate) && !lead.excluded
     );
 
     // Upload the Excel file once and attach it to every created lead
@@ -627,18 +681,22 @@ export function BulkUploadDialog({
         await uploadToAttachmentsBucket(excelFile, excelAttachmentPath);
       } catch (e) {
         console.error('Excel upload failed:', e);
-        // Non-blocking: importing leads should still work
         excelAttachmentPath = null;
       }
     }
 
     let imported = 0;
     let errors = 0;
+    let professionalsCreated = 0;
+    let professionalsLinked = 0;
 
     for (let i = 0; i < validLeads.length; i++) {
       const lead = validLeads[i];
 
       try {
+        const dueDate = lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd");
+        const dueTime = lead.next_action_time || "10:00";
+
         const { data: insertedLead, error } = await supabase
           .from("leads")
           .insert({
@@ -646,6 +704,7 @@ export function BulkUploadDialog({
           phone: lead.phone,
           alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
           email: lead.email || null,
+          designation: lead.designation,
           source: lead.source,
           address: lead.address || null,
           status: lead.status,
@@ -656,7 +715,7 @@ export function BulkUploadDialog({
           construction_stage: lead.construction_stage || null,
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
           site_plus_code: lead.site_plus_code || null,
-          // created_by omitted - database default get_current_user_email() handles it for RLS compliance
+          next_follow_up: dueDate,
         })
         .select('id')
         .single();
@@ -667,7 +726,44 @@ export function BulkUploadDialog({
         } else {
           imported++;
 
-          // Create auto-task for Excel import
+          // Auto-create or link a Professional when the lead's designation is
+          // professional-category (mirrors manual Add Lead flow).
+          let primaryProfessionalId: string | null = null;
+          if (isProfessionalDesignation(lead.designation) && lead.phone) {
+            const { data: existingProfessional } = await supabase
+              .from("professionals")
+              .select("id")
+              .or(`phone.eq.${lead.phone},alternate_phone.eq.${lead.phone}`)
+              .limit(1);
+
+            if (existingProfessional && existingProfessional.length > 0) {
+              primaryProfessionalId = existingProfessional[0].id;
+              professionalsLinked++;
+            } else {
+              const { data: insertedProfessional } = await supabase
+                .from("professionals")
+                .insert([{
+                  name: lead.name,
+                  phone: lead.phone,
+                  alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
+                  email: lead.email || null,
+                  address: lead.address || null,
+                  professional_type: lead.designation,
+                  status: "active",
+                  priority: 3,
+                  assigned_to: lead.assigned_to,
+                  site_plus_code: lead.site_plus_code || null,
+                  added_via_lead_id: insertedLead?.id || null,
+                }])
+                .select("id")
+                .single();
+              if (insertedProfessional) {
+                primaryProfessionalId = insertedProfessional.id;
+                professionalsCreated++;
+              }
+            }
+          }
+
           if (insertedLead?.id) {
             try {
               await addTask({
@@ -677,9 +773,15 @@ export function BulkUploadDialog({
                 priority: lead.priority === 1 ? "High" : lead.priority === 2 ? "High" : lead.priority === 3 ? "Medium" : "Low",
                 status: "Pending",
                 assigned_to: lead.assigned_to,
-                due_date: lead.next_action_date || format(addDays(new Date(), 2), "yyyy-MM-dd"),
+                due_date: dueDate,
+                due_time: dueTime,
+                reminder: defaultRemindersEnabled,
+                reminder_time: defaultRemindersEnabled ? "30" : null,
                 lead_id: insertedLead.id,
                 created_by: profile?.full_name || user?.email || "unknown",
+                ...(primaryProfessionalId
+                  ? { related_entity_type: "professional", related_entity_id: primaryProfessionalId }
+                  : {}),
               });
             } catch (taskError) {
               console.error("Auto-task creation failed for imported lead:", taskError);
@@ -708,12 +810,14 @@ export function BulkUploadDialog({
     }
 
     const skipped = parsedLeads.filter(
-      (lead) => lead.errors.length > 0 || (skipDuplicates && lead.isDuplicate)
+      (lead) => lead.errors.length > 0 || (skipDuplicates && lead.isDuplicate) || lead.excluded
     ).length;
 
     setImportedCount(imported);
     setSkippedCount(skipped);
     setErrorCount(errors);
+    setProfessionalsCreatedCount(professionalsCreated);
+    setProfessionalsLinkedCount(professionalsLinked);
     setIsImporting(false);
     setStep("complete");
     onLeadsCreated();
@@ -1030,9 +1134,18 @@ export function BulkUploadDialog({
   };
 
   const currentLead = photoLeads[currentPhotoIndex];
-  const validLeadsCount = parsedLeads.filter((l) => l.errors.length === 0).length;
+  const validLeadsCount = parsedLeads.filter((l) => l.errors.length === 0 && !l.excluded).length;
   const errorLeadsCount = parsedLeads.filter((l) => l.errors.length > 0).length;
-  const duplicateLeadsCount = parsedLeads.filter((l) => l.isDuplicate).length;
+  const duplicateLeadsCount = parsedLeads.filter((l) => l.isDuplicate && !l.excluded).length;
+  const importCount = skipDuplicates ? validLeadsCount - duplicateLeadsCount : validLeadsCount;
+
+  const toggleRowExcluded = (idx: number, checked: boolean) => {
+    setParsedLeads((prev) => prev.map((l, i) => (i === idx ? { ...l, excluded: !checked } : l)));
+  };
+
+  const toggleAllExcluded = (checked: boolean) => {
+    setParsedLeads((prev) => prev.map((l) => (l.errors.length > 0 ? l : { ...l, excluded: !checked })));
+  };
   const completedCount = photoLeads.filter(l => l.status === "saved").length;
   const pendingCount = photoLeads.filter(l => l.status === "pending").length;
   const skippedPhotoCount = photoLeads.filter(l => l.status === "skipped").length;
@@ -1230,9 +1343,17 @@ export function BulkUploadDialog({
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-12 sticky left-0 bg-background">Row</TableHead>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={parsedLeads.length > 0 && parsedLeads.filter(l => l.errors.length === 0).every(l => !l.excluded) && parsedLeads.some(l => l.errors.length === 0)}
+                              onCheckedChange={(checked) => toggleAllExcluded(checked === true)}
+                              aria-label="Select all"
+                            />
+                          </TableHead>
+                          <TableHead className="w-12">Row</TableHead>
                           <TableHead className="min-w-[120px]">Name</TableHead>
                           <TableHead className="min-w-[120px]">Phone</TableHead>
+                          <TableHead className="min-w-[120px]">Designation</TableHead>
                           <TableHead className="min-w-[100px]">Source</TableHead>
                           <TableHead className="min-w-[100px]">Status</TableHead>
                           <TableHead className="min-w-[150px]">Email</TableHead>
@@ -1251,9 +1372,18 @@ export function BulkUploadDialog({
                             key={idx}
                             className={lead.errors.length > 0 ? "bg-destructive/10" : lead.isDuplicate ? "bg-amber-500/10" : ""}
                           >
-                            <TableCell className="sticky left-0 bg-background">{lead.rowNumber}</TableCell>
+                            <TableCell>
+                              <Checkbox
+                                checked={!lead.excluded && lead.errors.length === 0}
+                                disabled={lead.errors.length > 0}
+                                onCheckedChange={(checked) => toggleRowExcluded(idx, checked === true)}
+                                aria-label={`Import row ${lead.rowNumber}`}
+                              />
+                            </TableCell>
+                            <TableCell>{lead.rowNumber}</TableCell>
                             <TableCell>{lead.name || "-"}</TableCell>
                             <TableCell>{lead.phone || "-"}</TableCell>
+                            <TableCell>{DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation}</TableCell>
                             <TableCell>{lead.source || "-"}</TableCell>
                             <TableCell>{lead.status}</TableCell>
                             <TableCell>{lead.email || "-"}</TableCell>
@@ -1282,8 +1412,8 @@ export function BulkUploadDialog({
                   <Button variant="outline" onClick={() => setStep("upload")}>
                     Back
                   </Button>
-                  <Button onClick={handleImport} disabled={validLeadsCount === 0}>
-                    Import {skipDuplicates ? validLeadsCount - duplicateLeadsCount : validLeadsCount} Leads
+                  <Button onClick={handleImport} disabled={importCount === 0}>
+                    Import {importCount} Leads
                   </Button>
                 </div>
               </>
@@ -1438,6 +1568,15 @@ export function BulkUploadDialog({
                 <p className="text-sm text-muted-foreground">Errors</p>
               </div>
             </div>
+
+            {(professionalsCreatedCount > 0 || professionalsLinkedCount > 0) && (
+              <div className="mt-4 text-sm text-muted-foreground">
+                {professionalsCreatedCount > 0 && `${professionalsCreatedCount} new professional record${professionalsCreatedCount === 1 ? "" : "s"} created`}
+                {professionalsCreatedCount > 0 && professionalsLinkedCount > 0 && " · "}
+                {professionalsLinkedCount > 0 && `${professionalsLinkedCount} lead${professionalsLinkedCount === 1 ? "" : "s"} linked to an existing professional`}
+              </div>
+            )}
+
 
             <div className="flex flex-wrap justify-center gap-3 mt-8">
               <Button variant="outline" onClick={() => onOpenChange(false)}>

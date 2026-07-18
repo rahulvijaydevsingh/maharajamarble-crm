@@ -128,6 +128,7 @@ export interface TaskInsert {
   recurrence_end_type?: string;
   recurrence_end_date?: string | null;
   recurrence_occurrences_limit?: number | null;
+  recurrence_occurrences_count?: number;
   parent_task_id?: string | null;
   original_due_date?: string | null;
   // Closure & scheduling fields
@@ -905,7 +906,7 @@ export function useTasks() {
     };
 
     const nextOccurrenceCount = (task.recurrence_occurrences_count || 0) + 1;
-    (nextTask as any).recurrence_occurrences_count = nextOccurrenceCount;
+    nextTask.recurrence_occurrences_count = nextOccurrenceCount;
 
     const rootId = task.parent_task_id || task.id;
     await supabase
