@@ -1134,9 +1134,18 @@ export function BulkUploadDialog({
   };
 
   const currentLead = photoLeads[currentPhotoIndex];
-  const validLeadsCount = parsedLeads.filter((l) => l.errors.length === 0).length;
+  const validLeadsCount = parsedLeads.filter((l) => l.errors.length === 0 && !l.excluded).length;
   const errorLeadsCount = parsedLeads.filter((l) => l.errors.length > 0).length;
-  const duplicateLeadsCount = parsedLeads.filter((l) => l.isDuplicate).length;
+  const duplicateLeadsCount = parsedLeads.filter((l) => l.isDuplicate && !l.excluded).length;
+  const importCount = skipDuplicates ? validLeadsCount - duplicateLeadsCount : validLeadsCount;
+
+  const toggleRowExcluded = (idx: number, checked: boolean) => {
+    setParsedLeads((prev) => prev.map((l, i) => (i === idx ? { ...l, excluded: !checked } : l)));
+  };
+
+  const toggleAllExcluded = (checked: boolean) => {
+    setParsedLeads((prev) => prev.map((l) => (l.errors.length > 0 ? l : { ...l, excluded: !checked })));
+  };
   const completedCount = photoLeads.filter(l => l.status === "saved").length;
   const pendingCount = photoLeads.filter(l => l.status === "pending").length;
   const skippedPhotoCount = photoLeads.filter(l => l.status === "skipped").length;
