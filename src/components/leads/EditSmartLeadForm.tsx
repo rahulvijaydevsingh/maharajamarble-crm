@@ -239,6 +239,60 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         next_follow_up: format(nextActionDate, "yyyy-MM-dd"),
       };
 
+      // If designation is professional-category, ensure a linked
+      // Professional record exists (mirrors Add Lead flow).
+      if (isProfessionalDesignation(primaryContact.designation) && primaryContact.phone) {
+        const normalizedPhone = primaryContact.phone.replace(/\D/g, "").slice(-10);
+        const { data: existingProfessional } = await supabase
+          .from("professionals")
+          .select("id, name")
+          .or(`phone.eq.${normalizedPhone},alternate_phone.eq.${normalizedPhone}`)
+          .limit(1);
+
+        let professionalId: string | null = null;
+        if (existingProfessional && existingProfessional.length > 0) {
+          professionalId = existingProfessional[0].id;
+          toast({
+            title: "Linked to existing professional",
+            description: `This phone number matches ${existingProfessional[0].name} in your Professionals database — this lead's task has been linked there.`,
+          });
+        } else {
+          const { data: insertedProfessional } = await supabase
+            .from("professionals")
+            .insert([{
+              name: primaryContact.name,
+              phone: normalizedPhone,
+              alternate_phone: primaryContact.alternatePhone || null,
+              email: primaryContact.email || null,
+              firm_name: primaryContact.firmName || null,
+              address: siteLocation || null,
+              professional_type: primaryContact.designation,
+              status: "active",
+              priority: 3,
+              assigned_to: assignedToName,
+              site_plus_code: sitePlusCode || null,
+              added_via_lead_id: lead.id,
+            }])
+            .select("id")
+            .single();
+          professionalId = insertedProfessional?.id || null;
+          if (professionalId) {
+            toast({
+              title: "Professional record created",
+              description: `${primaryContact.name} has been added to your Professionals database.`,
+            });
+          }
+        }
+
+        if (professionalId) {
+          await supabase
+            .from("tasks")
+            .update({ related_entity_type: "professional", related_entity_id: professionalId })
+            .eq("lead_id", lead.id)
+            .is("related_entity_type", null);
+        }
+      }
+
       await onSave(lead.id, updatedData);
 
       toast({
