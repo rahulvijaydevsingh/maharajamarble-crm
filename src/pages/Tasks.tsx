@@ -68,6 +68,19 @@ const Tasks = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Deep-link: /tasks?view=TASK_ID from global search opens the task dialog.
+  useEffect(() => {
+    const v = searchParams.get("view");
+    if (!v || v === "reminders") return;
+    const match = tasks.find(t => t.id === v);
+    if (match) {
+      handleEditTask(match);
+      searchParams.delete("view");
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, searchParams]);
+
   // NOTE: a task is an orphan ONLY if it was meant to link to a lead
   // (lead_id is set) but that lead no longer resolves (t.lead comes back
   // null/undefined). Checking t.lead alone is wrong — tasks linked to a
