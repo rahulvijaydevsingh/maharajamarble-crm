@@ -604,14 +604,29 @@ export function BulkUploadDialog({
           estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
           referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
           next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
+          next_action_time: getColumnValue(row, ["Next Action Time", "NEXT ACTION TIME", "next action time"]),
           site_plus_code: getColumnValue(row, ["Site Plus Code", "SITE PLUS CODE", "SitePlusCode", "plus_code"]),
+          designation,
           rowNumber: actualRowNumber,
           errors,
           warnings,
           isDuplicate,
           duplicateInfo,
+          excluded: false,
         });
       }
+
+      // Flag phones that repeat within this same file (DB snapshot above
+      // only catches numbers that already existed before this upload).
+      const phoneOccurrences = new Map<string, number>();
+      parsed.forEach(p => {
+        if (p.phone) phoneOccurrences.set(p.phone, (phoneOccurrences.get(p.phone) || 0) + 1);
+      });
+      parsed.forEach(p => {
+        if (p.phone && (phoneOccurrences.get(p.phone) || 0) > 1) {
+          p.warnings.push("Same phone appears more than once in this file");
+        }
+      });
 
       setParsedLeads(parsed);
     } catch (error) {
