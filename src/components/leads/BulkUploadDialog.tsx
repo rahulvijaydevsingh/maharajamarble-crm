@@ -296,12 +296,14 @@ export function BulkUploadDialog({
       const staffNames = staffMembers.map(m => m.name);
       const statusLabels = ["new", "in-progress", "quoted", "won", "pending_lost", "lost"];
       const priorityLabels = PRIORITY_OPTIONS.map(p => p.label);
+      const designationLabels = DESIGNATIONS.map(d => d.label);
 
       const columns = [
         { key: "name", header: "Name*", width: 22, list: null as string[] | null },
         { key: "phone", header: "Phone*", width: 16, list: null },
         { key: "alternate_phone", header: "Alternate Phone", width: 16, list: null },
         { key: "email", header: "Email", width: 26, list: null },
+        { key: "designation", header: "Designation", width: 18, list: designationLabels },
         { key: "source", header: "Source*", width: 18, list: sourceLabels },
         { key: "address", header: "Address", width: 36, list: null },
         { key: "site_plus_code", header: "Site Plus Code", width: 20, list: null },
@@ -313,6 +315,7 @@ export function BulkUploadDialog({
         { key: "estimated_quantity", header: "Estimated Quantity", width: 18, list: null },
         { key: "referred_by", header: "Referred By", width: 22, list: null },
         { key: "next_action_date", header: "Next Action Date", width: 16, list: null },
+        { key: "next_action_time", header: "Next Action Time", width: 16, list: null },
         { key: "initial_note", header: "Initial Note", width: 40, list: null },
       ];
 
@@ -328,6 +331,7 @@ export function BulkUploadDialog({
         phone: "9876543210",
         alternate_phone: "9812345678",
         email: "rajesh@example.com",
+        designation: "Owner",
         source: sourceLabels[0] || "Walk-in",
         address: "123 Main Street, Mohali",
         site_plus_code: "",
@@ -339,6 +343,7 @@ export function BulkUploadDialog({
         estimated_quantity: "500 sq ft",
         referred_by: "",
         next_action_date: format(addDays(new Date(), 7), "dd-MM-yyyy"),
+        next_action_time: "10:00",
         initial_note: "Initial contact made at showroom",
       });
       exampleRow.font = { color: { argb: "FF666666" }, italic: true };
