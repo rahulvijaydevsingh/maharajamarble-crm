@@ -1343,9 +1343,17 @@ export function BulkUploadDialog({
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-12 sticky left-0 bg-background">Row</TableHead>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={parsedLeads.length > 0 && parsedLeads.filter(l => l.errors.length === 0).every(l => !l.excluded) && parsedLeads.some(l => l.errors.length === 0)}
+                              onCheckedChange={(checked) => toggleAllExcluded(checked === true)}
+                              aria-label="Select all"
+                            />
+                          </TableHead>
+                          <TableHead className="w-12">Row</TableHead>
                           <TableHead className="min-w-[120px]">Name</TableHead>
                           <TableHead className="min-w-[120px]">Phone</TableHead>
+                          <TableHead className="min-w-[120px]">Designation</TableHead>
                           <TableHead className="min-w-[100px]">Source</TableHead>
                           <TableHead className="min-w-[100px]">Status</TableHead>
                           <TableHead className="min-w-[150px]">Email</TableHead>
@@ -1364,9 +1372,18 @@ export function BulkUploadDialog({
                             key={idx}
                             className={lead.errors.length > 0 ? "bg-destructive/10" : lead.isDuplicate ? "bg-amber-500/10" : ""}
                           >
-                            <TableCell className="sticky left-0 bg-background">{lead.rowNumber}</TableCell>
+                            <TableCell>
+                              <Checkbox
+                                checked={!lead.excluded && lead.errors.length === 0}
+                                disabled={lead.errors.length > 0}
+                                onCheckedChange={(checked) => toggleRowExcluded(idx, checked === true)}
+                                aria-label={`Import row ${lead.rowNumber}`}
+                              />
+                            </TableCell>
+                            <TableCell>{lead.rowNumber}</TableCell>
                             <TableCell>{lead.name || "-"}</TableCell>
                             <TableCell>{lead.phone || "-"}</TableCell>
+                            <TableCell>{DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation}</TableCell>
                             <TableCell>{lead.source || "-"}</TableCell>
                             <TableCell>{lead.status}</TableCell>
                             <TableCell>{lead.email || "-"}</TableCell>
@@ -1395,8 +1412,8 @@ export function BulkUploadDialog({
                   <Button variant="outline" onClick={() => setStep("upload")}>
                     Back
                   </Button>
-                  <Button onClick={handleImport} disabled={validLeadsCount === 0}>
-                    Import {skipDuplicates ? validLeadsCount - duplicateLeadsCount : validLeadsCount} Leads
+                  <Button onClick={handleImport} disabled={importCount === 0}>
+                    Import {importCount} Leads
                   </Button>
                 </div>
               </>
