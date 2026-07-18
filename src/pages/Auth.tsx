@@ -36,7 +36,7 @@ export default function Auth() {
       emailSchema.parse(email);
     } catch (e) {
       if (e instanceof z.ZodError) {
-        newErrors.email = e.errors[0].message;
+        newErrors.email = e.issues[0].message;
       }
     }
 
