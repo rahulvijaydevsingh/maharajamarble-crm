@@ -44,7 +44,7 @@ export default function Auth() {
       passwordSchema.parse(password);
     } catch (e) {
       if (e instanceof z.ZodError) {
-        newErrors.password = e.errors[0].message;
+        newErrors.password = e.issues[0].message;
       }
     }
 
