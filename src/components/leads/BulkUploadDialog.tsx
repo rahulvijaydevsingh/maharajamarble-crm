@@ -639,11 +639,24 @@ export function BulkUploadDialog({
   };
 
   const fetchExistingPhones = async (): Promise<Map<string, string>> => {
-    const { data } = await supabase.from("leads").select("phone, alternate_phone, name");
+    // Checks leads, professionals, AND customers.
+    const [leadsRes, professionalsRes, customersRes] = await Promise.all([
+      supabase.from("leads").select("phone, alternate_phone, name"),
+      supabase.from("professionals").select("phone, alternate_phone, name, professional_type"),
+      supabase.from("customers").select("phone, alternate_phone, name"),
+    ]);
     const map = new Map<string, string>();
-    data?.forEach((lead) => {
-      if (lead.phone) map.set(lead.phone, lead.name);
-      if (lead.alternate_phone) map.set(lead.alternate_phone, lead.name);
+    leadsRes.data?.forEach((lead: any) => {
+      if (lead.phone) map.set(lead.phone, `Lead: ${lead.name}`);
+      if (lead.alternate_phone) map.set(lead.alternate_phone, `Lead: ${lead.name}`);
+    });
+    professionalsRes.data?.forEach((p: any) => {
+      if (p.phone) map.set(p.phone, `Professional: ${p.name} (${p.professional_type})`);
+      if (p.alternate_phone) map.set(p.alternate_phone, `Professional: ${p.name} (${p.professional_type})`);
+    });
+    customersRes.data?.forEach((c: any) => {
+      if (c.phone) map.set(c.phone, `Customer: ${c.name}`);
+      if (c.alternate_phone) map.set(c.alternate_phone, `Customer: ${c.name}`);
     });
     return map;
   };
