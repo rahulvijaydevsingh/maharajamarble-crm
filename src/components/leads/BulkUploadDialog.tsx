@@ -160,6 +160,7 @@ export function BulkUploadDialog({
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { addTask } = useTasks();
   const { getFieldOptions } = useControlPanelSettings();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
