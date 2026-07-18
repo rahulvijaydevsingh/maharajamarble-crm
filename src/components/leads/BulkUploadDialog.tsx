@@ -218,6 +218,8 @@ export function BulkUploadDialog({
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
+  const [professionalsCreatedCount, setProfessionalsCreatedCount] = useState(0);
+  const [professionalsLinkedCount, setProfessionalsLinkedCount] = useState(0);
   const [duplicateAttachedCount, setDuplicateAttachedCount] = useState(0);
 
   // Keyboard shortcuts
