@@ -126,6 +126,28 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
     }
   }, [staffMembers.length]); // Only run when staff list first loads
 
+  // Seed Next Action Date/Time/Reminder from the lead's actual pending
+  // task, not the separate next_follow_up field which can drift out of sync.
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("tasks")
+      .select("due_date, due_time, reminder, reminder_time")
+      .eq("lead_id", lead.id)
+      .eq("status", "Pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        if (data.due_date) setNextActionDate(new Date(data.due_date));
+        if (data.due_time) setNextActionTime(data.due_time);
+        setReminderEnabled(!!data.reminder);
+        if (data.reminder_time) setReminderTime(data.reminder_time);
+      });
+    return () => { cancelled = true; };
+  }, [lead.id]);
+
   const handleSitePhotoChange = (photoUrl: string | null, plusCode: string | null) => {
     setSitePhotoUrl(photoUrl);
     setSitePlusCode(plusCode);
