@@ -59,8 +59,11 @@ import {
   MATERIAL_INTERESTS, 
   LEAD_SOURCES,
   FOLLOW_UP_PRIORITIES,
+  DESIGNATIONS,
+  isProfessionalDesignation,
 } from "@/constants/leadConstants";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { extractGPSFromExif, coordinatesToPlusCode } from "@/lib/plusCode";
 import { ConstructionStage, LeadSource, FollowUpPriority } from "@/types/lead";
 import {
