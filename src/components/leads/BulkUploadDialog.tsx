@@ -1569,6 +1569,15 @@ export function BulkUploadDialog({
               </div>
             </div>
 
+            {(professionalsCreatedCount > 0 || professionalsLinkedCount > 0) && (
+              <div className="mt-4 text-sm text-muted-foreground">
+                {professionalsCreatedCount > 0 && `${professionalsCreatedCount} new professional record${professionalsCreatedCount === 1 ? "" : "s"} created`}
+                {professionalsCreatedCount > 0 && professionalsLinkedCount > 0 && " · "}
+                {professionalsLinkedCount > 0 && `${professionalsLinkedCount} lead${professionalsLinkedCount === 1 ? "" : "s"} linked to an existing professional`}
+              </div>
+            )}
+
+
             <div className="flex flex-wrap justify-center gap-3 mt-8">
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 📋 View Created Leads
