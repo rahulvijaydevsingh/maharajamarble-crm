@@ -97,12 +97,15 @@ interface ParsedLead {
   estimated_quantity: string;
   referred_by: string;
   next_action_date: string;
+  next_action_time: string;
   site_plus_code: string;
+  designation: string;
   rowNumber: number;
   errors: string[];
   warnings: string[];
   isDuplicate: boolean;
   duplicateInfo?: string;
+  excluded: boolean;
 }
 
 interface PhotoLeadData {
