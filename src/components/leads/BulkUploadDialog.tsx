@@ -1370,10 +1370,10 @@ export function BulkUploadDialog({
                         {parsedLeads.map((lead, idx) => (
                           <TableRow
                             key={idx}
-                            className={
-                              lead.excluded ? "opacity-40" :
-                              lead.errors.length > 0 ? "bg-destructive/10" : lead.isDuplicate ? "bg-amber-500/10" : ""
-                            }
+                            className={[
+                              lead.excluded && "opacity-40",
+                              lead.errors.length > 0 ? "bg-destructive/10" : lead.isDuplicate ? "bg-amber-500/10" : "",
+                            ].filter(Boolean).join(" ")}
                           >
                             <TableCell>
                               <Checkbox
