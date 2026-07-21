@@ -444,6 +444,62 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
         </Card>
       </div>
 
+      {/* Additional Contacts */}
+      {Array.isArray(lead.additional_contacts) && (lead.additional_contacts as any[]).length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+              <User className="h-4 w-4" />
+              Additional Contacts ({(lead.additional_contacts as any[]).length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(lead.additional_contacts as any[]).map((c, idx) => (
+              <div key={idx} className="p-3 border rounded-lg space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="font-medium">{c.name || "—"}</div>
+                  {c.designation && (
+                    <Badge variant="outline" className="capitalize text-xs">
+                      {String(c.designation).replace(/_/g, " ")}
+                    </Badge>
+                  )}
+                </div>
+                {c.firmName && (
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Building2 className="h-3 w-3" /> {c.firmName}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {c.phone && (
+                    <div className="flex items-center gap-1">
+                      <Phone className="h-3 w-3 text-muted-foreground" />
+                      <PhoneLink
+                        phone={c.phone}
+                        log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                      />
+                      {c.alternatePhone && (
+                        <span className="text-muted-foreground">
+                          {' / '}
+                          <PhoneLink
+                            phone={c.alternatePhone}
+                            log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                          />
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {c.email && (
+                    <a href={`mailto:${c.email}`} className="text-primary hover:underline flex items-center gap-1">
+                      <Mail className="h-3 w-3" /> {c.email}
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Notes Section */}
       {lead.notes && (
         <Card>
