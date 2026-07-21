@@ -31,16 +31,18 @@ export function useActiveStaff() {
     try {
       setLoading(true);
 
-      // Fetch profiles + roles in two parallel queries (single round trip each,
-      // no N+1). Works for every RLS tier because user_roles SELECT is granted
-      // to authenticated.
+      // Fetch profiles + roles in two parallel queries. The user_roles table
+      // is intentionally row-scoped (RLS restricts each user to their own
+      // row), so we go through the SECURITY DEFINER RPC get_all_staff_roles()
+      // to read every staff member's role without weakening that policy.
+      // Without this, non-admin users saw "Unassigned" for everyone else.
       const [profilesRes, rolesRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("id, full_name, email, phone")
           .eq("is_active", true)
           .order("full_name", { ascending: true }),
-        supabase.from("user_roles").select("user_id, role"),
+        supabase.rpc("get_all_staff_roles"),
       ]);
 
       if (profilesRes.error) throw profilesRes.error;

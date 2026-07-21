@@ -1,6 +1,6 @@
 import { parseISO, isPast, isToday, differenceInHours } from "date-fns";
 
-export type TaskStatus = "Pending" | "In Progress" | "Overdue" | "Completed";
+export type TaskStatus = "Pending" | "In Progress" | "Overdue" | "Completed" | "Cancelled";
 
 export interface TaskStatusConfig {
   label: string;
@@ -34,6 +34,12 @@ export const TASK_STATUS_CONFIG: Record<TaskStatus, TaskStatusConfig> = {
     bgColor: "bg-green-50 text-green-600",
     icon: "✅",
   },
+  Cancelled: {
+    label: "Cancelled",
+    color: "#6B7280",
+    bgColor: "bg-gray-100 text-gray-500",
+    icon: "🚫",
+  },
 };
 
 interface TaskForStatusCalculation {
@@ -62,6 +68,13 @@ export function calculateTaskStatus(task: TaskForStatusCalculation): TaskStatus 
   // If stored status is Completed, return it
   if (task.status === "Completed") {
     return "Completed";
+  }
+
+  // Cancelled tasks (e.g. auto-cancelled when their lead is marked Lost)
+  // are terminal too — they should never be recalculated as Overdue just
+  // because their original due date has passed.
+  if (task.status === "Cancelled") {
+    return "Cancelled";
   }
 
   // Parse due date

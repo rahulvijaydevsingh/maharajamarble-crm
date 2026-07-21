@@ -3536,6 +3536,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_all_staff_roles: {
+        Args: never
+        Returns: {
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }[]
+      }
       get_current_user_email: { Args: never; Returns: string }
       get_user_role: {
         Args: { _user_id: string }
