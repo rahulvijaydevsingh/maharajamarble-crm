@@ -116,6 +116,7 @@ const statusStyles: Record<string, { className: string; label: string }> = {
   'In Progress': { className: "bg-orange-50 text-orange-600 hover:bg-orange-50", label: "In Progress" },
   Completed: { className: "bg-green-50 text-green-600 hover:bg-green-50", label: "Completed" },
   Overdue: { className: "bg-red-50 text-red-600 hover:bg-red-50", label: "Overdue" },
+  Cancelled: { className: "bg-gray-100 text-gray-500 hover:bg-gray-100", label: "Cancelled" },
 };
 
 interface DateRange {
