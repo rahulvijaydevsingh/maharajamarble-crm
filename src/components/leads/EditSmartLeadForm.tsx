@@ -233,6 +233,9 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         ? manualPriority 
         : (followUpPriority === "urgent" ? 1 : followUpPriority === "normal" ? 3 : 5);
 
+      const normalizePhone = (phone: string): string =>
+        String(phone || "").replace(/\D/g, "").slice(-10);
+
       const updatedData: Partial<Lead> = {
         name: primaryContact.name,
         phone: primaryContact.phone,
@@ -254,60 +257,86 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         priority: finalPriority,
         notes: initialNote || null,
         next_follow_up: format(nextActionDate, "yyyy-MM-dd"),
+        // Persist every non-primary contact so subsequent edits load them
+        // and the detail view can render them (mirrors Add Lead flow).
+        additional_contacts: contacts.slice(1).map((c) => ({
+          designation: c.designation,
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          alternatePhone: c.alternatePhone,
+          firmName: c.firmName,
+          isProfessional: isProfessionalDesignation(c.designation),
+        })),
       };
 
-      // If designation is professional-category, ensure a linked
-      // Professional record exists (mirrors Add Lead flow).
-      if (isProfessionalDesignation(primaryContact.designation) && primaryContact.phone) {
-        const normalizedPhone = primaryContact.phone.replace(/\D/g, "").slice(-10);
-        const { data: existingProfessional } = await supabase
+      // Loop over EVERY professional-designated contact (primary + additional)
+      // and ensure a linked Professional record exists — mirroring
+      // Leads.tsx handleAddLead. Previously only contacts[0] was checked,
+      // so secondary professional contacts were never surfaced.
+      const primaryPhoneNorm = normalizePhone(primaryContact.phone);
+      let primaryProfessionalId: string | null = null;
+      const createdPhones = new Set<string>();
+
+      for (const c of contacts) {
+        if (!isProfessionalDesignation(c.designation)) continue;
+        const phone = normalizePhone(c.phone);
+        if (phone.length !== 10) continue;
+        if (createdPhones.has(phone)) continue;
+        createdPhones.add(phone);
+        const isPrimaryContact = phone === primaryPhoneNorm;
+
+        const { data: existing } = await supabase
           .from("professionals")
           .select("id, name")
-          .or(`phone.eq.${normalizedPhone},alternate_phone.eq.${normalizedPhone}`)
+          .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
           .limit(1);
 
-        let professionalId: string | null = null;
-        if (existingProfessional && existingProfessional.length > 0) {
-          professionalId = existingProfessional[0].id;
+        if (existing && existing.length > 0) {
+          if (isPrimaryContact) primaryProfessionalId = existing[0].id;
           toast({
             title: "Linked to existing professional",
-            description: `This phone number matches ${existingProfessional[0].name} in your Professionals database — this lead's task has been linked there.`,
+            description: `${c.name || existing[0].name} matches an existing Professional (${existing[0].name}).`,
           });
-        } else {
-          const { data: insertedProfessional } = await supabase
-            .from("professionals")
-            .insert([{
-              name: primaryContact.name,
-              phone: normalizedPhone,
-              alternate_phone: primaryContact.alternatePhone || null,
-              email: primaryContact.email || null,
-              firm_name: primaryContact.firmName || null,
-              address: siteLocation || null,
-              professional_type: primaryContact.designation,
-              status: "active",
-              priority: 3,
-              assigned_to: assignedToName,
-              site_plus_code: sitePlusCode || null,
-              added_via_lead_id: lead.id,
-            }])
-            .select("id")
-            .single();
-          professionalId = insertedProfessional?.id || null;
-          if (professionalId) {
-            toast({
-              title: "Professional record created",
-              description: `${primaryContact.name} has been added to your Professionals database.`,
-            });
-          }
+          continue;
         }
 
-        if (professionalId) {
-          await supabase
-            .from("tasks")
-            .update({ related_entity_type: "professional", related_entity_id: professionalId })
-            .eq("lead_id", lead.id)
-            .is("related_entity_type", null);
+        const { data: insertedProfessional } = await supabase
+          .from("professionals")
+          .insert([{
+            name: c.name,
+            phone,
+            alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+            email: c.email || null,
+            firm_name: c.firmName || null,
+            address: siteLocation || null,
+            professional_type: c.designation,
+            status: "active",
+            priority: 3,
+            assigned_to: assignedToName,
+            site_plus_code: sitePlusCode || null,
+            added_via_lead_id: lead.id,
+          }])
+          .select("id")
+          .single();
+
+        if (insertedProfessional?.id) {
+          if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
+          toast({
+            title: "Professional record created",
+            description: `${c.name} has been added to your Professionals database.`,
+          });
         }
+      }
+
+      // Link the lead's still-unlinked task to the primary professional
+      // (matches the Add Lead behavior).
+      if (primaryProfessionalId) {
+        await supabase
+          .from("tasks")
+          .update({ related_entity_type: "professional", related_entity_id: primaryProfessionalId })
+          .eq("lead_id", lead.id)
+          .is("related_entity_type", null);
       }
 
       await onSave(lead.id, updatedData);
