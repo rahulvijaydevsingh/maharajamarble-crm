@@ -79,16 +79,33 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
   })();
 
   // Form state - initialized directly from lead prop (component is keyed by lead.id)
-  // Group 1: Contacts
-  const [contacts, setContacts] = useState<ContactPerson[]>([{
-    id: `contact_${Date.now()}`,
-    designation: lead.designation || "owner",
-    name: lead.name,
-    email: lead.email || "",
-    phone: lead.phone,
-    alternatePhone: lead.alternate_phone || "",
-    firmName: lead.firm_name || "",
-  }]);
+  // Group 1: Contacts. Load primary + any additional_contacts persisted on the lead
+  // so editing a lead with 2+ contacts shows all of them (previously only the
+  // primary was loaded and secondary contacts were silently dropped on save).
+  const initialContacts: ContactPerson[] = (() => {
+    const primary: ContactPerson = {
+      id: `contact_${Date.now()}_0`,
+      designation: lead.designation || "owner",
+      name: lead.name,
+      email: lead.email || "",
+      phone: lead.phone,
+      alternatePhone: lead.alternate_phone || "",
+      firmName: lead.firm_name || "",
+    };
+    const extras: ContactPerson[] = Array.isArray(lead.additional_contacts)
+      ? (lead.additional_contacts as any[]).map((c, i) => ({
+          id: `contact_${Date.now()}_${i + 1}`,
+          designation: c?.designation || "owner",
+          name: c?.name || "",
+          email: c?.email || "",
+          phone: c?.phone || "",
+          alternatePhone: c?.alternatePhone || "",
+          firmName: c?.firmName || "",
+        }))
+      : [];
+    return [primary, ...extras];
+  })();
+  const [contacts, setContacts] = useState<ContactPerson[]>(initialContacts);
 
   // Group 2: Site Details
   const [siteLocation, setSiteLocation] = useState(lead.site_location || lead.address || "");
