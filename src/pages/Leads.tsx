@@ -116,7 +116,14 @@ const Leads = () => {
         const primaryPhone = normalizePhone(formData.primaryPhone || formData.contacts[0]?.phone || "");
 
         const createdPhones = new Set<string>();
-        const professionalContacts = formData.contacts.filter((c: any) => c?.isProfessional);
+        // Include any contact whose designation is professional-category —
+        // don't rely on the `isProfessional` flag alone, since the primary
+        // contact often has a professional designation without that flag set,
+        // which previously meant the task never got linked to the professional.
+        const { isProfessionalDesignation } = await import("@/constants/leadConstants");
+        const professionalContacts = formData.contacts.filter(
+          (c: any) => c?.isProfessional || isProfessionalDesignation(c?.designation)
+        );
 
         for (const c of professionalContacts) {
           const phone = normalizePhone(c.phone);

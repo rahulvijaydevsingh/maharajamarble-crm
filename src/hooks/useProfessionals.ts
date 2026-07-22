@@ -94,6 +94,26 @@ export function useProfessionals() {
 
   const addProfessional = async (professional: ProfessionalInsert) => {
     try {
+      // Duplicate-phone guard — matches the check the Lead flows already run
+      // so professionals added directly from Professional Management can't
+      // create silent duplicates.
+      const normalizedPhone = String(professional.phone || "").replace(/\D/g, "").slice(-10);
+      if (normalizedPhone.length === 10) {
+        const { data: existing } = await supabase
+          .from("professionals")
+          .select("id, name")
+          .or(`phone.eq.${normalizedPhone},alternate_phone.eq.${normalizedPhone}`)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          toast({
+            title: "Duplicate professional",
+            description: `A professional (${existing[0].name}) already exists with this phone number.`,
+            variant: "destructive",
+          });
+          throw new Error("Duplicate professional phone");
+        }
+      }
+
       const { data, error } = await supabase
         .from("professionals")
         .insert([professional])
