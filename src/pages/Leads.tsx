@@ -57,6 +57,7 @@ const Leads = () => {
         designation: formData?.contacts?.[0]?.designation || (formData.leadCategory === "professional" ? "architect" : "owner"),
         firm_name: formData.firmName || null,
         site_location: formData.siteLocation,
+        address: formData.siteLocation,
         site_plus_code: formData.sitePlusCode || null,
         site_photo_url: formData.sitePhotoUrl || null,
         construction_stage: formData.constructionStage,

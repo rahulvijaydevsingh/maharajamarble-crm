@@ -244,6 +244,9 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         designation: primaryContact.designation,
         firm_name: primaryContact.firmName || null,
         site_location: siteLocation,
+        // Keep legacy `address` column in sync — Lead Profile reads
+        // `address || site_location`, so drift here shows stale data.
+        address: siteLocation,
         site_photo_url: sitePhotoUrl,
         site_plus_code: sitePlusCode,
         construction_stage: constructionStage || null,
