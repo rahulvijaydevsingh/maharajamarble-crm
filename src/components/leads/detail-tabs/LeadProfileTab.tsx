@@ -336,7 +336,7 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Address / Site Location</div>
-                  <div className="font-medium">{lead.address || lead.site_location}</div>
+                  <div className="font-medium">{lead.site_location || lead.address}</div>
                 </div>
               </div>
             )}

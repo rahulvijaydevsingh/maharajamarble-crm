@@ -626,7 +626,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             if (bulkActionType === "convert_customer") {
               await addCustomer({
                 name: lead.name, phone: lead.phone, alternate_phone: lead.alternate_phone,
-                email: lead.email, company_name: lead.firm_name, address: lead.address || lead.site_location,
+                email: lead.email, company_name: lead.firm_name, address: lead.site_location || lead.address,
                 assigned_to: lead.assigned_to, source: lead.source, lead_id: lead.id, notes: lead.notes,
                 customer_type: "individual", status: "active", priority: lead.priority,
               });
