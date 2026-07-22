@@ -329,14 +329,14 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
               </div>
             )}
 
-            {(lead.address || lead.site_location) && (
+            {(lead.site_location || lead.address) && (
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-full bg-orange-50 flex items-center justify-center">
                   <MapPin className="h-4 w-4 text-orange-600" />
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Address / Site Location</div>
-                  <div className="font-medium">{lead.address || lead.site_location}</div>
+                  <div className="font-medium">{lead.site_location || lead.address}</div>
                 </div>
               </div>
             )}
