@@ -739,17 +739,21 @@ export function BulkUploadDialog({
               primaryProfessionalId = importProfessionalCache.get(lead.phone)!;
               professionalsLinked++;
             } else {
-              const { data: existingProfessional } = await supabase
+              const { data: existingProfessional, error: findError } = await supabase
                 .from("professionals")
                 .select("id")
                 .or(`phone.eq.${lead.phone},alternate_phone.eq.${lead.phone}`)
                 .limit(1);
 
+              if (findError) {
+                console.error("BulkUpload: Failed to check existing professional:", findError);
+              }
+
               if (existingProfessional && existingProfessional.length > 0) {
                 primaryProfessionalId = existingProfessional[0].id;
                 professionalsLinked++;
               } else {
-                const { data: insertedProfessional } = await supabase
+                const { data: insertedProfessional, error: insertError } = await supabase
                   .from("professionals")
                   .insert([{
                     name: lead.name,
@@ -766,6 +770,11 @@ export function BulkUploadDialog({
                   }])
                   .select("id")
                   .single();
+
+                if (insertError) {
+                  console.error("BulkUpload: Failed to insert professional:", insertError);
+                }
+
                 if (insertedProfessional) {
                   primaryProfessionalId = insertedProfessional.id;
                   professionalsCreated++;
@@ -777,7 +786,7 @@ export function BulkUploadDialog({
             }
 
             if (primaryProfessionalId && insertedLead?.id) {
-              await supabase
+              const { error: upsertError } = await supabase
                 .from("lead_professionals")
                 .upsert(
                   {
@@ -788,6 +797,10 @@ export function BulkUploadDialog({
                   },
                   { onConflict: "lead_id,professional_id" }
                 );
+
+              if (upsertError) {
+                console.error("BulkUpload: Failed to upsert lead_professionals relation:", upsertError);
+              }
             }
           }
 
