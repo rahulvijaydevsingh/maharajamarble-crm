@@ -280,6 +280,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       const primaryPhoneNorm = normalizePhone(primaryContact.phone);
       let primaryProfessionalId: string | null = null;
       const createdPhones = new Set<string>();
+      const linkedProfessionalIds = new Set<string>();
 
       for (const c of contacts) {
         if (!isProfessionalDesignation(c.designation)) continue;
@@ -295,41 +296,76 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
           .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
           .limit(1);
 
+        let professionalId: string | null = null;
+
         if (existing && existing.length > 0) {
+          professionalId = existing[0].id;
           if (isPrimaryContact) primaryProfessionalId = existing[0].id;
           toast({
             title: "Linked to existing professional",
             description: `${c.name || existing[0].name} matches an existing Professional (${existing[0].name}).`,
           });
-          continue;
+        } else {
+          const { data: insertedProfessional } = await supabase
+            .from("professionals")
+            .insert([{
+              name: c.name,
+              phone,
+              alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+              email: c.email || null,
+              firm_name: c.firmName || null,
+              address: siteLocation || null,
+              professional_type: c.designation,
+              status: "active",
+              priority: 3,
+              assigned_to: assignedToName,
+              site_plus_code: sitePlusCode || null,
+              added_via_lead_id: lead.id,
+            }])
+            .select("id")
+            .single();
+
+          if (insertedProfessional?.id) {
+            professionalId = insertedProfessional.id;
+            if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
+            toast({
+              title: "Professional record created",
+              description: `${c.name} has been added to your Professionals database.`,
+            });
+          }
         }
 
-        const { data: insertedProfessional } = await supabase
-          .from("professionals")
-          .insert([{
-            name: c.name,
-            phone,
-            alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-            email: c.email || null,
-            firm_name: c.firmName || null,
-            address: siteLocation || null,
-            professional_type: c.designation,
-            status: "active",
-            priority: 3,
-            assigned_to: assignedToName,
-            site_plus_code: sitePlusCode || null,
-            added_via_lead_id: lead.id,
-          }])
-          .select("id")
-          .single();
-
-        if (insertedProfessional?.id) {
-          if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
-          toast({
-            title: "Professional record created",
-            description: `${c.name} has been added to your Professionals database.`,
-          });
+        if (professionalId) {
+          linkedProfessionalIds.add(professionalId);
+          await supabase
+            .from("lead_professionals")
+            .upsert(
+              {
+                lead_id: lead.id,
+                professional_id: professionalId,
+                is_primary_contact: isPrimaryContact,
+                contact_designation: c.designation,
+              },
+              { onConflict: "lead_id,professional_id" }
+            );
         }
+      }
+
+      // Drop links for professionals no longer represented among this
+      // lead's current contacts (designation changed away, or contact removed).
+      const { data: existingLinks } = await supabase
+        .from("lead_professionals")
+        .select("professional_id")
+        .eq("lead_id", lead.id);
+      const staleProfessionalIds = (existingLinks || [])
+        .map((r) => r.professional_id)
+        .filter((id) => !linkedProfessionalIds.has(id));
+      if (staleProfessionalIds.length > 0) {
+        await supabase
+          .from("lead_professionals")
+          .delete()
+          .eq("lead_id", lead.id)
+          .in("professional_id", staleProfessionalIds);
       }
 
       // Link the lead's still-unlinked task to the primary professional

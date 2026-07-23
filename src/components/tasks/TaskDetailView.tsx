@@ -475,7 +475,46 @@ export function TaskDetailView({
               {task && (
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <span className="text-muted-foreground">Related:</span>
-                  {related ? (
+                  {task.lead_id ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openLeadDetailById(task.lead_id!);
+                        }}
+                      >
+                        {task.lead?.name || leads.find(l => l.id === task.lead_id)?.name || 'View Lead'}
+                      </Button>
+                      <span className="text-muted-foreground">•</span>
+                      <PhoneLink
+                        phone={task.lead?.phone || leads.find(l => l.id === task.lead_id)?.phone || null}
+                        onClick={(e) => e.stopPropagation()}
+                        log={{
+                          relatedEntityType: "lead",
+                          relatedEntityId: task.lead_id!,
+                        }}
+                      />
+                      {task.related_entity_type === 'professional' && task.related_entity_id && (
+                        <>
+                          <span className="text-muted-foreground">• Professional:</span>
+                          <Button
+                            type="button"
+                            variant="link"
+                            className="h-auto p-0 text-purple-600 hover:text-purple-700 font-medium"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openProfessionalDetailById(task.related_entity_id!);
+                            }}
+                          >
+                            {professionals.find(p => p.id === task.related_entity_id)?.name || 'View Professional'}
+                          </Button>
+                        </>
+                      )}
+                    </>
+                  ) : related ? (
                     <>
                       <Button
                         type="button"

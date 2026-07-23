@@ -1140,14 +1140,17 @@ export function EnhancedTaskTable({
             <span className="text-sm">{getStaffDisplayName(task.assigned_to, staffMembers)}</span>
           </div>
         );
-      case "relatedTo":
-        return task.lead ? (
+      case "relatedTo": {
+        const linkedProfessionalId =
+          task.related_entity_type === 'professional' ? task.related_entity_id : null;
+
+        return task.lead_id ? (
           <div className="space-y-1.5">
             <button
               type="button"
               onClick={() => {
-                if (task.lead?.id) {
-                  void openLeadDetailById(task.lead.id);
+                if (task.lead_id) {
+                  void openLeadDetailById(task.lead_id);
                 }
               }}
               className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
@@ -1156,7 +1159,7 @@ export function EnhancedTaskTable({
               <div className="flex items-center gap-2">
                 <User className="h-3 w-3 text-primary shrink-0" />
                 <span className="text-sm font-medium text-primary group-hover:underline truncate">
-                  {task.lead.name}
+                  {task.lead?.name || leads.find(l => l.id === task.lead_id)?.name || 'View Lead'}
                 </span>
               </div>
             </button>
@@ -1165,13 +1168,28 @@ export function EnhancedTaskTable({
               <Phone className="h-3 w-3 shrink-0" />
               <span className="-ml-1">
                 <PhoneLink
-                  phone={task.lead.phone}
+                  phone={task.lead?.phone || leads.find(l => l.id === task.lead_id)?.phone}
                   className="inline-flex items-center rounded px-1 py-0.5 hover:bg-muted/50"
                 />
               </span>
             </div>
 
-            <Badge variant="outline" className="text-xs">Lead</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">Lead</Badge>
+              {linkedProfessionalId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onProfessionalClick) onProfessionalClick(linkedProfessionalId);
+                    else navigate(`/professionals?view=${linkedProfessionalId}`);
+                  }}
+                  title="View Professional Details"
+                  className="text-muted-foreground hover:text-purple-600 cursor-pointer"
+                >
+                  <UserCheck className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         ) : task.related_entity_type && task.related_entity_id ? (
           <button 
@@ -1236,6 +1254,7 @@ export function EnhancedTaskTable({
         ) : (
           <span className="text-muted-foreground">-</span>
         );
+      }
       case "sitePlusCode": {
         const plusCodeFromLead = task.lead?.site_plus_code || null;
         const plusCodeFromCustomer =
