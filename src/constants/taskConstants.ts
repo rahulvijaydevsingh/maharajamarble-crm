@@ -78,6 +78,7 @@ export const RECURRENCE_END_TYPES = [
 export const SNOOZE_PRESETS = [
   { value: "later_today", label: "Later Today (+4 hours)", hours: 4 },
   { value: "tomorrow", label: "Tomorrow (same time)", hours: 24 },
+  { value: "2_days", label: "2 Days (same time)", hours: 48 },
   { value: "next_week", label: "Next Week (same day/time)", hours: 168 },
   { value: "15_min", label: "15 minutes", hours: 0.25 },
   { value: "30_min", label: "30 minutes", hours: 0.5 },

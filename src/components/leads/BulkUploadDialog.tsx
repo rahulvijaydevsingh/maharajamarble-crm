@@ -545,11 +545,14 @@ export function BulkUploadDialog({
         }
 
         // Check for duplicates (primary phone)
-        const isDuplicate = existingPhones.has(phone);
+        const phoneMatch = existingPhones.get(phone);
+        const isDuplicate = !!phoneMatch && !phoneMatch.isProfessionalMatch;
         let duplicateInfo = "";
         if (isDuplicate) {
-          duplicateInfo = existingPhones.get(phone) || "Existing lead";
+          duplicateInfo = phoneMatch!.label;
           warnings.push(`Duplicate: ${duplicateInfo}`);
+        } else if (phoneMatch?.isProfessionalMatch) {
+          warnings.push(`Will link to existing professional: ${phoneMatch.label}`);
         }
 
         // Validate email
@@ -640,25 +643,26 @@ export function BulkUploadDialog({
     }
   };
 
-  const fetchExistingPhones = async (): Promise<Map<string, string>> => {
-    // Checks leads, professionals, AND customers.
+  const fetchExistingPhones = async (): Promise<Map<string, { label: string; isProfessionalMatch: boolean }>> => {
     const [leadsRes, professionalsRes, customersRes] = await Promise.all([
       supabase.from("leads").select("phone, alternate_phone, name"),
       supabase.from("professionals").select("phone, alternate_phone, name, professional_type"),
       supabase.from("customers").select("phone, alternate_phone, name"),
     ]);
-    const map = new Map<string, string>();
-    leadsRes.data?.forEach((lead: any) => {
-      if (lead.phone) map.set(lead.phone, `Lead: ${lead.name}`);
-      if (lead.alternate_phone) map.set(lead.alternate_phone, `Lead: ${lead.name}`);
-    });
+    const map = new Map<string, { label: string; isProfessionalMatch: boolean }>();
     professionalsRes.data?.forEach((p: any) => {
-      if (p.phone) map.set(p.phone, `Professional: ${p.name} (${p.professional_type})`);
-      if (p.alternate_phone) map.set(p.alternate_phone, `Professional: ${p.name} (${p.professional_type})`);
+      if (p.phone) map.set(p.phone, { label: `Professional: ${p.name} (${p.professional_type})`, isProfessionalMatch: true });
+      if (p.alternate_phone) map.set(p.alternate_phone, { label: `Professional: ${p.name} (${p.professional_type})`, isProfessionalMatch: true });
+    });
+    // Leads/customers populated after professionals, so a genuine duplicate
+    // lead/customer wins the flag if a phone happens to match both.
+    leadsRes.data?.forEach((lead: any) => {
+      if (lead.phone) map.set(lead.phone, { label: `Lead: ${lead.name}`, isProfessionalMatch: false });
+      if (lead.alternate_phone) map.set(lead.alternate_phone, { label: `Lead: ${lead.name}`, isProfessionalMatch: false });
     });
     customersRes.data?.forEach((c: any) => {
-      if (c.phone) map.set(c.phone, `Customer: ${c.name}`);
-      if (c.alternate_phone) map.set(c.alternate_phone, `Customer: ${c.name}`);
+      if (c.phone) map.set(c.phone, { label: `Customer: ${c.name}`, isProfessionalMatch: false });
+      if (c.alternate_phone) map.set(c.alternate_phone, { label: `Customer: ${c.name}`, isProfessionalMatch: false });
     });
     return map;
   };
@@ -689,6 +693,7 @@ export function BulkUploadDialog({
     let errors = 0;
     let professionalsCreated = 0;
     let professionalsLinked = 0;
+    const importProfessionalCache = new Map<string, string>(); // phone -> professional_id, this run only
 
     for (let i = 0; i < validLeads.length; i++) {
       const lead = validLeads[i];
@@ -730,36 +735,71 @@ export function BulkUploadDialog({
           // professional-category (mirrors manual Add Lead flow).
           let primaryProfessionalId: string | null = null;
           if (isProfessionalDesignation(lead.designation) && lead.phone) {
-            const { data: existingProfessional } = await supabase
-              .from("professionals")
-              .select("id")
-              .or(`phone.eq.${lead.phone},alternate_phone.eq.${lead.phone}`)
-              .limit(1);
-
-            if (existingProfessional && existingProfessional.length > 0) {
-              primaryProfessionalId = existingProfessional[0].id;
+            if (importProfessionalCache.has(lead.phone)) {
+              primaryProfessionalId = importProfessionalCache.get(lead.phone)!;
               professionalsLinked++;
             } else {
-              const { data: insertedProfessional } = await supabase
+              const { data: existingProfessional, error: findError } = await supabase
                 .from("professionals")
-                .insert([{
-                  name: lead.name,
-                  phone: lead.phone,
-                  alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
-                  email: lead.email || null,
-                  address: lead.address || null,
-                  professional_type: lead.designation,
-                  status: "active",
-                  priority: 3,
-                  assigned_to: lead.assigned_to,
-                  site_plus_code: lead.site_plus_code || null,
-                  added_via_lead_id: insertedLead?.id || null,
-                }])
                 .select("id")
-                .single();
-              if (insertedProfessional) {
-                primaryProfessionalId = insertedProfessional.id;
-                professionalsCreated++;
+                .or(`phone.eq.${lead.phone},alternate_phone.eq.${lead.phone}`)
+                .limit(1);
+
+              if (findError) {
+                console.error("BulkUpload: Failed to check existing professional:", findError);
+              }
+
+              if (existingProfessional && existingProfessional.length > 0) {
+                primaryProfessionalId = existingProfessional[0].id;
+                professionalsLinked++;
+              } else {
+                const { data: insertedProfessional, error: insertError } = await supabase
+                  .from("professionals")
+                  .insert([{
+                    name: lead.name,
+                    phone: lead.phone,
+                    alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
+                    email: lead.email || null,
+                    address: lead.address || null,
+                    professional_type: lead.designation,
+                    status: "active",
+                    priority: 3,
+                    assigned_to: lead.assigned_to,
+                    site_plus_code: lead.site_plus_code || null,
+                    added_via_lead_id: insertedLead?.id || null,
+                  }])
+                  .select("id")
+                  .single();
+
+                if (insertError) {
+                  console.error("BulkUpload: Failed to insert professional:", insertError);
+                }
+
+                if (insertedProfessional) {
+                  primaryProfessionalId = insertedProfessional.id;
+                  professionalsCreated++;
+                }
+              }
+              if (primaryProfessionalId) {
+                importProfessionalCache.set(lead.phone, primaryProfessionalId);
+              }
+            }
+
+            if (primaryProfessionalId && insertedLead?.id) {
+              const { error: upsertError } = await supabase
+                .from("lead_professionals")
+                .upsert(
+                  {
+                    lead_id: insertedLead.id,
+                    professional_id: primaryProfessionalId,
+                    is_primary_contact: true,
+                    contact_designation: lead.designation,
+                  },
+                  { onConflict: "lead_id,professional_id" }
+                );
+
+              if (upsertError) {
+                console.error("BulkUpload: Failed to upsert lead_professionals relation:", upsertError);
               }
             }
           }

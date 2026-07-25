@@ -280,6 +280,8 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       const primaryPhoneNorm = normalizePhone(primaryContact.phone);
       let primaryProfessionalId: string | null = null;
       const createdPhones = new Set<string>();
+      const linkedProfessionalIds = new Set<string>();
+      const failedPhones = new Set<string>();
 
       for (const c of contacts) {
         if (!isProfessionalDesignation(c.designation)) continue;
@@ -289,47 +291,113 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         createdPhones.add(phone);
         const isPrimaryContact = phone === primaryPhoneNorm;
 
-        const { data: existing } = await supabase
-          .from("professionals")
-          .select("id, name")
-          .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
-          .limit(1);
+        try {
+          const { data: existing, error: findError } = await supabase
+            .from("professionals")
+            .select("id, name")
+            .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
+            .limit(1);
 
-        if (existing && existing.length > 0) {
-          if (isPrimaryContact) primaryProfessionalId = existing[0].id;
+          if (findError) throw findError;
+
+          let professionalId: string | null = null;
+
+          if (existing && existing.length > 0) {
+            professionalId = existing[0].id;
+            if (isPrimaryContact) primaryProfessionalId = existing[0].id;
+            toast({
+              title: "Linked to existing professional",
+              description: `${c.name || existing[0].name} matches an existing Professional (${existing[0].name}).`,
+            });
+          } else {
+            const { data: insertedProfessional, error: insertError } = await supabase
+              .from("professionals")
+              .insert([{
+                name: c.name,
+                phone,
+                alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+                email: c.email || null,
+                firm_name: c.firmName || null,
+                address: siteLocation || null,
+                professional_type: c.designation,
+                status: "active",
+                priority: 3,
+                assigned_to: assignedToName,
+                site_plus_code: sitePlusCode || null,
+                added_via_lead_id: lead.id,
+              }])
+              .select("id")
+              .single();
+
+            if (insertError) throw insertError;
+
+            if (insertedProfessional?.id) {
+              professionalId = insertedProfessional.id;
+              if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
+              toast({
+                title: "Professional record created",
+                description: `${c.name} has been added to your Professionals database.`,
+              });
+            }
+          }
+
+          if (professionalId) {
+            linkedProfessionalIds.add(professionalId);
+            const { error: upsertError } = await supabase
+              .from("lead_professionals")
+              .upsert(
+                {
+                  lead_id: lead.id,
+                  professional_id: professionalId,
+                  is_primary_contact: isPrimaryContact,
+                  contact_designation: c.designation,
+                },
+                { onConflict: "lead_id,professional_id" }
+              );
+
+            if (upsertError) throw upsertError;
+          }
+        } catch (err: any) {
+          console.error("Failed to link professional contact:", err);
+          failedPhones.add(phone);
           toast({
-            title: "Linked to existing professional",
-            description: `${c.name || existing[0].name} matches an existing Professional (${existing[0].name}).`,
+            title: "Failed to link professional",
+            description: `An error occurred while linking professional contact (${c.name}).`,
+            variant: "destructive",
           });
-          continue;
         }
+      }
 
-        const { data: insertedProfessional } = await supabase
+      // Drop links for professionals no longer represented among this
+      // lead's current contacts (designation changed away, or contact removed).
+      // If any contact failed to process above, retrieve their professional record ID
+      // and exclude it from the stale cleanup list to prevent premature deletion.
+      let failedProfessionalIds: string[] = [];
+      if (failedPhones.size > 0) {
+        const failedPhonesArray = Array.from(failedPhones);
+        const orConditions = failedPhonesArray.map(p => `phone.eq.${p},alternate_phone.eq.${p}`).join(",");
+        const { data: failedProfs } = await supabase
           .from("professionals")
-          .insert([{
-            name: c.name,
-            phone,
-            alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-            email: c.email || null,
-            firm_name: c.firmName || null,
-            address: siteLocation || null,
-            professional_type: c.designation,
-            status: "active",
-            priority: 3,
-            assigned_to: assignedToName,
-            site_plus_code: sitePlusCode || null,
-            added_via_lead_id: lead.id,
-          }])
           .select("id")
-          .single();
-
-        if (insertedProfessional?.id) {
-          if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
-          toast({
-            title: "Professional record created",
-            description: `${c.name} has been added to your Professionals database.`,
-          });
+          .or(orConditions);
+        if (failedProfs && failedProfs.length > 0) {
+          failedProfessionalIds = failedProfs.map(p => p.id);
         }
+      }
+
+      const { data: existingLinks } = await supabase
+        .from("lead_professionals")
+        .select("professional_id")
+        .eq("lead_id", lead.id);
+      const staleProfessionalIds = (existingLinks || [])
+        .map((r) => r.professional_id)
+        .filter((id) => !linkedProfessionalIds.has(id) && !failedProfessionalIds.includes(id));
+      if (staleProfessionalIds.length > 0) {
+        await supabase
+          .from("lead_professionals")
+          .delete()
+          .eq("lead_id", lead.id)
+          .in("professional_id", staleProfessionalIds);
       }
 
       // Link the lead's still-unlinked task to the primary professional

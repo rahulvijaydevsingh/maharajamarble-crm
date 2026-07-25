@@ -138,33 +138,52 @@ const Leads = () => {
             .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
             .limit(1);
 
+          let professionalId: string | null = null;
+
           if (existing && existing.length > 0) {
+            professionalId = existing[0].id;
             if (isPrimaryContact) primaryProfessionalId = existing[0].id;
-            continue;
+          } else {
+            const { data: insertedProfessional } = await supabase
+              .from("professionals")
+              .insert([
+                {
+                  name: c.name,
+                  phone,
+                  alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+                  email: c.email || null,
+                  firm_name: c.firmName || null,
+                  address: formData.siteLocation || null,
+                  professional_type: c.designation,
+                  status: "active",
+                  priority: 3,
+                  assigned_to: assignedToName,
+                  site_plus_code: formData.sitePlusCode || null,
+                  added_via_lead_id: newLead?.id || null,
+                },
+              ])
+              .select("id")
+              .single();
+
+            if (insertedProfessional) {
+              professionalId = insertedProfessional.id;
+              if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
+            }
           }
 
-          const { data: insertedProfessional } = await supabase
-            .from("professionals")
-            .insert([
-              {
-                name: c.name,
-                phone,
-                alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-                email: c.email || null,
-                firm_name: c.firmName || null,
-                address: formData.siteLocation || null,
-                professional_type: c.designation,
-                status: "active",
-                priority: 3,
-                assigned_to: assignedToName,
-                site_plus_code: formData.sitePlusCode || null,
-                added_via_lead_id: newLead?.id || null,
-              },
-            ])
-            .select("id")
-            .single();
-
-          if (isPrimaryContact && insertedProfessional) primaryProfessionalId = insertedProfessional.id;
+          if (professionalId && newLead?.id) {
+            await supabase
+              .from("lead_professionals")
+              .upsert(
+                {
+                  lead_id: newLead.id,
+                  professional_id: professionalId,
+                  is_primary_contact: isPrimaryContact,
+                  contact_designation: c.designation,
+                },
+                { onConflict: "lead_id,professional_id" }
+              );
+          }
         }
       }
 

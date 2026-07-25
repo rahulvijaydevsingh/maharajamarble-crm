@@ -75,7 +75,9 @@ import {
   Share2,
   UserCheck,
   ShieldCheck,
+  Users,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Professional, useProfessionals } from '@/hooks/useProfessionals';
 import { useActivityLog, useLogActivity, ActivityLogEntry } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -490,6 +492,23 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'Completed': { label: 'Completed', className: 'bg-green-100 text-green-700' },
 };
 
+// Local shared helper to fetch linked lead IDs for the professional
+function useProfessionalLeadIds(professionalId: string) {
+  const [linkedLeadIds, setLinkedLeadIds] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('lead_professionals')
+      .select('lead_id')
+      .eq('professional_id', professionalId)
+      .then(({ data }) => {
+        if (!cancelled) setLinkedLeadIds((data || []).map((r) => r.lead_id));
+      });
+    return () => { cancelled = true; };
+  }, [professionalId]);
+  return linkedLeadIds;
+}
+
 function ProfessionalTasksTab({ professional }: { professional: Professional }) {
   const { openTask } = useTaskDetailModal();
   const { tasks, loading, updateTask, addTask, deleteTask, refetch } = useTasks();
@@ -502,9 +521,12 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
 
+  const linkedLeadIds = useProfessionalLeadIds(professional.id);
+
   const professionalTasks = useMemo(() => {
     let filtered = tasks.filter(t =>
-      t.related_entity_type === 'professional' && t.related_entity_id === professional.id
+      (t.related_entity_type === 'professional' && t.related_entity_id === professional.id) ||
+      (t.lead_id && linkedLeadIds.includes(t.lead_id))
     );
     switch (filter) {
       case 'open': filtered = filtered.filter(t => t.status !== 'Completed'); break;
@@ -517,7 +539,7 @@ function ProfessionalTasksTab({ professional }: { professional: Professional }) 
         break;
     }
     return filtered.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-  }, [tasks, professional.id, filter]);
+  }, [tasks, professional.id, filter, linkedLeadIds]);
 
   const handleComplete = async (taskId: string, isCompleted: boolean) => {
     if (isCompleted) {
@@ -712,11 +734,17 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [savingReminder, setSavingReminder] = useState(false);
 
+  const linkedLeadIds = useProfessionalLeadIds(professional.id);
+
   const professionalTaskReminders = useMemo(() => {
     return tasks
-      .filter((t) => t.related_entity_type === 'professional' && t.related_entity_id === professional.id && !!t.reminder && t.status !== 'Completed')
+      .filter((t) =>
+        ((t.related_entity_type === 'professional' && t.related_entity_id === professional.id) ||
+         (t.lead_id && linkedLeadIds.includes(t.lead_id))) &&
+        !!t.reminder && t.status !== 'Completed'
+      )
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-  }, [tasks, professional.id]);
+  }, [tasks, professional.id, linkedLeadIds]);
 
   const handleAddReminder = async (data: any) => {
     if (savingReminder) return;
@@ -874,6 +902,75 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
         overlayClassName="z-[100]"
       />
     </div>
+  );
+}
+
+function ProfessionalLeadsTab({ professional }: { professional: Professional }) {
+  const navigate = useNavigate();
+  const [links, setLinks] = useState<{ lead_id: string; is_primary_contact: boolean; contact_designation: string | null }[]>([]);
+  const [leadsById, setLeadsById] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data: linkRows } = await supabase
+        .from('lead_professionals')
+        .select('lead_id, is_primary_contact, contact_designation')
+        .eq('professional_id', professional.id);
+      if (cancelled) return;
+      setLinks(linkRows || []);
+
+      const leadIds = (linkRows || []).map((r) => r.lead_id);
+      if (leadIds.length > 0) {
+        const { data: leadsData } = await supabase
+          .from('leads')
+          .select('id, name, phone, status, site_location, address, created_at')
+          .in('id', leadIds);
+        if (!cancelled) {
+          const byId: Record<string, any> = {};
+          (leadsData || []).forEach((l) => { byId[l.id] = l; });
+          setLeadsById(byId);
+        }
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [professional.id]);
+
+  if (loading) return <div className="text-sm text-muted-foreground p-4">Loading leads…</div>;
+  if (links.length === 0) return <div className="text-sm text-muted-foreground p-4">No leads linked to this professional yet.</div>;
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead>Phone</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Site Location</TableHead>
+          <TableHead>Role</TableHead>
+          <TableHead>Added</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {links.map((link) => {
+          const lead = leadsById[link.lead_id];
+          if (!lead) return null;
+          return (
+            <TableRow key={link.lead_id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/leads?view=${lead.id}`)}>
+              <TableCell className="font-medium">{lead.name}</TableCell>
+              <TableCell>{lead.phone}</TableCell>
+              <TableCell><Badge variant="outline">{lead.status}</Badge></TableCell>
+              <TableCell>{lead.site_location || lead.address || '—'}</TableCell>
+              <TableCell>{link.is_primary_contact ? 'Primary contact' : (link.contact_designation || 'Contact')}</TableCell>
+              <TableCell>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}</TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -1120,6 +1217,9 @@ export function ProfessionalDetailView({
                 <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
                   <User className="h-4 w-4" /><span className="hidden sm:inline">Profile</span>
                 </TabsTrigger>
+                <TabsTrigger value="leads" className="gap-1.5 data-[state=active]:bg-muted">
+                  <Users className="h-4 w-4" /><span className="hidden sm:inline">Leads</span>
+                </TabsTrigger>
                 <TabsTrigger value="tasks" className="gap-1.5 data-[state=active]:bg-muted">
                   <CheckSquare className="h-4 w-4" /><span className="hidden sm:inline">Tasks</span>
                 </TabsTrigger>
@@ -1147,6 +1247,9 @@ export function ProfessionalDetailView({
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
               <TabsContent value="profile" className="m-0 h-full">
                 <ProfessionalProfileTab professional={localProfessional} onEdit={() => onEdit?.(localProfessional)} />
+              </TabsContent>
+              <TabsContent value="leads" className="m-0 h-full">
+                <ProfessionalLeadsTab professional={localProfessional} />
               </TabsContent>
               <TabsContent value="tasks" className="m-0 h-full">
                 <ProfessionalTasksTab professional={localProfessional} />
