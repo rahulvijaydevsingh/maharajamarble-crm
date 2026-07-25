@@ -34,6 +34,7 @@ import { ScrollableTableContainer } from "@/components/shared/ScrollableTableCon
 import { ColumnConfig } from "@/hooks/useTablePreferences";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
+import { DESIGNATIONS } from "@/constants/leadConstants";
 
 interface DateRange {
   from: Date | undefined;
@@ -62,6 +63,9 @@ interface LeadsTableContainerProps {
   setAssignedToFilter: (values: string[]) => void;
   createdByFilter: string[];
   setCreatedByFilter: (values: string[]) => void;
+  createdByDisplayMap?: Map<string, string>;
+  designationFilter: string[];
+  setDesignationFilter: (values: string[]) => void;
   createdDateRange: DateRange;
   setCreatedDateRange: (range: DateRange) => void;
   lastFollowUpRange: DateRange;
@@ -89,6 +93,35 @@ interface LeadsTableContainerProps {
   handleAddToCustomer: (lead: Lead) => void;
 }
 
+function FilterableHeader({
+  sortField,
+  label,
+  options,
+  selected,
+  onSelectionChange,
+  placeholder,
+  renderLabel,
+  SortableHeader,
+  MultiSelectFilter,
+}: {
+  sortField?: SortField;
+  label: string;
+  options: string[];
+  selected: string[];
+  onSelectionChange: (v: string[]) => void;
+  placeholder: string;
+  renderLabel?: (key: string) => string;
+  SortableHeader: React.FC<{ field: SortField; children: React.ReactNode }>;
+  MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string; renderLabel?: (option: string) => string }>;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      {sortField ? <SortableHeader field={sortField}>{label}</SortableHeader> : <span>{label}</span>}
+      <MultiSelectFilter options={options} selected={selected} onSelectionChange={onSelectionChange} placeholder={placeholder} renderLabel={renderLabel} />
+    </div>
+  );
+}
+
 export function LeadsTableContainer({
   filteredLeads,
   selectedLeads,
@@ -109,6 +142,9 @@ export function LeadsTableContainer({
   setAssignedToFilter,
   createdByFilter,
   setCreatedByFilter,
+  createdByDisplayMap,
+  designationFilter,
+  setDesignationFilter,
   createdDateRange,
   setCreatedDateRange,
   lastFollowUpRange,
@@ -147,7 +183,32 @@ export function LeadsTableContainer({
       case "email":
         return <SortableHeader field="email">{columnLabel}</SortableHeader>;
       case "designation":
-        return columnLabel;
+        return (
+          <FilterableHeader
+            label={columnLabel}
+            options={DESIGNATIONS.map(d => d.value)}
+            selected={designationFilter}
+            onSelectionChange={setDesignationFilter}
+            placeholder="Filter by Designation"
+            renderLabel={(key) => DESIGNATIONS.find(d => d.value === key)?.label || key}
+            SortableHeader={SortableHeader}
+            MultiSelectFilter={MultiSelectFilter}
+          />
+        );
+      case "createdBy":
+        return (
+          <FilterableHeader
+            sortField="created_by"
+            label={columnLabel}
+            options={uniqueCreatedBy}
+            selected={createdByFilter}
+            onSelectionChange={setCreatedByFilter}
+            placeholder="Filter by Creator"
+            renderLabel={(key) => createdByDisplayMap?.get(key) || key}
+            SortableHeader={SortableHeader}
+            MultiSelectFilter={MultiSelectFilter}
+          />
+        );
       case "sitePlusCode":
         return columnLabel;
       case "source":
@@ -275,8 +336,10 @@ export function LeadsTableContainer({
         );
       case "email":
         return lead.email || "-";
+      case "createdBy":
+        return createdByDisplayMap?.get(lead.created_by) || lead.created_by || "-";
       case "designation":
-        return <span className="capitalize">{lead.designation}</span>;
+        return <span>{DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation}</span>;
       case "sitePlusCode":
         return (
           <PlusCodeLink

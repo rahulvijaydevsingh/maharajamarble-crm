@@ -25,6 +25,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Trash2, Plus, GripVertical, Copy } from "lucide-react";
 import { SavedFilter, FilterConfig, SavedFilterInsert } from "@/hooks/useSavedFilters";
 import { Calendar } from "@/components/ui/calendar";
+import { DESIGNATIONS } from "@/constants/leadConstants";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
@@ -48,6 +49,8 @@ interface SavedFilterDialogProps {
   uniqueSources: string[];
   uniqueAssignedTo: string[];
   uniqueMaterials: string[];
+  uniqueCreatedBy: string[];
+  createdByDisplayMap: Map<string, string>;
 }
 
 // Organized field options by category
@@ -73,7 +76,7 @@ const FIELD_OPTIONS = [
   
   // Assignment & Ownership
   { value: "assigned_to", label: "Assigned To", type: "select", category: "Assignment" },
-  { value: "created_by", label: "Created By", type: "text", category: "Assignment" },
+  { value: "created_by", label: "Created By", type: "select", category: "Assignment" },
   
   // Dates & Timeline
   { value: "created_at", label: "Date Created", type: "date", category: "Dates" },
@@ -171,6 +174,8 @@ export function SavedFilterDialog({
   uniqueSources,
   uniqueAssignedTo,
   uniqueMaterials,
+  uniqueCreatedBy,
+  createdByDisplayMap,
 }: SavedFilterDialogProps) {
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
@@ -301,18 +306,14 @@ export function SavedFilterDialog({
         return uniqueSources.map((s) => ({ value: s, label: s }));
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
+      case "created_by":
+        return uniqueCreatedBy.map((c) => ({ value: c, label: createdByDisplayMap.get(c) || c }));
       case "materials":
         return uniqueMaterials.map((m) => ({ value: m, label: m }));
       case "construction_stage":
         return CONSTRUCTION_STAGES;
       case "designation":
-        return [
-          { value: "owner", label: "Owner" },
-          { value: "contractor", label: "Contractor" },
-          { value: "architect", label: "Architect" },
-          { value: "engineer", label: "Engineer" },
-          { value: "other", label: "Other" },
-        ];
+        return DESIGNATIONS.map((d) => ({ value: d.value, label: d.label }));
       case "kit_status":
         return [
           { value: "none", label: "None" },

@@ -209,6 +209,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [materialsFilter, setMaterialsFilter] = useState<string[]>([]);
   const [createdByFilter, setCreatedByFilter] = useState<string[]>([]);
+  const [designationFilter, setDesignationFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [lastFollowUpRange, setLastFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [nextFollowUpRange, setNextFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
@@ -224,6 +225,20 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   // Active saved filter
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
   const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
+
+  // Build staff-based creator display map
+  const createdByDisplayMap = useMemo(() => {
+    const displayMap = new Map<string, string>();
+    for (const email of uniqueCreatedBy) {
+      if (!email) continue;
+      const lower = email.toLowerCase();
+      const staffMatch = staffMembers.find(
+        s => s.email && s.email.toLowerCase() === lower
+      );
+      displayMap.set(email, staffMatch?.name || email);
+    }
+    return displayMap;
+  }, [uniqueCreatedBy, staffMembers]);
   
   // Filter dialogs
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
@@ -380,6 +395,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       );
 
       const createdByMatch = createdByFilter.length === 0 || createdByFilter.includes(lead.created_by);
+      const designationMatch = designationFilter.length === 0 || designationFilter.includes(lead.designation);
 
       // Date range helper: supports single-date selection, inclusive end-of-day, auto-swap
       const dateInRange = (dateStr: string | null, range: DateRange): boolean => {
@@ -415,7 +431,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       const advancedMatch = activeAdvancedRules.length === 0 ||
         evaluateRules(lead as Record<string, any>, activeAdvancedRules, { getLeadTasks });
       return searchMatch && statusMatch && assignedMatch && sourceMatch && priorityMatch && 
-             materialsMatch && createdByMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
+             materialsMatch && createdByMatch && designationMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
     });
 
     // Apply sorting
@@ -582,6 +598,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setSourceFilter([]);
     setPriorityFilter([]);
     setMaterialsFilter([]);
+    setCreatedByFilter([]);
+    setDesignationFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
     setLastFollowUpRange({ from: undefined, to: undefined });
     setNextFollowUpRange({ from: undefined, to: undefined });
@@ -1082,6 +1100,9 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           setAssignedToFilter={setAssignedToFilter}
           createdByFilter={createdByFilter}
           setCreatedByFilter={setCreatedByFilter}
+          createdByDisplayMap={createdByDisplayMap}
+          designationFilter={designationFilter}
+          setDesignationFilter={setDesignationFilter}
           createdDateRange={createdDateRange}
           setCreatedDateRange={setCreatedDateRange}
           lastFollowUpRange={lastFollowUpRange}
@@ -1123,6 +1144,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         uniqueSources={uniqueSources}
         uniqueAssignedTo={uniqueAssignedTo}
         uniqueMaterials={uniqueMaterials}
+        uniqueCreatedBy={uniqueCreatedBy}
+        createdByDisplayMap={createdByDisplayMap}
       />
 
       <ManageFiltersDialog
