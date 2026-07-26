@@ -337,9 +337,9 @@ export function LeadsTableContainer({
       case "email":
         return lead.email || "-";
       case "createdBy":
-        return createdByDisplayMap?.get(lead.created_by) || lead.created_by || "-";
+        return (lead.created_by ? (createdByDisplayMap?.get(lead.created_by) || lead.created_by) : "-");
       case "designation":
-        return <span>{DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation}</span>;
+        return <span>{lead.designation ? (DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation) : "-"}</span>;
       case "sitePlusCode":
         return (
           <PlusCodeLink

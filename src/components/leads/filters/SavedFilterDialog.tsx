@@ -307,7 +307,7 @@ export function SavedFilterDialog({
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
       case "created_by":
-        return uniqueCreatedBy.map((c) => ({ value: c, label: createdByDisplayMap.get(c) || c }));
+        return (uniqueCreatedBy || []).map((c) => ({ value: c, label: createdByDisplayMap?.get(c) || c }));
       case "materials":
         return uniqueMaterials.map((m) => ({ value: m, label: m }));
       case "construction_stage":

@@ -229,10 +229,10 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   // Build staff-based creator display map
   const createdByDisplayMap = useMemo(() => {
     const displayMap = new Map<string, string>();
-    for (const email of uniqueCreatedBy) {
+    for (const email of uniqueCreatedBy || []) {
       if (!email) continue;
       const lower = email.toLowerCase();
-      const staffMatch = staffMembers.find(
+      const staffMatch = (staffMembers || []).find(
         s => s.email && s.email.toLowerCase() === lower
       );
       displayMap.set(email, staffMatch?.name || email);
@@ -394,8 +394,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         ((lead.material_interests as string[]) || []).includes(material)
       );
 
-      const createdByMatch = createdByFilter.length === 0 || createdByFilter.includes(lead.created_by);
-      const designationMatch = designationFilter.length === 0 || designationFilter.includes(lead.designation);
+      const createdByMatch = (createdByFilter || []).length === 0 || (lead.created_by && (createdByFilter || []).includes(lead.created_by));
+      const designationMatch = (designationFilter || []).length === 0 || (lead.designation && (designationFilter || []).includes(lead.designation));
 
       // Date range helper: supports single-date selection, inclusive end-of-day, auto-swap
       const dateInRange = (dateStr: string | null, range: DateRange): boolean => {
