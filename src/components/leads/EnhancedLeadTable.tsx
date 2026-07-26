@@ -85,6 +85,7 @@ import { LeadsTableContainer } from "./LeadsTableContainer";
 import { SavedFilterDialog } from "./filters/SavedFilterDialog";
 import { ManageFiltersDialog } from "./filters/ManageFiltersDialog";
 import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
+import { DESIGNATIONS } from "@/constants/leadConstants";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { Lead, useLeads } from "@/hooks/useLeads";
 import { useDeletedLeads } from "@/hooks/useDeletedLeads";
@@ -325,6 +326,20 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     Array.from(new Set(leads.flatMap(lead => (lead.material_interests as string[]) || []))), [leads]);
   const uniqueCreatedBy = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
+
+  const uniqueDesignations = useMemo(() => {
+    const canonical = new Set(DESIGNATIONS.map(d => d.value));
+    const extra = new Set(
+      leads.map(l => l.designation).filter((d): d is string => !!d && !canonical.has(d))
+    );
+    return [...DESIGNATIONS.map(d => d.value), ...extra];
+  }, [leads]);
+
+  const designationLabel = useCallback((key: string): string => {
+    const known = DESIGNATIONS.find(d => d.value === key);
+    if (known) return known.label;
+    return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }, []);
 
   // Build staff-based creator display map
   const createdByDisplayMap = useMemo(() => {
@@ -796,12 +811,14 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     options, 
     selected, 
     onSelectionChange, 
-    placeholder 
+    placeholder,
+    renderLabel
   }: { 
     options: string[]; 
     selected: string[]; 
     onSelectionChange: (values: string[]) => void; 
     placeholder: string; 
+    renderLabel?: (option: string) => string;
   }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -825,7 +842,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
               onSelectionChange(checked ? [...selected, option] : selected.filter(s => s !== option));
             }}
           >
-            {option}
+            {renderLabel ? renderLabel(option) : option}
           </DropdownMenuCheckboxItem>
         ))}
         {selected.length > 0 && (
@@ -1114,6 +1131,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           uniqueAssignedTo={uniqueAssignedTo}
           assigneeDisplayMap={assigneeDisplayMap}
           uniqueCreatedBy={uniqueCreatedBy}
+          uniqueDesignations={uniqueDesignations}
+          designationLabel={designationLabel}
           statuses={statuses}
           priorities={priorities}
           SortableHeader={SortableHeader}
@@ -1146,6 +1165,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         uniqueMaterials={uniqueMaterials}
         uniqueCreatedBy={uniqueCreatedBy}
         createdByDisplayMap={createdByDisplayMap}
+        uniqueDesignations={uniqueDesignations}
       />
 
       <ManageFiltersDialog

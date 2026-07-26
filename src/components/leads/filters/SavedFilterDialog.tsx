@@ -51,6 +51,7 @@ interface SavedFilterDialogProps {
   uniqueMaterials: string[];
   uniqueCreatedBy: string[];
   createdByDisplayMap: Map<string, string>;
+  uniqueDesignations: string[];
 }
 
 // Organized field options by category
@@ -176,6 +177,7 @@ export function SavedFilterDialog({
   uniqueMaterials,
   uniqueCreatedBy,
   createdByDisplayMap,
+  uniqueDesignations,
 }: SavedFilterDialogProps) {
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
@@ -312,8 +314,17 @@ export function SavedFilterDialog({
         return uniqueMaterials.map((m) => ({ value: m, label: m }));
       case "construction_stage":
         return CONSTRUCTION_STAGES;
-      case "designation":
-        return DESIGNATIONS.map((d) => ({ value: d.value, label: d.label }));
+      case "designation": {
+        const getDesignationLabel = (key: string): string => {
+          const known = DESIGNATIONS.find(d => d.value === key);
+          if (known) return known.label;
+          return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        };
+        const items = uniqueDesignations && uniqueDesignations.length > 0
+          ? uniqueDesignations
+          : DESIGNATIONS.map(d => d.value);
+        return items.map((val) => ({ value: val, label: getDesignationLabel(val) }));
+      }
       case "kit_status":
         return [
           { value: "none", label: "None" },

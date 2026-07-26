@@ -77,6 +77,8 @@ interface LeadsTableContainerProps {
   uniqueAssignedTo: string[];
   assigneeDisplayMap?: Map<string, string>;
   uniqueCreatedBy: string[];
+  uniqueDesignations?: string[];
+  designationLabel?: (key: string) => string;
   statuses: Record<string, { label: string; className: string }>;
   priorities: Record<number, { label: string; color: string }>;
   SortableHeader: React.FC<{ field: SortField; children: React.ReactNode }>;
@@ -156,6 +158,8 @@ export function LeadsTableContainer({
   uniqueAssignedTo,
   assigneeDisplayMap,
   uniqueCreatedBy,
+  uniqueDesignations,
+  designationLabel,
   statuses,
   priorities,
   SortableHeader,
@@ -186,11 +190,11 @@ export function LeadsTableContainer({
         return (
           <FilterableHeader
             label={columnLabel}
-            options={DESIGNATIONS.map(d => d.value)}
+            options={uniqueDesignations || DESIGNATIONS.map(d => d.value)}
             selected={designationFilter}
             onSelectionChange={setDesignationFilter}
             placeholder="Filter by Designation"
-            renderLabel={(key) => DESIGNATIONS.find(d => d.value === key)?.label || key}
+            renderLabel={(key) => designationLabel ? designationLabel(key) : (DESIGNATIONS.find(d => d.value === key)?.label || key)}
             SortableHeader={SortableHeader}
             MultiSelectFilter={MultiSelectFilter}
           />
@@ -339,7 +343,7 @@ export function LeadsTableContainer({
       case "createdBy":
         return (lead.created_by ? (createdByDisplayMap?.get(lead.created_by) || lead.created_by) : "-");
       case "designation":
-        return <span>{lead.designation ? (DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation) : "-"}</span>;
+        return <span>{lead.designation ? (designationLabel ? designationLabel(lead.designation) : (DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation)) : "-"}</span>;
       case "sitePlusCode":
         return (
           <PlusCodeLink
