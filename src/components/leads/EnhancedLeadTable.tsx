@@ -225,20 +225,6 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   // Active saved filter
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
   const [activeAdvancedRules, setActiveAdvancedRules] = useState<AdvancedRule[]>([]);
-
-  // Build staff-based creator display map
-  const createdByDisplayMap = useMemo(() => {
-    const displayMap = new Map<string, string>();
-    for (const email of uniqueCreatedBy || []) {
-      if (!email) continue;
-      const lower = email.toLowerCase();
-      const staffMatch = (staffMembers || []).find(
-        s => s.email && s.email.toLowerCase() === lower
-      );
-      displayMap.set(email, staffMatch?.name || email);
-    }
-    return displayMap;
-  }, [uniqueCreatedBy, staffMembers]);
   
   // Filter dialogs
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
@@ -339,6 +325,20 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     Array.from(new Set(leads.flatMap(lead => (lead.material_interests as string[]) || []))), [leads]);
   const uniqueCreatedBy = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
+
+  // Build staff-based creator display map
+  const createdByDisplayMap = useMemo(() => {
+    const displayMap = new Map<string, string>();
+    for (const email of uniqueCreatedBy || []) {
+      if (!email) continue;
+      const lower = email.toLowerCase();
+      const staffMatch = (staffMembers || []).find(
+        s => s.email && s.email.toLowerCase() === lower
+      );
+      displayMap.set(email, staffMatch?.name || email);
+    }
+    return displayMap;
+  }, [uniqueCreatedBy, staffMembers]);
 
   // Build staff-based assignee filter (same pattern as Tasks)
   const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
