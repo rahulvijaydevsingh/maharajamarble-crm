@@ -85,6 +85,7 @@ import { LeadsTableContainer } from "./LeadsTableContainer";
 import { SavedFilterDialog } from "./filters/SavedFilterDialog";
 import { ManageFiltersDialog } from "./filters/ManageFiltersDialog";
 import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
+import { DESIGNATIONS } from "@/constants/leadConstants";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { Lead, useLeads } from "@/hooks/useLeads";
 import { useDeletedLeads } from "@/hooks/useDeletedLeads";
@@ -209,6 +210,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [materialsFilter, setMaterialsFilter] = useState<string[]>([]);
   const [createdByFilter, setCreatedByFilter] = useState<string[]>([]);
+  const [designationFilter, setDesignationFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [lastFollowUpRange, setLastFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [nextFollowUpRange, setNextFollowUpRange] = useState<DateRange>({ from: undefined, to: undefined });
@@ -325,6 +327,34 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const uniqueCreatedBy = useMemo(() => 
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
 
+  const uniqueDesignations = useMemo(() => {
+    const canonical = new Set(DESIGNATIONS.map(d => d.value));
+    const extra = new Set(
+      leads.map(l => l.designation).filter((d): d is string => !!d && !canonical.has(d))
+    );
+    return [...DESIGNATIONS.map(d => d.value), ...extra];
+  }, [leads]);
+
+  const designationLabel = useCallback((key: string): string => {
+    const known = DESIGNATIONS.find(d => d.value === key);
+    if (known) return known.label;
+    return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }, []);
+
+  // Build staff-based creator display map
+  const createdByDisplayMap = useMemo(() => {
+    const displayMap = new Map<string, string>();
+    for (const email of uniqueCreatedBy || []) {
+      if (!email) continue;
+      const lower = email.toLowerCase();
+      const staffMatch = (staffMembers || []).find(
+        s => s.email && s.email.toLowerCase() === lower
+      );
+      displayMap.set(email, staffMatch?.name || email);
+    }
+    return displayMap;
+  }, [uniqueCreatedBy, staffMembers]);
+
   // Build staff-based assignee filter (same pattern as Tasks)
   const { uniqueAssignedTo, assigneeDisplayMap } = useMemo(() => {
     const displayMap = new Map<string, string>();
@@ -379,7 +409,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         ((lead.material_interests as string[]) || []).includes(material)
       );
 
-      const createdByMatch = createdByFilter.length === 0 || createdByFilter.includes(lead.created_by);
+      const createdByMatch = (createdByFilter || []).length === 0 || (lead.created_by && (createdByFilter || []).includes(lead.created_by));
+      const designationMatch = (designationFilter || []).length === 0 || (lead.designation && (designationFilter || []).includes(lead.designation));
 
       // Date range helper: supports single-date selection, inclusive end-of-day, auto-swap
       const dateInRange = (dateStr: string | null, range: DateRange): boolean => {
@@ -415,7 +446,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       const advancedMatch = activeAdvancedRules.length === 0 ||
         evaluateRules(lead as Record<string, any>, activeAdvancedRules, { getLeadTasks });
       return searchMatch && statusMatch && assignedMatch && sourceMatch && priorityMatch && 
-             materialsMatch && createdByMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
+             materialsMatch && createdByMatch && designationMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
     });
 
     // Apply sorting
@@ -582,6 +613,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setSourceFilter([]);
     setPriorityFilter([]);
     setMaterialsFilter([]);
+    setCreatedByFilter([]);
+    setDesignationFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
     setLastFollowUpRange({ from: undefined, to: undefined });
     setNextFollowUpRange({ from: undefined, to: undefined });
@@ -778,12 +811,14 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     options, 
     selected, 
     onSelectionChange, 
-    placeholder 
+    placeholder,
+    renderLabel
   }: { 
     options: string[]; 
     selected: string[]; 
     onSelectionChange: (values: string[]) => void; 
     placeholder: string; 
+    renderLabel?: (option: string) => string;
   }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -807,7 +842,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
               onSelectionChange(checked ? [...selected, option] : selected.filter(s => s !== option));
             }}
           >
-            {option}
+            {renderLabel ? renderLabel(option) : option}
           </DropdownMenuCheckboxItem>
         ))}
         {selected.length > 0 && (
@@ -1082,6 +1117,9 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           setAssignedToFilter={setAssignedToFilter}
           createdByFilter={createdByFilter}
           setCreatedByFilter={setCreatedByFilter}
+          createdByDisplayMap={createdByDisplayMap}
+          designationFilter={designationFilter}
+          setDesignationFilter={setDesignationFilter}
           createdDateRange={createdDateRange}
           setCreatedDateRange={setCreatedDateRange}
           lastFollowUpRange={lastFollowUpRange}
@@ -1093,6 +1131,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           uniqueAssignedTo={uniqueAssignedTo}
           assigneeDisplayMap={assigneeDisplayMap}
           uniqueCreatedBy={uniqueCreatedBy}
+          uniqueDesignations={uniqueDesignations}
+          designationLabel={designationLabel}
           statuses={statuses}
           priorities={priorities}
           SortableHeader={SortableHeader}
@@ -1123,6 +1163,9 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         uniqueSources={uniqueSources}
         uniqueAssignedTo={uniqueAssignedTo}
         uniqueMaterials={uniqueMaterials}
+        uniqueCreatedBy={uniqueCreatedBy}
+        createdByDisplayMap={createdByDisplayMap}
+        uniqueDesignations={uniqueDesignations}
       />
 
       <ManageFiltersDialog

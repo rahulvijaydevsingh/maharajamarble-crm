@@ -105,6 +105,8 @@ export const DESIGNATIONS: DesignationOption[] = [
   { value: "interior_designer", label: "Interior Designer", category: "professional" },
   { value: "site_supervisor", label: "Site Supervisor", category: "professional" },
   { value: "real_estate_developer", label: "Real Estate Developer", category: "professional" },
+  { value: "kitchen_maker", label: "Kitchen Maker", category: "professional" },
+  { value: "consultant", label: "Consultant", category: "professional" },
   { value: "other", label: "Other", category: "individual" },
 ];
 
