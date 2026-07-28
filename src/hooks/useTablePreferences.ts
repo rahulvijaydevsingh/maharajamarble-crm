@@ -139,6 +139,7 @@ export function useTablePreferences(tableName: string) {
   // Save preferences to database
   const savePreferences = useCallback(
     async (newColumns: ColumnConfig[]) => {
+      const previousColumns = [...columns];
       // Optimistically update local columns state first
       setColumns(newColumns);
 
@@ -171,11 +172,13 @@ export function useTablePreferences(tableName: string) {
         }
       } catch (error) {
         console.error("Error saving table preferences:", error);
+        // Rollback to previous state on database save failure
+        setColumns(previousColumns);
       } finally {
         setSaving(false);
       }
     },
-    [user, tableName]
+    [user, tableName, columns]
   );
 
   // Reset to defaults

@@ -479,7 +479,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     return result;
   }, [leads, searchTerm, statusFilter, assignedToFilter, sourceFilter, priorityFilter, 
-      materialsFilter, constructionStageFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, activeAdvancedRules]);
+      materialsFilter, constructionStageFilter, createdByFilter, designationFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, activeAdvancedRules]);
 
   // Filter counts for saved filters
   const getFilterCount = (filter: SavedFilter): number => {
