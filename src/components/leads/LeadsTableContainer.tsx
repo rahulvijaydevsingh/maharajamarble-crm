@@ -34,7 +34,8 @@ import { ScrollableTableContainer } from "@/components/shared/ScrollableTableCon
 import { ColumnConfig } from "@/hooks/useTablePreferences";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
-import { DESIGNATIONS } from "@/constants/leadConstants";
+import { DESIGNATIONS, CONSTRUCTION_STAGES } from "@/constants/leadConstants";
+import { FilterableHeader } from "@/components/shared/FilterableHeader";
 
 interface DateRange {
   from: Date | undefined;
@@ -55,6 +56,8 @@ interface LeadsTableContainerProps {
   setSourceFilter: (values: string[]) => void;
   materialsFilter: string[];
   setMaterialsFilter: (values: string[]) => void;
+  constructionStageFilter: string[];
+  setConstructionStageFilter: (values: string[]) => void;
   statusFilter: string[];
   setStatusFilter: (values: string[]) => void;
   priorityFilter: string[];
@@ -95,35 +98,6 @@ interface LeadsTableContainerProps {
   handleAddToCustomer: (lead: Lead) => void;
 }
 
-function FilterableHeader({
-  sortField,
-  label,
-  options,
-  selected,
-  onSelectionChange,
-  placeholder,
-  renderLabel,
-  SortableHeader,
-  MultiSelectFilter,
-}: {
-  sortField?: SortField;
-  label: string;
-  options: string[];
-  selected: string[];
-  onSelectionChange: (v: string[]) => void;
-  placeholder: string;
-  renderLabel?: (key: string) => string;
-  SortableHeader: React.FC<{ field: SortField; children: React.ReactNode }>;
-  MultiSelectFilter: React.FC<{ options: string[]; selected: string[]; onSelectionChange: (values: string[]) => void; placeholder: string; renderLabel?: (option: string) => string }>;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      {sortField ? <SortableHeader field={sortField}>{label}</SortableHeader> : <span>{label}</span>}
-      <MultiSelectFilter options={options} selected={selected} onSelectionChange={onSelectionChange} placeholder={placeholder} renderLabel={renderLabel} />
-    </div>
-  );
-}
-
 export function LeadsTableContainer({
   filteredLeads,
   selectedLeads,
@@ -136,6 +110,8 @@ export function LeadsTableContainer({
   setSourceFilter,
   materialsFilter,
   setMaterialsFilter,
+  constructionStageFilter,
+  setConstructionStageFilter,
   statusFilter,
   setStatusFilter,
   priorityFilter,
@@ -268,12 +244,44 @@ export function LeadsTableContainer({
             <DateRangeFilter dateRange={nextFollowUpRange} onDateRangeChange={setNextFollowUpRange} />
           </div>
         );
+      case "lastFollowUp":
+        return (
+          <div className="flex items-center justify-between">
+            <SortableHeader field="last_follow_up">{columnLabel}</SortableHeader>
+            <DateRangeFilter dateRange={lastFollowUpRange} onDateRangeChange={setLastFollowUpRange} />
+          </div>
+        );
       case "createdAt":
         return (
           <div className="flex items-center justify-between">
             <SortableHeader field="created_at">{columnLabel}</SortableHeader>
             <DateRangeFilter dateRange={createdDateRange} onDateRangeChange={setCreatedDateRange} />
           </div>
+        );
+      case "materials":
+        return (
+          <FilterableHeader
+            label={columnLabel}
+            options={uniqueMaterials}
+            selected={materialsFilter}
+            onSelectionChange={setMaterialsFilter}
+            placeholder="Filter by Materials"
+            SortableHeader={SortableHeader}
+            MultiSelectFilter={MultiSelectFilter}
+          />
+        );
+      case "constructionStage":
+        return (
+          <FilterableHeader
+            label={columnLabel}
+            options={CONSTRUCTION_STAGES.map(cs => cs.value)}
+            selected={constructionStageFilter}
+            onSelectionChange={setConstructionStageFilter}
+            placeholder="Filter by Stage"
+            renderLabel={(key) => CONSTRUCTION_STAGES.find(cs => cs.value === key)?.label || key}
+            SortableHeader={SortableHeader}
+            MultiSelectFilter={MultiSelectFilter}
+          />
         );
       case "actions":
         return columnLabel;
@@ -370,10 +378,28 @@ export function LeadsTableContainer({
         return assigneeDisplayMap?.get(lead.assigned_to) || assigneeDisplayMap?.get(lead.assigned_to.toLowerCase()) || lead.assigned_to;
       case "tasks":
         return <PendingTasksBadge leadId={lead.id} leadName={lead.name} />;
+      case "address":
+        return <span className="truncate max-w-[200px] block" title={lead.address || ""}>{lead.address || "-"}</span>;
       case "nextFollowUp":
         return lead.next_follow_up ? format(new Date(lead.next_follow_up), "MMM d, yyyy") : "-";
+      case "lastFollowUp":
+        return lead.last_follow_up ? format(new Date(lead.last_follow_up), "MMM d, yyyy") : "-";
       case "createdAt":
         return format(new Date(lead.created_at), "MMM d, yyyy");
+      case "materials":
+        return (
+          <span className="truncate max-w-[200px] block" title={Array.isArray(lead.material_interests) ? lead.material_interests.join(", ") : ""}>
+            {Array.isArray(lead.material_interests) && lead.material_interests.length > 0
+              ? lead.material_interests.join(", ")
+              : "-"}
+          </span>
+        );
+      case "notes":
+        return <span className="truncate max-w-[200px] block" title={lead.notes || ""}>{lead.notes || "-"}</span>;
+      case "constructionStage":
+        return <span>{getOptionLabel('leads', 'construction_stage', lead.construction_stage)}</span>;
+      case "estimatedQty":
+        return <span>{lead.estimated_quantity ? `${lead.estimated_quantity.toLocaleString()} sq.ft.` : "-"}</span>;
       case "actions":
         return (
           <DropdownMenu>

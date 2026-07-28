@@ -36,15 +36,21 @@ const defaultConfigs: Record<string, ColumnConfig[]> = {
     { key: "email", label: "Email", visible: true, order: 2, locked: false },
     { key: "designation", label: "Designation", visible: true, order: 3, locked: false },
     { key: "sitePlusCode", label: "Plus Code", visible: false, order: 4, locked: false },
-    { key: "source", label: "Source", visible: true, order: 5, locked: false },
-    { key: "status", label: "Status", visible: true, order: 6, locked: false },
-    { key: "priority", label: "Priority", visible: true, order: 7, locked: false },
-    { key: "assignedTo", label: "Assigned To", visible: true, order: 8, locked: false },
-    { key: "tasks", label: "Tasks", visible: true, order: 9, locked: false },
-    { key: "nextFollowUp", label: "Next Follow-up", visible: true, order: 10, locked: false },
-    { key: "createdAt", label: "Created", visible: false, order: 11, locked: false },
-    { key: "createdBy", label: "Created By", visible: false, order: 12, locked: false },
-    { key: "actions", label: "Actions", visible: true, order: 13, locked: true },
+    { key: "address", label: "Address", visible: false, order: 5, locked: false },
+    { key: "source", label: "Source", visible: true, order: 6, locked: false },
+    { key: "status", label: "Status", visible: true, order: 7, locked: false },
+    { key: "priority", label: "Priority", visible: true, order: 8, locked: false },
+    { key: "assignedTo", label: "Assigned To", visible: true, order: 9, locked: false },
+    { key: "tasks", label: "Tasks", visible: true, order: 10, locked: false },
+    { key: "nextFollowUp", label: "Next Follow-up", visible: true, order: 11, locked: false },
+    { key: "lastFollowUp", label: "Last Follow-up", visible: true, order: 12, locked: false },
+    { key: "createdAt", label: "Created", visible: false, order: 13, locked: false },
+    { key: "createdBy", label: "Created By", visible: false, order: 14, locked: false },
+    { key: "materials", label: "Materials", visible: true, order: 15, locked: false },
+    { key: "notes", label: "Notes", visible: false, order: 16, locked: false },
+    { key: "constructionStage", label: "Construction Stage", visible: false, order: 17, locked: false },
+    { key: "estimatedQty", label: "Estimated Qty", visible: false, order: 18, locked: false },
+    { key: "actions", label: "Actions", visible: true, order: 19, locked: true },
   ],
   customers: [
     { key: "name", label: "Name", visible: true, order: 0, locked: true },
@@ -133,6 +139,9 @@ export function useTablePreferences(tableName: string) {
   // Save preferences to database
   const savePreferences = useCallback(
     async (newColumns: ColumnConfig[]) => {
+      // Optimistically update local columns state first
+      setColumns(newColumns);
+
       if (!user) return;
 
       setSaving(true);
@@ -160,7 +169,6 @@ export function useTablePreferences(tableName: string) {
             });
           if (error) throw error;
         }
-        setColumns(newColumns);
       } catch (error) {
         console.error("Error saving table preferences:", error);
       } finally {
