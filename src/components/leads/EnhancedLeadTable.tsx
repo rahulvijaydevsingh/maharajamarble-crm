@@ -209,6 +209,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [materialsFilter, setMaterialsFilter] = useState<string[]>([]);
+  const [constructionStageFilter, setConstructionStageFilter] = useState<string[]>([]);
   const [createdByFilter, setCreatedByFilter] = useState<string[]>([]);
   const [designationFilter, setDesignationFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
@@ -411,6 +412,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
       const createdByMatch = (createdByFilter || []).length === 0 || (lead.created_by && (createdByFilter || []).includes(lead.created_by));
       const designationMatch = (designationFilter || []).length === 0 || (lead.designation && (designationFilter || []).includes(lead.designation));
+      const constructionStageMatch = (constructionStageFilter || []).length === 0 || (lead.construction_stage && (constructionStageFilter || []).includes(lead.construction_stage));
 
       // Date range helper: supports single-date selection, inclusive end-of-day, auto-swap
       const dateInRange = (dateStr: string | null, range: DateRange): boolean => {
@@ -429,8 +431,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       };
 
       const createdDateMatch = dateInRange(lead.created_at, createdDateRange);
-      const lastFollowUpMatch = !lead.last_follow_up ? (!lastFollowUpRange.from && !lastFollowUpRange.to) || true : dateInRange(lead.last_follow_up, lastFollowUpRange);
-      const nextFollowUpMatch = !lead.next_follow_up ? (!nextFollowUpRange.from && !nextFollowUpRange.to) || true : dateInRange(lead.next_follow_up, nextFollowUpRange);
+      const lastFollowUpMatch = dateInRange(lead.last_follow_up, lastFollowUpRange);
+      const nextFollowUpMatch = dateInRange(lead.next_follow_up, nextFollowUpRange);
 
       // Tasks filter
       const tasksMatch = tasksFilter.length === 0 || (() => {
@@ -446,7 +448,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       const advancedMatch = activeAdvancedRules.length === 0 ||
         evaluateRules(lead as Record<string, any>, activeAdvancedRules, { getLeadTasks });
       return searchMatch && statusMatch && assignedMatch && sourceMatch && priorityMatch && 
-             materialsMatch && createdByMatch && designationMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
+             materialsMatch && createdByMatch && designationMatch && constructionStageMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
     });
 
     // Apply sorting
@@ -477,7 +479,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     return result;
   }, [leads, searchTerm, statusFilter, assignedToFilter, sourceFilter, priorityFilter, 
-      materialsFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, activeAdvancedRules]);
+      materialsFilter, constructionStageFilter, createdByFilter, designationFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, activeAdvancedRules]);
 
   // Filter counts for saved filters
   const getFilterCount = (filter: SavedFilter): number => {
@@ -591,6 +593,25 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setSourceFilter(config.sourceFilter || []);
     setPriorityFilter(config.priorityFilter || []);
     setMaterialsFilter(config.materialsFilter || []);
+
+    // Extract constructionStageFilter and designationFilter from advancedRules if not present in legacy config fields
+    const constructionStageFromRules: string[] = [];
+    const designationFromRules: string[] = [];
+    if (config.advancedRules) {
+      config.advancedRules.forEach((rule) => {
+        if (rule.operator === "equals" && rule.value) {
+          if (rule.field === "construction_stage") {
+            constructionStageFromRules.push(rule.value);
+          } else if (rule.field === "designation") {
+            designationFromRules.push(rule.value);
+          }
+        }
+      });
+    }
+
+    setConstructionStageFilter(config.constructionStageFilter || constructionStageFromRules);
+    setDesignationFilter(config.designationFilter || designationFromRules);
+
     setCreatedDateRange({
       from: config.createdDateRange?.from ? new Date(config.createdDateRange.from) : undefined,
       to: config.createdDateRange?.to ? new Date(config.createdDateRange.to) : undefined,
@@ -613,6 +634,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     setSourceFilter([]);
     setPriorityFilter([]);
     setMaterialsFilter([]);
+    setConstructionStageFilter([]);
     setCreatedByFilter([]);
     setDesignationFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
@@ -1109,6 +1131,8 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           setSourceFilter={setSourceFilter}
           materialsFilter={materialsFilter}
           setMaterialsFilter={setMaterialsFilter}
+          constructionStageFilter={constructionStageFilter}
+          setConstructionStageFilter={setConstructionStageFilter}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
           priorityFilter={priorityFilter}

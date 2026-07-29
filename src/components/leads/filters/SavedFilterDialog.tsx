@@ -239,6 +239,16 @@ export function SavedFilterDialog({
             newRules.push({ id: crypto.randomUUID(), field: "materials", operator: "equals", value: v, logic: "and" });
           });
         }
+        if (config.constructionStageFilter?.length > 0) {
+          config.constructionStageFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "construction_stage", operator: "equals", value: v, logic: "and" });
+          });
+        }
+        if (config.designationFilter?.length > 0) {
+          config.designationFilter.forEach((v) => {
+            newRules.push({ id: crypto.randomUUID(), field: "designation", operator: "equals", value: v, logic: "and" });
+          });
+        }
       }
       
       setRules(newRules.length > 0 ? newRules : [createEmptyRule()]);
@@ -354,6 +364,8 @@ export function SavedFilterDialog({
       sourceFilter: [],
       priorityFilter: [],
       materialsFilter: [],
+      constructionStageFilter: [],
+      designationFilter: [],
       createdDateRange: { from: null, to: null },
       lastFollowUpRange: { from: null, to: null },
       nextFollowUpRange: { from: null, to: null },
@@ -398,6 +410,18 @@ export function SavedFilterDialog({
           case "materials":
             if (!config.materialsFilter.includes(rule.value)) {
               config.materialsFilter.push(rule.value);
+            }
+            break;
+          case "construction_stage":
+            config.constructionStageFilter = config.constructionStageFilter || [];
+            if (!config.constructionStageFilter.includes(rule.value)) {
+              config.constructionStageFilter.push(rule.value);
+            }
+            break;
+          case "designation":
+            config.designationFilter = config.designationFilter || [];
+            if (!config.designationFilter.includes(rule.value)) {
+              config.designationFilter.push(rule.value);
             }
             break;
         }

@@ -9,6 +9,8 @@ export interface FilterConfig {
   sourceFilter: string[];
   priorityFilter: string[];
   materialsFilter: string[];
+  constructionStageFilter?: string[];
+  designationFilter?: string[];
   createdDateRange: { from: string | null; to: string | null };
   lastFollowUpRange: { from: string | null; to: string | null };
   nextFollowUpRange: { from: string | null; to: string | null };
