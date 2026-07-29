@@ -34,7 +34,6 @@ import { ScrollableTableContainer } from "@/components/shared/ScrollableTableCon
 import { ColumnConfig } from "@/hooks/useTablePreferences";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
-import { DESIGNATIONS, CONSTRUCTION_STAGES } from "@/constants/leadConstants";
 import { FilterableHeader } from "@/components/shared/FilterableHeader";
 
 interface DateRange {
@@ -81,6 +80,7 @@ interface LeadsTableContainerProps {
   assigneeDisplayMap?: Map<string, string>;
   uniqueCreatedBy: string[];
   uniqueDesignations?: string[];
+  uniqueConstructionStages?: string[];
   designationLabel?: (key: string) => string;
   statuses: Record<string, { label: string; className: string }>;
   priorities: Record<number, { label: string; color: string }>;
@@ -135,6 +135,7 @@ export function LeadsTableContainer({
   assigneeDisplayMap,
   uniqueCreatedBy,
   uniqueDesignations,
+  uniqueConstructionStages,
   designationLabel,
   statuses,
   priorities,
@@ -166,11 +167,11 @@ export function LeadsTableContainer({
         return (
           <FilterableHeader
             label={columnLabel}
-            options={uniqueDesignations || DESIGNATIONS.map(d => d.value)}
+            options={uniqueDesignations || []}
             selected={designationFilter}
             onSelectionChange={setDesignationFilter}
             placeholder="Filter by Designation"
-            renderLabel={(key) => designationLabel ? designationLabel(key) : (DESIGNATIONS.find(d => d.value === key)?.label || key)}
+            renderLabel={designationLabel}
             SortableHeader={SortableHeader}
             MultiSelectFilter={MultiSelectFilter}
           />
@@ -274,11 +275,11 @@ export function LeadsTableContainer({
         return (
           <FilterableHeader
             label={columnLabel}
-            options={CONSTRUCTION_STAGES.map(cs => cs.value)}
+            options={uniqueConstructionStages || []}
             selected={constructionStageFilter}
             onSelectionChange={setConstructionStageFilter}
             placeholder="Filter by Stage"
-            renderLabel={(key) => CONSTRUCTION_STAGES.find(cs => cs.value === key)?.label || key}
+            renderLabel={(key) => getOptionLabel('leads', 'construction_stage', key)}
             SortableHeader={SortableHeader}
             MultiSelectFilter={MultiSelectFilter}
           />
@@ -351,7 +352,7 @@ export function LeadsTableContainer({
       case "createdBy":
         return (lead.created_by ? (createdByDisplayMap?.get(lead.created_by) || lead.created_by) : "-");
       case "designation":
-        return <span>{lead.designation ? (designationLabel ? designationLabel(lead.designation) : (DESIGNATIONS.find(d => d.value === lead.designation)?.label || lead.designation)) : "-"}</span>;
+        return <span>{lead.designation ? designationLabel?.(lead.designation) : "-"}</span>;
       case "sitePlusCode":
         return (
           <PlusCodeLink

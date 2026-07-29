@@ -101,6 +101,7 @@ import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 
 const COLUMN_VISIBILITY_KEY = "leads_column_visibility";
 
@@ -182,6 +183,7 @@ interface EnhancedLeadTableProps {
 export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { getFieldOptions, getOptionLabel } = useControlPanelSettings();
   const { leads, loading, updateLead, refetch } = useLeads();
   const { softDeleteLead } = useDeletedLeads();
   const { getLeadTasks, refetch: refetchTasks } = usePendingTasksByLead();
@@ -329,18 +331,26 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean))), [leads]);
 
   const uniqueDesignations = useMemo(() => {
-    const canonical = new Set(DESIGNATIONS.map(d => d.value));
+    const designationOptions = getFieldOptions('leads', 'designation');
+    const canonical = new Set(designationOptions.map(d => d.value));
     const extra = new Set(
       leads.map(l => l.designation).filter((d): d is string => !!d && !canonical.has(d))
     );
-    return [...DESIGNATIONS.map(d => d.value), ...extra];
-  }, [leads]);
+    return [...designationOptions.map(d => d.value), ...extra];
+  }, [leads, getFieldOptions]);
 
   const designationLabel = useCallback((key: string): string => {
-    const known = DESIGNATIONS.find(d => d.value === key);
-    if (known) return known.label;
-    return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-  }, []);
+    return getOptionLabel('leads', 'designation', key);
+  }, [getOptionLabel]);
+
+  const uniqueConstructionStages = useMemo(() => {
+    const stageOptions = getFieldOptions('leads', 'construction_stage');
+    const canonical = new Set(stageOptions.map(o => o.value));
+    const extra = new Set(
+      leads.map(l => l.construction_stage).filter((c): c is string => !!c && !canonical.has(c))
+    );
+    return [...stageOptions.map(o => o.value), ...extra];
+  }, [leads, getFieldOptions]);
 
   // Build staff-based creator display map
   const createdByDisplayMap = useMemo(() => {
@@ -1156,6 +1166,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
           assigneeDisplayMap={assigneeDisplayMap}
           uniqueCreatedBy={uniqueCreatedBy}
           uniqueDesignations={uniqueDesignations}
+          uniqueConstructionStages={uniqueConstructionStages}
           designationLabel={designationLabel}
           statuses={statuses}
           priorities={priorities}

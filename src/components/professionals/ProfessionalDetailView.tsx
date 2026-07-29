@@ -100,6 +100,7 @@ import { useTaskDetailModal } from '@/contexts/TaskDetailModalContext';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
 import { ActivityLogItem } from '@/components/leads/activity/ActivityLogItem';
+import { AddManualActivityDialog } from '@/components/leads/activity/AddManualActivityDialog';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { EditTaskDialog } from '@/components/tasks/EditTaskDialog';
 import { TaskCompletionDialog } from '@/components/tasks/TaskCompletionDialog';
@@ -343,11 +344,12 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
   const { role } = usePermissions();
   const { openTask } = useTaskDetailModal();
   const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager';
-  const { activities, loading, hasMore, loadMore, deleteActivity, updateActivity } = useActivityLog(undefined, undefined, professional?.id);
+  const { activities, loading, hasMore, loadMore, deleteActivity, updateActivity, refetch } = useActivityLog(undefined, undefined, professional?.id);
   const { toast } = useToast();
 
   const [activityToDelete, setActivityToDelete] = useState<ActivityLogEntry | null>(null);
   const [activityToEdit, setActivityToEdit] = useState<ActivityLogEntry | null>(null);
+  const [addManualActivityOpen, setAddManualActivityOpen] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [isEditSaving, setIsEditSaving] = useState(false);
@@ -387,29 +389,39 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
 
   if (loading && activities.length === 0) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
-  if (activities.length === 0) return (
-    <div className="text-center py-12 text-muted-foreground">
-      <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-      <p>No activity recorded yet.</p>
-    </div>
-  );
-
   return (
     <div className="space-y-3">
-      <div className="relative border-l border-border ml-[4px]">
-        <div className="space-y-2 pl-4 pb-2">
-          {activities.map((activity) => (
-            <ActivityLogItem
-              key={activity.id}
-              activity={activity}
-              isAdmin={isAdmin || activity.user_id === user?.id}
-              onEdit={() => handleEditOpen(activity)}
-              onDelete={(a) => setActivityToDelete(a)}
-              onViewTask={(taskId) => openTask(taskId)}
-            />
-          ))}
-        </div>
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="text-sm font-semibold text-muted-foreground">Activity Timeline</h4>
+        <Button variant="outline" size="sm" onClick={() => setAddManualActivityOpen(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Add Activity
+        </Button>
       </div>
+
+      {activities.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
+          <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p className="mb-4">No activity recorded yet.</p>
+          <Button variant="outline" size="sm" onClick={() => setAddManualActivityOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Add First Activity
+          </Button>
+        </div>
+      ) : (
+        <div className="relative border-l border-border ml-[4px]">
+          <div className="space-y-2 pl-4 pb-2">
+            {activities.map((activity) => (
+              <ActivityLogItem
+                key={activity.id}
+                activity={activity}
+                isAdmin={isAdmin || activity.user_id === user?.id}
+                onEdit={() => handleEditOpen(activity)}
+                onDelete={(a) => setActivityToDelete(a)}
+                onViewTask={(taskId) => openTask(taskId)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasMore && (
         <div className="flex justify-center pt-4">
@@ -437,6 +449,16 @@ function ProfessionalActivityTab({ professional }: { professional: Professional 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Manual Activity Dialog */}
+      <AddManualActivityDialog
+        open={addManualActivityOpen}
+        onOpenChange={(open) => {
+          setAddManualActivityOpen(open);
+          if (!open) refetch();
+        }}
+        professionalId={professional.id}
+      />
 
       {/* Edit Activity Dialog */}
       <Dialog open={!!activityToEdit} onOpenChange={(open) => { if (!open) setActivityToEdit(null); }}>
@@ -1141,7 +1163,7 @@ export function ProfessionalDetailView({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="z-[90] max-w-5xl max-h-[90vh] md:max-h-[90vh] max-h-[100dvh] overflow-hidden flex flex-col p-0 [&>button]:hidden"
+          className="z-[90] max-w-5xl max-h-[100dvh] md:max-h-[90vh] gap-0 overflow-hidden flex flex-col p-0 [&>button]:hidden"
           style={{ zIndex }}
         >
           <VisuallyHidden>
@@ -1212,7 +1234,7 @@ export function ProfessionalDetailView({
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-            <div className="border-b overflow-x-auto">
+            <div className="border-b overflow-x-auto flex-shrink-0">
               <TabsList className="h-12 bg-transparent gap-1 md:gap-2 w-max px-6">
                 <TabsTrigger value="profile" className="gap-1.5 data-[state=active]:bg-muted">
                   <User className="h-4 w-4" /><span className="hidden sm:inline">Profile</span>
@@ -1244,7 +1266,7 @@ export function ProfessionalDetailView({
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0">
               <TabsContent value="profile" className="m-0 h-full">
                 <ProfessionalProfileTab professional={localProfessional} onEdit={() => onEdit?.(localProfessional)} />
               </TabsContent>

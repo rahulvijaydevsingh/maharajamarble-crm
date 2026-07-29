@@ -36,10 +36,11 @@ interface AddManualActivityDialogProps {
   onOpenChange: (open: boolean) => void;
   leadId?: string;
   customerId?: string;
+  professionalId?: string;
 }
 
-export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId }: AddManualActivityDialogProps) {
-  const entityId = leadId || customerId || '';
+export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId, professionalId }: AddManualActivityDialogProps) {
+  const entityId = leadId || customerId || professionalId || '';
   const [activityType, setActivityType] = useState<string>('');
   const [activityDate, setActivityDate] = useState<Date>(new Date());
   const [activityTime, setActivityTime] = useState<string>(
@@ -50,7 +51,7 @@ export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const { toast } = useToast();
-  const { createActivity } = useActivityLog(leadId, customerId);
+  const { createActivity } = useActivityLog(leadId, customerId, professionalId);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -141,6 +142,7 @@ export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId
         attachments: attachmentData,
         is_manual: true,
         activity_timestamp: selectedDateTime.toISOString(),
+        ...(professionalId ? { related_entity_type: 'professional', related_entity_id: professionalId } : {})
       });
 
       toast({
