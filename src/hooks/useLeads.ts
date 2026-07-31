@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Json } from "@/integrations/supabase/types";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Lead {
   id: string;
@@ -65,6 +66,7 @@ export function useLeads() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user, profile } = useAuth();
 
   const fetchLeads = async () => {
     try {
@@ -91,12 +93,13 @@ export function useLeads() {
 
   const addLead = async (lead: LeadInsert) => {
     try {
-      // Don't pass created_by — let DB default (get_current_user_email()) handle it
-      // This ensures RLS is_assigned_to_me() works for non-admin users
-      const { created_by: _cb, ...leadWithoutCreatedBy } = lead;
+      const leadWithCreatedBy = {
+        ...lead,
+        created_by: lead.created_by || profile?.full_name || user?.email || "unknown",
+      };
       const { data, error } = await supabase
         .from("leads")
-        .insert([leadWithoutCreatedBy])
+        .insert([leadWithCreatedBy])
         .select()
         .single();
 
