@@ -25,8 +25,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Trash2, Plus, GripVertical, Copy } from "lucide-react";
 import { SavedFilter, FilterConfig, SavedFilterInsert } from "@/hooks/useSavedFilters";
 import { Calendar } from "@/components/ui/calendar";
-import { DESIGNATIONS } from "@/constants/leadConstants";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -158,14 +158,6 @@ const PRIORITY_OPTIONS = [
   { value: "5", label: "Very Low" },
 ];
 
-const CONSTRUCTION_STAGES = [
-  { value: "excavation", label: "Excavation" },
-  { value: "structure_complete", label: "Structure Complete" },
-  { value: "plastering", label: "Plastering" },
-  { value: "flooring_ready", label: "Flooring Ready" },
-  { value: "renovation", label: "Renovation" },
-];
-
 export function SavedFilterDialog({
   open,
   onOpenChange,
@@ -179,6 +171,7 @@ export function SavedFilterDialog({
   createdByDisplayMap,
   uniqueDesignations,
 }: SavedFilterDialogProps) {
+  const { getFieldOptions, getOptionLabel } = useControlPanelSettings();
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -323,17 +316,12 @@ export function SavedFilterDialog({
       case "materials":
         return uniqueMaterials.map((m) => ({ value: m, label: m }));
       case "construction_stage":
-        return CONSTRUCTION_STAGES;
+        return getFieldOptions('leads', 'construction_stage').map(o => ({ value: o.value, label: o.label }));
       case "designation": {
-        const getDesignationLabel = (key: string): string => {
-          const known = DESIGNATIONS.find(d => d.value === key);
-          if (known) return known.label;
-          return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-        };
         const items = uniqueDesignations && uniqueDesignations.length > 0
           ? uniqueDesignations
-          : DESIGNATIONS.map(d => d.value);
-        return items.map((val) => ({ value: val, label: getDesignationLabel(val) }));
+          : getFieldOptions('leads', 'designation').map(o => o.value);
+        return items.map((val) => ({ value: val, label: getOptionLabel('leads', 'designation', val) }));
       }
       case "kit_status":
         return [

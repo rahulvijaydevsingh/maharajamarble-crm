@@ -42,8 +42,7 @@ export function NotificationDropdown() {
   const { reminders, dismissReminder, snoozeReminder } = useReminders(undefined, undefined, profile?.full_name);
   const now = new Date();
   const activeReminders = reminders
-    .filter(r => !r.is_dismissed && new Date(r.reminder_datetime) <= now && (!r.is_snoozed || !r.snooze_until || new Date(r.snooze_until) <= now))
-    .slice(0, 10);
+    .filter(r => !r.is_dismissed && new Date(r.reminder_datetime) <= now && (!r.is_snoozed || !r.snooze_until || new Date(r.snooze_until) <= now));
   
   // Notifications - query by email since automation engine stores email as user_id
   const userEmail = user?.email || "";
@@ -59,7 +58,7 @@ export function NotificationDropdown() {
   const unreadMessagesCount = unreadCounts?.messages || 0;
 
   // Get conversations with unread messages
-  const conversationsWithUnread = conversations.filter(c => c.unread_count && c.unread_count > 0).slice(0, 10);
+  const conversationsWithUnread = conversations.filter(c => c.unread_count && c.unread_count > 0);
 
   const totalUnread = unreadCount + unreadMessagesCount + activeReminders.filter(r => isPast(parseISO(r.reminder_datetime))).length;
 
@@ -368,7 +367,7 @@ export function NotificationDropdown() {
                 </div>
               ) : (
                 <div className="divide-y">
-                  {notifications.slice(0, 20).map((notification) => (
+                  {notifications.map((notification) => (
                     <div
                       key={notification.id}
                       className={cn(
