@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Professional {
@@ -69,6 +70,7 @@ export function useProfessionals() {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   const fetchProfessionals = async () => {
     try {
@@ -218,6 +220,9 @@ export function useProfessionals() {
   };
 
   useEffect(() => {
+    // Wait for the initial auth check before querying (avoids pre-login errors).
+    if (authLoading || !user) return;
+
     fetchProfessionals();
 
     const channel = supabase
@@ -248,7 +253,7 @@ export function useProfessionals() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   return {
     professionals,

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { useRemindersChannel, RemindersRealtimePayload } from '@/contexts/RemindersContext';
 
@@ -42,6 +43,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
   const remindersChannel = useRemindersChannel();
 
   const fetchReminders = async () => {
@@ -216,6 +218,9 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   };
 
   useEffect(() => {
+    // Wait for the initial auth check before querying (avoids pre-login errors).
+    if (authLoading || !user) return;
+
     fetchReminders();
 
     // Mount-time catch-up: in bell mode, fetch any reminders that fired in the
@@ -320,7 +325,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
         supabase.removeChannel(channel);
       };
     }
-  }, [entityType, entityId, assignedTo]);
+  }, [entityType, entityId, assignedTo, authLoading, user]);
 
   return {
     reminders,
