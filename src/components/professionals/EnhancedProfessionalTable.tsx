@@ -35,6 +35,7 @@ import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
 import { PROFESSIONAL_STATUSES, PRIORITIES } from "@/constants/professionalConstants";
 import { ProfessionalSavedFilterDialog } from "./filters/ProfessionalSavedFilterDialog";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { ProfessionalManageFiltersDialog } from "./filters/ProfessionalManageFiltersDialog";
 import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
@@ -58,6 +59,7 @@ interface EnhancedProfessionalTableProps {
 }
 
 export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional, onBulkUpload }: EnhancedProfessionalTableProps) {
+  const { getFieldOptions, getOptionLabel } = useControlPanelSettings();
   const { professionals, loading, deleteProfessional, refetch } = useProfessionals();
   const {
     getProfessionalTasks,
@@ -115,6 +117,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [cityFilter, setCityFilter] = useState<string[]>([]);
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState<string[]>([]);
   const [assignedToFilter, setAssignedToFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
@@ -149,9 +152,40 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
   }, [professionals, staffMembers, resolveAssignedToStaff]);
 
-  const uniqueCities = useMemo(() => Array.from(new Set(professionals.map(p => p.city).filter(Boolean) as string[])), [professionals]);
-  const uniqueStatuses = useMemo(() => Object.keys(PROFESSIONAL_STATUSES), []);
-  const uniqueTypes = useMemo(() => Array.from(new Set(professionals.map(p => p.professional_type))), [professionals]);
+  const uniqueCities = useMemo(() => {
+    const canonical = getFieldOptions('professionals', 'city');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = professionals.map(p => p.city).filter((c): c is string => !!c && !canonicalValues.includes(c));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [professionals, getFieldOptions]);
+
+  const uniqueStatuses = useMemo(() => {
+    const canonical = getFieldOptions('professionals', 'professional_status');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = professionals.map(p => p.status).filter(status => status && !canonicalValues.includes(status));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [professionals, getFieldOptions]);
+
+  const uniqueTypes = useMemo(() => {
+    const canonical = getFieldOptions('professionals', 'professional_type');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = professionals.map(p => p.professional_type).filter(type => type && !canonicalValues.includes(type));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [professionals, getFieldOptions]);
+
+  const uniquePriorities = useMemo(() => {
+    const canonical = getFieldOptions('professionals', 'priority');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = professionals.map(p => p.priority.toString()).filter(pri => pri && !canonicalValues.includes(pri));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [professionals, getFieldOptions]);
+
+  const uniqueServiceCategories = useMemo(() => {
+    const canonical = getFieldOptions('professionals', 'service_category');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = professionals.map(p => p.service_category).filter((s): s is string => !!s && !canonicalValues.includes(s));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [professionals, getFieldOptions]);
 
   const filteredProfessionals = useMemo(() => {
     let result = professionals.filter(p => {
@@ -164,6 +198,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
       const statusMatch = statusFilter.length === 0 || statusFilter.includes(p.status);
       const typeMatch = typeFilter.length === 0 || typeFilter.includes(p.professional_type);
       const cityMatch = cityFilter.length === 0 || cityFilter.includes(p.city || "");
+      const serviceCategoryMatch = serviceCategoryFilter.length === 0 || serviceCategoryFilter.includes(p.service_category || "");
       const resolvedAssignee = resolveAssignedToStaff.get(p.assigned_to.toLowerCase()) || p.assigned_to;
       const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(p.priority.toString());
@@ -192,7 +227,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
         if (tasksFilter === "no_tasks") if (t.total !== 0) return false;
       }
 
-      return searchMatch && statusMatch && typeMatch && cityMatch && assignedMatch && priorityMatch && createdDateMatch && advancedMatch;
+      return searchMatch && statusMatch && typeMatch && cityMatch && serviceCategoryMatch && assignedMatch && priorityMatch && createdDateMatch && advancedMatch;
     });
 
     if (sortField && sortDirection) {
@@ -345,6 +380,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     setPriorityFilter(config.priorityFilter || []);
     setTypeFilter([]);
     setCityFilter([]);
+    setServiceCategoryFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
 
     // Apply advanced rules which contain the professional-specific logic
@@ -357,6 +393,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
     setPriorityFilter([]);
     setTypeFilter([]);
     setCityFilter([]);
+    setServiceCategoryFilter([]);
     // We avoid touching assignedToFilter to strictly comply with INVARIANT-04
     // constraints regarding assigned_to logic.
     setCreatedDateRange({ from: undefined, to: undefined });
@@ -621,20 +658,23 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
           />
         );
       case "professionalType":
-        return <span className="capitalize">{professional.professional_type.replace("_", " ")}</span>;
+        const typeLabel = getOptionLabel('professionals', 'professional_type', professional.professional_type);
+        return <span className="capitalize">{typeLabel.replace("_", " ")}</span>;
       case "city":
-        return professional.city || "-";
+        return professional.city ? getOptionLabel('professionals', 'city', professional.city) : "-";
       case "status":
+        const statusLabel = getOptionLabel('professionals', 'professional_status', professional.status);
         return (
           <Badge variant="secondary" className={PROFESSIONAL_STATUSES[professional.status]?.className || ""}>
-            {PROFESSIONAL_STATUSES[professional.status]?.label || professional.status}
+            {statusLabel}
           </Badge>
         );
       case "priority":
         const priorityConfig = PRIORITIES[professional.priority];
+        const pLabel = getOptionLabel('professionals', 'priority', professional.priority.toString());
         return priorityConfig ? (
-          <span className={priorityConfig.color}>{priorityConfig.label}</span>
-        ) : "-";
+          <span className={priorityConfig.color}>{pLabel}</span>
+        ) : <span>{pLabel}</span>;
       case "assignedTo":
         return assigneeDisplayMap.get(professional.assigned_to) || getStaffDisplayName(professional.assigned_to, staffMembers);
       case "tasks":
@@ -661,7 +701,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
           </div>
         );
       case "serviceCategory":
-        return professional.service_category || "-";
+        return professional.service_category ? getOptionLabel('professionals', 'service_category', professional.service_category) : "-";
       case "rating":
         return professional.rating ? `${professional.rating}/5` : "-";
       case "createdAt":
@@ -857,7 +897,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                         selected={statusFilter}
                         onSelectionChange={setStatusFilter}
                         placeholder="Filter by Status"
-                        renderLabel={(s) => PROFESSIONAL_STATUSES[s]?.label || s}
+                        renderLabel={(s) => getOptionLabel('professionals', 'professional_status', s)}
                       />
                     )}
                     {column.key === "professionalType" && (
@@ -866,7 +906,7 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                         selected={typeFilter}
                         onSelectionChange={setTypeFilter}
                         placeholder="Filter by Type"
-                        renderLabel={(t) => t.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
+                        renderLabel={(t) => getOptionLabel('professionals', 'professional_type', t)}
                       />
                     )}
                     {column.key === "city" && (
@@ -875,6 +915,16 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                         selected={cityFilter}
                         onSelectionChange={setCityFilter}
                         placeholder="Filter by City"
+                        renderLabel={(c) => getOptionLabel('professionals', 'city', c)}
+                      />
+                    )}
+                    {column.key === "serviceCategory" && (
+                      <MultiSelectFilter
+                        options={uniqueServiceCategories}
+                        selected={serviceCategoryFilter}
+                        onSelectionChange={setServiceCategoryFilter}
+                        placeholder="Filter by Service Category"
+                        renderLabel={(s) => getOptionLabel('professionals', 'service_category', s)}
                       />
                     )}
                     {column.key === "assignedTo" && (
@@ -888,11 +938,11 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
                     )}
                     {column.key === "priority" && (
                       <MultiSelectFilter
-                        options={Object.keys(PRIORITIES)}
+                        options={uniquePriorities}
                         selected={priorityFilter}
                         onSelectionChange={setPriorityFilter}
                         placeholder="Filter by Priority"
-                        renderLabel={(p) => PRIORITIES[parseInt(p) as keyof typeof PRIORITIES]?.label || p}
+                        renderLabel={(p) => getOptionLabel('professionals', 'priority', p)}
                       />
                     )}
                     {column.key === "tasks" && (
@@ -1014,9 +1064,9 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
               <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
                 <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(PROFESSIONAL_STATUSES).map(([key, config]) => (
+                  {uniqueStatuses.map((key) => (
                     <SelectItem key={key} value={key}>
-                      {config.label}
+                      {getOptionLabel('professionals', 'professional_status', key)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1031,15 +1081,9 @@ export function EnhancedProfessionalTable({ onEdit, onAdd, onSelectProfessional,
               <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
                 <SelectTrigger><SelectValue placeholder="Select priority" /></SelectTrigger>
                 <SelectContent>
-                  {[
-                    { value: "1", label: "Very High" },
-                    { value: "2", label: "High" },
-                    { value: "3", label: "Medium" },
-                    { value: "4", label: "Low" },
-                    { value: "5", label: "Very Low" },
-                  ].map(p => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
+                  {uniquePriorities.map((key) => (
+                    <SelectItem key={key} value={key}>
+                      {getOptionLabel('professionals', 'priority', key)}
                     </SelectItem>
                   ))}
                 </SelectContent>

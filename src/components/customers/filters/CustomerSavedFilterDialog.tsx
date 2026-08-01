@@ -28,7 +28,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CUSTOMER_TYPES, CUSTOMER_STATUSES, INDUSTRIES, CUSTOMER_SOURCES, CITIES, PRIORITY_LEVELS } from "@/constants/customerConstants";
+import { INDUSTRIES, CUSTOMER_SOURCES } from "@/constants/customerConstants";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface FilterRule {
   id: string;
@@ -127,6 +128,7 @@ export function CustomerSavedFilterDialog({
   uniqueAssignedTo,
   uniqueCities,
 }: CustomerSavedFilterDialogProps) {
+  const { getFieldOptions } = useControlPanelSettings();
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -195,18 +197,30 @@ export function CustomerSavedFilterDialog({
 
   const getValueOptions = (field: string) => {
     switch (field) {
-      case "status":
-        return Object.entries(CUSTOMER_STATUSES).map(([value, { label }]) => ({ value, label }));
-      case "priority":
-        return Object.entries(PRIORITY_LEVELS).map(([value, { label }]) => ({ value, label }));
-      case "customer_type":
-        return CUSTOMER_TYPES;
+      case "status": {
+        const canonical = getFieldOptions('customers', 'customer_status');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
+      case "priority": {
+        const canonical = getFieldOptions('customers', 'priority');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
+      case "customer_type": {
+        const canonical = getFieldOptions('customers', 'customer_type');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
       case "industry":
         return INDUSTRIES;
       case "source":
         return CUSTOMER_SOURCES;
-      case "city":
-        return [...CITIES, ...uniqueCities.filter(c => !CITIES.find(city => city.value === c)).map(c => ({ value: c, label: c }))];
+      case "city": {
+        const canonical = getFieldOptions('customers', 'city').map(o => ({ value: o.value, label: o.label }));
+        const canonicalValues = canonical.map(o => o.value);
+        const extra = uniqueCities
+          .filter(c => c && !canonicalValues.includes(c))
+          .map(c => ({ value: c, label: c }));
+        return [...canonical, ...extra];
+      }
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
       case "pending_tasks":
