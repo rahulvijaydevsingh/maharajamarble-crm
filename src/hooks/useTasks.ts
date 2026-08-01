@@ -1225,7 +1225,7 @@ export function useTasks() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   return {
     tasks,
