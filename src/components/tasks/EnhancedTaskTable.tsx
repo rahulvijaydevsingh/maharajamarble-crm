@@ -100,8 +100,8 @@ import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { PhoneLink } from "@/components/shared/PhoneLink";
 import { PlusCodeLink } from "@/components/shared/PlusCodeLink";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
-import { ALL_TASK_TYPES } from "@/constants/taskConstants";
 import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 // Priority styles
 const priorityStyles: Record<string, { className: string; label: string }> = {
@@ -158,12 +158,14 @@ function MultiSelectFilter({
   options, 
   selectedValues, 
   onSelectionChange, 
-  placeholder 
+  placeholder,
+  renderLabel
 }: {
   options: string[];
   selectedValues: string[];
   onSelectionChange: (values: string[]) => void;
   placeholder: string;
+  renderLabel?: (value: string) => string;
 }) {
   const handleToggle = (value: string) => {
     const newSelection = selectedValues.includes(value)
@@ -205,7 +207,7 @@ function MultiSelectFilter({
             checked={selectedValues.includes(option)}
             onCheckedChange={() => handleToggle(option)}
           >
-            {option}
+            {renderLabel ? renderLabel(option) : option}
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>
@@ -390,6 +392,7 @@ export function EnhancedTaskTable({
   boardMode = "active",
   readOnly = false,
 }: TaskTableProps) {
+  const { getFieldOptions, getOptionLabel } = useControlPanelSettings();
   const { tasks, loading, updateTask, deleteTask, restoreTask, refetch, toggleStar, snoozeTask } = useTasks();
   const { leads } = useLeads();
   const { customers } = useCustomers();
@@ -538,8 +541,19 @@ export function EnhancedTaskTable({
   }, [tasks, boardMode]);
 
   // Get unique values for filters
-  const uniqueTypes = useMemo(() => [...new Set(transformedTasks.map(task => task.type))], [transformedTasks]);
-  const uniquePriorities = useMemo(() => [...new Set(transformedTasks.map(task => task.priority))], [transformedTasks]);
+  const uniqueTypes = useMemo(() => {
+    const canonical = getFieldOptions('tasks', 'type');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = transformedTasks.map(t => t.type).filter(type => type && !canonicalValues.includes(type));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [transformedTasks, getFieldOptions]);
+
+  const uniquePriorities = useMemo(() => {
+    const canonical = getFieldOptions('tasks', 'priority');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = transformedTasks.map(t => t.priority).filter(priority => priority && !canonicalValues.includes(priority));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [transformedTasks, getFieldOptions]);
   const uniqueStatuses = useMemo(() => [...new Set(transformedTasks.map(task => task.computedStatus))], [transformedTasks]);
   const uniqueLeadStatuses = useMemo(
     () => [...new Set(
@@ -987,6 +1001,7 @@ export function EnhancedTaskTable({
               selectedValues={selectedTypes}
               onSelectionChange={setSelectedTypes}
               placeholder="All"
+              renderLabel={(val) => getOptionLabel('tasks', 'type', val)}
             />
           </div>
         );
@@ -1001,6 +1016,7 @@ export function EnhancedTaskTable({
               selectedValues={selectedPriorities}
               onSelectionChange={setSelectedPriorities}
               placeholder="All"
+              renderLabel={(val) => getOptionLabel('tasks', 'priority', val)}
             />
           </div>
         );
@@ -1123,14 +1139,15 @@ export function EnhancedTaskTable({
           </div>
         );
       case "type":
-        return <Badge variant="outline">{task.type}</Badge>;
+        return <Badge variant="outline">{getOptionLabel('tasks', 'type', task.type)}</Badge>;
       case "priority":
+        const pLabel = getOptionLabel('tasks', 'priority', task.priority);
         return (
           <Badge 
             variant="secondary" 
-            className={priorityStyles[task.priority]?.className || ""}
+            className={priorityStyles[task.priority]?.className || priorityStyles[pLabel]?.className || ""}
           >
-            {task.priority}
+            {pLabel}
           </Badge>
         );
       case "assignedTo":
@@ -1707,9 +1724,11 @@ export function EnhancedTaskTable({
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
                     <SelectContent className="z-[200]">
-                      <SelectItem value="High">High</SelectItem>
-                      <SelectItem value="Medium">Medium</SelectItem>
-                      <SelectItem value="Low">Low</SelectItem>
+                      {uniquePriorities.map(priority => (
+                        <SelectItem key={priority} value={priority}>
+                          {getOptionLabel('tasks', 'priority', priority)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1723,8 +1742,10 @@ export function EnhancedTaskTable({
                       <SelectValue placeholder="Select task type" />
                     </SelectTrigger>
                     <SelectContent className="z-[200]">
-                      {ALL_TASK_TYPES.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      {uniqueTypes.map(type => (
+                        <SelectItem key={type} value={type}>
+                          {getOptionLabel('tasks', 'type', type)}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

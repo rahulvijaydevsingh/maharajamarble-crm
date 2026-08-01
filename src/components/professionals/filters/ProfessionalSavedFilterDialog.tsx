@@ -28,7 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PROFESSIONAL_TYPES, PROFESSIONAL_STATUSES, SERVICE_CATEGORIES, CITIES, PRIORITIES } from "@/constants/professionalConstants";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface FilterRule {
   id: string;
@@ -125,6 +125,7 @@ export function ProfessionalSavedFilterDialog({
   uniqueAssignedTo,
   uniqueCities,
 }: ProfessionalSavedFilterDialogProps) {
+  const { getFieldOptions } = useControlPanelSettings();
   const [rules, setRules] = useState<FilterRule[]>([]);
   const [filterName, setFilterName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -191,16 +192,30 @@ export function ProfessionalSavedFilterDialog({
 
   const getValueOptions = (field: string) => {
     switch (field) {
-      case "status":
-        return Object.entries(PROFESSIONAL_STATUSES).map(([value, { label }]) => ({ value, label }));
-      case "priority":
-        return Object.entries(PRIORITIES).map(([value, { label }]) => ({ value, label }));
-      case "professional_type":
-        return PROFESSIONAL_TYPES;
-      case "service_category":
-        return SERVICE_CATEGORIES;
-      case "city":
-        return [...CITIES, ...uniqueCities.filter(c => !CITIES.find(city => city.value === c)).map(c => ({ value: c, label: c }))];
+      case "status": {
+        const canonical = getFieldOptions('professionals', 'professional_status');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
+      case "priority": {
+        const canonical = getFieldOptions('professionals', 'priority');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
+      case "professional_type": {
+        const canonical = getFieldOptions('professionals', 'professional_type');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
+      case "service_category": {
+        const canonical = getFieldOptions('professionals', 'service_category');
+        return canonical.map(o => ({ value: o.value, label: o.label }));
+      }
+      case "city": {
+        const canonical = getFieldOptions('professionals', 'city').map(o => ({ value: o.value, label: o.label }));
+        const canonicalValues = canonical.map(o => o.value);
+        const extra = uniqueCities
+          .filter(c => c && !canonicalValues.includes(c))
+          .map(c => ({ value: c, label: c }));
+        return [...canonical, ...extra];
+      }
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
       case "kit_status":

@@ -70,6 +70,7 @@ import { useTablePreferences } from "@/hooks/useTablePreferences";
 import { useToast } from "@/hooks/use-toast";
 import { CUSTOMER_STATUSES, PRIORITY_LEVELS, CUSTOMER_TYPES } from "@/constants/customerConstants";
 import { CustomerSavedFilterDialog } from "./filters/CustomerSavedFilterDialog";
+import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { CustomerManageFiltersDialog } from "./filters/CustomerManageFiltersDialog";
 import { CustomerDetailView } from "./CustomerDetailView";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -199,6 +200,7 @@ interface EnhancedCustomerTableProps {
 }
 
 export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTableProps) {
+  const { getFieldOptions, getOptionLabel } = useControlPanelSettings();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { customers, loading, deleteCustomer, refetch } = useCustomers();
@@ -330,9 +332,33 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
   }, [customers, staffMembers, resolveAssignedToStaff]);
 
-  const uniqueCities = useMemo(() => Array.from(new Set(customers.map(c => c.city).filter(Boolean) as string[])), [customers]);
-  const uniqueStatuses = useMemo(() => Object.keys(CUSTOMER_STATUSES), []);
-  const uniqueTypes = useMemo(() => CUSTOMER_TYPES.map(t => t.value), []);
+  const uniqueCities = useMemo(() => {
+    const canonical = getFieldOptions('customers', 'city');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = customers.map(c => c.city).filter((c): c is string => !!c && !canonicalValues.includes(c));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [customers, getFieldOptions]);
+
+  const uniqueStatuses = useMemo(() => {
+    const canonical = getFieldOptions('customers', 'customer_status');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = customers.map(c => c.status).filter(status => status && !canonicalValues.includes(status));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [customers, getFieldOptions]);
+
+  const uniqueTypes = useMemo(() => {
+    const canonical = getFieldOptions('customers', 'customer_type');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = customers.map(c => c.customer_type).filter(type => type && !canonicalValues.includes(type));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [customers, getFieldOptions]);
+
+  const uniquePriorities = useMemo(() => {
+    const canonical = getFieldOptions('customers', 'priority');
+    const canonicalValues = canonical.map(o => o.value);
+    const extra = customers.map(c => c.priority.toString()).filter(pri => pri && !canonicalValues.includes(pri));
+    return [...canonicalValues, ...new Set(extra)];
+  }, [customers, getFieldOptions]);
   // Backward-compat: older saved filters stored the human label
   // (e.g. "Has Overdue Tasks") instead of the canonical snake_case value.
   // Normalize before evaluation so old filters still match.
@@ -707,7 +733,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               selected={typeFilter}
               onSelectionChange={setTypeFilter}
               placeholder="Filter by Type"
-              renderLabel={(t) => CUSTOMER_TYPES.find(ct => ct.value === t)?.label || t}
+              renderLabel={(t) => getOptionLabel('customers', 'customer_type', t)}
             />
           </div>
         );
@@ -720,6 +746,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               selected={cityFilter}
               onSelectionChange={setCityFilter}
               placeholder="Filter by City"
+              renderLabel={(c) => getOptionLabel('customers', 'city', c)}
             />
           </div>
         );
@@ -732,7 +759,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               selected={statusFilter}
               onSelectionChange={setStatusFilter}
               placeholder="Filter by Status"
-              renderLabel={(s) => CUSTOMER_STATUSES[s]?.label || s}
+              renderLabel={(s) => getOptionLabel('customers', 'customer_status', s)}
             />
           </div>
         );
@@ -741,11 +768,11 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           <div className="flex items-center gap-1">
             <SortableHeader field="priority">{columnLabel}</SortableHeader>
             <MultiSelectFilter
-              options={Object.keys(PRIORITY_LEVELS)}
+              options={uniquePriorities}
               selected={priorityFilter}
               onSelectionChange={setPriorityFilter}
               placeholder="Filter by Priority"
-              renderLabel={(p) => PRIORITY_LEVELS[parseInt(p) as keyof typeof PRIORITY_LEVELS]?.label || p}
+              renderLabel={(p) => getOptionLabel('customers', 'priority', p)}
             />
           </div>
         );
@@ -869,19 +896,20 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       case "company_name":
         return customer.company_name || "-";
       case "customerType":
-        return <span className="capitalize">{customer.customer_type}</span>;
+        return <span className="capitalize">{getOptionLabel('customers', 'customer_type', customer.customer_type)}</span>;
       case "city":
-        return customer.city || "-";
+        return customer.city ? getOptionLabel('customers', 'city', customer.city) : "-";
       case "status":
         return (
           <Badge variant="secondary" className={CUSTOMER_STATUSES[customer.status]?.className || ""}>
-            {CUSTOMER_STATUSES[customer.status]?.label || customer.status}
+            {getOptionLabel('customers', 'customer_status', customer.status)}
           </Badge>
         );
       case "priority":
+        const pLabel = getOptionLabel('customers', 'priority', customer.priority.toString());
         return (
           <span className={PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.color || ""}>
-            {PRIORITY_LEVELS[customer.priority as keyof typeof PRIORITY_LEVELS]?.label || customer.priority}
+            {pLabel}
           </span>
         );
       case "assignedTo": {
