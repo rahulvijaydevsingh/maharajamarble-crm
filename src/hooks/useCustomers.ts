@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 
 export interface Customer {
@@ -70,6 +71,7 @@ export function useCustomers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   const fetchCustomers = async () => {
     try {
@@ -208,6 +210,9 @@ export function useCustomers() {
   };
 
   useEffect(() => {
+    // Wait for the initial auth check before querying (avoids pre-login errors).
+    if (authLoading || !user) return;
+
     fetchCustomers();
 
     const channel = supabase
@@ -238,7 +243,7 @@ export function useCustomers() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   return {
     customers,

@@ -1005,13 +1005,13 @@ export function BulkUploadDialog({
         updated[currentPhotoIndex] = { 
           ...updated[currentPhotoIndex], 
           status: "duplicate",
-          duplicateInfo: existingPhones.get(lead.phone)
+          duplicateInfo: existingPhones.get(lead.phone)?.label
         };
         return updated;
       });
       toast({ 
         title: "Duplicate Phone Found", 
-        description: `This phone belongs to: ${existingPhones.get(lead.phone)}`,
+        description: `This phone belongs to: ${existingPhones.get(lead.phone)?.label ?? "an existing record"}`,
         variant: "destructive" 
       });
       return;

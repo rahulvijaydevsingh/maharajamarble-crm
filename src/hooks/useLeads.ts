@@ -66,7 +66,7 @@ export function useLeads() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
 
   const fetchLeads = async () => {
     try {
@@ -215,6 +215,10 @@ export function useLeads() {
   };
 
   useEffect(() => {
+    // Don't query before the initial auth check resolves — an unauthenticated
+    // request is correctly rejected by the DB and would surface a scary toast.
+    if (authLoading || !user) return;
+
     fetchLeads();
 
     // Subscribe to realtime changes
@@ -244,7 +248,7 @@ export function useLeads() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   return {
     leads,

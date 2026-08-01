@@ -315,7 +315,7 @@ const computeTaskReminderFireAt = (task: {
  * normalize legacy email/UUID values so bell filter (profile.full_name) matches.
  */
 const profileNameCache = new Map<string, string>();
-const resolveToFullName = async (value: string | null | undefined): Promise<string> => {
+export const resolveToFullName = async (value: string | null | undefined): Promise<string> => {
   const v = (value || '').trim();
   if (!v || v === 'System' || v === 'system') return v || 'System';
   if (!v.includes('@') && v.includes(' ')) return v;
@@ -425,7 +425,7 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
 
   const getActivityContext = (task: Partial<TaskInsert> & { lead_id?: string | null; related_entity_type?: string | null; related_entity_id?: string | null }) => {
     const leadId = task.lead_id || null;
@@ -468,6 +468,8 @@ export function useTasks() {
     try {
       const taskData = {
         ...task,
+        // Identity rule: assigned_to MUST be a canonical full_name, never an email/UUID.
+        assigned_to: await resolveToFullName(task.assigned_to),
         created_by: (task.created_by && task.created_by !== "Current User") ? task.created_by : (profile?.full_name || user?.email || "unknown"),
         original_due_date: task.original_due_date || task.due_date,
       };
@@ -579,6 +581,11 @@ export function useTasks() {
   const updateTask = async (id: string, updates: Partial<TaskInsert> & { completed_at?: string | null; snoozed_until?: string | null }) => {
     try {
       const prevTask = tasks.find((t) => t.id === id) || null;
+
+      // Identity rule: normalize any assignee write to canonical full_name.
+      if (updates.assigned_to) {
+        updates = { ...updates, assigned_to: await resolveToFullName(updates.assigned_to) };
+      }
 
       // If marking as completed, set completed_at
       if (updates.status === "Completed") {
@@ -1196,6 +1203,10 @@ export function useTasks() {
   };
 
   useEffect(() => {
+    // Wait for the initial auth check; querying before a session exists is
+    // rejected by RLS/grants and would surface an alarming error toast.
+    if (authLoading || !user) return;
+
     fetchTasks();
 
     // Subscribe to realtime changes
@@ -1214,7 +1225,7 @@ export function useTasks() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   return {
     tasks,

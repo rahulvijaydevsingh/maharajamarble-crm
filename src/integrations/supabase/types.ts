@@ -1310,6 +1310,51 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_professionals: {
+        Row: {
+          contact_designation: string | null
+          created_at: string
+          id: string
+          is_primary_contact: boolean
+          lead_id: string
+          professional_id: string
+          updated_at: string
+        }
+        Insert: {
+          contact_designation?: string | null
+          created_at?: string
+          id?: string
+          is_primary_contact?: boolean
+          lead_id: string
+          professional_id: string
+          updated_at?: string
+        }
+        Update: {
+          contact_designation?: string | null
+          created_at?: string
+          id?: string
+          is_primary_contact?: boolean
+          lead_id?: string
+          professional_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_professionals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_professionals_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           additional_contacts: Json | null
