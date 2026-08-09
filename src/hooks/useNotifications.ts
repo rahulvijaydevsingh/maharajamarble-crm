@@ -11,6 +11,41 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
   // Set up real-time subscription
   useEffect(() => {
     if (!userId) return;
+
+    const matchesCurrentUser = (payloadUserId: unknown) => {
+      if (typeof payloadUserId !== "string") return false;
+      return payloadUserId === userId || (!!userEmail && payloadUserId === userEmail);
+    };
+
+    const handleNotificationInsert = (payload: { new: Record<string, unknown> }) => {
+      if (!matchesCurrentUser(payload.new?.user_id)) return;
+
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+
+      // Show toast for new notification
+      const newNotification = payload.new as Notification;
+      if (newNotification.priority === 'urgent') {
+        toast({
+          title: newNotification.title,
+          description: newNotification.message,
+          variant: "destructive",
+        });
+      } else if (newNotification.priority === 'important') {
+        toast({
+          title: newNotification.title,
+          description: newNotification.message,
+        });
+      }
+    };
+
+    const handleNotificationChange = (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
+      const affectedUser = payload.new?.user_id ?? payload.old?.user_id;
+      if (!matchesCurrentUser(affectedUser)) return;
+
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+    };
     
     const channel = supabase
       .channel('notifications-changes')
@@ -20,25 +55,31 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          queryClient.invalidateQueries({ queryKey: ["notifications", userId] });
-          
-          // Show toast for new notification
-          const newNotification = payload.new as Notification;
-          if (newNotification.priority === 'urgent') {
-            toast({
-              title: newNotification.title,
-              description: newNotification.message,
-              variant: "destructive",
-            });
-          } else if (newNotification.priority === 'important') {
-            toast({
-              title: newNotification.title,
-              description: newNotification.message,
-            });
-          }
+          handleNotificationInsert(payload as { new: Record<string, unknown> });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+        },
+        (payload) => {
+          handleNotificationChange(payload as { new: Record<string, unknown>; old: Record<string, unknown> });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'notifications',
+        },
+        (payload) => {
+          handleNotificationChange(payload as { new: Record<string, unknown>; old: Record<string, unknown> });
         }
       )
       .subscribe();
