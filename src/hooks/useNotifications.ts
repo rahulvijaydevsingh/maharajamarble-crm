@@ -167,11 +167,19 @@ export const useMarkAllNotificationsRead = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (userId: string) => {
+    mutationFn: async ({ userId, userEmail }: { userId?: string; userEmail?: string }) => {
+      if (!userId && !userEmail) {
+        throw new Error("User identifier is required");
+      }
+
+      const orFilter = userId && userEmail
+        ? `user_id.eq.${userId},user_id.eq.${userEmail}`
+        : `user_id.eq.${userId || userEmail}`;
+
       const { error } = await supabase
         .from("notifications")
         .update({ is_read: true, is_dismissed: true })
-        .eq("user_id", userId)
+        .or(orFilter)
         .eq("is_dismissed", false);
       
       if (error) throw error;
