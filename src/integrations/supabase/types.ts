@@ -2484,10 +2484,12 @@ export type Database = {
           gps_radius_meters: number | null
           gps_required: boolean | null
           id: string
+          location_retention_days: number
           office_latitude: number | null
           office_longitude: number | null
           overtime_rate: number | null
           pf_applicable: boolean | null
+          photo_retention_days: number
           salary_effective_from: string | null
           salary_type: string
           shift_end: string | null
@@ -2504,10 +2506,12 @@ export type Database = {
           gps_radius_meters?: number | null
           gps_required?: boolean | null
           id?: string
+          location_retention_days?: number
           office_latitude?: number | null
           office_longitude?: number | null
           overtime_rate?: number | null
           pf_applicable?: boolean | null
+          photo_retention_days?: number
           salary_effective_from?: string | null
           salary_type?: string
           shift_end?: string | null
@@ -2524,10 +2528,12 @@ export type Database = {
           gps_radius_meters?: number | null
           gps_required?: boolean | null
           id?: string
+          location_retention_days?: number
           office_latitude?: number | null
           office_longitude?: number | null
           overtime_rate?: number | null
           pf_applicable?: boolean | null
+          photo_retention_days?: number
           salary_effective_from?: string | null
           salary_type?: string
           shift_end?: string | null
