@@ -24,7 +24,7 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
       queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
 
       // Show toast for new notification
-      const newNotification = payload.new as Notification;
+      const newNotification = payload.new as unknown as Notification;
       if (newNotification.priority === 'urgent') {
         toast({
           title: newNotification.title,
