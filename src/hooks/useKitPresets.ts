@@ -2,7 +2,7 @@
  import { supabase } from '@/integrations/supabase/client';
  import { useToast } from '@/hooks/use-toast';
  import { useAuth } from '@/contexts/AuthContext';
- import type { Json } from '@/integrations/supabase/types';
+import type { Database, Json } from '@/integrations/supabase/types';
  import type { KitPreset, KitTouchSequenceItem, KitCycleBehavior } from '@/constants/kitConstants';
  
  export function useKitPresets() {
@@ -73,7 +73,7 @@
          is_active: boolean;
        }>;
      }) => {
-       const updateData: Record<string, unknown> = { ...updates };
+        const updateData: Database['public']['Tables']['kit_presets']['Update'] = { ...updates };
        if (updates.touch_sequence) {
          updateData.touch_sequence = updates.touch_sequence as unknown as Json;
        }
