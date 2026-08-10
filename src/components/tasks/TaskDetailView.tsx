@@ -309,7 +309,7 @@ export function TaskDetailView({
     return () => {
       cancelled = true;
     };
-  }, [open, task, leads, customers]);
+  }, [open, task, leads, customers, professionals]);
 
   // Load parent task and follow-up children
   useEffect(() => {
