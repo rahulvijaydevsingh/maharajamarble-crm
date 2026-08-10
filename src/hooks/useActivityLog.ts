@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { ActivityType, ActivityCategory } from '@/constants/activityLogConstants';
-import { Json } from '@/integrations/supabase/types';
+import { Database, Json } from '@/integrations/supabase/types';
 
 export interface ActivityLogEntry {
   id: string;
@@ -150,7 +150,9 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
 
   const updateActivity = useCallback(async (id: string, updates: Partial<ActivityLogEntry>) => {
     try {
-      const dbUpdates: Record<string, any> = { ...updates };
+      const dbUpdates: Database['public']['Tables']['activity_log']['Update'] = {
+        ...updates,
+      };
       if (updates.metadata) {
         dbUpdates.metadata = updates.metadata as Json;
       }
