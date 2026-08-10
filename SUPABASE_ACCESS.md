@@ -2,7 +2,7 @@
 
 ## Current Setup
 
-- Project ID: ehuxwzbdnpyelmtckoac
+- Project ID: jmohlloabmddaiyjvahp
 - Owner: Lovable (project was scaffolded via Lovable's account)
 - Credentials are currently managed by Lovable
 
@@ -27,13 +27,13 @@ Option A — Supabase CLI (recommended):
 ```
 npm install -g supabase
 supabase login
-supabase db dump --project-ref ehuxwzbdnpyelmtckoac -f maharaja_full_backup.sql
+supabase db dump --project-ref jmohlloabmddaiyjvahp -f maharaja_full_backup.sql
 ```
 
 Option B — pg_dump via direct connection:
 
 ```
-pg_dump "postgresql://postgres:[YOUR_DB_PASSWORD]@db.ehuxwzbdnpyelmtckoac.supabase.co:5432/postgres" \
+pg_dump "postgresql://postgres:[YOUR_DB_PASSWORD]@db.jmohlloabmddaiyjvahp.supabase.co:5432/postgres" \
   --no-owner --no-privileges -F c -f maharaja_backup.dump
 ```
 
