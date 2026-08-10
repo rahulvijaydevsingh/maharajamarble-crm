@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -443,14 +444,24 @@ export const useCreateAnnouncement = () => {
   return useMutation({
     mutationFn: async (announcement: Omit<Announcement, 'id' | 'created_at' | 'created_by'>) => {
       if (!user?.id) throw new Error("Not authenticated");
+
+      const announcementInsert: Database['public']['Tables']['announcements']['Insert'] = {
+        title: announcement.title,
+        content: announcement.content,
+        priority: announcement.priority,
+        target_audience: announcement.target_audience,
+        target_roles: announcement.target_roles,
+        target_user_ids: announcement.target_user_ids,
+        is_pinned: announcement.is_pinned,
+        is_active: announcement.is_active,
+        scheduled_at: announcement.scheduled_at,
+        created_by: user.id,
+        published_at: announcement.scheduled_at ? null : new Date().toISOString(),
+      };
       
       const { data, error } = await supabase
         .from("announcements")
-        .insert({
-          ...announcement,
-          created_by: user.id,
-          published_at: announcement.scheduled_at ? null : new Date().toISOString(),
-        })
+        .insert(announcementInsert)
         .select()
         .single();
       

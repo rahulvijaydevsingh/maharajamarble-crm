@@ -217,7 +217,10 @@ export function KitProfileTab({
               }
 
               // Link task and reminder to touch
-              const touchUpdates: Record<string, any> = {};
+              const touchUpdates: {
+                linked_task_id?: string;
+                linked_reminder_id?: string;
+              } = {};
               if (createdTask?.id) touchUpdates.linked_task_id = createdTask.id;
               if (createdReminderId) touchUpdates.linked_reminder_id = createdReminderId;
 
@@ -440,7 +443,10 @@ export function KitProfileTab({
         // Link task and reminder back to the touch
         const touchId = createdTouch?.id;
         if (touchId) {
-          const touchUpdates: Record<string, any> = {};
+          const touchUpdates: {
+            linked_task_id?: string;
+            linked_reminder_id?: string;
+          } = {};
           if (createdTask?.id) touchUpdates.linked_task_id = createdTask.id;
           if (createdReminderId) touchUpdates.linked_reminder_id = createdReminderId;
           

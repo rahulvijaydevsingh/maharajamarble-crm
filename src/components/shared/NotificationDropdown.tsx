@@ -140,11 +140,10 @@ export function NotificationDropdown() {
   };
 
   const handleMarkAllRead = () => {
-    if (user?.email) {
-      markAllAsRead.mutate(user.email);
-    } else if (user?.id) {
-      markAllAsRead.mutate(user.id);
-    }
+    markAllAsRead.mutate({
+      userId: user?.id,
+      userEmail: user?.email,
+    });
   };
 
   const handleMessageClick = (conversationId: string) => {

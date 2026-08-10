@@ -53,7 +53,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 type RelatedPerson =
   | { type: "lead"; id: string; name: string; phone: string | null }
   | { type: "customer"; id: string; name: string; phone: string | null }
-  | { type: "professional"; id: string; name: string; phone: string | null }
+  | { type: "professional"; id: string; name: string; phone: string | null; professional_type?: string | null }
   | null;
 
 function ValueRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -267,12 +267,32 @@ export function TaskDetailView({
         }
 
         if (relType === "professional") {
+          const professionalFromStore = professionals.find((p) => p.id === relId);
+          if (professionalFromStore) {
+            setRelated({
+              type: "professional",
+              id: relId,
+              name: professionalFromStore.name,
+              phone: professionalFromStore.phone || null,
+              professional_type: professionalFromStore.professional_type || null,
+            });
+            return;
+          }
+
           const { data } = await supabase
             .from("professionals")
-            .select("id,name,phone")
+            .select("id,name,phone,professional_type")
             .eq("id", relId)
             .maybeSingle();
-          if (!cancelled && data) setRelated({ type: "professional", id: data.id, name: data.name, phone: data.phone || null });
+          if (!cancelled && data) {
+            setRelated({
+              type: "professional",
+              id: data.id,
+              name: data.name,
+              phone: data.phone || null,
+              professional_type: data.professional_type || null,
+            });
+          }
           return;
         }
       }
@@ -289,7 +309,7 @@ export function TaskDetailView({
     return () => {
       cancelled = true;
     };
-  }, [open, task, leads, customers]);
+  }, [open, task, leads, customers, professionals]);
 
   // Load parent task and follow-up children
   useEffect(() => {
@@ -500,17 +520,35 @@ export function TaskDetailView({
                       {task.related_entity_type === 'professional' && task.related_entity_id && (
                         <>
                           <span className="text-muted-foreground">• Professional:</span>
-                          <Button
-                            type="button"
-                            variant="link"
-                            className="h-auto p-0 text-purple-600 hover:text-purple-700 font-medium"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void openProfessionalDetailById(task.related_entity_id!);
-                            }}
-                          >
-                            {professionals.find(p => p.id === task.related_entity_id)?.name || 'View Professional'}
-                          </Button>
+                          {(() => {
+                            const linkedProfessional = professionals.find((p) => p.id === task.related_entity_id);
+                            const professionalTypeLabel = linkedProfessional?.professional_type
+                              ? getOptionLabel('professionals', 'professional_type', linkedProfessional.professional_type)
+                              : null;
+
+                            return (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  className="h-auto p-0 text-primary hover:text-primary font-medium"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const relatedEntityId = task.related_entity_id;
+                                    if (!relatedEntityId) return;
+                                    void openProfessionalDetailById(relatedEntityId);
+                                  }}
+                                >
+                                  {linkedProfessional?.name || 'View Professional'}
+                                </Button>
+                                {professionalTypeLabel && (
+                                  <Badge variant="outline" className="text-[10px] px-2 py-0 h-5">
+                                    {professionalTypeLabel}
+                                  </Badge>
+                                )}
+                              </>
+                            );
+                          })()}
                         </>
                       )}
                     </>
@@ -527,6 +565,11 @@ export function TaskDetailView({
                       >
                         {related.name}
                       </Button>
+                      {related.type === 'professional' && related.professional_type && (
+                        <Badge variant="outline" className="text-[10px] px-2 py-0 h-5">
+                          {getOptionLabel('professionals', 'professional_type', related.professional_type)}
+                        </Badge>
+                      )}
                       <span className="text-muted-foreground">•</span>
                       <PhoneLink
                         phone={related.phone}

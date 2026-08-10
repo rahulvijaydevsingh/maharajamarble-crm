@@ -54,6 +54,8 @@ interface HRSettings {
   office_latitude: number | null;
   office_longitude: number | null;
   camera_required: boolean;
+  photo_retention_days: number;
+  location_retention_days: number;
 }
 
 interface LeaveBalance {
@@ -78,6 +80,8 @@ const DEFAULT_SETTINGS: HRSettings = {
   office_latitude: null,
   office_longitude: null,
   camera_required: true,
+  photo_retention_days: 90,
+  location_retention_days: 30,
 };
 
 const WORK_DAY_PRESETS: Record<string, string[]> = {
@@ -144,6 +148,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           office_latitude: hrData.office_latitude,
           office_longitude: hrData.office_longitude,
           camera_required: hrData.camera_required ?? true,
+          photo_retention_days: hrData.photo_retention_days || 90,
+          location_retention_days: hrData.location_retention_days || 30,
         });
         // Determine preset
         const wd = hrData.work_days || [];
@@ -186,6 +192,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
         office_latitude: settings.office_latitude,
         office_longitude: settings.office_longitude,
         camera_required: settings.camera_required,
+        photo_retention_days: settings.photo_retention_days,
+        location_retention_days: settings.location_retention_days,
       };
 
       if (isNew) {
@@ -484,6 +492,45 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
               disabled={isCameraForced}
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Photo Retention (days)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={3650}
+                value={settings.photo_retention_days}
+                onChange={(e) => {
+                  const value = Number.parseInt(e.target.value, 10);
+                  setSettings((p) => ({
+                    ...p,
+                    photo_retention_days: Number.isFinite(value) && value > 0 ? value : 1,
+                  }));
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Location Retention (days)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={3650}
+                value={settings.location_retention_days}
+                onChange={(e) => {
+                  const value = Number.parseInt(e.target.value, 10);
+                  setSettings((p) => ({
+                    ...p,
+                    location_retention_days: Number.isFinite(value) && value > 0 ? value : 1,
+                  }));
+                }}
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Attendance photos and location traces older than these windows can be purged by your cleanup routine.
+          </p>
         </div>
 
         <Separator />
