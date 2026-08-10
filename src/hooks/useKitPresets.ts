@@ -73,10 +73,14 @@ import type { Database, Json } from '@/integrations/supabase/types';
          is_active: boolean;
        }>;
      }) => {
-        const updateData: Database['public']['Tables']['kit_presets']['Update'] = { ...updates };
-       if (updates.touch_sequence) {
-         updateData.touch_sequence = updates.touch_sequence as unknown as Json;
-       }
+        const updateData: Database['public']['Tables']['kit_presets']['Update'] = {};
+        if (updates.name !== undefined) updateData.name = updates.name;
+        if (updates.description !== undefined) updateData.description = updates.description;
+        if (updates.default_cycle_behavior !== undefined) updateData.default_cycle_behavior = updates.default_cycle_behavior;
+        if (updates.is_active !== undefined) updateData.is_active = updates.is_active;
+        if (updates.touch_sequence !== undefined) {
+          updateData.touch_sequence = updates.touch_sequence as unknown as Json;
+        }
  
        const { data, error } = await supabase
          .from('kit_presets')
