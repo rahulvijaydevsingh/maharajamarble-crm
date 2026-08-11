@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, addWeeks, addMonths, addYears } from "date-fns";
@@ -140,6 +140,10 @@ export interface TaskInsert {
   custom_reminder_at?: string | null;
   updated_by?: string | null;
 }
+
+type TasksContextValue = ReturnType<typeof useTasksStore>;
+
+const TasksContext = createContext<TasksContextValue | undefined>(undefined);
 
 // Helper function to calculate next due date based on recurrence settings
 function calculateNextDueDate(
@@ -420,7 +424,7 @@ const syncTaskReminder = async (
   }
 };
 
-export function useTasks() {
+function useTasksStore() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -1241,4 +1245,26 @@ export function useTasks() {
     toggleStar,
     refetch: fetchTasks,
   };
+}
+
+/**
+ * Owns the task cache and its realtime listener for the whole authenticated app.
+ * A fixed Supabase channel name can only be subscribed once, so keeping this at
+ * provider scope prevents independent screens/dialogs from colliding on it.
+ */
+export function TasksProvider({ children }: { children: React.ReactNode }) {
+  const value = useTasksStore();
+
+  return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
+}
+
+/** Consume the single shared task store. */
+export function useTasks() {
+  const context = useContext(TasksContext);
+
+  if (!context) {
+    throw new Error("useTasks must be used within a TasksProvider");
+  }
+
+  return context;
 }
