@@ -12,6 +12,7 @@ import { RemindersProvider } from '@/contexts/RemindersContext';
 import { BackupJobsProvider } from '@/contexts/BackupJobsContext';
 import { BackupJobNotifier } from '@/components/shared/BackupJobNotifier';
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { TasksProvider } from "@/hooks/useTasks";
 import Index from "./pages/Index";
 import Leads from "./pages/Leads";
 import Customers from "./pages/Customers";
@@ -46,12 +47,13 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <RemindersProvider>
-              <BackupJobsProvider>
-                <BackupJobNotifier />
-                <ZLayerProvider>
-                  <TaskDetailModalProvider>
-                  <Routes>
+            <TasksProvider>
+              <RemindersProvider>
+                <BackupJobsProvider>
+                  <BackupJobNotifier />
+                  <ZLayerProvider>
+                    <TaskDetailModalProvider>
+                    <Routes>
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
                     <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
@@ -77,11 +79,12 @@ const App = () => (
                     <Route path="/performance" element={<ProtectedRoute requiredRole="admin"><PerformanceMatrix /></ProtectedRoute>} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </TaskDetailModalProvider>
-                </ZLayerProvider>
-              </BackupJobsProvider>
-            </RemindersProvider>
+                    </Routes>
+                  </TaskDetailModalProvider>
+                  </ZLayerProvider>
+                </BackupJobsProvider>
+              </RemindersProvider>
+            </TasksProvider>
           </BrowserRouter>
         </TooltipProvider>
         </HRModuleProvider>
