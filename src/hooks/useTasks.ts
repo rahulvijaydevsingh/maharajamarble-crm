@@ -1255,7 +1255,7 @@ function useTasksStore() {
 export function TasksProvider({ children }: { children: React.ReactNode }) {
   const value = useTasksStore();
 
-  return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
+  return React.createElement(TasksContext.Provider, { value }, children);
 }
 
 /** Consume the single shared task store. */
