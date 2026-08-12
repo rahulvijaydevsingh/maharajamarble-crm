@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -62,12 +62,23 @@ export interface CustomerInsert {
   updated_by?: string | null;
 }
 
+interface CustomersContextType {
+  customers: Customer[];
+  loading: boolean;
+  addCustomer: (customer: CustomerInsert) => Promise<any>;
+  updateCustomer: (id: string, updates: Partial<CustomerInsert>) => Promise<any>;
+  deleteCustomer: (id: string) => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+const CustomersContext = createContext<CustomersContextType | undefined>(undefined);
+
 async function getSessionUser() {
   const { data } = await supabase.auth.getSession();
   return data.session?.user ?? null;
 }
 
-export function useCustomers() {
+function useCustomersStore() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -253,4 +264,17 @@ export function useCustomers() {
     deleteCustomer,
     refetch: fetchCustomers,
   };
+}
+
+export function CustomersProvider({ children }: { children: React.ReactNode }) {
+  const value = useCustomersStore();
+  return React.createElement(CustomersContext.Provider, { value }, children);
+}
+
+export function useCustomers() {
+  const context = useContext(CustomersContext);
+  if (!context) {
+    throw new Error("useCustomers must be used within a CustomersProvider");
+  }
+  return context;
 }

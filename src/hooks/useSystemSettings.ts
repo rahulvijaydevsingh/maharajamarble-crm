@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import React from "react";
 
 interface SystemSettings {
   id?: string;
@@ -9,11 +10,18 @@ interface SystemSettings {
   hr_module_enabled?: boolean;
 }
 
-/**
- * Lightweight hook for global system_settings (singleton row).
- * Exposes the `default_reminders_enabled` toggle used by task/calendar create dialogs.
- */
-export function useSystemSettings() {
+interface SystemSettingsContextType {
+  settings: SystemSettings;
+  defaultRemindersEnabled: boolean;
+  loading: boolean;
+  saving: boolean;
+  setDefaultRemindersEnabled: (enabled: boolean) => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+const SystemSettingsContext = createContext<SystemSettingsContextType | undefined>(undefined);
+
+function useSystemSettingsStore() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [settings, setSettings] = useState<SystemSettings>({ default_reminders_enabled: false });
@@ -62,7 +70,6 @@ export function useSystemSettings() {
   const setDefaultRemindersEnabled = async (enabled: boolean) => {
     setSaving(true);
     try {
-      // Ensure a settings row exists
       let rowId = settings.id;
       if (!rowId) {
         const { data: existing } = await (supabase
@@ -110,4 +117,17 @@ export function useSystemSettings() {
     setDefaultRemindersEnabled,
     refetch: fetchSettings,
   };
+}
+
+export function SystemSettingsProvider({ children }: { children: React.ReactNode }) {
+  const value = useSystemSettingsStore();
+  return React.createElement(SystemSettingsContext.Provider, { value }, children);
+}
+
+export function useSystemSettings() {
+  const context = useContext(SystemSettingsContext);
+  if (!context) {
+    throw new Error("useSystemSettings must be used within a SystemSettingsProvider");
+  }
+  return context;
 }
