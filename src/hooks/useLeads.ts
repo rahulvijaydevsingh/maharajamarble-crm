@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Json } from "@/integrations/supabase/types";
@@ -62,7 +62,18 @@ export interface LeadInsert {
   updated_by?: string | null;
 }
 
-export function useLeads() {
+interface LeadsStore {
+  leads: Lead[];
+  loading: boolean;
+  addLead: (lead: LeadInsert) => Promise<Lead>;
+  updateLead: (id: string, updates: Partial<LeadInsert>) => Promise<Lead>;
+  deleteLead: (id: string) => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+const LeadsContext = createContext<LeadsStore | undefined>(undefined);
+
+function useLeadsStore(): LeadsStore {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -258,4 +269,26 @@ export function useLeads() {
     deleteLead,
     refetch: fetchLeads,
   };
+}
+
+/**
+ * Owns the lead cache and realtime listener once for the authenticated app.
+ * Supabase reuses channels by name, so independent hook instances must not
+ * each subscribe to the same `leads-changes` channel.
+ */
+export function LeadsProvider({ children }: { children: React.ReactNode }) {
+  const value = useLeadsStore();
+
+  return React.createElement(LeadsContext.Provider, { value }, children);
+}
+
+/** Consume the app-wide lead store. */
+export function useLeads() {
+  const context = useContext(LeadsContext);
+
+  if (!context) {
+    throw new Error("useLeads must be used within a LeadsProvider");
+  }
+
+  return context;
 }

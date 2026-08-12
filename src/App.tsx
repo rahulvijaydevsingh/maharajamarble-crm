@@ -13,6 +13,7 @@ import { BackupJobsProvider } from '@/contexts/BackupJobsContext';
 import { BackupJobNotifier } from '@/components/shared/BackupJobNotifier';
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { TasksProvider } from "@/hooks/useTasks";
+import { LeadsProvider } from "@/hooks/useLeads";
 import Index from "./pages/Index";
 import Leads from "./pages/Leads";
 import Customers from "./pages/Customers";
@@ -47,12 +48,13 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <TasksProvider>
-              <RemindersProvider>
-                <BackupJobsProvider>
-                  <BackupJobNotifier />
-                  <ZLayerProvider>
-                    <TaskDetailModalProvider>
+            <LeadsProvider>
+              <TasksProvider>
+                <RemindersProvider>
+                  <BackupJobsProvider>
+                    <BackupJobNotifier />
+                    <ZLayerProvider>
+                      <TaskDetailModalProvider>
                     <Routes>
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
@@ -80,11 +82,12 @@ const App = () => (
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
                     </Routes>
-                  </TaskDetailModalProvider>
-                  </ZLayerProvider>
-                </BackupJobsProvider>
-              </RemindersProvider>
-            </TasksProvider>
+                      </TaskDetailModalProvider>
+                    </ZLayerProvider>
+                  </BackupJobsProvider>
+                </RemindersProvider>
+              </TasksProvider>
+            </LeadsProvider>
           </BrowserRouter>
         </TooltipProvider>
         </HRModuleProvider>
