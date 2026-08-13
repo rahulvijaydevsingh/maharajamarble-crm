@@ -2,13 +2,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Notification } from "@/types/automation";
-import { useEffect } from "react";
+import { useEffect, createContext, useContext } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import React from "react";
 
-// Fetch notifications for a user
-export const useNotifications = (userId: string, unreadOnly = false, userEmail?: string) => {
+const NotificationsContext = createContext<boolean | undefined>(undefined);
+
+export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  
-  // Set up real-time subscription
+  const userEmail = user?.email || "";
+  const userId = user?.id;
+
+  // Set up real-time subscription once at Provider level
   useEffect(() => {
     if (!userId) return;
 
@@ -25,13 +31,13 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
 
       // Show toast for new notification
       const newNotification = payload.new as unknown as Notification;
-      if (newNotification.priority === 'urgent') {
+      if (newNotification.priority === "urgent") {
         toast({
           title: newNotification.title,
           description: newNotification.message,
           variant: "destructive",
         });
-      } else if (newNotification.priority === 'important') {
+      } else if (newNotification.priority === "important") {
         toast({
           title: newNotification.title,
           description: newNotification.message,
@@ -48,35 +54,35 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
     };
     
     const channel = supabase
-      .channel('notifications-changes')
+      .channel("notifications-changes")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
         },
         (payload) => {
           handleNotificationInsert(payload as { new: Record<string, unknown> });
         }
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
+          event: "UPDATE",
+          schema: "public",
+          table: "notifications",
         },
         (payload) => {
           handleNotificationChange(payload as { new: Record<string, unknown>; old: Record<string, unknown> });
         }
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'notifications',
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
         },
         (payload) => {
           handleNotificationChange(payload as { new: Record<string, unknown>; old: Record<string, unknown> });
@@ -88,6 +94,21 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
       supabase.removeChannel(channel);
     };
   }, [userId, userEmail, queryClient]);
+
+  return React.createElement(NotificationsContext.Provider, { value: true }, children);
+}
+
+function useNotificationsContext() {
+  const context = useContext(NotificationsContext);
+  if (!context) {
+    throw new Error("Notifications hooks must be used within a NotificationsProvider");
+  }
+  return context;
+}
+
+// Fetch notifications for a user
+export const useNotifications = (userId: string, unreadOnly = false, userEmail?: string) => {
+  useNotificationsContext();
   
   return useQuery({
     queryKey: ["notifications", userId, userEmail, unreadOnly],
@@ -120,6 +141,8 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
 
 // Get unread count
 export const useUnreadNotificationCount = (userId: string, userEmail?: string) => {
+  useNotificationsContext();
+
   const orFilter = userEmail
     ? `user_id.eq.${userId},user_id.eq.${userEmail}`
     : `user_id.eq.${userId}`;

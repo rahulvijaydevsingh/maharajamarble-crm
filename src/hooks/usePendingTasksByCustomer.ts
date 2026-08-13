@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import React from "react";
 
 export interface PendingTaskInfo {
   id: string;
@@ -19,11 +21,22 @@ export interface CustomerPendingTasks {
   tasks: PendingTaskInfo[];
 }
 
-export function usePendingTasksByCustomer() {
+interface PendingTasksByCustomerContextType {
+  tasksByCustomer: Record<string, CustomerPendingTasks>;
+  getCustomerTasks: (customerId: string) => CustomerPendingTasks;
+  loading: boolean;
+  refetch: () => Promise<void>;
+}
+
+const PendingTasksByCustomerContext = createContext<PendingTasksByCustomerContextType | undefined>(undefined);
+
+function usePendingTasksByCustomerStore() {
+  const { user, loading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchPendingTasks = async () => {
+    if (authLoading || !user) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -42,6 +55,7 @@ export function usePendingTasksByCustomer() {
   };
 
   useEffect(() => {
+    if (authLoading || !user) return;
     fetchPendingTasks();
 
     const channel = supabase
@@ -56,7 +70,7 @@ export function usePendingTasksByCustomer() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   const tasksByCustomer = useMemo(() => {
     const today = new Date();
@@ -102,4 +116,17 @@ export function usePendingTasksByCustomer() {
     loading,
     refetch: fetchPendingTasks,
   };
+}
+
+export function PendingTasksByCustomerProvider({ children }: { children: React.ReactNode }) {
+  const value = usePendingTasksByCustomerStore();
+  return React.createElement(PendingTasksByCustomerContext.Provider, { value }, children);
+}
+
+export function usePendingTasksByCustomer() {
+  const context = useContext(PendingTasksByCustomerContext);
+  if (!context) {
+    throw new Error("usePendingTasksByCustomer must be used within a PendingTasksByCustomerProvider");
+  }
+  return context;
 }

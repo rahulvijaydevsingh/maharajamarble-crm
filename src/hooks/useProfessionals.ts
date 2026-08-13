@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import React from "react";
 
 export interface Professional {
   id: string;
@@ -61,12 +62,23 @@ export interface ProfessionalInsert {
   updated_by?: string | null;
 }
 
+interface ProfessionalsContextType {
+  professionals: Professional[];
+  loading: boolean;
+  addProfessional: (professional: ProfessionalInsert) => Promise<any>;
+  updateProfessional: (id: string, updates: Partial<ProfessionalInsert>) => Promise<any>;
+  deleteProfessional: (id: string) => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+const ProfessionalsContext = createContext<ProfessionalsContextType | undefined>(undefined);
+
 async function getSessionUser() {
   const { data } = await supabase.auth.getSession();
   return data.session?.user ?? null;
 }
 
-export function useProfessionals() {
+function useProfessionalsStore() {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -96,9 +108,6 @@ export function useProfessionals() {
 
   const addProfessional = async (professional: ProfessionalInsert) => {
     try {
-      // Duplicate-phone guard — matches the check the Lead flows already run
-      // so professionals added directly from Professional Management can't
-      // create silent duplicates.
       const normalizedPhone = String(professional.phone || "").replace(/\D/g, "").slice(-10);
       if (normalizedPhone.length === 10) {
         const { data: existing } = await supabase
@@ -146,15 +155,14 @@ export function useProfessionals() {
 
   const updateProfessional = async (id: string, updates: Partial<ProfessionalInsert>) => {
     try {
-      // INVARIANT-04: updated_by must store full_name string, never UUID/email
       let updatedBy: string | null = null;
       try {
         const u = await getSessionUser();
         if (u) {
           const { data: prof } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', u.id)
+            .from("profiles")
+            .select("full_name")
+            .eq("id", u.id)
             .maybeSingle();
           updatedBy = prof?.full_name ?? null;
         }
@@ -220,7 +228,6 @@ export function useProfessionals() {
   };
 
   useEffect(() => {
-    // Wait for the initial auth check before querying (avoids pre-login errors).
     if (authLoading || !user) return;
 
     fetchProfessionals();
@@ -263,4 +270,17 @@ export function useProfessionals() {
     deleteProfessional,
     refetch: fetchProfessionals,
   };
+}
+
+export function ProfessionalsProvider({ children }: { children: React.ReactNode }) {
+  const value = useProfessionalsStore();
+  return React.createElement(ProfessionalsContext.Provider, { value }, children);
+}
+
+export function useProfessionals() {
+  const context = useContext(ProfessionalsContext);
+  if (!context) {
+    throw new Error("useProfessionals must be used within a ProfessionalsProvider");
+  }
+  return context;
 }

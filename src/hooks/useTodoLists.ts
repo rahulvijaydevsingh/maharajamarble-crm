@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import React from "react";
 
 export interface TodoList {
   id: string;
@@ -17,7 +18,6 @@ export interface TodoList {
   sort_order: number;
   created_at: string;
   updated_at: string;
-  // Computed
   items_count?: number;
   completed_count?: number;
 }
@@ -34,7 +34,20 @@ export interface TodoListInsert {
   sort_order?: number;
 }
 
-export function useTodoLists() {
+interface TodoListsContextType {
+  lists: TodoList[];
+  loading: boolean;
+  addList: (list: TodoListInsert) => Promise<any>;
+  updateList: (id: string, updates: Partial<TodoListInsert>) => Promise<any>;
+  deleteList: (id: string) => Promise<void>;
+  archiveList: (id: string) => Promise<any>;
+  togglePin: (id: string) => Promise<any>;
+  refetch: () => Promise<void>;
+}
+
+const TodoListsContext = createContext<TodoListsContextType | undefined>(undefined);
+
+function useTodoListsStore() {
   const [lists, setLists] = useState<TodoList[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -53,7 +66,6 @@ export function useTodoLists() {
       if (error) throw error;
       setLists(data || []);
     } catch (error: any) {
-      // Suppress transient auth/RLS errors during session restore
       const msg = (error.message || "").toLowerCase();
       if (msg.includes("jwt") || msg.includes("row-level security") || msg.includes("rls")) {
         console.warn("Transient auth error fetching todo lists, will retry once session is ready");
@@ -71,7 +83,6 @@ export function useTodoLists() {
 
   const addList = async (list: TodoListInsert) => {
     try {
-      // Optimistic update: add a temporary list immediately
       const tempId = `temp-${Date.now()}`;
       const optimisticList: TodoList = {
         id: tempId,
@@ -89,10 +100,8 @@ export function useTodoLists() {
         updated_at: new Date().toISOString(),
       };
       
-      // Add to UI immediately
       setLists((prev) => [optimisticList, ...prev]);
 
-      // Don't override created_by — let DB default handle it
       const { created_by: _cb, ...listWithoutCb } = list as any;
       const { data, error } = await supabase
         .from("todo_lists")
@@ -101,12 +110,10 @@ export function useTodoLists() {
         .single();
 
       if (error) {
-        // Rollback on error
         setLists((prev) => prev.filter((l) => l.id !== tempId));
         throw error;
       }
       
-      // Replace temp with real data
       setLists((prev) => prev.map((l) => (l.id === tempId ? data : l)));
       return data;
     } catch (error: any) {
@@ -242,4 +249,17 @@ export function useTodoLists() {
     togglePin,
     refetch: fetchLists,
   };
+}
+
+export function TodoListsProvider({ children }: { children: React.ReactNode }) {
+  const value = useTodoListsStore();
+  return React.createElement(TodoListsContext.Provider, { value }, children);
+}
+
+export function useTodoLists() {
+  const context = useContext(TodoListsContext);
+  if (!context) {
+    throw new Error("useTodoLists must be used within a TodoListsProvider");
+  }
+  return context;
 }

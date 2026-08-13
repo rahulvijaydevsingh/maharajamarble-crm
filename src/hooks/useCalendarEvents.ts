@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, parseISO, isSameDay, format } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
+import React from "react";
 
 export type CalendarEventType = 
   | "task" 
@@ -85,7 +87,25 @@ function mapTaskTypeToEventType(taskType: string): CalendarEventType {
   return typeMap[taskType] || "task";
 }
 
-export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day" | "agenda") {
+interface CalendarContextType {
+  events: CalendarEvent[];
+  eventsByDate: Record<string, CalendarEvent[]>;
+  getEventsForDate: (date: Date) => CalendarEvent[];
+  loading: boolean;
+  filters: CalendarFilters;
+  setFilters: React.Dispatch<React.SetStateAction<CalendarFilters>>;
+  refetch: () => Promise<void>;
+  dateRange: { start: Date; end: Date };
+  currentDate: Date;
+  setCurrentDate: React.Dispatch<React.SetStateAction<Date>>;
+  view: "month" | "week" | "day" | "agenda";
+  setView: React.Dispatch<React.SetStateAction<"month" | "week" | "day" | "agenda">>;
+}
+
+const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
+
+function useCalendarEventsStore(viewDate: Date, view: "month" | "week" | "day" | "agenda") {
+  const { user, loading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
   const [reminders, setReminders] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
@@ -113,7 +133,6 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
       default:
         const monthStart = startOfMonth(now);
         const monthEnd = endOfMonth(now);
-        // Include days from previous/next month visible in calendar
         return { 
           start: startOfWeek(monthStart), 
           end: endOfWeek(monthEnd) 
@@ -122,6 +141,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
   }, [viewDate, view]);
 
   const fetchData = async () => {
+    if (authLoading || !user) return;
     try {
       setLoading(true);
       const startStr = format(dateRange.start, "yyyy-MM-dd");
@@ -202,21 +222,21 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
           if (!sub?.entity_id || !sub?.entity_type) return;
           if (entityLookup[sub.entity_id]) return;
           
-          if (sub.entity_type === 'lead') leadIds.push(sub.entity_id);
-          else if (sub.entity_type === 'customer') customerIds.push(sub.entity_id);
-          else if (sub.entity_type === 'professional') professionalIds.push(sub.entity_id);
+          if (sub.entity_type === "lead") leadIds.push(sub.entity_id);
+          else if (sub.entity_type === "customer") customerIds.push(sub.entity_id);
+          else if (sub.entity_type === "professional") professionalIds.push(sub.entity_id);
         });
         
         // Fetch entity details in parallel
         const [leadsResult, customersResult, professionalsResult] = await Promise.all([
           leadIds.length > 0 
-            ? supabase.from('leads').select('id, name, phone, site_plus_code').in('id', leadIds)
+            ? supabase.from("leads").select("id, name, phone, site_plus_code").in("id", leadIds)
             : { data: [] },
           customerIds.length > 0
-            ? supabase.from('customers').select('id, name, phone, site_plus_code').in('id', customerIds)
+            ? supabase.from("customers").select("id, name, phone, site_plus_code").in("id", customerIds)
             : { data: [] },
           professionalIds.length > 0
-            ? supabase.from('professionals').select('id, name, phone, site_plus_code').in('id', professionalIds)
+            ? supabase.from("professionals").select("id, name, phone, site_plus_code").in("id", professionalIds)
             : { data: [] },
         ]);
         
@@ -248,6 +268,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
   };
 
   useEffect(() => {
+    if (authLoading || !user) return;
     fetchData();
 
     // Set up realtime subscriptions
@@ -265,7 +286,7 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
       supabase.removeChannel(tasksChannel);
       supabase.removeChannel(remindersChannel);
     };
-  }, [dateRange.start.toISOString(), dateRange.end.toISOString()]);
+  }, [authLoading, user, dateRange.start.toISOString(), dateRange.end.toISOString()]);
 
   // Transform data into calendar events
   const events = useMemo(() => {
@@ -381,7 +402,6 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
         color: config.color,
         icon: config.icon,
         status: touch.status === "snoozed" ? "Snoozed" : "Pending",
-        // KIT-specific fields
         entityPhone: entityInfo?.phone || null,
         entityLocation: entityInfo?.location || null,
         touchMethod: touch.method,
@@ -396,30 +416,21 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
   // Apply filters
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
-      // Filter by event type
       if (filters.eventTypes.length > 0 && !filters.eventTypes.includes(event.type)) {
         return false;
       }
-
-      // Filter by assigned to
       if (filters.assignedTo.length > 0 && event.assignedTo && 
           !filters.assignedTo.includes(event.assignedTo)) {
         return false;
       }
-
-      // Filter by status
       if (filters.status.length > 0 && event.status && 
           !filters.status.includes(event.status)) {
         return false;
       }
-
-      // Filter by priority
       if (filters.priority.length > 0 && event.priority && 
           !filters.priority.includes(event.priority)) {
         return false;
       }
-
-      // Filter by search
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const matchesTitle = event.title.toLowerCase().includes(searchLower);
@@ -429,17 +440,14 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
           return false;
         }
       }
-
       return true;
     });
   }, [events, filters]);
 
-  // Get events for a specific date
   const getEventsForDate = (date: Date) => {
     return filteredEvents.filter((event) => isSameDay(event.start, date));
   };
 
-  // Get events grouped by date
   const eventsByDate = useMemo(() => {
     const grouped: Record<string, CalendarEvent[]> = {};
     filteredEvents.forEach((event) => {
@@ -462,4 +470,28 @@ export function useCalendarEvents(viewDate: Date, view: "month" | "week" | "day"
     refetch: fetchData,
     dateRange,
   };
+}
+
+export function CalendarProvider({ children }: { children: React.ReactNode }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [view, setView] = useState<"month" | "week" | "day" | "agenda">("month");
+  const value = useCalendarEventsStore(currentDate, view);
+
+  const contextValue = useMemo(() => ({
+    ...value,
+    currentDate,
+    setCurrentDate,
+    view,
+    setView,
+  }), [value, currentDate, view]);
+
+  return React.createElement(CalendarContext.Provider, { value: contextValue }, children);
+}
+
+export function useCalendarEvents() {
+  const context = useContext(CalendarContext);
+  if (!context) {
+    throw new Error("useCalendarEvents must be used within a CalendarProvider");
+  }
+  return context;
 }

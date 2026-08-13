@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import React from "react";
 
 export interface PendingTaskInfo {
   id: string;
@@ -21,11 +23,22 @@ export interface ProfessionalPendingTasks {
   tasks: PendingTaskInfo[];
 }
 
-export function usePendingTasksByProfessional() {
+interface PendingTasksByProfessionalContextType {
+  tasksByProfessional: Record<string, ProfessionalPendingTasks>;
+  getProfessionalTasks: (professionalId: string) => ProfessionalPendingTasks;
+  loading: boolean;
+  refetch: () => Promise<void>;
+}
+
+const PendingTasksByProfessionalContext = createContext<PendingTasksByProfessionalContextType | undefined>(undefined);
+
+function usePendingTasksByProfessionalStore() {
+  const { user, loading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<PendingTaskInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchPendingTasks = async () => {
+    if (authLoading || !user) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -45,6 +58,7 @@ export function usePendingTasksByProfessional() {
   };
 
   useEffect(() => {
+    if (authLoading || !user) return;
     fetchPendingTasks();
 
     const channel = supabase
@@ -64,7 +78,7 @@ export function usePendingTasksByProfessional() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authLoading, user]);
 
   const tasksByProfessional = useMemo(() => {
     const today = new Date();
@@ -76,7 +90,7 @@ export function usePendingTasksByProfessional() {
     const grouped: Record<string, ProfessionalPendingTasks> = {};
 
     tasks.forEach((task: any) => {
-      const professionalId = task.related_entity_type === 'professional'
+      const professionalId = task.related_entity_type === "professional"
         ? task.related_entity_id : null;
 
       if (!professionalId) return;
@@ -85,22 +99,19 @@ export function usePendingTasksByProfessional() {
         grouped[professionalId] = { total: 0, overdue: 0, dueToday: 0, upcoming: 0, tasks: [] };
       }
 
-      // De-duplicate guard
       if (grouped[professionalId].tasks.some((t: any) => t.id === task.id)) return;
 
       grouped[professionalId].total++;
       grouped[professionalId].tasks.push(task);
 
-      // Build a full datetime for the task using due_date + due_time (or 23:59 if no time)
-      const dueDateOnly = task.due_date.includes('T')
+      const dueDateOnly = task.due_date.includes("T")
         ? task.due_date.slice(0, 10)
         : task.due_date;
       const dueTimeStr = (task.due_time && /^\d{1,2}:\d{2}/.test(task.due_time))
         ? task.due_time.slice(0, 5)
-        : '23:59';
+        : "23:59";
       const fullDueDatetime = new Date(`${dueDateOnly}T${dueTimeStr}:00`);
 
-      // Date-only comparison for dueToday/upcoming buckets
       const dueDateForSort = new Date(dueDateOnly);
       dueDateForSort.setHours(0, 0, 0, 0);
 
@@ -126,4 +137,17 @@ export function usePendingTasksByProfessional() {
     loading,
     refetch: fetchPendingTasks,
   };
+}
+
+export function PendingTasksByProfessionalProvider({ children }: { children: React.ReactNode }) {
+  const value = usePendingTasksByProfessionalStore();
+  return React.createElement(PendingTasksByProfessionalContext.Provider, { value }, children);
+}
+
+export function usePendingTasksByProfessional() {
+  const context = useContext(PendingTasksByProfessionalContext);
+  if (!context) {
+    throw new Error("usePendingTasksByProfessional must be used within a PendingTasksByProfessionalProvider");
+  }
+  return context;
 }

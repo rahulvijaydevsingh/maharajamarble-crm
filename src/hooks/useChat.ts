@@ -2,8 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
+import { useEffect, createContext, useContext } from "react";
 import { toast } from "@/hooks/use-toast";
+import React from "react";
 
 export interface Conversation {
   id: string;
@@ -67,22 +68,24 @@ export interface Announcement {
   };
 }
 
-// Fetch all conversations for the current user
-export const useConversations = () => {
+const ChatContext = createContext<boolean | undefined>(undefined);
+
+export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   
+  // Real-time conversations/messages subscription
   useEffect(() => {
     if (!user?.id) return;
     
     const channel = supabase
-      .channel('conversations-changes')
+      .channel("conversations-changes")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'conversations',
+          event: "*",
+          schema: "public",
+          table: "conversations",
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
@@ -90,11 +93,11 @@ export const useConversations = () => {
         }
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
+          event: "*",
+          schema: "public",
+          table: "messages",
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["conversations", user.id] });
@@ -107,6 +110,45 @@ export const useConversations = () => {
       supabase.removeChannel(channel);
     };
   }, [user?.id, queryClient]);
+
+  // Real-time announcements subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel("announcements-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "announcements",
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["announcements"] });
+          queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
+
+  return React.createElement(ChatContext.Provider, { value: true }, children);
+}
+
+function useChatContext() {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error("Chat hooks must be used within a ChatProvider");
+  }
+  return context;
+}
+
+// Fetch all conversations for the current user
+export const useConversations = () => {
+  useChatContext();
+  const { user } = useAuth();
   
   return useQuery({
     queryKey: ["conversations", user?.id],
@@ -176,11 +218,11 @@ export const useMessages = (conversationId: string | null) => {
     const channel = supabase
       .channel(`messages-${conversationId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
+          event: "*",
+          schema: "public",
+          table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
         () => {
@@ -239,7 +281,7 @@ export const useSendMessage = () => {
     mutationFn: async ({ 
       conversationId, 
       content, 
-      messageType = 'text',
+      messageType = "text",
       replyToId,
       fileUrl,
       fileName,
@@ -247,7 +289,7 @@ export const useSendMessage = () => {
     }: { 
       conversationId: string;
       content: string;
-      messageType?: 'text' | 'file' | 'image' | 'system';
+      messageType?: "text" | "file" | "image" | "system";
       replyToId?: string;
       fileUrl?: string;
       fileName?: string;
@@ -361,30 +403,8 @@ export const useMarkMessagesRead = () => {
 
 // Announcements hooks
 export const useAnnouncements = () => {
+  useChatContext();
   const { user, role } = useAuth();
-  const queryClient = useQueryClient();
-  
-  useEffect(() => {
-    const channel = supabase
-      .channel('announcements-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'announcements',
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["announcements"] });
-          queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
-        }
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, queryClient]);
   
   return useQuery({
     queryKey: ["announcements", user?.id],
@@ -402,9 +422,9 @@ export const useAnnouncements = () => {
       if (error) throw error;
       
       const filteredAnnouncements = (data || []).filter(ann => {
-        if (ann.target_audience === 'all') return true;
-        if (ann.target_audience === 'roles' && ann.target_roles?.includes(role || '')) return true;
-        if (ann.target_audience === 'users' && ann.target_user_ids?.includes(user.id)) return true;
+        if (ann.target_audience === "all") return true;
+        if (ann.target_audience === "roles" && ann.target_roles?.includes(role || "")) return true;
+        if (ann.target_audience === "users" && ann.target_user_ids?.includes(user.id)) return true;
         return false;
       });
       
@@ -442,10 +462,10 @@ export const useCreateAnnouncement = () => {
   const { user } = useAuth();
   
   return useMutation({
-    mutationFn: async (announcement: Omit<Announcement, 'id' | 'created_at' | 'created_by'>) => {
+    mutationFn: async (announcement: Omit<Announcement, "id" | "created_at" | "created_by">) => {
       if (!user?.id) throw new Error("Not authenticated");
 
-      const announcementInsert: Database['public']['Tables']['announcements']['Insert'] = {
+      const announcementInsert: Database["public"]["Tables"]["announcements"]["Insert"] = {
         title: announcement.title,
         content: announcement.content,
         priority: announcement.priority,
@@ -500,6 +520,7 @@ export const useMarkAnnouncementRead = () => {
 };
 
 export const useUnreadCounts = () => {
+  useChatContext();
   const { user } = useAuth();
   
   return useQuery({

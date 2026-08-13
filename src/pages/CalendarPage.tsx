@@ -48,8 +48,7 @@ type ViewMode = "month" | "week" | "day" | "agenda";
 const CalendarPage = () => {
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<ViewMode>("month");
+  // currentDate and view state are now owned and provided by CalendarProvider
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [selectedHour, setSelectedHour] = useState<number | undefined>();
@@ -69,6 +68,10 @@ const CalendarPage = () => {
   const { logTouchCompleted, logTouchSnoozed, logTouchRescheduled, logTouchReassigned } = useKitActivityLog();
 
   const {
+    currentDate,
+    setCurrentDate,
+    view,
+    setView,
     events,
     eventsByDate,
     getEventsForDate,
@@ -76,7 +79,7 @@ const CalendarPage = () => {
     filters,
     setFilters,
     refetch,
-  } = useCalendarEvents(currentDate, view);
+  } = useCalendarEvents();
 
   const staffList = staffMembers.map((s) => ({
     id: s.id,
