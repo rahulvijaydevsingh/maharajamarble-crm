@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, createContext, useContext } from "react";
 import { toast } from "@/hooks/use-toast";
 import React from "react";
+import { realtimeRegistry } from "@/lib/realtimeRegistry";
 
 export interface Conversation {
   id: string;
@@ -215,24 +216,21 @@ export const useMessages = (conversationId: string | null) => {
   useEffect(() => {
     if (!conversationId) return;
     
-    const channel = supabase
-      .channel(`messages-${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-        }
-      )
-      .subscribe();
+    const unsubscribe = realtimeRegistry.subscribe(
+      `messages-${conversationId}`,
+      {
+        event: "*",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      () => {
+        queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+      }
+    );
     
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [conversationId, queryClient]);
   

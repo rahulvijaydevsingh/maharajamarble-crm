@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { ActivityType, ActivityCategory } from '@/constants/activityLogConstants';
 import { Database, Json } from '@/integrations/supabase/types';
+import { realtimeRegistry } from '@/lib/realtimeRegistry';
 
 export interface ActivityLogEntry {
   id: string;
@@ -220,7 +221,7 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
     fetchActivities(0, true);
   }, [fetchActivities]);
 
-  // Realtime subscription
+  // Realtime subscription via shared registry to prevent double subscription crash
   useEffect(() => {
     if (!leadId && !customerId && !professionalId) return;
 
@@ -229,36 +230,36 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
       : customerId
       ? `cust-${customerId}`
       : `prof-${professionalId}`;
-    const channel = supabase
-      .channel(`activity_log_${channelKey}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'activity_log',
-          filter: leadId
-            ? `lead_id=eq.${leadId}`
-            : customerId
-            ? `customer_id=eq.${customerId}`
-            : `related_entity_id=eq.${professionalId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setActivities(prev => [transformActivityRow(payload.new), ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setActivities(prev => 
-              prev.map(a => a.id === payload.new.id ? transformActivityRow(payload.new) : a)
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setActivities(prev => prev.filter(a => a.id !== payload.old.id));
-          }
+
+    const filter = leadId
+      ? `lead_id=eq.${leadId}`
+      : customerId
+      ? `customer_id=eq.${customerId}`
+      : `related_entity_id=eq.${professionalId}`;
+
+    const unsubscribe = realtimeRegistry.subscribe(
+      `activity_log_${channelKey}`,
+      {
+        event: '*',
+        schema: 'public',
+        table: 'activity_log',
+        filter,
+      },
+      (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setActivities(prev => [transformActivityRow(payload.new), ...prev]);
+        } else if (payload.eventType === 'UPDATE') {
+          setActivities(prev =>
+            prev.map(a => a.id === payload.new.id ? transformActivityRow(payload.new) : a)
+          );
+        } else if (payload.eventType === 'DELETE') {
+          setActivities(prev => prev.filter(a => a.id !== payload.old.id));
         }
-      )
-      .subscribe();
+      }
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [leadId, customerId, professionalId]);
 
