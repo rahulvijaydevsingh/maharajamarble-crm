@@ -65,13 +65,6 @@ Deno.serve(async (req) => {
     const latitude = parseFloat(formData.get("latitude") as string);
     const longitude = parseFloat(formData.get("longitude") as string);
 
-    if (!photo) {
-      return new Response(JSON.stringify({ error: "Photo is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -102,6 +95,13 @@ Deno.serve(async (req) => {
       .eq("staff_id", staffId)
       .maybeSingle();
 
+    if (!photo && (hrSettings?.store_photos ?? true)) {
+      return new Response(JSON.stringify({ error: "Photo is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     let clockInVerified = true;
     let clockInFlag: string | null = null;
 
@@ -129,6 +129,12 @@ Deno.serve(async (req) => {
     let clockInPhotoUrl: string | null = null;
 
     if (shouldStorePhoto) {
+      if (!photo) {
+        return new Response(JSON.stringify({ error: "Photo is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const photoPath = `${staffId}/${today}/clock-in.jpg`;
       const photoBytes = await photo.arrayBuffer();
       const { error: uploadError } = await adminClient.storage
