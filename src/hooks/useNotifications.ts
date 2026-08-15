@@ -136,6 +136,7 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
       return data as Notification[];
     },
     enabled: !!userId,
+    refetchInterval: 30000,
   });
 };
 

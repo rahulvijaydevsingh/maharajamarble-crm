@@ -113,6 +113,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // Real-time announcements subscription
   useEffect(() => {
+    if (!user?.id) return;
+
     const channel = supabase
       .channel("announcements-changes")
       .on(
@@ -124,7 +126,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["announcements"] });
-          queryClient.invalidateQueries({ queryKey: ["unread-counts", user?.id] });
+          queryClient.invalidateQueries({ queryKey: ["unread-counts", user.id] });
         }
       )
       .subscribe();

@@ -65,13 +65,6 @@ Deno.serve(async (req) => {
     const latitude = parseFloat(formData.get("latitude") as string);
     const longitude = parseFloat(formData.get("longitude") as string);
 
-    if (!photo) {
-      return new Response(JSON.stringify({ error: "Photo is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -102,6 +95,13 @@ Deno.serve(async (req) => {
       .eq("staff_id", staffId)
       .maybeSingle();
 
+    if (!photo && (hrSettings?.store_photos ?? true)) {
+      return new Response(JSON.stringify({ error: "Photo is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     let clockInVerified = true;
     let clockInFlag: string | null = null;
 
@@ -124,29 +124,32 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Upload photo to storage
-    const photoPath = `${staffId}/${today}/clock-in.jpg`;
-    const photoBytes = await photo.arrayBuffer();
-    const { error: uploadError } = await adminClient.storage
-      .from("attendance-photos")
-      .upload(photoPath, photoBytes, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+    const shouldStorePhoto = hrSettings?.store_photos ?? true;
+    const shouldStoreLocation = hrSettings?.store_location ?? true;
+    let clockInPhotoUrl: string | null = null;
 
-    if (uploadError) {
-      console.error("Photo upload error:", uploadError);
-      return new Response(
-        JSON.stringify({ error: "Failed to upload photo" }),
-        {
+    if (shouldStorePhoto) {
+      if (!photo) {
+        return new Response(JSON.stringify({ error: "Photo is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const photoPath = `${staffId}/${today}/clock-in.jpg`;
+      const photoBytes = await photo.arrayBuffer();
+      const { error: uploadError } = await adminClient.storage
+        .from("attendance-photos")
+        .upload(photoPath, photoBytes, { contentType: "image/jpeg", upsert: true });
+
+      if (uploadError) {
+        console.error("Photo upload error:", uploadError);
+        return new Response(JSON.stringify({ error: "Failed to upload photo" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+        });
+      }
+      clockInPhotoUrl = photoPath;
     }
-
-    // Get the storage path (not a public URL since bucket is private)
-    const clockInPhotoUrl = photoPath;
 
     // Insert attendance record using server time
     const { data: record, error: insertError } = await adminClient
@@ -155,8 +158,8 @@ Deno.serve(async (req) => {
         staff_id: staffId,
         date: today,
         clock_in: new Date().toISOString(),
-        clock_in_latitude: isNaN(latitude) ? null : latitude,
-        clock_in_longitude: isNaN(longitude) ? null : longitude,
+        clock_in_latitude: shouldStoreLocation && !isNaN(latitude) ? latitude : null,
+        clock_in_longitude: shouldStoreLocation && !isNaN(longitude) ? longitude : null,
         clock_in_photo_url: clockInPhotoUrl,
         clock_in_verified: clockInVerified,
         clock_in_flag: clockInFlag,

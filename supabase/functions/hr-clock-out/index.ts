@@ -63,13 +63,6 @@ Deno.serve(async (req) => {
     const latitude = parseFloat(formData.get("latitude") as string);
     const longitude = parseFloat(formData.get("longitude") as string);
 
-    if (!photo) {
-      return new Response(JSON.stringify({ error: "Photo is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -111,6 +104,13 @@ Deno.serve(async (req) => {
       .eq("staff_id", staffId)
       .maybeSingle();
 
+    if (!photo && (hrSettings?.store_photos ?? true)) {
+      return new Response(JSON.stringify({ error: "Photo is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     let clockOutVerified = true;
     let clockOutFlag: string | null = null;
 
@@ -133,25 +133,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Upload photo
-    const photoPath = `${staffId}/${today}/clock-out.jpg`;
-    const photoBytes = await photo.arrayBuffer();
-    const { error: uploadError } = await adminClient.storage
-      .from("attendance-photos")
-      .upload(photoPath, photoBytes, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+    const shouldStorePhoto = hrSettings?.store_photos ?? true;
+    const shouldStoreLocation = hrSettings?.store_location ?? true;
+    let clockOutPhotoUrl: string | null = null;
 
-    if (uploadError) {
-      console.error("Photo upload error:", uploadError);
-      return new Response(
-        JSON.stringify({ error: "Failed to upload photo" }),
-        {
+    if (shouldStorePhoto) {
+      if (!photo) {
+        return new Response(JSON.stringify({ error: "Photo is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const photoPath = `${staffId}/${today}/clock-out.jpg`;
+      const photoBytes = await photo.arrayBuffer();
+      const { error: uploadError } = await adminClient.storage
+        .from("attendance-photos")
+        .upload(photoPath, photoBytes, { contentType: "image/jpeg", upsert: true });
+
+      if (uploadError) {
+        console.error("Photo upload error:", uploadError);
+        return new Response(JSON.stringify({ error: "Failed to upload photo" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+        });
+      }
+      clockOutPhotoUrl = photoPath;
     }
 
     // Calculate hours
@@ -181,9 +187,9 @@ Deno.serve(async (req) => {
       .from("attendance_records")
       .update({
         clock_out: clockOutISO,
-        clock_out_latitude: isNaN(latitude) ? null : latitude,
-        clock_out_longitude: isNaN(longitude) ? null : longitude,
-        clock_out_photo_url: photoPath,
+        clock_out_latitude: shouldStoreLocation && !isNaN(latitude) ? latitude : null,
+        clock_out_longitude: shouldStoreLocation && !isNaN(longitude) ? longitude : null,
+        clock_out_photo_url: clockOutPhotoUrl,
         clock_out_verified: clockOutVerified,
         clock_out_flag: clockOutFlag,
         total_hours: totalHours,
