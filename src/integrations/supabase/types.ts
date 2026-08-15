@@ -2495,6 +2495,8 @@ export type Database = {
           shift_end: string | null
           shift_start: string | null
           staff_id: string
+          store_location: boolean
+          store_photos: boolean
           updated_at: string
           work_days: string[] | null
         }
@@ -2517,6 +2519,8 @@ export type Database = {
           shift_end?: string | null
           shift_start?: string | null
           staff_id: string
+          store_location?: boolean
+          store_photos?: boolean
           updated_at?: string
           work_days?: string[] | null
         }
@@ -2539,6 +2543,8 @@ export type Database = {
           shift_end?: string | null
           shift_start?: string | null
           staff_id?: string
+          store_location?: boolean
+          store_photos?: boolean
           updated_at?: string
           work_days?: string[] | null
         }
@@ -3587,6 +3593,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_attendance_retention_data: {
+        Args: { p_data_type: string; p_record_ids: string[] }
+        Returns: {
+          clock_in_photo_url: string
+          clock_out_photo_url: string
+          record_id: string
+        }[]
+      }
       get_all_staff_roles: {
         Args: never
         Returns: {
