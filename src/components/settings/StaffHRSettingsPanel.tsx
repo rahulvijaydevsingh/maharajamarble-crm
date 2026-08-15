@@ -54,6 +54,8 @@ interface HRSettings {
   office_latitude: number | null;
   office_longitude: number | null;
   camera_required: boolean;
+  store_photos: boolean;
+  store_location: boolean;
   photo_retention_days: number;
   location_retention_days: number;
 }
@@ -80,6 +82,8 @@ const DEFAULT_SETTINGS: HRSettings = {
   office_latitude: null,
   office_longitude: null,
   camera_required: true,
+  store_photos: true,
+  store_location: true,
   photo_retention_days: 90,
   location_retention_days: 30,
 };
@@ -148,6 +152,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           office_latitude: hrData.office_latitude,
           office_longitude: hrData.office_longitude,
           camera_required: hrData.camera_required ?? true,
+          store_photos: hrData.store_photos ?? true,
+          store_location: hrData.store_location ?? true,
           photo_retention_days: hrData.photo_retention_days || 90,
           location_retention_days: hrData.location_retention_days || 30,
         });
@@ -192,6 +198,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
         office_latitude: settings.office_latitude,
         office_longitude: settings.office_longitude,
         camera_required: settings.camera_required,
+        store_photos: settings.store_photos,
+        store_location: settings.store_location,
         photo_retention_days: settings.photo_retention_days,
         location_retention_days: settings.location_retention_days,
       };
@@ -412,6 +420,28 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
               onCheckedChange={(v) => setSettings((p) => ({ ...p, pf_applicable: v }))}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Store Attendance Photos</Label>
+              <p className="text-xs text-muted-foreground">Keep clock-in and clock-out photos for this staff member</p>
+            </div>
+            <Switch
+              checked={settings.store_photos}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, store_photos: v }))}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Store Attendance Location</Label>
+              <p className="text-xs text-muted-foreground">Keep clock-in and clock-out coordinates for this staff member</p>
+            </div>
+            <Switch
+              checked={settings.store_location}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, store_location: v }))}
+            />
+          </div>
         </div>
 
         <Separator />
@@ -498,14 +528,14 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
               <Label>Photo Retention (days)</Label>
               <Input
                 type="number"
-                min={1}
+                min={30}
                 max={3650}
                 value={settings.photo_retention_days}
                 onChange={(e) => {
                   const value = Number.parseInt(e.target.value, 10);
                   setSettings((p) => ({
                     ...p,
-                    photo_retention_days: Number.isFinite(value) && value > 0 ? value : 1,
+                    photo_retention_days: Number.isFinite(value) && value >= 30 ? value : 30,
                   }));
                 }}
               />
@@ -514,14 +544,14 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
               <Label>Location Retention (days)</Label>
               <Input
                 type="number"
-                min={1}
+                min={30}
                 max={3650}
                 value={settings.location_retention_days}
                 onChange={(e) => {
                   const value = Number.parseInt(e.target.value, 10);
                   setSettings((p) => ({
                     ...p,
-                    location_retention_days: Number.isFinite(value) && value > 0 ? value : 1,
+                    location_retention_days: Number.isFinite(value) && value >= 30 ? value : 30,
                   }));
                 }}
               />
@@ -529,7 +559,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Attendance photos and location traces older than these windows can be purged by your cleanup routine.
+            A minimum of 30 days is enforced. Eligible data can only be removed through an explicit administrator cleanup.
           </p>
         </div>
 
