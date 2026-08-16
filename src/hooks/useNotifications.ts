@@ -6,17 +6,25 @@ import { useEffect, createContext, useContext } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import React from "react";
 
-const NotificationsContext = createContext<boolean | undefined>(undefined);
+interface NotificationsContextValue {
+  isRealtimeConnected: boolean;
+}
+
+const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const userEmail = user?.email || "";
   const userId = user?.id;
+  const [isRealtimeConnected, setIsRealtimeConnected] = React.useState(false);
 
   // Set up real-time subscription once at Provider level
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setIsRealtimeConnected(false);
+      return;
+    }
 
     const matchesCurrentUser = (payloadUserId: unknown) => {
       if (typeof payloadUserId !== "string") return false;
@@ -88,14 +96,21 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           handleNotificationChange(payload as { new: Record<string, unknown>; old: Record<string, unknown> });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        setIsRealtimeConnected(status === "SUBSCRIBED");
+      });
     
     return () => {
+      setIsRealtimeConnected(false);
       supabase.removeChannel(channel);
     };
   }, [userId, userEmail, queryClient]);
 
-  return React.createElement(NotificationsContext.Provider, { value: true }, children);
+  return React.createElement(
+    NotificationsContext.Provider,
+    { value: { isRealtimeConnected } },
+    children
+  );
 }
 
 function useNotificationsContext() {
@@ -108,7 +123,7 @@ function useNotificationsContext() {
 
 // Fetch notifications for a user
 export const useNotifications = (userId: string, unreadOnly = false, userEmail?: string) => {
-  useNotificationsContext();
+  const { isRealtimeConnected } = useNotificationsContext();
   
   return useQuery({
     queryKey: ["notifications", userId, userEmail, unreadOnly],
@@ -136,13 +151,13 @@ export const useNotifications = (userId: string, unreadOnly = false, userEmail?:
       return data as Notification[];
     },
     enabled: !!userId,
-    refetchInterval: 30000,
+    refetchInterval: isRealtimeConnected ? false : 30000,
   });
 };
 
 // Get unread count
 export const useUnreadNotificationCount = (userId: string, userEmail?: string) => {
-  useNotificationsContext();
+  const { isRealtimeConnected } = useNotificationsContext();
 
   const orFilter = userEmail
     ? `user_id.eq.${userId},user_id.eq.${userEmail}`
@@ -162,7 +177,7 @@ export const useUnreadNotificationCount = (userId: string, userEmail?: string) =
       return count || 0;
     },
     enabled: !!userId,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: isRealtimeConnected ? false : 30000,
   });
 };
 
