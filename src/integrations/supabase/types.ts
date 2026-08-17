@@ -3608,6 +3608,18 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_attendance_retention_candidates: {
+        Args: { p_staff_id?: string }
+        Returns: {
+          attendance_date: string
+          data_type: string
+          photo_file_paths: string[]
+          record_id: string
+          retention_days: number
+          staff_id: string
+          staff_name: string
+        }[]
+      }
       get_current_user_email: { Args: never; Returns: string }
       get_user_role: {
         Args: { _user_id: string }
