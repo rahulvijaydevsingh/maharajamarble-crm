@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,12 +26,24 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2,
   MapPin,
   IndianRupee,
   Clock,
   CalendarDays,
   Save,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react";
 
 interface StaffHRSettingsPanelProps {
@@ -66,6 +78,14 @@ interface LeaveBalance {
   total_allowed: number;
   used: number;
   remaining: number;
+}
+
+interface RetentionCandidate {
+  record_id: string;
+  attendance_date: string;
+  data_type: "photos" | "location";
+  photo_file_paths: string[];
+  retention_days: number;
 }
 
 const DEFAULT_SETTINGS: HRSettings = {
@@ -119,6 +139,11 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveAdjustments, setLeaveAdjustments] = useState<Record<string, { newTotal: number; reason: string }>>({});
   const [workDayPreset, setWorkDayPreset] = useState<string>("mon-sat");
+  const [retentionCandidates, setRetentionCandidates] = useState<RetentionCandidate[]>([]);
+  const [loadingRetention, setLoadingRetention] = useState(false);
+  const [retentionLoaded, setRetentionLoaded] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<"photos" | "location" | null>(null);
+  const [purging, setPurging] = useState(false);
 
   const currentYear = new Date().getFullYear();
 
@@ -176,6 +201,80 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
       console.error("Failed to fetch HR settings:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRetentionCandidates = async () => {
+    setLoadingRetention(true);
+    try {
+      const { data, error } = await supabase.rpc("get_attendance_retention_candidates", {
+        p_staff_id: staffId,
+      });
+      if (error) throw error;
+      setRetentionCandidates((data || []) as RetentionCandidate[]);
+      setRetentionLoaded(true);
+    } catch (err: any) {
+      toast({
+        title: "Could not review retained data",
+        description: err.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingRetention(false);
+    }
+  };
+
+  const retentionGroups = useMemo(() => ({
+    photos: retentionCandidates.filter((candidate) => candidate.data_type === "photos"),
+    location: retentionCandidates.filter((candidate) => candidate.data_type === "location"),
+  }), [retentionCandidates]);
+
+  const confirmPurge = async () => {
+    if (!purgeTarget) return;
+    const records = retentionGroups[purgeTarget];
+    if (records.length === 0) {
+      setPurgeTarget(null);
+      return;
+    }
+
+    setPurging(true);
+    try {
+      const { data: cleared, error } = await supabase.rpc("clear_attendance_retention_data", {
+        p_record_ids: records.map((record) => record.record_id),
+        p_data_type: purgeTarget,
+      });
+      if (error) throw error;
+
+      const paths = purgeTarget === "photos"
+        ? (cleared || []).flatMap((record) => [record.clock_in_photo_url, record.clock_out_photo_url]).filter(Boolean)
+        : [];
+
+      if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage.from("attendance-photos").remove(paths);
+        if (storageError) {
+          toast({
+            title: "Record links cleared",
+            description: "Some photo files could not be removed from storage. Please retry the review.",
+            variant: "destructive",
+          });
+        }
+      }
+
+      const clearedCount = cleared?.length || 0;
+      toast({
+        title: "Retention cleanup complete",
+        description: `${clearedCount} ${purgeTarget === "photos" ? "photo" : "location"} record${clearedCount === 1 ? "" : "s"} cleared. Attendance history was preserved.`,
+      });
+      await fetchRetentionCandidates();
+    } catch (err: any) {
+      toast({
+        title: "Retention cleanup failed",
+        description: err.message || "No attendance history was changed.",
+        variant: "destructive",
+      });
+    } finally {
+      setPurging(false);
+      setPurgeTarget(null);
     }
   };
 
@@ -559,8 +658,56 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           </div>
 
           <p className="text-xs text-muted-foreground">
-            A minimum of 30 days is enforced. Eligible data can only be removed through an explicit administrator cleanup.
+            A minimum of 30 days is enforced. Data is never removed automatically.
           </p>
+
+          <div className="border-t pt-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <ShieldCheck className="h-4 w-4" /> Retention review
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Review eligible data before permanently removing only photo files or GPS coordinates. Attendance times, status, and payroll values remain intact.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={fetchRetentionCandidates} disabled={loadingRetention}>
+                {loadingRetention ? <Loader2 className="h-4 w-4 animate-spin" /> : "Review data"}
+              </Button>
+            </div>
+
+            {retentionLoaded && (
+              <div className="space-y-2">
+                {(["photos", "location"] as const).map((dataType) => {
+                  const records = retentionGroups[dataType];
+                  const label = dataType === "photos" ? "attendance photos" : "GPS location records";
+                  const retentionDays = records[0]?.retention_days ?? (dataType === "photos" ? settings.photo_retention_days : settings.location_retention_days);
+                  return (
+                    <div key={dataType} className="flex items-center justify-between gap-3 border p-3 text-sm">
+                      <div>
+                        <p className="font-medium">{records.length} {label} eligible</p>
+                        <p className="text-xs text-muted-foreground">Older than {retentionDays} days</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={records.length === 0}
+                        onClick={() => setPurgeTarget(dataType)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Remove
+                      </Button>
+                    </div>
+                  );
+                })}
+                {retentionCandidates.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Eligible dates: {Array.from(new Set(retentionCandidates.map((candidate) => candidate.attendance_date))).sort().join(", ")}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <Separator />
@@ -652,6 +799,23 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           Save HR Settings
         </Button>
       </div>
+      <AlertDialog open={purgeTarget !== null} onOpenChange={(open) => !open && !purging && setPurgeTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm retention cleanup</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes {purgeTarget === "photos" ? "stored attendance photos" : "stored GPS coordinates"} from {purgeTarget ? retentionGroups[purgeTarget].length : 0} eligible attendance record(s) for {staffName}. Attendance dates, clock times, status, hours, notes, and payroll data will not be changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={purging}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPurge} disabled={purging} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {purging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Permanently remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ScrollArea>
   );
 }
