@@ -246,7 +246,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
       if (error) throw error;
 
       const paths = purgeTarget === "photos"
-        ? (cleared || []).flatMap((record) => [record.clock_in_photo_url, record.clock_out_photo_url]).filter(Boolean)
+        ? (cleared || []).flatMap((record) => [record.clock_in_photo_url, record.clock_out_photo_url]).filter((path): path is string => Boolean(path))
         : [];
 
       if (paths.length > 0) {
@@ -261,10 +261,17 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
       }
 
       const clearedCount = cleared?.length || 0;
-      toast({
-        title: "Retention cleanup complete",
-        description: `${clearedCount} ${purgeTarget === "photos" ? "photo" : "location"} record${clearedCount === 1 ? "" : "s"} cleared. Attendance history was preserved.`,
-      });
+      if (clearedCount === 0) {
+        toast({
+          title: "Nothing removed",
+          description: "The selected data is no longer eligible under the current retention settings.",
+        });
+      } else {
+        toast({
+          title: "Retention cleanup complete",
+          description: `${clearedCount} ${purgeTarget === "photos" ? "photo" : "location"} record${clearedCount === 1 ? "" : "s"} cleared. Attendance history was preserved.`,
+        });
+      }
       await fetchRetentionCandidates();
     } catch (err: any) {
       toast({
