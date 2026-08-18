@@ -185,6 +185,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
       }
     }
 
+    console.log("[SmartLeadForm Validation Errors]:", errors);
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
