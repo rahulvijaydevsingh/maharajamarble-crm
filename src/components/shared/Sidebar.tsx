@@ -35,6 +35,7 @@ import { useLocation, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { realtimeRegistry } from "@/lib/realtimeRegistry";
 
 interface NavigationItem {
   name: string;
@@ -145,22 +146,21 @@ export function SidebarNav() {
   useEffect(() => {
     if (!profile?.email && !isAdmin) return;
 
-    const channel = supabase
-      .channel("sidebar-counts")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
-        () => fetchSidebarCounts()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => fetchSidebarCounts()
-      )
-      .subscribe();
+    const unsubLeads = realtimeRegistry.subscribe(
+      "sidebar_counts_leads",
+      { event: "*", schema: "public", table: "leads" },
+      () => fetchSidebarCounts()
+    );
+
+    const unsubTasks = realtimeRegistry.subscribe(
+      "sidebar_counts_tasks",
+      { event: "*", schema: "public", table: "tasks" },
+      () => fetchSidebarCounts()
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubLeads();
+      unsubTasks();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.email, isAdmin]);
