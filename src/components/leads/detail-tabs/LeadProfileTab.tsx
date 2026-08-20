@@ -33,6 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { realtimeRegistry } from '@/lib/realtimeRegistry';
 
 interface LeadProfileTabProps {
   lead: Lead;
@@ -91,17 +92,19 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
     load();
 
     // Realtime: refresh whenever any activity_log row for this lead changes
-    const channel = supabase
-      .channel(`lead-activity-${lead.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'activity_log', filter: `lead_id=eq.${lead.id}` },
-        () => load()
-      )
-      .subscribe();
+    const unsubscribe = realtimeRegistry.subscribe(
+      `lead_activity_${lead.id}`,
+      {
+        event: '*',
+        schema: 'public',
+        table: 'activity_log',
+        filter: `lead_id=eq.${lead.id}`,
+      },
+      () => load()
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [lead.id]);
 

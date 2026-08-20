@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { useRemindersChannel, RemindersRealtimePayload } from '@/contexts/RemindersContext';
+import { realtimeRegistry } from "@/lib/realtimeRegistry";
 
 export interface Reminder {
   id: string;
@@ -309,20 +310,17 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
         remindersChannel.removeListener(handlePayload);
       };
     } else {
-      // Fallback: create own channel (RemindersProvider not in tree)
-      const channel = supabase
-        .channel(
-          `reminders-${entityType || 'global'}-${entityId || assignedTo || 'all'}`
-        )
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'reminders' },
-          (payload) => handlePayload(payload as RemindersRealtimePayload)
-        )
-        .subscribe();
+      // Fallback: use shared realtime registry (RemindersProvider not in tree)
+      const rawChannelName = `reminders-${entityType || 'global'}-${entityId || assignedTo || 'all'}`;
+      const sanitizedChannelName = rawChannelName.replace(/[^a-zA-Z0-9_:-]/g, '_');
+      const unsubscribe = realtimeRegistry.subscribe(
+        sanitizedChannelName,
+        { event: '*', schema: 'public', table: 'reminders' },
+        (payload) => handlePayload(payload as RemindersRealtimePayload)
+      );
       return () => {
         if (pollInterval) clearInterval(pollInterval);
-        supabase.removeChannel(channel);
+        unsubscribe();
       };
     }
   }, [entityType, entityId, assignedTo, authLoading, user]);

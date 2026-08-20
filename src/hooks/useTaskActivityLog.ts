@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { realtimeRegistry } from "@/lib/realtimeRegistry";
 
 export interface TaskActivityLogEntry {
   id: string;
@@ -67,30 +68,27 @@ export function useTaskActivityLog(taskId: string | null | undefined) {
   useEffect(() => {
     if (!taskId) return;
 
-    const channel = supabase
-      .channel(`task_activity_log:${taskId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "task_activity_log",
-          filter: `task_id=eq.${taskId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            setEntries((prev) => [transformRow(payload.new), ...prev]);
-          } else if (payload.eventType === "UPDATE") {
-            setEntries((prev) => prev.map((e) => (e.id === payload.new.id ? transformRow(payload.new) : e)));
-          } else if (payload.eventType === "DELETE") {
-            setEntries((prev) => prev.filter((e) => e.id !== payload.old.id));
-          }
+    const unsubscribe = realtimeRegistry.subscribe(
+      `task_activity_log:${taskId}`,
+      {
+        event: "*",
+        schema: "public",
+        table: "task_activity_log",
+        filter: `task_id=eq.${taskId}`,
+      },
+      (payload) => {
+        if (payload.eventType === "INSERT") {
+          setEntries((prev) => [transformRow(payload.new), ...prev]);
+        } else if (payload.eventType === "UPDATE") {
+          setEntries((prev) => prev.map((e) => (e.id === payload.new.id ? transformRow(payload.new) : e)));
+        } else if (payload.eventType === "DELETE") {
+          setEntries((prev) => prev.filter((e) => e.id !== payload.old.id));
         }
-      )
-      .subscribe();
+      }
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [taskId]);
 

@@ -34,6 +34,7 @@ import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { realtimeRegistry } from '@/lib/realtimeRegistry';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -68,15 +69,17 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
         .then(({ data }) => setLatestActivity((data as any) || null));
     };
     load();
-    const channel = supabase
-      .channel(`customer-activity-${customer.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'activity_log', filter: `customer_id=eq.${customer.id}` },
-        () => load()
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const unsubscribe = realtimeRegistry.subscribe(
+      `customer_activity_${customer.id}`,
+      {
+        event: '*',
+        schema: 'public',
+        table: 'activity_log',
+        filter: `customer_id=eq.${customer.id}`,
+      },
+      () => load()
+    );
+    return () => { unsubscribe(); };
   }, [customer.id]);
   
   const statusConfig = CUSTOMER_STATUSES[customer.status] || { label: customer.status, className: 'bg-gray-100 text-gray-700' };
