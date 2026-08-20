@@ -750,6 +750,23 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
                     Eligible dates: {Array.from(new Set(retentionCandidates.map((candidate) => candidate.attendance_date))).sort().join(", ")}
                   </p>
                 )}
+                {purgeReport && purgeReport.pendingRecords.length > 0 && (
+                  <div className="space-y-2 border border-destructive/30 bg-destructive/10 p-3 text-sm">
+                    <p className="font-medium text-destructive">
+                      {purgeReport.pendingRecords.length} {purgeReport.dataType === "photos" ? "photo" : "location"} record{purgeReport.pendingRecords.length === 1 ? "" : "s"} still pending
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Database data was kept for these records because their storage file could not be deleted. Review and retry when the storage issue is resolved.
+                    </p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {purgeReport.pendingRecords.map((record, index) => (
+                        <li key={`${record.attendanceDate}-${index}`}>
+                          {record.attendanceDate}: {record.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>
