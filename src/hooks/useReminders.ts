@@ -311,9 +311,10 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
       };
     } else {
       // Fallback: use shared realtime registry (RemindersProvider not in tree)
-      const channelName = `reminders-${entityType || 'global'}-${entityId || assignedTo || 'all'}`;
+      const rawChannelName = `reminders-${entityType || 'global'}-${entityId || assignedTo || 'all'}`;
+      const sanitizedChannelName = rawChannelName.replace(/[^a-zA-Z0-9_:-]/g, '_');
       const unsubscribe = realtimeRegistry.subscribe(
-        channelName,
+        sanitizedChannelName,
         { event: '*', schema: 'public', table: 'reminders' },
         (payload) => handlePayload(payload as RemindersRealtimePayload)
       );
