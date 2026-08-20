@@ -88,6 +88,12 @@ interface RetentionCandidate {
   retention_days: number;
 }
 
+interface RetentionPurgeReport {
+  dataType: "photos" | "location";
+  completedCount: number;
+  pendingRecords: Array<{ attendanceDate: string; reason: string }>;
+}
+
 const DEFAULT_SETTINGS: HRSettings = {
   base_salary: 0,
   salary_type: "monthly",
@@ -144,6 +150,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
   const [retentionLoaded, setRetentionLoaded] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<"photos" | "location" | null>(null);
   const [purging, setPurging] = useState(false);
+  const [purgeReport, setPurgeReport] = useState<RetentionPurgeReport | null>(null);
 
   const currentYear = new Date().getFullYear();
 
@@ -212,6 +219,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
       });
       if (error) throw error;
       setRetentionCandidates((data || []) as RetentionCandidate[]);
+      setPurgeReport(null);
       setRetentionLoaded(true);
     } catch (err: any) {
       toast({
@@ -239,37 +247,67 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
 
     setPurging(true);
     try {
-      const { data: cleared, error } = await supabase.rpc("clear_attendance_retention_data", {
-        p_record_ids: records.map((record) => record.record_id),
-        p_data_type: purgeTarget,
-      });
-      if (error) throw error;
+      const pendingRecords: RetentionPurgeReport["pendingRecords"] = [];
+      let recordIdsReadyToClear = records.map((record) => record.record_id);
 
-      const paths = purgeTarget === "photos"
-        ? (cleared || []).flatMap((record) => [record.clock_in_photo_url, record.clock_out_photo_url]).filter((path): path is string => Boolean(path))
-        : [];
+      if (purgeTarget === "photos") {
+        recordIdsReadyToClear = [];
 
-      if (paths.length > 0) {
-        const { error: storageError } = await supabase.storage.from("attendance-photos").remove(paths);
-        if (storageError) {
-          toast({
-            title: "Record links cleared",
-            description: "Some photo files could not be removed from storage. Please retry the review.",
-            variant: "destructive",
-          });
+        // Keep each database reference until every associated file has been removed.
+        // This intentionally works record-by-record so a failed deletion can be retried safely.
+        for (const record of records) {
+          const paths = record.photo_file_paths.filter(Boolean);
+          if (paths.length === 0) {
+            pendingRecords.push({
+              attendanceDate: record.attendance_date,
+              reason: "No storage path was available, so the record was left unchanged.",
+            });
+            continue;
+          }
+
+          const { error: storageError } = await supabase.storage
+            .from("attendance-photos")
+            .remove(paths);
+
+          if (storageError) {
+            pendingRecords.push({
+              attendanceDate: record.attendance_date,
+              reason: storageError.message || "The photo file could not be removed from storage.",
+            });
+            continue;
+          }
+
+          recordIdsReadyToClear.push(record.record_id);
         }
       }
 
-      const clearedCount = cleared?.length || 0;
-      if (clearedCount === 0) {
+      let clearedCount = 0;
+      if (recordIdsReadyToClear.length > 0) {
+        const { data: cleared, error } = await supabase.rpc("clear_attendance_retention_data", {
+          p_record_ids: recordIdsReadyToClear,
+          p_data_type: purgeTarget,
+        });
+        if (error) throw error;
+        clearedCount = cleared?.length || 0;
+      }
+
+      const report: RetentionPurgeReport = {
+        dataType: purgeTarget,
+        completedCount: clearedCount,
+        pendingRecords,
+      };
+      setPurgeReport(report);
+
+      if (clearedCount === 0 && pendingRecords.length === 0) {
         toast({
           title: "Nothing removed",
           description: "The selected data is no longer eligible under the current retention settings.",
         });
       } else {
         toast({
-          title: "Retention cleanup complete",
-          description: `${clearedCount} ${purgeTarget === "photos" ? "photo" : "location"} record${clearedCount === 1 ? "" : "s"} cleared. Attendance history was preserved.`,
+          title: pendingRecords.length > 0 ? "Retention cleanup partially complete" : "Retention cleanup complete",
+          description: `${clearedCount} ${purgeTarget === "photos" ? "photo" : "location"} record${clearedCount === 1 ? "" : "s"} cleared.${pendingRecords.length > 0 ? ` ${pendingRecords.length} record${pendingRecords.length === 1 ? " remains" : "s remain"} available to retry.` : " Attendance history was preserved."}`,
+          variant: pendingRecords.length > 0 ? "destructive" : "default",
         });
       }
       await fetchRetentionCandidates();
