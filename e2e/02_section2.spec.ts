@@ -33,6 +33,7 @@ test.describe('Section 2 - PR #112 Verification', () => {
   let createdOptionId2: string | null = null;
   let createdLeadId: string | null = null;
   let createdProfId: string | null = null;
+  let createdReminderIds: string[] = [];
   let supabase: SupabaseClient;
 
   test.beforeEach(async ({ page }) => {
@@ -40,6 +41,7 @@ test.describe('Section 2 - PR #112 Verification', () => {
     createdOptionId2 = null;
     createdLeadId = null;
     createdProfId = null;
+    createdReminderIds = [];
     supabase = await getAuthedClient();
 
     // Ensure Designation and Construction Stage columns are visible in localStorage
@@ -57,6 +59,9 @@ test.describe('Section 2 - PR #112 Verification', () => {
   });
 
   test.afterEach(async () => {
+    if (createdReminderIds.length > 0) {
+      await supabase.from('reminders').delete().in('id', createdReminderIds);
+    }
     if (createdLeadId) {
       await supabase.from('leads').delete().eq('id', createdLeadId);
     }
@@ -257,21 +262,37 @@ test.describe('Section 2 - PR #112 Verification', () => {
   });
 
   test('2.8 - 2.9 - More than 10 active reminders appear & badge count reflects true total', async ({ page }) => {
-    // Authenticate API client and get user profile name
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', (await supabase.auth.getUser()).data.user?.id || '').single();
     const userFullName = profile?.full_name || 'Nipun Tantia';
 
-    // Count active overdue reminders in DB for this user
+    // Seed 12 dedicated active overdue reminders for the logged in user to deterministically guarantee > 10 active reminders
+    const overdueTime = new Date(Date.now() - 3600 * 1000).toISOString();
+    const testReminders = Array.from({ length: 12 }).map((_, i) => ({
+      title: `Deterministic E2E Reminder ${i + 1}_${Date.now()}`,
+      entity_type: 'lead',
+      entity_id: '00000000-0000-0000-0000-000000000000',
+      reminder_datetime: overdueTime,
+      is_dismissed: false,
+      assigned_to: userFullName
+    }));
+
+    const { data: insertedReminders, error: seedErr } = await supabase.from('reminders').insert(testReminders).select();
+    expect(seedErr).toBeNull();
+    expect(insertedReminders).not.toBeNull();
+    createdReminderIds = insertedReminders!.map(r => r.id);
+
+    // Query total active overdue reminders from DB
     const now = new Date().toISOString();
-    const { data: userReminders, error } = await supabase
+    const { data: userReminders, error: queryErr } = await supabase
       .from('reminders')
       .select('*')
       .eq('is_dismissed', false)
       .lte('reminder_datetime', now)
       .or(`assigned_to.eq."${userFullName}",assigned_to.is.null`);
 
-    expect(error).toBeNull();
+    expect(queryErr).toBeNull();
     const activeCount = userReminders?.length || 0;
+    expect(activeCount).toBeGreaterThan(10);
 
     await page.goto('/leads');
     await page.waitForTimeout(1000);
@@ -280,13 +301,11 @@ test.describe('Section 2 - PR #112 Verification', () => {
     const bellButton = page.locator('button:has(svg.lucide-bell), button:has([data-lucide="bell"])').first();
     await expect(bellButton).toBeVisible();
 
-    // Verify badge on bell button
-    if (activeCount > 0) {
-      const badge = bellButton.locator('span');
-      await expect(badge).toBeVisible();
-      const expectedBadgeText = activeCount > 9 ? '9+' : String(activeCount);
-      expect(await badge.innerText()).toContain(expectedBadgeText);
-    }
+    // Verify badge on bell button shows '9+' or exact count if <= 9
+    const badge = bellButton.locator('span');
+    await expect(badge).toBeVisible();
+    const expectedBadgeText = activeCount > 9 ? '9+' : String(activeCount);
+    expect(await badge.innerText()).toContain(expectedBadgeText);
 
     await bellButton.click();
     await page.waitForTimeout(500);

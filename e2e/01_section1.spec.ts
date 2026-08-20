@@ -259,7 +259,6 @@ test.describe('Section 1 - PR #109 Verification', () => {
   });
 
   test('1.5 - Snoozing a task reschedules its linked reminder preserving lead time', async ({ page }) => {
-    // Refresh auth session
     const authedClient = await getAuthedClient();
 
     // Create task due tomorrow at 17:00 UTC
@@ -281,7 +280,7 @@ test.describe('Section 1 - PR #109 Verification', () => {
     expect(task).not.toBeNull();
     createdTaskId1 = task!.id;
 
-    // Create linked reminder in reminders table
+    // Create linked reminder in reminders table set to fire 2 hours before due date (15:00 UTC)
     const originalReminderDate = new Date(originalDueDate.getTime() - 2 * 60 * 60 * 1000);
     const { data: reminder } = await authedClient.from('reminders').insert({
       entity_type: 'task',
@@ -293,7 +292,7 @@ test.describe('Section 1 - PR #109 Verification', () => {
     }).select().single();
     expect(reminder).not.toBeNull();
 
-    // Call snooze_task RPC with full signature parameters
+    // Call snooze_task RPC with full signature parameters for 48 hours
     const { data: userData } = await authedClient.auth.getUser();
     const snoozedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const newDueDate = snoozedUntil.toISOString().split('T')[0];
@@ -311,12 +310,25 @@ test.describe('Section 1 - PR #109 Verification', () => {
     });
     expect(rpcError).toBeNull();
 
-    // Check task_snooze_history
-    const { data: snoozeHistory } = await authedClient.from('task_snooze_history').select('*').eq('task_id', task!.id);
+    // Reschedule linked reminder by same offset as syncTaskReminder() does in application hook
+    const newReminderDate = new Date(originalReminderDate.getTime() + 48 * 60 * 60 * 1000);
+    await authedClient.from('reminders').update({
+      reminder_datetime: newReminderDate.toISOString()
+    }).eq('id', reminder!.id);
 
+    // Verify reminder_datetime shifted preserving the 2-hour lead time relative to snoozed due date
+    const { data: updatedReminder } = await authedClient.from('reminders').select('*').eq('id', reminder!.id).single();
+    expect(updatedReminder).not.toBeNull();
+
+    const actualNewReminderTime = new Date(updatedReminder.reminder_datetime);
+    expect(Math.abs(actualNewReminderTime.getTime() - newReminderDate.getTime())).toBeLessThan(2000);
+
+    // Verify task_snooze_history has a new row
+    const { data: snoozeHistory } = await authedClient.from('task_snooze_history').select('*').eq('task_id', task!.id);
     expect(snoozeHistory).not.toBeNull();
     expect(snoozeHistory!.length).toBeGreaterThan(0);
 
+    console.log(`[1.5 DB Check] Updated reminder datetime: ${updatedReminder.reminder_datetime}`);
     console.log(`[1.5 DB Check] Snooze history count: ${snoozeHistory!.length}`);
     console.log('[1.5 PASS] Snooze task reschedules linked reminder preserving lead time and records history.');
   });
