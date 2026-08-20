@@ -219,7 +219,6 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
       });
       if (error) throw error;
       setRetentionCandidates((data || []) as RetentionCandidate[]);
-      setPurgeReport(null);
       setRetentionLoaded(true);
     } catch (err: any) {
       toast({
