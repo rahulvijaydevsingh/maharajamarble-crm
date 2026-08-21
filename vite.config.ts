@@ -15,6 +15,11 @@ export default defineConfig(({ mode }) => ({
     componentTagger(),
   ].filter(Boolean),
   resolve: {
+    // Force every dependency (including prebundled React Query) to share the
+    // exact React runtime used by ReactDOM. Without this, Vite can serve two
+    // React module instances after dependency optimization/HMR, which leaves
+    // the hooks dispatcher null inside QueryClientProvider.
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
