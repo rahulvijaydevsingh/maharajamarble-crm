@@ -142,6 +142,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
   const [saving, setSaving] = useState(false);
   const [isNew, setIsNew] = useState(true);
   const [settings, setSettings] = useState<HRSettings>(DEFAULT_SETTINGS);
+  const [photoRetentionDaysInput, setPhotoRetentionDaysInput] = useState(String(DEFAULT_SETTINGS.photo_retention_days));
+  const [locationRetentionDaysInput, setLocationRetentionDaysInput] = useState(String(DEFAULT_SETTINGS.location_retention_days));
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveAdjustments, setLeaveAdjustments] = useState<Record<string, { newTotal: number; reason: string }>>({});
   const [workDayPreset, setWorkDayPreset] = useState<string>("mon-sat");
@@ -170,6 +172,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
 
       if (hrData) {
         setIsNew(false);
+        const photoRetentionDays = hrData.photo_retention_days || 90;
+        const locationRetentionDays = hrData.location_retention_days || 30;
         setSettings({
           base_salary: hrData.base_salary || 0,
           salary_type: hrData.salary_type || "monthly",
@@ -186,9 +190,11 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           camera_required: hrData.camera_required ?? true,
           store_photos: hrData.store_photos ?? true,
           store_location: hrData.store_location ?? true,
-          photo_retention_days: hrData.photo_retention_days || 90,
-          location_retention_days: hrData.location_retention_days || 30,
+          photo_retention_days: photoRetentionDays,
+          location_retention_days: locationRetentionDays,
         });
+        setPhotoRetentionDaysInput(String(photoRetentionDays));
+        setLocationRetentionDaysInput(String(locationRetentionDays));
         // Determine preset
         const wd = hrData.work_days || [];
         if (arraysEqual(wd, WORK_DAY_PRESETS["mon-fri"])) setWorkDayPreset("mon-fri");
@@ -323,6 +329,18 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
   };
 
   const handleSave = async () => {
+    const photoRetentionDays = Number.parseInt(photoRetentionDaysInput, 10);
+    const locationRetentionDays = Number.parseInt(locationRetentionDaysInput, 10);
+
+    if (!Number.isInteger(photoRetentionDays) || photoRetentionDays < 30 || !Number.isInteger(locationRetentionDays) || locationRetentionDays < 30) {
+      toast({
+        title: "Retention period must be at least 30 days",
+        description: "Enter whole-number retention periods of 30 days or more before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       const upsertData: any = {
@@ -343,8 +361,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
         camera_required: settings.camera_required,
         store_photos: settings.store_photos,
         store_location: settings.store_location,
-        photo_retention_days: settings.photo_retention_days,
-        location_retention_days: settings.location_retention_days,
+        photo_retention_days: photoRetentionDays,
+        location_retention_days: locationRetentionDays,
       };
 
       if (isNew) {
@@ -673,14 +691,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
                 type="number"
                 min={30}
                 max={3650}
-                value={settings.photo_retention_days}
-                onChange={(e) => {
-                  const value = Number.parseInt(e.target.value, 10);
-                  setSettings((p) => ({
-                    ...p,
-                    photo_retention_days: Number.isFinite(value) && value >= 30 ? value : 30,
-                  }));
-                }}
+                value={photoRetentionDaysInput}
+                onChange={(e) => setPhotoRetentionDaysInput(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -689,14 +701,8 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
                 type="number"
                 min={30}
                 max={3650}
-                value={settings.location_retention_days}
-                onChange={(e) => {
-                  const value = Number.parseInt(e.target.value, 10);
-                  setSettings((p) => ({
-                    ...p,
-                    location_retention_days: Number.isFinite(value) && value >= 30 ? value : 30,
-                  }));
-                }}
+                value={locationRetentionDaysInput}
+                onChange={(e) => setLocationRetentionDaysInput(e.target.value)}
               />
             </div>
           </div>
