@@ -83,25 +83,6 @@ function useTodoListsStore() {
 
   const addList = async (list: TodoListInsert) => {
     try {
-      const tempId = `temp-${Date.now()}`;
-      const optimisticList: TodoList = {
-        id: tempId,
-        name: list.name,
-        description: list.description || null,
-        color: list.color || "#3b82f6",
-        icon: list.icon || "list",
-        is_pinned: list.is_pinned || false,
-        is_archived: false,
-        is_shared: list.is_shared || false,
-        shared_with: list.shared_with || [],
-        created_by: list.created_by || "Current User",
-        sort_order: list.sort_order || 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      
-      setLists((prev) => [optimisticList, ...prev]);
-
       const { created_by: _cb, ...listWithoutCb } = list as any;
       const { data, error } = await supabase
         .from("todo_lists")
@@ -110,11 +91,13 @@ function useTodoListsStore() {
         .single();
 
       if (error) {
-        setLists((prev) => prev.filter((l) => l.id !== tempId));
         throw error;
       }
-      
-      setLists((prev) => prev.map((l) => (l.id === tempId ? data : l)));
+
+      // Child item queries require a database UUID. Add the list only after
+      // Supabase returns its persisted ID so temporary client IDs never reach
+      // the todo_items.list_id UUID filter.
+      setLists((prev) => [data, ...prev]);
       return data;
     } catch (error: any) {
       toast({
