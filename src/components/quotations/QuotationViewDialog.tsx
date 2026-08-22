@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -6,24 +6,40 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, X } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import { Quotation } from '@/types/quotation';
 import { QuotationPDFTemplate } from './QuotationPDFTemplate';
+import { downloadQuotationPdf } from '@/lib/quotationPdf';
 
 interface QuotationViewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotation: Quotation | null;
-  onDownload: () => void;
 }
 
 export function QuotationViewDialog({
   open,
   onOpenChange,
   quotation,
-  onDownload,
 }: QuotationViewDialogProps) {
+  const templateRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
   if (!quotation) return null;
+
+  const handleDownload = async () => {
+    if (!templateRef.current) return;
+
+    setIsDownloading(true);
+    try {
+      await downloadQuotationPdf({
+        element: templateRef.current,
+        fileName: `${quotation.quotation_number}.pdf`,
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -37,14 +53,19 @@ export function QuotationViewDialog({
             <Button
               variant="outline"
               size="sm"
-              onClick={onDownload}
+              onClick={handleDownload}
+              disabled={isDownloading}
             >
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {isDownloading ? 'Preparing…' : 'Download PDF'}
             </Button>
           </div>
         </DialogHeader>
-        <div className="mt-4">
+        <div ref={templateRef} className="mt-4 bg-background">
           <QuotationPDFTemplate quotation={quotation} />
         </div>
       </DialogContent>

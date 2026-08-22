@@ -65,7 +65,6 @@ import {
 import { useQuotations } from "@/hooks/useQuotations";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { QuotationViewDialog } from '@/components/quotations/QuotationViewDialog';
-import { QuotationPDFTemplate } from '@/components/quotations/QuotationPDFTemplate';
 import { QUOTATION_STATUSES, Quotation } from "@/types/quotation";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -156,73 +155,6 @@ const Quotations = () => {
       setViewQuotation(full);
       setViewDialogOpen(true);
     }
-  };
-
-  const handleDownloadPDF = async (quotation: Quotation) => {
-    const full = await getQuotationWithItems(quotation.id);
-    if (!full) return;
-
-    // Temporarily render the template in a hidden div
-    const printDiv = document.createElement('div');
-    printDiv.id = 'pdf-print-container';
-    printDiv.style.position = 'absolute';
-    printDiv.style.left = '-9999px';
-    printDiv.style.top = '0';
-    document.body.appendChild(printDiv);
-
-    // Render the template content as HTML string
-    const { createRoot } = await import('react-dom/client');
-    const { QuotationPDFTemplate } = await import(
-      '@/components/quotations/QuotationPDFTemplate'
-    );
-    const React = await import('react');
-
-    const root = createRoot(printDiv);
-    root.render(
-      React.createElement(QuotationPDFTemplate, { quotation: full })
-    );
-
-    // Wait for render then print
-    setTimeout(() => {
-      // Inject print styles
-      const style = document.createElement('style');
-      style.id = 'print-styles-quotation';
-      style.innerHTML = `
-        @media print {
-          body > *:not(#pdf-print-container) { display: none !important; }
-          #pdf-print-container {
-            position: static !important;
-            left: auto !important;
-          }
-          #pdf-print-container, #pdf-print-container * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-        }
-        @page { margin: 10mm; size: A4; }
-      `;
-      document.head.appendChild(style);
-
-      // Cleanup function using afterprint — fires when
-      // print dialog closes, not on a fixed timer
-      const cleanup = () => {
-        root.unmount();
-        if (document.body.contains(printDiv)) {
-          document.body.removeChild(printDiv);
-        }
-        const s = document.getElementById('print-styles-quotation');
-        if (s) document.head.removeChild(s);
-        window.removeEventListener('afterprint', cleanup);
-      };
-
-      window.addEventListener('afterprint', cleanup);
-      window.print();
-    }, 300);
-  };
-
-  // Also add this handler for download from the view dialog:
-  const handleDownloadFromView = () => {
-    if (viewQuotation) handleDownloadPDF(viewQuotation);
   };
 
   const handleDelete = (id: string) => {
@@ -482,7 +414,6 @@ const Quotations = () => {
         open={viewDialogOpen}
         onOpenChange={setViewDialogOpen}
         quotation={viewQuotation}
-        onDownload={handleDownloadFromView}
       />
 
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

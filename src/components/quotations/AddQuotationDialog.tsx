@@ -234,7 +234,7 @@ export function AddQuotationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto ${contentClassName || ''}`} overlayClassName={overlayClassName}>
+      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden ${contentClassName || ''}`} overlayClassName={overlayClassName}>
         <DialogHeader>
           <DialogTitle>
             {editQuotation ? 'Edit Quotation' : 'New Quotation'}
@@ -258,7 +258,7 @@ export function AddQuotationDialog({
           </div>
 
           {/* Client Information */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="client_name">Client Name *</Label>
               <Input
