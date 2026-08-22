@@ -329,7 +329,7 @@ const Quotations = () => {
                                 <FileText className="h-4 w-4 mr-2" />
                                 View
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDownloadPDF(quote)}>
+                              <DropdownMenuItem onClick={() => handleView(quote)}>
                                 <Download className="h-4 w-4 mr-2" />
                                 Download PDF
                               </DropdownMenuItem>
