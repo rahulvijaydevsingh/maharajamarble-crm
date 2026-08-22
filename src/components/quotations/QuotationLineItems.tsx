@@ -84,7 +84,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
         </Button>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
