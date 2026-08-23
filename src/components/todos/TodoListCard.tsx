@@ -36,6 +36,7 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
   const [newItemTitle, setNewItemTitle] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);
+  const [showAllItems, setShowAllItems] = useState(false);
 
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
@@ -102,9 +103,9 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
           )}
         </CardHeader>
         <CardContent className="space-y-2">
-          {/* Items list - show first 5 */}
+          {/* Items list */}
           <div className="space-y-1 max-h-[200px] overflow-y-auto">
-            {items.slice(0, 5).map((item) => (
+            {(showAllItems ? items : items.slice(0, 5)).map((item) => (
               <TodoItemRow
                 key={item.id}
                 item={item}
@@ -116,9 +117,15 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
               />
             ))}
             {items.length > 5 && (
-              <p className="text-xs text-muted-foreground text-center py-1">
-                +{items.length - 5} more items
-              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAllItems((current) => !current)}
+                className="h-7 w-full text-xs text-muted-foreground"
+              >
+                {showAllItems ? "Show fewer items" : `+${items.length - 5} more items`}
+              </Button>
             )}
           </div>
 
