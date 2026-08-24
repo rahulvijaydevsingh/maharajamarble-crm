@@ -48,8 +48,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   const remindersChannel = useRemindersChannel();
 
   const fetchReminders = async () => {
-    try {
-      setLoading(true);
+    const buildQuery = () => {
       const nowISO = new Date().toISOString();
       let query = supabase
         .from("reminders")
@@ -64,19 +63,31 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
       }
 
       if (entityType && entityId) {
-        query = query
+        return query
           .eq("entity_type", entityType)
           .eq("entity_id", entityId)
           .order("is_snoozed", { ascending: true })
           .order("reminder_datetime", { ascending: true });
-      } else {
-        query = query.order("reminder_datetime", { ascending: true });
-        if (assignedTo) {
-          query = query.eq("assigned_to", assignedTo);
-        }
       }
 
-      const { data, error } = await query;
+      query = query.order("reminder_datetime", { ascending: true });
+      return assignedTo ? query.eq("assigned_to", assignedTo) : query;
+    };
+
+    try {
+      setLoading(true);
+      let { data, error } = await buildQuery();
+
+      // A stale access token can occasionally be rejected by PostgREST when
+      // its issued-at time is ahead of the database clock. Refreshing creates
+      // a new token, then the original request is retried once without showing
+      // the user a misleading reminder error.
+      if (error?.message.toLowerCase().includes("jwt issued at future")) {
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError) {
+          ({ data, error } = await buildQuery());
+        }
+      }
 
       if (error) throw error;
       setReminders(data as Reminder[] || []);
