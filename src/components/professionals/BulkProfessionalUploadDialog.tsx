@@ -94,8 +94,8 @@ export function BulkProfessionalUploadDialog({
 
   const downloadTemplate = async () => {
     try {
-      const ExcelJS = (await import("exceljs")).default;
-      const workbook = new ExcelJS.Workbook();
+      const { Workbook } = await import("exceljs");
+      const workbook = new Workbook();
       const sheet = workbook.addWorksheet("Professional Template");
 
       const typeOptions = getFieldOptions("professionals", "professional_type");
