@@ -284,8 +284,10 @@ export function BulkUploadDialog({
   // Enhanced template download with multiple sheets
   const downloadTemplate = async () => {
     try {
-      const ExcelJS = (await import("exceljs")).default;
-      const workbook = new ExcelJS.Workbook();
+      // exceljs exposes named exports in Vite's browser bundle; using `.default`
+      // makes Workbook undefined and prevents the template from being generated.
+      const { Workbook } = await import("exceljs");
+      const workbook = new Workbook();
       const sheet = workbook.addWorksheet("Lead Template");
 
       const cpSourceOptions = getFieldOptions("leads", "source");
