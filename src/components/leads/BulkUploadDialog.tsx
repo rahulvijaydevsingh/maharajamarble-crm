@@ -655,6 +655,8 @@ export function BulkUploadDialog({
           isDuplicate,
           duplicateInfo,
           excluded: false,
+          professionalMatch: { kind: "none" },
+          professionalDecision: "auto",
         });
       }
 
