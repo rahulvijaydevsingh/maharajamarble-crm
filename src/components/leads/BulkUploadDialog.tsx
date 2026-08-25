@@ -452,7 +452,7 @@ export function BulkUploadDialog({
     }
   };
 
-  // Helper function to get column value with flexible header matching (case-insensitive)
+  // Helper function used by the photo flow and legacy templates.
   const getColumnValue = (row: Record<string, any>, possibleHeaders: string[]): string => {
     // First try exact match
     for (const header of possibleHeaders) {
@@ -470,6 +470,10 @@ export function BulkUploadDialog({
       }
     }
     return "";
+  };
+
+  const updateColumnMapping = (header: string, field: BulkLeadField | null) => {
+    setColumnMapping((current) => ({ ...current, [header]: field }));
   };
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -490,8 +494,6 @@ export function BulkUploadDialog({
     }
 
     setExcelFile(file);
-    setIsValidating(true);
-    setStep("validate");
 
     try {
       const data = await file.arrayBuffer();
@@ -505,31 +507,53 @@ export function BulkUploadDialog({
         defval: "", // Default empty values
       }) as Record<string, any>[];
 
-      // Skip example row if it exists (check if first data row is the example)
-      const dataRows = jsonData.filter((row, idx) => {
-        // Skip if this looks like the example row
-        if (idx === 0) {
-          const name = getColumnValue(row, ["Name*", "Name"]);
-          if (name === "John Doe") return false;
-        }
-        return true;
-      });
+      const headers = Object.keys(jsonData[0] ?? {});
+      if (headers.length === 0) {
+        toast({ title: "No columns found", description: "The first row must contain column headers.", variant: "destructive" });
+        return;
+      }
 
+      const detectedMapping = detectBulkLeadColumns(headers);
+      setRawExcelRows(jsonData);
+      setExcelHeaders(headers);
+      setColumnMapping(detectedMapping);
+
+      if (mappingScore(detectedMapping) >= 0.7) {
+        toast({ title: "Standard file detected", description: `${Object.values(detectedMapping).filter(Boolean).length} columns mapped automatically.` });
+        await validateExcelRows(jsonData, detectedMapping);
+      } else {
+        setStep("mapping");
+      }
+    } catch (error) {
+      console.error("Error parsing Excel:", error);
+      toast({ title: "Error parsing file", variant: "destructive" });
+      setStep("upload");
+    }
+  };
+
+  const validateExcelRows = async (uploadedRows: Record<string, unknown>[], mapping: ColumnMapping) => {
+    setIsValidating(true);
+    setStep("validate");
+    try {
+      const dataRows = uploadedRows.filter((row, idx) => {
+        if (idx !== 0) return true;
+        return normalizeIdentityText(mappedValue(row, mapping, "name")) !== "john doe";
+      });
       const parsed: ParsedLead[] = [];
-      const existingPhones = await fetchExistingPhones();
+      const existingRecords = await fetchExistingRecords();
+      const newProfessionalKeys = new Map<string, string>();
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
         const errors: string[] = [];
         const warnings: string[] = [];
 
-        // Map columns (handle multiple header variations, case-insensitive fallback)
-        const name = getColumnValue(row, ["Name*", "Name", "NAME", "name", "Full Name", "FULL NAME"]);
-        const phoneRaw = getColumnValue(row, ["Phone*", "Phone", "PHONE", "phone", "Mobile", "MOBILE", "Mobile 1", "Contact"]);
-        const altPhoneRaw = getColumnValue(row, ["Alternate Phone", "ALTERNATE PHONE", "alternate phone", "Alt Phone", "Mobile 2", "Secondary Phone"]);
-        const sourceLabel = getColumnValue(row, ["Source*", "Source", "SOURCE", "source", "Lead Source", "LEAD SOURCE"]);
-        const stageLabel = getColumnValue(row, ["Construction Stage", "CONSTRUCTION STAGE", "construction stage"]);
-        const designationLabel = getColumnValue(row, ["Designation", "DESIGNATION", "designation"]);
+        const name = mappedValue(row, mapping, "name");
+        const phoneRaw = mappedValue(row, mapping, "phone");
+        const altPhoneRaw = mappedValue(row, mapping, "alternate_phone");
+        const sourceLabel = mappedValue(row, mapping, "source");
+        const stageLabel = mappedValue(row, mapping, "construction_stage");
+        const designationLabel = mappedValue(row, mapping, "designation");
 
         // Resolve source label -> canonical value (edit dropdown binds to canonical values)
         const cpSourceOptsResolved = getFieldOptions("leads", "source");
@@ -538,7 +562,8 @@ export function BulkUploadDialog({
           String(o.label).toLowerCase() === sourceLabel.toLowerCase() ||
           String(o.value).toLowerCase() === sourceLabel.toLowerCase()
         );
-        const source = sourceMatch?.value || sourceLabel;
+        const source = sourceMatch?.value || normalizeSource(sourceLabel);
+        if (sourceLabel && !source) warnings.push(`Unrecognized source "${sourceLabel}" — defaulted to Other`);
 
         // Resolve construction_stage label -> canonical value
         const cpStageOptsResolved = getFieldOptions("leads", "construction_stage");
@@ -565,57 +590,40 @@ export function BulkUploadDialog({
           errors.push("Name is required");
         }
 
-        const phone = phoneRaw.replace(/\D/g, "").slice(-10);
+        const phone = normalizePhone(phoneRaw);
         if (!phone) {
           errors.push("Phone is required");
         } else if (phone.length !== 10) {
           errors.push("Phone must be 10 digits");
         }
 
-        const alternate_phone = altPhoneRaw ? altPhoneRaw.replace(/\D/g, "").slice(-10) : "";
+        const alternate_phone = normalizePhone(altPhoneRaw);
         if (alternate_phone && alternate_phone.length !== 10) {
           warnings.push("Alternate Phone must be 10 digits — dropped");
         }
 
-        if (!sourceLabel) {
-          errors.push("Source is required");
-        }
-
-        // Check for duplicates (primary phone)
-        const phoneMatch = existingPhones.get(phone);
-        const isDuplicate = !!phoneMatch && !phoneMatch.isProfessionalMatch;
-        let duplicateInfo = "";
-        if (isDuplicate) {
-          duplicateInfo = phoneMatch!.label;
-          warnings.push(`Duplicate: ${duplicateInfo}`);
-        } else if (phoneMatch?.isProfessionalMatch) {
-          warnings.push(`Will link to existing professional: ${phoneMatch.label}`);
-        }
+        const leadOrCustomerMatch = existingRecords.nonProfessionalByPhone.get(phone) ?? existingRecords.nonProfessionalByPhone.get(alternate_phone);
+        const isDuplicate = !!leadOrCustomerMatch;
+        const duplicateInfo = leadOrCustomerMatch?.label ?? "";
+        if (leadOrCustomerMatch) warnings.push(`Duplicate: ${leadOrCustomerMatch.label}`);
 
         // Validate email
-        const email = getColumnValue(row, ["Email", "EMAIL", "email", "E MAIL", "E-Mail", "e mail"]);
+        const email = mappedValue(row, mapping, "email");
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           warnings.push("Invalid email format");
         }
 
         // Parse priority
-        let priority = 3;
-        const priorityRaw = getColumnValue(row, ["Priority", "PRIORITY", "PRIORTY", "priority"]);
-        if (priorityRaw) {
-          const priorityNum = parseInt(priorityRaw.charAt(0));
-          if (priorityNum >= 1 && priorityNum <= 5) {
-            priority = priorityNum;
-          }
-        }
+        const priority = resolvePriority(mappedValue(row, mapping, "priority"), stageLabel);
 
         // Parse materials
-        const materialsRaw = getColumnValue(row, ["Materials", "MATERIALS", "Material", "MATERIAL"]);
+        const materialsRaw = mappedValue(row, mapping, "materials");
         const materials = materialsRaw
           ? materialsRaw.split(",").map((m: string) => m.trim()).filter(Boolean)
           : [];
 
         // Resolve assigned staff to email
-        const assignedToRaw = getColumnValue(row, ["Assigned To", "ASSIGNED TO", "Assigned", "ASSIGNED", "assigned"]);
+        const assignedToRaw = mappedValue(row, mapping, "assigned_to");
         const matchedStaff = staffMembers.find(m =>
           m.name?.toLowerCase() === assignedToRaw?.toLowerCase() ||
           m.email?.toLowerCase() === assignedToRaw?.toLowerCase()
@@ -623,12 +631,24 @@ export function BulkUploadDialog({
         const assignedToName = matchedStaff?.name || assignedToRaw || staffMembers[0]?.name || "Unassigned";
 
         // Notes: prefer "Initial Note" (matches manual form), fall back to legacy "Notes" column
-        const initialNote = getColumnValue(row, ["Initial Note", "INITIAL NOTE", "initial note", "InitialNote"]);
-        const legacyNote = getColumnValue(row, ["Notes", "NOTES", "notes"]);
-        const notes = initialNote || legacyNote;
+        const notes = mappedValue(row, mapping, "notes");
 
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
+
+        const professionalMatch = resolveProfessionalMatch({
+          name,
+          firmName: mappedValue(row, mapping, "firm_name"),
+          phone,
+          alternatePhone: alternate_phone,
+          email,
+          designation,
+          records: existingRecords.professionals,
+          newProfessionalKeys,
+        });
+        if (professionalMatch.kind === "existing") warnings.push(`Will link to existing professional: ${professionalMatch.professional.name} (${professionalMatch.matchedBy})`);
+        if (professionalMatch.kind === "review") warnings.push("Possible professional match requires a decision before import");
+        if (professionalMatch.kind === "new") warnings.push("A new professional will be created and shared with matching rows in this file");
 
         parsed.push({
           name,
@@ -636,18 +656,18 @@ export function BulkUploadDialog({
           alternate_phone,
           email,
           source: source || "other",
-          address: getColumnValue(row, ["Address", "ADDRESS", "address"]),
-          status: getColumnValue(row, ["Status", "STATUS", "status"]).toLowerCase() || "new",
+          address: mappedValue(row, mapping, "address"),
+          status: mappedValue(row, mapping, "status").toLowerCase() || "new",
           priority,
           assigned_to: assignedToName,
           materials,
           notes,
           construction_stage,
-          estimated_quantity: getColumnValue(row, ["Estimated Quantity", "ESTIMATED QUANTITY", "estimated quantity"]),
-          referred_by: getColumnValue(row, ["Referred By", "REFERRED BY", "referred by"]),
-          next_action_date: getColumnValue(row, ["Next Action Date", "NEXT ACTION DATE", "next action date"]),
-          next_action_time: getColumnValue(row, ["Next Action Time", "NEXT ACTION TIME", "next action time"]),
-          site_plus_code: getColumnValue(row, ["Site Plus Code", "SITE PLUS CODE", "SitePlusCode", "plus_code"]),
+          estimated_quantity: mappedValue(row, mapping, "estimated_quantity"),
+          referred_by: mappedValue(row, mapping, "referred_by"),
+          next_action_date: mappedValue(row, mapping, "next_action_date"),
+          next_action_time: mappedValue(row, mapping, "next_action_time"),
+          site_plus_code: mappedValue(row, mapping, "site_plus_code"),
           designation,
           rowNumber: actualRowNumber,
           errors,
@@ -655,7 +675,7 @@ export function BulkUploadDialog({
           isDuplicate,
           duplicateInfo,
           excluded: false,
-          professionalMatch: { kind: "none" },
+          professionalMatch,
           professionalDecision: "auto",
         });
       }
