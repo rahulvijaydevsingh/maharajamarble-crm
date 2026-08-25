@@ -74,6 +74,15 @@ import {
 } from "@/components/ui/tooltip";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { PhotoLeadForm } from "./bulk-upload/PhotoLeadForm";
+import { ColumnMappingStep } from "./bulk-upload/ColumnMappingStep";
+import {
+  detectBulkLeadColumns,
+  mappedValue,
+  mappingScore,
+  type BulkLeadField,
+  type ColumnMapping,
+} from "@/lib/bulkUploadColumnDetector";
+import { normalizeEmail, normalizeIdentityText, normalizePhone, normalizeSource, resolvePriority } from "@/lib/bulkUploadResolvers";
 
 interface BulkUploadDialogProps {
   open: boolean;
@@ -106,7 +115,27 @@ interface ParsedLead {
   isDuplicate: boolean;
   duplicateInfo?: string;
   excluded: boolean;
+  professionalMatch: ProfessionalMatch;
+  professionalDecision: ProfessionalDecision;
 }
+
+interface ProfessionalRecord {
+  id: string;
+  name: string;
+  phone: string;
+  alternate_phone: string | null;
+  email: string | null;
+  firm_name: string | null;
+  professional_type: string;
+}
+
+type ProfessionalMatch =
+  | { kind: "existing"; professional: ProfessionalRecord; matchedBy: "phone" | "email" }
+  | { kind: "review"; candidates: ProfessionalRecord[] }
+  | { kind: "new"; batchKey: string }
+  | { kind: "none" };
+
+type ProfessionalDecision = "auto" | "link-existing" | "create-new" | "no-link";
 
 interface PhotoLeadData {
   id: string;
@@ -165,10 +194,13 @@ export function BulkUploadDialog({
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<"excel" | "photo">("excel");
-  const [step, setStep] = useState<"upload" | "select-photos" | "validate" | "import" | "complete">("upload");
+  const [step, setStep] = useState<"upload" | "select-photos" | "mapping" | "validate" | "import" | "complete">("upload");
 
   // Excel upload state
   const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [rawExcelRows, setRawExcelRows] = useState<Record<string, unknown>[]>([]);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({});
   const uploadToAttachmentsBucket = async (file: File, path: string) => {
     const { error } = await supabase.storage.from('crm-attachments').upload(path, file, {
       contentType: file.type || undefined,
@@ -260,6 +292,9 @@ export function BulkUploadDialog({
   const resetState = () => {
     setStep("upload");
     setExcelFile(null);
+    setRawExcelRows([]);
+    setExcelHeaders([]);
+    setColumnMapping({});
     setParsedLeads([]);
     setPhotoLeads([]);
     setCurrentPhotoIndex(0);
