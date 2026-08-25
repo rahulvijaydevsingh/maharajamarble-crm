@@ -1375,6 +1375,8 @@ export type Database = {
           estimated_quantity: number | null
           firm_name: string | null
           id: string
+          import_batch_id: string | null
+          import_method: string | null
           is_converted: boolean | null
           kit_status: string | null
           kit_subscription_id: string | null
@@ -1421,6 +1423,8 @@ export type Database = {
           estimated_quantity?: number | null
           firm_name?: string | null
           id?: string
+          import_batch_id?: string | null
+          import_method?: string | null
           is_converted?: boolean | null
           kit_status?: string | null
           kit_subscription_id?: string | null
@@ -1467,6 +1471,8 @@ export type Database = {
           estimated_quantity?: number | null
           firm_name?: string | null
           id?: string
+          import_batch_id?: string | null
+          import_method?: string | null
           is_converted?: boolean | null
           kit_status?: string | null
           kit_subscription_id?: string | null
@@ -1877,6 +1883,7 @@ export type Database = {
           email: string | null
           firm_name: string | null
           id: string
+          import_batch_id: string | null
           kit_status: string | null
           kit_subscription_id: string | null
           last_follow_up: string | null
@@ -1910,6 +1917,7 @@ export type Database = {
           email?: string | null
           firm_name?: string | null
           id?: string
+          import_batch_id?: string | null
           kit_status?: string | null
           kit_subscription_id?: string | null
           last_follow_up?: string | null
@@ -1943,6 +1951,7 @@ export type Database = {
           email?: string | null
           firm_name?: string | null
           id?: string
+          import_batch_id?: string | null
           kit_status?: string | null
           kit_subscription_id?: string | null
           last_follow_up?: string | null
