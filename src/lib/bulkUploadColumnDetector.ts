@@ -70,7 +70,7 @@ export const detectBulkLeadColumns = (headers: string[]): ColumnMapping => {
 
 export const mappingScore = (mapping: ColumnMapping): number => {
   const mapped = Object.values(mapping).filter(Boolean).length;
-  return BULK_LEAD_FIELDS.length === 0 ? 0 : mapped / BULK_LEAD_FIELDS.length;
+  return mapped / BULK_LEAD_FIELDS.length;
 };
 
 export const mappedValue = (
