@@ -702,34 +702,102 @@ export function BulkUploadDialog({
     }
   };
 
-  const fetchExistingPhones = async (): Promise<Map<string, { label: string; isProfessionalMatch: boolean }>> => {
+  const fetchExistingRecords = async (): Promise<{
+    nonProfessionalByPhone: Map<string, { label: string }>;
+    professionals: ProfessionalRecord[];
+  }> => {
     const [leadsRes, professionalsRes, customersRes] = await Promise.all([
       supabase.from("leads").select("phone, alternate_phone, name"),
-      supabase.from("professionals").select("phone, alternate_phone, name, professional_type"),
+      supabase.from("professionals").select("id, phone, alternate_phone, name, email, firm_name, professional_type"),
       supabase.from("customers").select("phone, alternate_phone, name"),
     ]);
-    const map = new Map<string, { label: string; isProfessionalMatch: boolean }>();
-    professionalsRes.data?.forEach((p: any) => {
-      if (p.phone) map.set(p.phone, { label: `Professional: ${p.name} (${p.professional_type})`, isProfessionalMatch: true });
-      if (p.alternate_phone) map.set(p.alternate_phone, { label: `Professional: ${p.name} (${p.professional_type})`, isProfessionalMatch: true });
-    });
-    // Leads/customers populated after professionals, so a genuine duplicate
-    // lead/customer wins the flag if a phone happens to match both.
+    const nonProfessionalByPhone = new Map<string, { label: string }>();
     leadsRes.data?.forEach((lead: any) => {
-      if (lead.phone) map.set(lead.phone, { label: `Lead: ${lead.name}`, isProfessionalMatch: false });
-      if (lead.alternate_phone) map.set(lead.alternate_phone, { label: `Lead: ${lead.name}`, isProfessionalMatch: false });
+      if (lead.phone) nonProfessionalByPhone.set(normalizePhone(lead.phone), { label: `Lead: ${lead.name}` });
+      if (lead.alternate_phone) nonProfessionalByPhone.set(normalizePhone(lead.alternate_phone), { label: `Lead: ${lead.name}` });
     });
     customersRes.data?.forEach((c: any) => {
-      if (c.phone) map.set(c.phone, { label: `Customer: ${c.name}`, isProfessionalMatch: false });
-      if (c.alternate_phone) map.set(c.alternate_phone, { label: `Customer: ${c.name}`, isProfessionalMatch: false });
+      if (c.phone) nonProfessionalByPhone.set(normalizePhone(c.phone), { label: `Customer: ${c.name}` });
+      if (c.alternate_phone) nonProfessionalByPhone.set(normalizePhone(c.alternate_phone), { label: `Customer: ${c.name}` });
     });
+    return { nonProfessionalByPhone, professionals: (professionalsRes.data ?? []) as ProfessionalRecord[] };
+  };
+
+  const fetchExistingPhones = async (): Promise<Map<string, { label: string; isProfessionalMatch: boolean }>> => {
+    const { nonProfessionalByPhone, professionals } = await fetchExistingRecords();
+    const map = new Map<string, { label: string; isProfessionalMatch: boolean }>();
+    professionals.forEach((professional) => {
+      [professional.phone, professional.alternate_phone].forEach((value) => {
+        const phone = normalizePhone(value || "");
+        if (phone) map.set(phone, { label: `Professional: ${professional.name} (${professional.professional_type})`, isProfessionalMatch: true });
+      });
+    });
+    nonProfessionalByPhone.forEach((match, phone) => map.set(phone, { ...match, isProfessionalMatch: false }));
     return map;
+  };
+
+  const resolveProfessionalMatch = ({
+    name,
+    firmName,
+    phone,
+    alternatePhone,
+    email,
+    designation,
+    records,
+    newProfessionalKeys,
+  }: {
+    name: string;
+    firmName: string;
+    phone: string;
+    alternatePhone: string;
+    email: string;
+    designation: string;
+    records: ProfessionalRecord[];
+    newProfessionalKeys: Map<string, string>;
+  }): ProfessionalMatch => {
+    const identifierPhones = new Set([phone, alternatePhone].filter(Boolean));
+    const normalizedEmail = normalizeEmail(email);
+    const identifierMatch = records.find((professional) =>
+      identifierPhones.has(normalizePhone(professional.phone)) ||
+      identifierPhones.has(normalizePhone(professional.alternate_phone || "")) ||
+      (normalizedEmail.length > 0 && normalizeEmail(professional.email || "") === normalizedEmail),
+    );
+    if (identifierMatch) {
+      const matchedBy = normalizedEmail.length > 0 && normalizeEmail(identifierMatch.email || "") === normalizedEmail &&
+        !identifierPhones.has(normalizePhone(identifierMatch.phone)) &&
+        !identifierPhones.has(normalizePhone(identifierMatch.alternate_phone || ""))
+        ? "email"
+        : "phone";
+      return { kind: "existing", professional: identifierMatch, matchedBy };
+    }
+
+    const normalizedName = normalizeIdentityText(name);
+    const normalizedFirm = normalizeIdentityText(firmName);
+    const candidates = records.filter((professional) => {
+      const sameName = normalizedName.length > 2 && normalizeIdentityText(professional.name) === normalizedName;
+      const sameFirm = normalizedFirm.length > 2 && normalizeIdentityText(professional.firm_name || "") === normalizedFirm;
+      return sameName || (sameFirm && normalizedName.length > 2);
+    });
+    if (candidates.length > 0) return { kind: "review", candidates };
+    if (!isProfessionalDesignation(designation)) return { kind: "none" };
+
+    const batchKey = normalizeEmail(email) || phone || `${normalizedName}|${normalizedFirm}`;
+    if (!newProfessionalKeys.has(batchKey)) newProfessionalKeys.set(batchKey, batchKey);
+    return { kind: "new", batchKey };
   };
 
   const handleImport = async () => {
     setIsImporting(true);
     setStep("import");
     setImportProgress(0);
+
+    const unresolvedRows = parsedLeads.filter((lead) =>
+      !lead.excluded && lead.errors.length === 0 && lead.professionalMatch.kind === "review" && lead.professionalDecision === "auto",
+    );
+    if (unresolvedRows.length > 0) {
+      toast({ title: "Professional matches need review", description: `${unresolvedRows.length} selected row${unresolvedRows.length === 1 ? "" : "s"} need a link or keep-separate decision.`, variant: "destructive" });
+      return;
+    }
 
     const validLeads = parsedLeads.filter(
       (lead) => lead.errors.length === 0 && (!skipDuplicates || !lead.isDuplicate) && !lead.excluded
@@ -752,7 +820,8 @@ export function BulkUploadDialog({
     let errors = 0;
     let professionalsCreated = 0;
     let professionalsLinked = 0;
-    const importProfessionalCache = new Map<string, string>(); // phone -> professional_id, this run only
+    const importProfessionalCache = new Map<string, string>();
+    const importBatchId = crypto.randomUUID();
 
     for (let i = 0; i < validLeads.length; i++) {
       const lead = validLeads[i];
@@ -780,6 +849,8 @@ export function BulkUploadDialog({
           estimated_quantity: lead.estimated_quantity ? parseInt(lead.estimated_quantity) : null,
           site_plus_code: lead.site_plus_code || null,
           next_follow_up: dueDate,
+           import_batch_id: importBatchId,
+           import_method: "bulk_upload",
         })
         .select('id')
         .single();
@@ -790,57 +861,48 @@ export function BulkUploadDialog({
         } else {
           imported++;
 
-          // Auto-create or link a Professional when the lead's designation is
-          // professional-category (mirrors manual Add Lead flow).
+          // Resolve the reviewed deterministic match before any professional is created.
           let primaryProfessionalId: string | null = null;
-          if (isProfessionalDesignation(lead.designation) && lead.phone) {
-            if (importProfessionalCache.has(lead.phone)) {
-              primaryProfessionalId = importProfessionalCache.get(lead.phone)!;
+          if (lead.professionalDecision !== "no-link" && lead.professionalMatch.kind !== "none") {
+            const forcedProfessional = lead.professionalDecision === "link-existing" && lead.professionalMatch.kind === "review"
+              ? lead.professionalMatch.candidates[0]
+              : lead.professionalMatch.kind === "existing"
+                ? lead.professionalMatch.professional
+                : null;
+            const newProfessionalKey = lead.professionalMatch.kind === "new" ? lead.professionalMatch.batchKey : "";
+
+            if (forcedProfessional) {
+              primaryProfessionalId = forcedProfessional.id;
               professionalsLinked++;
-            } else {
-              const { data: existingProfessional, error: findError } = await supabase
+            } else if (newProfessionalKey && importProfessionalCache.has(newProfessionalKey)) {
+              primaryProfessionalId = importProfessionalCache.get(newProfessionalKey) || null;
+              if (primaryProfessionalId) professionalsLinked++;
+            } else if (newProfessionalKey) {
+              const { data: insertedProfessional, error: insertError } = await supabase
                 .from("professionals")
+                .insert([{
+                  name: lead.name,
+                  phone: lead.phone,
+                  alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
+                  email: lead.email || null,
+                  firm_name: null,
+                  address: lead.address || null,
+                  professional_type: lead.designation,
+                  status: "active",
+                  priority: 3,
+                  assigned_to: lead.assigned_to,
+                  site_plus_code: lead.site_plus_code || null,
+                  added_via_lead_id: insertedLead?.id || null,
+                  import_batch_id: importBatchId,
+                }])
                 .select("id")
-                .or(`phone.eq.${lead.phone},alternate_phone.eq.${lead.phone}`)
-                .limit(1);
+                .single();
 
-              if (findError) {
-                console.error("BulkUpload: Failed to check existing professional:", findError);
-              }
-
-              if (existingProfessional && existingProfessional.length > 0) {
-                primaryProfessionalId = existingProfessional[0].id;
-                professionalsLinked++;
-              } else {
-                const { data: insertedProfessional, error: insertError } = await supabase
-                  .from("professionals")
-                  .insert([{
-                    name: lead.name,
-                    phone: lead.phone,
-                    alternate_phone: lead.alternate_phone && lead.alternate_phone.length === 10 ? lead.alternate_phone : null,
-                    email: lead.email || null,
-                    address: lead.address || null,
-                    professional_type: lead.designation,
-                    status: "active",
-                    priority: 3,
-                    assigned_to: lead.assigned_to,
-                    site_plus_code: lead.site_plus_code || null,
-                    added_via_lead_id: insertedLead?.id || null,
-                  }])
-                  .select("id")
-                  .single();
-
-                if (insertError) {
-                  console.error("BulkUpload: Failed to insert professional:", insertError);
-                }
-
-                if (insertedProfessional) {
-                  primaryProfessionalId = insertedProfessional.id;
-                  professionalsCreated++;
-                }
-              }
-              if (primaryProfessionalId) {
-                importProfessionalCache.set(lead.phone, primaryProfessionalId);
+              if (insertError) console.error("BulkUpload: Failed to insert professional:", insertError);
+              if (insertedProfessional) {
+                primaryProfessionalId = insertedProfessional.id;
+                importProfessionalCache.set(newProfessionalKey, insertedProfessional.id);
+                professionalsCreated++;
               }
             }
 
@@ -857,9 +919,7 @@ export function BulkUploadDialog({
                   { onConflict: "lead_id,professional_id" }
                 );
 
-              if (upsertError) {
-                console.error("BulkUpload: Failed to upsert lead_professionals relation:", upsertError);
-              }
+              if (upsertError) console.error("BulkUpload: Failed to upsert lead_professionals relation:", upsertError);
             }
           }
 
@@ -1236,6 +1296,7 @@ export function BulkUploadDialog({
   const validLeadsCount = parsedLeads.filter((l) => l.errors.length === 0 && !l.excluded).length;
   const errorLeadsCount = parsedLeads.filter((l) => l.errors.length > 0).length;
   const duplicateLeadsCount = parsedLeads.filter((l) => l.isDuplicate && !l.excluded).length;
+  const pendingProfessionalReviewCount = parsedLeads.filter((l) => !l.excluded && l.errors.length === 0 && l.professionalMatch.kind === "review" && l.professionalDecision === "auto").length;
   const importCount = skipDuplicates ? validLeadsCount - duplicateLeadsCount : validLeadsCount;
 
   const toggleRowExcluded = (idx: number, checked: boolean) => {
@@ -1244,6 +1305,22 @@ export function BulkUploadDialog({
 
   const toggleAllExcluded = (checked: boolean) => {
     setParsedLeads((prev) => prev.map((l) => (l.errors.length > 0 ? l : { ...l, excluded: !checked })));
+  };
+
+  const updateProfessionalDecision = (index: number, decision: ProfessionalDecision, professionalId?: string) => {
+    setParsedLeads((current) => current.map((lead, idx) => {
+      if (idx !== index || lead.professionalMatch.kind !== "review") return lead;
+      const selected = professionalId
+        ? lead.professionalMatch.candidates.find((candidate) => candidate.id === professionalId)
+        : lead.professionalMatch.candidates[0];
+      return {
+        ...lead,
+        professionalDecision: decision,
+        professionalMatch: decision === "link-existing" && selected
+          ? { kind: "existing", professional: selected, matchedBy: "phone" }
+          : lead.professionalMatch,
+      };
+    }));
   };
   const completedCount = photoLeads.filter(l => l.status === "saved").length;
   const pendingCount = photoLeads.filter(l => l.status === "pending").length;
@@ -1339,6 +1416,16 @@ export function BulkUploadDialog({
           </Tabs>
         )}
 
+        {step === "mapping" && activeTab === "excel" && (
+          <ColumnMappingStep
+            headers={excelHeaders}
+            mapping={columnMapping}
+            onChange={updateColumnMapping}
+            onBack={() => setStep("upload")}
+            onContinue={() => { void validateExcelRows(rawExcelRows, columnMapping); }}
+          />
+        )}
+
         {/* Photo Selection Preview Step */}
         {step === "select-photos" && activeTab === "photo" && (
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -1426,6 +1513,12 @@ export function BulkUploadDialog({
                     <AlertTriangle className="h-3 w-3 text-amber-500" />
                     Duplicates: {duplicateLeadsCount}
                   </Badge>
+                  {pendingProfessionalReviewCount > 0 && (
+                    <Badge variant="outline" className="gap-1">
+                      <AlertTriangle className="h-3 w-3 text-amber-500" />
+                      Professional review: {pendingProfessionalReviewCount}
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 mb-4">
@@ -1462,6 +1555,7 @@ export function BulkUploadDialog({
                           <TableHead className="min-w-[120px]">Construction</TableHead>
                           <TableHead className="min-w-[150px]">Address</TableHead>
                           <TableHead className="min-w-[100px]">Qty</TableHead>
+                           <TableHead className="min-w-[240px]">Professional relationship</TableHead>
                           <TableHead className="min-w-[200px]">Issues</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1495,6 +1589,31 @@ export function BulkUploadDialog({
                             <TableCell>{lead.construction_stage || "-"}</TableCell>
                             <TableCell className="text-xs max-w-[150px] truncate">{lead.address || "-"}</TableCell>
                             <TableCell>{lead.estimated_quantity || "-"}</TableCell>
+                             <TableCell className="text-xs">
+                               {lead.professionalMatch.kind === "existing" && (
+                                 <Badge variant="secondary">Link: {lead.professionalMatch.professional.name}</Badge>
+                               )}
+                               {lead.professionalMatch.kind === "new" && (
+                                 <Badge variant="outline">Create new professional</Badge>
+                               )}
+                               {lead.professionalMatch.kind === "none" && "No professional relationship"}
+                               {lead.professionalMatch.kind === "review" && (
+                                 <div className="space-y-2">
+                                   <Select onValueChange={(value) => updateProfessionalDecision(idx, "link-existing", value)}>
+                                     <SelectTrigger className="h-8"><SelectValue placeholder="Select possible match" /></SelectTrigger>
+                                     <SelectContent>
+                                       {lead.professionalMatch.candidates.map((candidate) => (
+                                         <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}{candidate.firm_name ? ` — ${candidate.firm_name}` : ""}</SelectItem>
+                                       ))}
+                                     </SelectContent>
+                                   </Select>
+                                   <div className="flex gap-2">
+                                     <Button size="sm" variant="outline" onClick={() => updateProfessionalDecision(idx, "create-new")}>Keep separate</Button>
+                                     <Button size="sm" variant="ghost" onClick={() => updateProfessionalDecision(idx, "no-link")}>No relationship</Button>
+                                   </div>
+                                 </div>
+                               )}
+                             </TableCell>
                             <TableCell>
                               {lead.errors.length > 0 && (
                                 <div className="text-xs text-destructive">{lead.errors.join(", ")}</div>
@@ -1514,7 +1633,7 @@ export function BulkUploadDialog({
                   <Button variant="outline" onClick={() => setStep("upload")}>
                     Back
                   </Button>
-                  <Button onClick={handleImport} disabled={importCount === 0}>
+                  <Button onClick={handleImport} disabled={importCount === 0 || pendingProfessionalReviewCount > 0}>
                     Import {importCount} Leads
                   </Button>
                 </div>
