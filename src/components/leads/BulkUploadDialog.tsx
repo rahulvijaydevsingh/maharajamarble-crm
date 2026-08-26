@@ -702,28 +702,88 @@ export function BulkUploadDialog({
     }
   };
 
-  const fetchExistingPhones = async (): Promise<Map<string, { label: string; isProfessionalMatch: boolean }>> => {
+  const fetchExistingRecords = async (): Promise<{
+    nonProfessionalByPhone: Map<string, { label: string }>;
+    professionals: ProfessionalRecord[];
+  }> => {
     const [leadsRes, professionalsRes, customersRes] = await Promise.all([
       supabase.from("leads").select("phone, alternate_phone, name"),
-      supabase.from("professionals").select("phone, alternate_phone, name, professional_type"),
+      supabase.from("professionals").select("id, phone, alternate_phone, name, email, firm_name, professional_type"),
       supabase.from("customers").select("phone, alternate_phone, name"),
     ]);
-    const map = new Map<string, { label: string; isProfessionalMatch: boolean }>();
-    professionalsRes.data?.forEach((p: any) => {
-      if (p.phone) map.set(p.phone, { label: `Professional: ${p.name} (${p.professional_type})`, isProfessionalMatch: true });
-      if (p.alternate_phone) map.set(p.alternate_phone, { label: `Professional: ${p.name} (${p.professional_type})`, isProfessionalMatch: true });
-    });
-    // Leads/customers populated after professionals, so a genuine duplicate
-    // lead/customer wins the flag if a phone happens to match both.
+    const nonProfessionalByPhone = new Map<string, { label: string }>();
     leadsRes.data?.forEach((lead: any) => {
-      if (lead.phone) map.set(lead.phone, { label: `Lead: ${lead.name}`, isProfessionalMatch: false });
-      if (lead.alternate_phone) map.set(lead.alternate_phone, { label: `Lead: ${lead.name}`, isProfessionalMatch: false });
+      if (lead.phone) nonProfessionalByPhone.set(normalizePhone(lead.phone), { label: `Lead: ${lead.name}` });
+      if (lead.alternate_phone) nonProfessionalByPhone.set(normalizePhone(lead.alternate_phone), { label: `Lead: ${lead.name}` });
     });
     customersRes.data?.forEach((c: any) => {
-      if (c.phone) map.set(c.phone, { label: `Customer: ${c.name}`, isProfessionalMatch: false });
-      if (c.alternate_phone) map.set(c.alternate_phone, { label: `Customer: ${c.name}`, isProfessionalMatch: false });
+      if (c.phone) nonProfessionalByPhone.set(normalizePhone(c.phone), { label: `Customer: ${c.name}` });
+      if (c.alternate_phone) nonProfessionalByPhone.set(normalizePhone(c.alternate_phone), { label: `Customer: ${c.name}` });
     });
+    return { nonProfessionalByPhone, professionals: (professionalsRes.data ?? []) as ProfessionalRecord[] };
+  };
+
+  const fetchExistingPhones = async (): Promise<Map<string, { label: string; isProfessionalMatch: boolean }>> => {
+    const { nonProfessionalByPhone, professionals } = await fetchExistingRecords();
+    const map = new Map<string, { label: string; isProfessionalMatch: boolean }>();
+    professionals.forEach((professional) => {
+      [professional.phone, professional.alternate_phone].forEach((value) => {
+        const phone = normalizePhone(value || "");
+        if (phone) map.set(phone, { label: `Professional: ${professional.name} (${professional.professional_type})`, isProfessionalMatch: true });
+      });
+    });
+    nonProfessionalByPhone.forEach((match, phone) => map.set(phone, { ...match, isProfessionalMatch: false }));
     return map;
+  };
+
+  const resolveProfessionalMatch = ({
+    name,
+    firmName,
+    phone,
+    alternatePhone,
+    email,
+    designation,
+    records,
+    newProfessionalKeys,
+  }: {
+    name: string;
+    firmName: string;
+    phone: string;
+    alternatePhone: string;
+    email: string;
+    designation: string;
+    records: ProfessionalRecord[];
+    newProfessionalKeys: Map<string, string>;
+  }): ProfessionalMatch => {
+    const identifierPhones = new Set([phone, alternatePhone].filter(Boolean));
+    const normalizedEmail = normalizeEmail(email);
+    const identifierMatch = records.find((professional) =>
+      identifierPhones.has(normalizePhone(professional.phone)) ||
+      identifierPhones.has(normalizePhone(professional.alternate_phone || "")) ||
+      (normalizedEmail.length > 0 && normalizeEmail(professional.email || "") === normalizedEmail),
+    );
+    if (identifierMatch) {
+      const matchedBy = normalizedEmail.length > 0 && normalizeEmail(identifierMatch.email || "") === normalizedEmail &&
+        !identifierPhones.has(normalizePhone(identifierMatch.phone)) &&
+        !identifierPhones.has(normalizePhone(identifierMatch.alternate_phone || ""))
+        ? "email"
+        : "phone";
+      return { kind: "existing", professional: identifierMatch, matchedBy };
+    }
+
+    const normalizedName = normalizeIdentityText(name);
+    const normalizedFirm = normalizeIdentityText(firmName);
+    const candidates = records.filter((professional) => {
+      const sameName = normalizedName.length > 2 && normalizeIdentityText(professional.name) === normalizedName;
+      const sameFirm = normalizedFirm.length > 2 && normalizeIdentityText(professional.firm_name || "") === normalizedFirm;
+      return sameName || (sameFirm && normalizedName.length > 2);
+    });
+    if (candidates.length > 0) return { kind: "review", candidates };
+    if (!isProfessionalDesignation(designation)) return { kind: "none" };
+
+    const batchKey = normalizeEmail(email) || phone || `${normalizedName}|${normalizedFirm}`;
+    if (!newProfessionalKeys.has(batchKey)) newProfessionalKeys.set(batchKey, batchKey);
+    return { kind: "new", batchKey };
   };
 
   const handleImport = async () => {
