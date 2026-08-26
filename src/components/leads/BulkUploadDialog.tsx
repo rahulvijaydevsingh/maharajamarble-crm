@@ -1416,6 +1416,16 @@ export function BulkUploadDialog({
           </Tabs>
         )}
 
+        {step === "mapping" && activeTab === "excel" && (
+          <ColumnMappingStep
+            headers={excelHeaders}
+            mapping={columnMapping}
+            onChange={updateColumnMapping}
+            onBack={() => setStep("upload")}
+            onContinue={() => { void validateExcelRows(rawExcelRows, columnMapping); }}
+          />
+        )}
+
         {/* Photo Selection Preview Step */}
         {step === "select-photos" && activeTab === "photo" && (
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -1503,6 +1513,12 @@ export function BulkUploadDialog({
                     <AlertTriangle className="h-3 w-3 text-amber-500" />
                     Duplicates: {duplicateLeadsCount}
                   </Badge>
+                  {pendingProfessionalReviewCount > 0 && (
+                    <Badge variant="outline" className="gap-1">
+                      <AlertTriangle className="h-3 w-3 text-amber-500" />
+                      Professional review: {pendingProfessionalReviewCount}
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 mb-4">
@@ -1539,6 +1555,7 @@ export function BulkUploadDialog({
                           <TableHead className="min-w-[120px]">Construction</TableHead>
                           <TableHead className="min-w-[150px]">Address</TableHead>
                           <TableHead className="min-w-[100px]">Qty</TableHead>
+                           <TableHead className="min-w-[240px]">Professional relationship</TableHead>
                           <TableHead className="min-w-[200px]">Issues</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1572,6 +1589,31 @@ export function BulkUploadDialog({
                             <TableCell>{lead.construction_stage || "-"}</TableCell>
                             <TableCell className="text-xs max-w-[150px] truncate">{lead.address || "-"}</TableCell>
                             <TableCell>{lead.estimated_quantity || "-"}</TableCell>
+                             <TableCell className="text-xs">
+                               {lead.professionalMatch.kind === "existing" && (
+                                 <Badge variant="secondary">Link: {lead.professionalMatch.professional.name}</Badge>
+                               )}
+                               {lead.professionalMatch.kind === "new" && (
+                                 <Badge variant="outline">Create new professional</Badge>
+                               )}
+                               {lead.professionalMatch.kind === "none" && "No professional relationship"}
+                               {lead.professionalMatch.kind === "review" && (
+                                 <div className="space-y-2">
+                                   <Select onValueChange={(value) => updateProfessionalDecision(idx, "link-existing", value)}>
+                                     <SelectTrigger className="h-8"><SelectValue placeholder="Select possible match" /></SelectTrigger>
+                                     <SelectContent>
+                                       {lead.professionalMatch.candidates.map((candidate) => (
+                                         <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}{candidate.firm_name ? ` — ${candidate.firm_name}` : ""}</SelectItem>
+                                       ))}
+                                     </SelectContent>
+                                   </Select>
+                                   <div className="flex gap-2">
+                                     <Button size="sm" variant="outline" onClick={() => updateProfessionalDecision(idx, "create-new")}>Keep separate</Button>
+                                     <Button size="sm" variant="ghost" onClick={() => updateProfessionalDecision(idx, "no-link")}>No relationship</Button>
+                                   </div>
+                                 </div>
+                               )}
+                             </TableCell>
                             <TableCell>
                               {lead.errors.length > 0 && (
                                 <div className="text-xs text-destructive">{lead.errors.join(", ")}</div>
@@ -1591,7 +1633,7 @@ export function BulkUploadDialog({
                   <Button variant="outline" onClick={() => setStep("upload")}>
                     Back
                   </Button>
-                  <Button onClick={handleImport} disabled={importCount === 0}>
+                  <Button onClick={handleImport} disabled={importCount === 0 || pendingProfessionalReviewCount > 0}>
                     Import {importCount} Leads
                   </Button>
                 </div>
