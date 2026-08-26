@@ -1296,6 +1296,7 @@ export function BulkUploadDialog({
   const validLeadsCount = parsedLeads.filter((l) => l.errors.length === 0 && !l.excluded).length;
   const errorLeadsCount = parsedLeads.filter((l) => l.errors.length > 0).length;
   const duplicateLeadsCount = parsedLeads.filter((l) => l.isDuplicate && !l.excluded).length;
+  const pendingProfessionalReviewCount = parsedLeads.filter((l) => !l.excluded && l.errors.length === 0 && l.professionalMatch.kind === "review" && l.professionalDecision === "auto").length;
   const importCount = skipDuplicates ? validLeadsCount - duplicateLeadsCount : validLeadsCount;
 
   const toggleRowExcluded = (idx: number, checked: boolean) => {
@@ -1304,6 +1305,22 @@ export function BulkUploadDialog({
 
   const toggleAllExcluded = (checked: boolean) => {
     setParsedLeads((prev) => prev.map((l) => (l.errors.length > 0 ? l : { ...l, excluded: !checked })));
+  };
+
+  const updateProfessionalDecision = (index: number, decision: ProfessionalDecision, professionalId?: string) => {
+    setParsedLeads((current) => current.map((lead, idx) => {
+      if (idx !== index || lead.professionalMatch.kind !== "review") return lead;
+      const selected = professionalId
+        ? lead.professionalMatch.candidates.find((candidate) => candidate.id === professionalId)
+        : lead.professionalMatch.candidates[0];
+      return {
+        ...lead,
+        professionalDecision: decision,
+        professionalMatch: decision === "link-existing" && selected
+          ? { kind: "existing", professional: selected, matchedBy: "phone" }
+          : lead.professionalMatch,
+      };
+    }));
   };
   const completedCount = photoLeads.filter(l => l.status === "saved").length;
   const pendingCount = photoLeads.filter(l => l.status === "pending").length;
