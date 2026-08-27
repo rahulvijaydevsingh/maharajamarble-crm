@@ -53,23 +53,8 @@ export function useCrmBackups() {
   const [backups, setBackups] = useState<CrmBackupRow[]>([]);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("crm-backup-list", {
-        method: "GET",
-      });
-      if (error) throw error;
-      setBackups((data?.backups || []) as CrmBackupRow[]);
-    } catch {
-      // crm-backup-list still serves legacy backups; safe to ignore if absent
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
   }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   async function fetchManifestForJob(
     manifestPath: string,

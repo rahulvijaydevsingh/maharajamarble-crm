@@ -540,58 +540,88 @@ export type Database = {
       backup_jobs: {
         Row: {
           attempt_count: number
+          backup_tier: string | null
+          checksum_sha256: string | null
           completed_at: string | null
           created_at: string
+          duration_ms: number | null
           error_message: string | null
           id: string
           include_files: boolean
           include_modules: string[]
+          integrity_status: string
+          is_pinned: boolean
           manifest_path: string | null
+          pinned_at: string | null
+          pinned_by: string | null
           progress: Json
+          pruned_at: string | null
           requested_by: string
           started_at: string | null
           status: string
           storage_prefix: string | null
+          table_count: number | null
           tables_completed: string[]
           tables_to_export: string[] | null
+          total_size_bytes: number | null
           updated_at: string
           zip_path: string | null
         }
         Insert: {
           attempt_count?: number
+          backup_tier?: string | null
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string
+          duration_ms?: number | null
           error_message?: string | null
           id?: string
           include_files?: boolean
           include_modules: string[]
+          integrity_status?: string
+          is_pinned?: boolean
           manifest_path?: string | null
+          pinned_at?: string | null
+          pinned_by?: string | null
           progress?: Json
+          pruned_at?: string | null
           requested_by: string
           started_at?: string | null
           status?: string
           storage_prefix?: string | null
+          table_count?: number | null
           tables_completed?: string[]
           tables_to_export?: string[] | null
+          total_size_bytes?: number | null
           updated_at?: string
           zip_path?: string | null
         }
         Update: {
           attempt_count?: number
+          backup_tier?: string | null
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string
+          duration_ms?: number | null
           error_message?: string | null
           id?: string
           include_files?: boolean
           include_modules?: string[]
+          integrity_status?: string
+          is_pinned?: boolean
           manifest_path?: string | null
+          pinned_at?: string | null
+          pinned_by?: string | null
           progress?: Json
+          pruned_at?: string | null
           requested_by?: string
           started_at?: string | null
           status?: string
           storage_prefix?: string | null
+          table_count?: number | null
           tables_completed?: string[]
           tables_to_export?: string[] | null
+          total_size_bytes?: number | null
           updated_at?: string
           zip_path?: string | null
         }
