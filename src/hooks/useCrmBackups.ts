@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import JSZip from "jszip";
 import { supabase } from "@/integrations/supabase/client";
 import { UPSERT_CONFLICT_TARGET } from "../../supabase/functions/_shared/crmBackupConfig";
@@ -23,19 +23,6 @@ export type BackupModuleKey =
   | "hr_attendance"
   | "api_access";
 
-export type CrmBackupRow = {
-  id: string;
-  created_at: string;
-  created_by: string;
-  status: string;
-  include_modules: BackupModuleKey[];
-  json_file_path: string | null;
-  xlsx_file_path: string | null;
-  json_url?: string | null;
-  xlsx_url?: string | null;
-  result_summary?: any;
-};
-
 export type RestoreProgress = {
   phase: "reading" | "restoring";
   currentTable?: string;
@@ -48,13 +35,7 @@ export type RestoreProgress = {
 const RESTORE_BATCH_SIZE = 500;
 
 export function useCrmBackups() {
-  const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
-  const [backups, setBackups] = useState<CrmBackupRow[]>([]);
-
-  const refresh = useCallback(async () => {
-    setLoading(false);
-  }, []);
 
   async function fetchManifestForJob(
     manifestPath: string,
@@ -172,10 +153,7 @@ export function useCrmBackups() {
   );
 
   return {
-    backups,
-    loading,
     restoring,
-    refresh,
     restoreBackup,
   };
 }

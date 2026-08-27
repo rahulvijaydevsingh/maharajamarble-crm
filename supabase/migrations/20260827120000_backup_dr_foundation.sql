@@ -17,7 +17,8 @@ ALTER TABLE public.backup_jobs
 ALTER TABLE public.backup_jobs
   DROP CONSTRAINT IF EXISTS chk_backup_tier,
   DROP CONSTRAINT IF EXISTS chk_integrity_status,
-  DROP CONSTRAINT IF EXISTS chk_backup_jobs_status;
+  DROP CONSTRAINT IF EXISTS chk_backup_jobs_status,
+  DROP CONSTRAINT IF EXISTS backup_jobs_status_check;
 
 ALTER TABLE public.backup_jobs
   ADD CONSTRAINT chk_backup_tier CHECK (backup_tier IN ('daily', 'weekly', 'monthly') OR backup_tier IS NULL),
@@ -33,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_backup_jobs_tier_created
 
 -- 2. Create public.backup_retention_settings (singleton config)
 CREATE TABLE IF NOT EXISTS public.backup_retention_settings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id BOOLEAN PRIMARY KEY DEFAULT true CHECK (id = true),
   daily_keep INTEGER NOT NULL DEFAULT 7 CHECK (daily_keep >= 1),
   weekly_keep INTEGER NOT NULL DEFAULT 4 CHECK (weekly_keep >= 1),
   monthly_keep INTEGER NOT NULL DEFAULT 6 CHECK (monthly_keep >= 1),
@@ -43,9 +44,9 @@ CREATE TABLE IF NOT EXISTS public.backup_retention_settings (
   updated_by TEXT NULL
 );
 
-INSERT INTO public.backup_retention_settings (daily_keep, weekly_keep, monthly_keep, is_enabled)
-SELECT 7, 4, 6, true
-WHERE NOT EXISTS (SELECT 1 FROM public.backup_retention_settings);
+INSERT INTO public.backup_retention_settings (id, daily_keep, weekly_keep, monthly_keep, is_enabled)
+VALUES (true, 7, 4, 6, true)
+ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE public.backup_retention_settings ENABLE ROW LEVEL SECURITY;
 
@@ -89,5 +90,5 @@ CREATE POLICY "Allow service-role / admins to insert deletion logs"
   WITH CHECK (public.is_admin());
 
 -- 4. Retire the legacy pair
-ALTER TABLE public.crm_backups RENAME TO crm_backups_legacy;
-ALTER TABLE public.crm_restores RENAME TO crm_restores_legacy;
+ALTER TABLE IF EXISTS public.crm_backups RENAME TO crm_backups_legacy;
+ALTER TABLE IF EXISTS public.crm_restores RENAME TO crm_restores_legacy;
