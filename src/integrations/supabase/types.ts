@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -537,63 +537,167 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_deletion_log: {
+        Row: {
+          backup_created_at: string | null
+          backup_job_id: string | null
+          backup_tier: string | null
+          deleted_at: string
+          deleted_by: string
+          deletion_reason: string
+          files_deleted: string[]
+          id: string
+        }
+        Insert: {
+          backup_created_at?: string | null
+          backup_job_id?: string | null
+          backup_tier?: string | null
+          deleted_at?: string
+          deleted_by: string
+          deletion_reason: string
+          files_deleted?: string[]
+          id?: string
+        }
+        Update: {
+          backup_created_at?: string | null
+          backup_job_id?: string | null
+          backup_tier?: string | null
+          deleted_at?: string
+          deleted_by?: string
+          deletion_reason?: string
+          files_deleted?: string[]
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backup_deletion_log_backup_job_id_fkey"
+            columns: ["backup_job_id"]
+            isOneToOne: false
+            referencedRelation: "backup_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       backup_jobs: {
         Row: {
           attempt_count: number
+          backup_tier: string | null
+          checksum_sha256: string | null
           completed_at: string | null
           created_at: string
+          duration_ms: number | null
           error_message: string | null
           id: string
           include_files: boolean
           include_modules: string[]
+          integrity_status: string
+          is_pinned: boolean
           manifest_path: string | null
+          pinned_at: string | null
+          pinned_by: string | null
           progress: Json
+          pruned_at: string | null
           requested_by: string
           started_at: string | null
           status: string
           storage_prefix: string | null
+          table_count: number | null
           tables_completed: string[]
           tables_to_export: string[] | null
+          total_size_bytes: number | null
           updated_at: string
           zip_path: string | null
         }
         Insert: {
           attempt_count?: number
+          backup_tier?: string | null
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string
+          duration_ms?: number | null
           error_message?: string | null
           id?: string
           include_files?: boolean
           include_modules: string[]
+          integrity_status?: string
+          is_pinned?: boolean
           manifest_path?: string | null
+          pinned_at?: string | null
+          pinned_by?: string | null
           progress?: Json
+          pruned_at?: string | null
           requested_by: string
           started_at?: string | null
           status?: string
           storage_prefix?: string | null
+          table_count?: number | null
           tables_completed?: string[]
           tables_to_export?: string[] | null
+          total_size_bytes?: number | null
           updated_at?: string
           zip_path?: string | null
         }
         Update: {
           attempt_count?: number
+          backup_tier?: string | null
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string
+          duration_ms?: number | null
           error_message?: string | null
           id?: string
           include_files?: boolean
           include_modules?: string[]
+          integrity_status?: string
+          is_pinned?: boolean
           manifest_path?: string | null
+          pinned_at?: string | null
+          pinned_by?: string | null
           progress?: Json
+          pruned_at?: string | null
           requested_by?: string
           started_at?: string | null
           status?: string
           storage_prefix?: string | null
+          table_count?: number | null
           tables_completed?: string[]
           tables_to_export?: string[] | null
+          total_size_bytes?: number | null
           updated_at?: string
           zip_path?: string | null
+        }
+        Relationships: []
+      }
+      backup_retention_settings: {
+        Row: {
+          cron_secret: string
+          daily_keep: number
+          id: boolean
+          is_enabled: boolean
+          monthly_keep: number
+          updated_at: string | null
+          updated_by: string | null
+          weekly_keep: number
+        }
+        Insert: {
+          cron_secret?: string
+          daily_keep?: number
+          id?: boolean
+          is_enabled?: boolean
+          monthly_keep?: number
+          updated_at?: string | null
+          updated_by?: string | null
+          weekly_keep?: number
+        }
+        Update: {
+          cron_secret?: string
+          daily_keep?: number
+          id?: boolean
+          is_enabled?: boolean
+          monthly_keep?: number
+          updated_at?: string | null
+          updated_by?: string | null
+          weekly_keep?: number
         }
         Relationships: []
       }
@@ -752,7 +856,7 @@ export type Database = {
         }
         Relationships: []
       }
-      crm_backups: {
+      crm_backups_legacy: {
         Row: {
           created_at: string
           created_by: string
@@ -791,7 +895,7 @@ export type Database = {
         }
         Relationships: []
       }
-      crm_restores: {
+      crm_restores_legacy: {
         Row: {
           created_at: string
           created_by: string
@@ -833,7 +937,7 @@ export type Database = {
             foreignKeyName: "crm_restores_source_backup_id_fkey"
             columns: ["source_backup_id"]
             isOneToOne: false
-            referencedRelation: "crm_backups"
+            referencedRelation: "crm_backups_legacy"
             referencedColumns: ["id"]
           },
         ]
