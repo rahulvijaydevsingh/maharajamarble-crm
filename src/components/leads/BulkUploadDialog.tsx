@@ -1313,11 +1313,14 @@ export function BulkUploadDialog({
       const selected = professionalId
         ? lead.professionalMatch.candidates.find((candidate) => candidate.id === professionalId)
         : lead.professionalMatch.candidates[0];
+      const newProfessionalKey = normalizeEmail(lead.email) || lead.phone || `${normalizeIdentityText(lead.name)}|${normalizeIdentityText(lead.address)}`;
       return {
         ...lead,
         professionalDecision: decision,
         professionalMatch: decision === "link-existing" && selected
           ? { kind: "existing", professional: selected, matchedBy: "phone" }
+          : decision === "create-new"
+            ? { kind: "new", batchKey: newProfessionalKey }
           : lead.professionalMatch,
       };
     }));
