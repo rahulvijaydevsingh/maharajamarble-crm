@@ -3,7 +3,17 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type BackupJobRow = {
   id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'pruned' | 'manually_deleted';
+  backup_tier?: 'daily' | 'weekly' | 'monthly' | null;
+  is_pinned?: boolean;
+  pinned_by?: string | null;
+  pinned_at?: string | null;
+  checksum_sha256?: string | null;
+  total_size_bytes?: number | null;
+  duration_ms?: number | null;
+  table_count?: number | null;
+  integrity_status?: 'pending' | 'valid' | 'failed';
+  pruned_at?: string | null;
   include_modules: string[];
   include_files: boolean;
   tables_to_export: string[] | null;

@@ -74,6 +74,12 @@ function statusBadge(status: BackupJobRow["status"]) {
       return <Badge className="bg-green-600 hover:bg-green-700">Completed</Badge>;
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
+    case "pruned":
+      return <Badge variant="outline">Archived</Badge>;
+    case "manually_deleted":
+      return <Badge variant="destructive">Deleted</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
   }
 }
 
