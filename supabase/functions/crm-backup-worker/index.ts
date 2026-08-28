@@ -15,11 +15,14 @@ async function runZipFinalization(
   jobId: string,
   prefix: string,
   tables: string[],
-  _manifest: any,
+  manifest: any,
+  jobCreatedAt?: string,
 ) {
   try {
     const zipWriter = new ZipWriter(new BlobWriter("application/zip"));
     const filePaths = ["manifest.json"];
+    let filesDownloadedCount = 0;
+
     for (const t of tables) {
       filePaths.push(`tables/${t}.json`, `tables/${t}.csv`);
     }
@@ -27,29 +30,59 @@ async function runZipFinalization(
     for (const rel of filePaths) {
       const { data: blob, error } = await admin.storage.from("crm-backups").download(`${prefix}${rel}`);
       if (error || !blob) continue;
+      filesDownloadedCount++;
       const buf = new Uint8Array(await blob.arrayBuffer());
       await zipWriter.add(rel, new Uint8ArrayReader(buf));
     }
 
     const zipBlob = await zipWriter.close();
+    const zipBuffer = new Uint8Array(await zipBlob.arrayBuffer());
+
+    // Compute SHA-256 checksum (hex encoded)
+    const hashBuffer = await crypto.subtle.digest("SHA-256", zipBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const checksumSha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    const totalSizeBytes = zipBuffer.byteLength;
+    const nowMs = Date.now();
+    const createdAtMs = jobCreatedAt ? new Date(jobCreatedAt).getTime() : nowMs;
+    const durationMs = Math.max(0, nowMs - createdAtMs);
+    const tableCount = tables.length;
+
+    // Integrity check logic:
+    // Integrity status is 'valid' if manifest's table count matches tables.length
+    // and all table files/manifest were successfully downloaded (or non-empty structure).
+    const manifestValid = manifest && manifest.tableCount === tableCount && Array.isArray(manifest.tables) && manifest.tables.length === tableCount;
+    // Expected file downloads: 1 manifest + 2 files per table (json + csv)
+    const expectedFileCount = 1 + (tableCount * 2);
+    const integrityStatus = manifestValid && (filesDownloadedCount === expectedFileCount) ? "valid" : "failed";
+
     await admin.storage.from("crm-backups").upload(
       `${prefix}backup.zip`,
       zipBlob,
       { contentType: "application/zip", upsert: true },
     );
 
+    const nowIso = new Date().toISOString();
     await admin.from("backup_jobs").update({
       status: "completed",
-      completed_at: new Date().toISOString(),
+      completed_at: nowIso,
       zip_path: `${prefix}backup.zip`,
-      updated_at: new Date().toISOString(),
+      checksum_sha256: checksumSha256,
+      total_size_bytes: totalSizeBytes,
+      duration_ms: durationMs,
+      table_count: tableCount,
+      integrity_status: integrityStatus,
+      updated_at: nowIso,
     }).eq("id", jobId);
   } catch (e) {
     console.error("zip finalization failed:", e);
+    const nowIso = new Date().toISOString();
     await admin.from("backup_jobs").update({
       status: "completed",
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      completed_at: nowIso,
+      integrity_status: "failed",
+      updated_at: nowIso,
     }).eq("id", jobId);
   }
 }
@@ -139,7 +172,7 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
 
-      await runZipFinalization(admin, job.id, prefix, tablesToExport, manifest);
+      await runZipFinalization(admin, job.id, prefix, tablesToExport, manifest, job.created_at);
       return jsonResponse({ status: "completed" });
     }
 
