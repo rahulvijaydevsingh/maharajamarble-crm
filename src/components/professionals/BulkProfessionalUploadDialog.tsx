@@ -1,564 +1,124 @@
-import React, { useState, useRef } from "react";
+import React, { useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import { AlertTriangle, CheckCircle, Download, FileSpreadsheet, Loader2, Upload, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Upload,
-  Download,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Loader2,
-} from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { ProfessionalColumnMappingStep } from "./bulk-upload/ColumnMappingStep";
+import { detectBulkProfessionalColumns, mappedProfessionalValue, professionalMappingScore, type BulkProfessionalColumnMapping, type BulkProfessionalField } from "@/lib/bulkUploadColumnDetector";
+import { normalizeEmail, normalizeIdentityText, normalizePhone, resolvePriority } from "@/lib/bulkUploadResolvers";
 
-interface BulkProfessionalUploadDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onProfessionalsCreated: () => void;
-}
-
+interface BulkProfessionalUploadDialogProps { open: boolean; onOpenChange: (open: boolean) => void; onProfessionalsCreated: () => void; }
+interface ExistingProfessional { id: string; name: string; phone: string; alternate_phone: string | null; email: string | null; firm_name: string | null; }
+interface LeadRecord { id: string; name: string; phone: string; alternate_phone: string | null; email: string | null; firm_name: string | null; designation: string | null; }
+type LeadMatch = { kind: "existing"; leads: LeadRecord[]; matchedBy: "phone" | "email" } | { kind: "review"; candidates: LeadRecord[] } | { kind: "none" };
+type LeadDecision = "auto" | "link-existing" | "no-link";
 interface ParsedProfessional {
-  name: string;
-  phone: string;
-  alternate_phone: string;
-  email: string;
-  firm_name: string;
-  professional_type: string;
-  service_category: string;
-  city: string;
-  status: string;
-  priority: number;
-  assigned_to: string;
-  address: string;
-  notes: string;
-  rowNumber: number;
-  errors: string[];
-  warnings: string[];
-  isDuplicate: boolean;
-  duplicateInfo?: string;
+  name: string; phone: string; alternate_phone: string; email: string; firm_name: string; professional_type: string; service_category: string; city: string; status: string; priority: number; assigned_to: string; address: string; notes: string; rowNumber: number; errors: string[]; warnings: string[]; isDuplicate: boolean; duplicateInfo?: string; excluded: boolean; existingProfessional?: ExistingProfessional; leadMatch: LeadMatch; leadDecision: LeadDecision; selectedLeadId?: string;
 }
 
-export function BulkProfessionalUploadDialog({
-  open,
-  onOpenChange,
-  onProfessionalsCreated,
-}: BulkProfessionalUploadDialogProps) {
+export function BulkProfessionalUploadDialog({ open, onOpenChange, onProfessionalsCreated }: BulkProfessionalUploadDialogProps) {
   const { toast } = useToast();
   const { staffMembers } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [step, setStep] = useState<"upload" | "validate" | "import" | "complete">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "validate" | "import" | "complete">("upload");
+  const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<BulkProfessionalColumnMapping>({});
   const [parsedProfessionals, setParsedProfessionals] = useState<ParsedProfessional[]>([]);
   const [isValidating, setIsValidating] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
+  const [leadsLinkedCount, setLeadsLinkedCount] = useState(0);
 
-  const resetState = () => {
-    setStep("upload");
-    setParsedProfessionals([]);
-    setImportProgress(0);
-    setImportedCount(0);
-    setSkippedCount(0);
-    setErrorCount(0);
-    setIsValidating(false);
-    setIsImporting(false);
-  };
+  const resetState = () => { setStep("upload"); setRawRows([]); setHeaders([]); setMapping({}); setParsedProfessionals([]); setImportProgress(0); setImportedCount(0); setSkippedCount(0); setErrorCount(0); setLeadsLinkedCount(0); setIsValidating(false); setIsImporting(false); };
 
   const downloadTemplate = async () => {
     try {
-      const { Workbook } = await import("exceljs");
-      const workbook = new Workbook();
-      const sheet = workbook.addWorksheet("Professional Template");
-
-      const typeOptions = getFieldOptions("professionals", "professional_type");
-      const categoryOptions = getFieldOptions("professionals", "service_category");
-      const cityOptions = getFieldOptions("professionals", "city");
-      const statusOptions = getFieldOptions("professionals", "professional_status");
-      const priorityOptions = getFieldOptions("professionals", "priority");
-
-      const typeLabels = typeOptions.map(o => o.label);
-      const categoryLabels = categoryOptions.map(o => o.label);
-      const cityLabels = cityOptions.map(o => o.label);
-      const statusLabels = statusOptions.length > 0 ? statusOptions.map(o => o.label) : ["Active", "Inactive"];
-      const priorityLabels = priorityOptions.length > 0 ? priorityOptions.map(o => o.label) : ["1 - Very High", "2 - High", "3 - Medium", "4 - Low", "5 - Very Low"];
-      const staffNames = staffMembers.map(m => m.name);
-
-      const columns = [
-        { key: "name", header: "Name*", width: 22, list: null as string[] | null },
-        { key: "mobile1", header: "Mobile 1*", width: 16, list: null },
-        { key: "mobile2", header: "Mobile 2", width: 16, list: null },
-        { key: "mobile3", header: "Mobile 3", width: 16, list: null },
-        { key: "landline", header: "Landline", width: 16, list: null },
-        { key: "email", header: "Email", width: 26, list: null },
-        { key: "firm_name", header: "Firm Name", width: 24, list: null },
-        { key: "professional_type", header: "Designation*", width: 20, list: typeLabels },
-        { key: "service_category", header: "Service Category", width: 20, list: categoryLabels },
-        { key: "city", header: "City", width: 16, list: cityLabels },
-        { key: "status", header: "Status", width: 14, list: statusLabels },
-        { key: "priority", header: "Priority", width: 16, list: priorityLabels },
-        { key: "assigned_to", header: "Assigned To", width: 20, list: staffNames },
-        { key: "address", header: "Address", width: 32, list: null },
-        { key: "additional_address", header: "Additional Address", width: 32, list: null },
-        { key: "notes", header: "Notes", width: 32, list: null },
-      ];
-
-      sheet.columns = columns.map(c => ({ key: c.key, header: c.header, width: c.width }));
-      const headerRow = sheet.getRow(1);
-      headerRow.font = { bold: true, color: { argb: "FF1A1A2E" } };
-      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC9A84C" } };
-      headerRow.alignment = { vertical: "middle", horizontal: "center" };
-      headerRow.height = 20;
-
-      const exampleRow = sheet.addRow({
-        name: "John Smith",
-        mobile1: "9876543210",
-        mobile2: "",
-        mobile3: "",
-        landline: "",
-        email: "john@example.com",
-        firm_name: "Smith Constructions",
-        professional_type: typeLabels[0] || "Contractor",
-        service_category: categoryLabels[0] || "",
-        city: cityLabels[0] || "",
-        status: statusLabels[0] || "Active",
-        priority: "3 - Medium",
-        assigned_to: staffNames[0] || "",
-        address: "123 Main St",
-        additional_address: "",
-        notes: "Sample professional",
-      });
-      exampleRow.font = { color: { argb: "FF666666" }, italic: true };
-
-      columns.forEach((col, idx) => {
-        if (!col.list || col.list.length === 0) return;
-        const colLetter = sheet.getColumn(idx + 1).letter;
-        const formula = `"${col.list.slice(0, 50).join(",")}"`;
-        for (let row = 3; row <= 1001; row++) {
-          sheet.getCell(`${colLetter}${row}`).dataValidation = {
-            type: "list",
-            allowBlank: true,
-            formulae: [formula],
-            showErrorMessage: true,
-            errorTitle: "Invalid value",
-            error: "Please select a value from the dropdown list",
-          };
-        }
-      });
-
-      const optSheet = workbook.addWorksheet("Options Reference");
-      const optData: string[][] = [
-        ["FIELD OPTIONS REFERENCE"], [""],
-        ["Designation Options"], ...typeLabels.map(s => [s]), [""],
-        ["Service Category Options"], ...categoryLabels.map(s => [s]), [""],
-        ["City Options"], ...cityLabels.map(s => [s]), [""],
-        ["Status Options"], ...statusLabels.map(s => [s]), [""],
-        ["Priority Options"], ...priorityLabels.map(s => [s]), [""],
-        ["Assigned To Options"], ...staffNames.map(s => [s]),
-      ];
-      optData.forEach(r => optSheet.addRow(r));
-      optSheet.getColumn(1).width = 35;
-
-      const instrSheet = workbook.addWorksheet("Instructions");
-      [
-        ["PROFESSIONAL IMPORT TEMPLATE - INSTRUCTIONS"], [""],
-        ["REQUIRED FIELDS (marked with *):"],
-        ["  Name*, Mobile 1* (10 digits, starts with 6-9), Designation*"],
-        [""],
-        ["OPTIONAL FIELDS:"],
-        ["  Mobile 2/3, Landline, Email, Firm Name, Service Category,"],
-        ["  City, Status, Priority, Assigned To, Address, Notes"],
-        [""],
-        ["NOTES:"],
-        ["  1. Data starts from Row 3 (Row 2 is an example - delete it)"],
-        ["  2. Dropdowns pre-filled from live CRM settings"],
-        ["  3. Duplicate Mobile 1 numbers will be flagged"],
-      ].forEach(r => instrSheet.addRow(r));
-      instrSheet.getColumn(1).width = 70;
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "professional_import_template.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-
-      toast({ title: "Template Downloaded", description: "Dropdowns are pre-filled with your live CRM settings." });
-    } catch (err) {
-      console.error("Template generation failed:", err);
-      toast({ title: "Failed to generate template", variant: "destructive" });
-    }
+      const { Workbook } = await import("exceljs"); const workbook = new Workbook(); const sheet = workbook.addWorksheet("Professional Template");
+      const typeOptions = getFieldOptions("professionals", "professional_type"); const categoryOptions = getFieldOptions("professionals", "service_category"); const cityOptions = getFieldOptions("professionals", "city"); const statusOptions = getFieldOptions("professionals", "professional_status"); const priorityOptions = getFieldOptions("professionals", "priority");
+      const typeLabels = typeOptions.map((o) => o.label); const categoryLabels = categoryOptions.map((o) => o.label); const cityLabels = cityOptions.map((o) => o.label); const statusLabels = statusOptions.length ? statusOptions.map((o) => o.label) : ["Active", "Inactive"]; const priorityLabels = priorityOptions.length ? priorityOptions.map((o) => o.label) : ["1 - Very High", "2 - High", "3 - Medium", "4 - Low", "5 - Very Low"]; const staffNames = staffMembers.map((m) => m.name);
+      const columns = [{ key: "name", header: "Name*", width: 22, list: null as string[] | null }, { key: "phone", header: "Mobile 1*", width: 16, list: null }, { key: "alternate_phone", header: "Mobile 2", width: 16, list: null }, { key: "email", header: "Email", width: 26, list: null }, { key: "firm_name", header: "Firm Name", width: 24, list: null }, { key: "professional_type", header: "Designation*", width: 20, list: typeLabels }, { key: "service_category", header: "Service Category", width: 20, list: categoryLabels }, { key: "city", header: "City", width: 16, list: cityLabels }, { key: "status", header: "Status", width: 14, list: statusLabels }, { key: "priority", header: "Priority", width: 16, list: priorityLabels }, { key: "assigned_to", header: "Assigned To", width: 20, list: staffNames }, { key: "address", header: "Address", width: 32, list: null }, { key: "notes", header: "Notes", width: 32, list: null }];
+      sheet.columns = columns.map(({ key, header, width }) => ({ key, header, width })); const headerRow = sheet.getRow(1); headerRow.font = { bold: true, color: { argb: "FF1A1A2E" } }; headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC9A84C" } }; headerRow.alignment = { vertical: "middle", horizontal: "center" };
+      sheet.addRow({ name: "John Smith", phone: "9876543210", alternate_phone: "", email: "john@example.com", firm_name: "Smith Constructions", professional_type: typeLabels[0] || "Contractor", service_category: categoryLabels[0] || "", city: cityLabels[0] || "", status: statusLabels[0], priority: "3 - Medium", assigned_to: staffNames[0] || "", address: "123 Main St", notes: "Sample professional" }).font = { color: { argb: "FF666666" }, italic: true };
+      columns.forEach((column, index) => { if (!column.list?.length) return; const formula = `"${column.list.slice(0, 50).join(",")}"`; for (let row = 3; row <= 1001; row++) sheet.getCell(`${sheet.getColumn(index + 1).letter}${row}`).dataValidation = { type: "list", allowBlank: true, formulae: [formula], showErrorMessage: true, errorTitle: "Invalid value", error: "Please select a value from the dropdown list" }; });
+      const instructions = workbook.addWorksheet("Instructions"); [["PROFESSIONAL IMPORT TEMPLATE - INSTRUCTIONS"], [""], ["REQUIRED: Name, Mobile 1 (10 digits), Designation"], ["Use any familiar column headings—the CRM will map them for review."], ["Data starts from Row 3; Row 2 is an example."], ["Possible lead matches are reviewed before import."]].forEach((row) => instructions.addRow(row)); instructions.getColumn(1).width = 75;
+      const buffer = await workbook.xlsx.writeBuffer(); const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "professional_import_template.xlsx"; anchor.click(); URL.revokeObjectURL(url); toast({ title: "Template Downloaded", description: "Dropdowns use your live CRM settings." });
+    } catch (error) { console.error("Template generation failed:", error); toast({ title: "Failed to generate template", variant: "destructive" }); }
   };
 
-  const getColumnValue = (row: Record<string, any>, possibleHeaders: string[]): string => {
-    for (const header of possibleHeaders) {
-      if (row[header] !== undefined && row[header] !== null && row[header] !== "") {
-        return row[header].toString().trim();
-      }
-    }
-    return "";
+  const fetchExistingRecords = async () => {
+    const [professionalsResult, leadsResult] = await Promise.all([supabase.from("professionals").select("id, name, phone, alternate_phone, email, firm_name"), supabase.from("leads").select("id, name, phone, alternate_phone, email, firm_name, designation").is("deleted_at", null)]);
+    if (professionalsResult.error) throw professionalsResult.error; if (leadsResult.error) throw leadsResult.error;
+    return { professionals: professionalsResult.data as ExistingProfessional[], leads: leadsResult.data as LeadRecord[] };
   };
 
-  const fetchExistingPhones = async (): Promise<Map<string, string>> => {
-    const phoneMap = new Map<string, string>();
-    const { data } = await supabase.from("professionals").select("phone, name");
-    if (data) {
-      data.forEach((p: any) => phoneMap.set(p.phone, p.name));
-    }
-    return phoneMap;
+  const resolveLeadMatch = (professional: Pick<ParsedProfessional, "name" | "phone" | "alternate_phone" | "email" | "firm_name">, leads: LeadRecord[]): LeadMatch => {
+    const phones = new Set([professional.phone, professional.alternate_phone].filter(Boolean)); const email = normalizeEmail(professional.email);
+    const exact = leads.filter((lead) => phones.has(normalizePhone(lead.phone)) || phones.has(normalizePhone(lead.alternate_phone || "")) || (email && normalizeEmail(lead.email || "") === email));
+    if (exact.length) { const matchedBy = email && exact.some((lead) => normalizeEmail(lead.email || "") === email) && !exact.some((lead) => phones.has(normalizePhone(lead.phone)) || phones.has(normalizePhone(lead.alternate_phone || ""))) ? "email" : "phone"; return { kind: "existing", leads: exact, matchedBy }; }
+    const normalizedName = normalizeIdentityText(professional.name); const normalizedFirm = normalizeIdentityText(professional.firm_name);
+    const candidates = leads.filter((lead) => normalizedName.length > 2 && (normalizeIdentityText(lead.name) === normalizedName || (normalizedFirm.length > 2 && normalizeIdentityText(lead.firm_name || "") === normalizedFirm)));
+    return candidates.length ? { kind: "review", candidates } : { kind: "none" };
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // File size validation (5MB max)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Maximum file size is 5MB", variant: "destructive" });
-      return;
-    }
-
-    // File extension validation
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!ext || !['xlsx', 'xls'].includes(ext)) {
-      toast({ title: "Invalid file type", description: "Only .xlsx and .xls files are allowed", variant: "destructive" });
-      return;
-    }
-
-    setIsValidating(true);
-    setStep("validate");
-
+  const validateRows = async (rows: Record<string, unknown>[], selectedMapping: BulkProfessionalColumnMapping) => {
+    setIsValidating(true); setStep("validate");
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 0, defval: "" }) as Record<string, any>[];
-
-      // Skip example row
-      const dataRows = jsonData.filter((row, idx) => {
-        if (idx === 0) {
-          const name = getColumnValue(row, ["Name*", "Name"]);
-          if (name === "John Smith") return false;
-        }
-        return true;
+      if (rows.length > 1000) throw new Error("A maximum of 1,000 professionals can be imported at once.");
+      const { professionals, leads } = await fetchExistingRecords(); const typeOptions = getFieldOptions("professionals", "professional_type");
+      const parsed = rows.filter((row) => normalizeIdentityText(mappedProfessionalValue(row, selectedMapping, "name")) !== "john smith").map((row, index) => {
+        const errors: string[] = []; const warnings: string[] = []; const name = mappedProfessionalValue(row, selectedMapping, "name"); const phone = normalizePhone(mappedProfessionalValue(row, selectedMapping, "phone")); const alternate_phone = normalizePhone(mappedProfessionalValue(row, selectedMapping, "alternate_phone")); const email = mappedProfessionalValue(row, selectedMapping, "email"); const rawType = mappedProfessionalValue(row, selectedMapping, "professional_type");
+        if (!name) errors.push("Name is required"); if (!phone) errors.push("Phone is required"); else if (phone.length !== 10 || !/^[6-9]/.test(phone)) errors.push("Phone must be a 10-digit Indian mobile number"); if (!rawType) errors.push("Designation is required"); if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("Invalid email format");
+        const match = professionals.find((item) => [item.phone, item.alternate_phone].some((value) => normalizePhone(value || "") === phone || normalizePhone(value || "") === alternate_phone) || (normalizeEmail(email) && normalizeEmail(item.email || "") === normalizeEmail(email)));
+        if (match) warnings.push(`Existing professional: ${match.name}`);
+        const matchedType = typeOptions.find((item) => item.label.toLowerCase() === rawType.toLowerCase() || item.value.toLowerCase() === rawType.toLowerCase());
+        const professional: ParsedProfessional = { name, phone, alternate_phone: alternate_phone.length === 10 ? alternate_phone : "", email, firm_name: mappedProfessionalValue(row, selectedMapping, "firm_name"), professional_type: matchedType?.value || rawType.toLowerCase().replace(/\s+/g, "_"), service_category: mappedProfessionalValue(row, selectedMapping, "service_category").toLowerCase().replace(/\s+/g, "_"), city: mappedProfessionalValue(row, selectedMapping, "city"), status: mappedProfessionalValue(row, selectedMapping, "status").toLowerCase() || "active", priority: resolvePriority(mappedProfessionalValue(row, selectedMapping, "priority"), ""), assigned_to: (() => { const value = mappedProfessionalValue(row, selectedMapping, "assigned_to"); return staffMembers.find((staff) => staff.name?.toLowerCase() === value.toLowerCase() || staff.email?.toLowerCase() === value.toLowerCase())?.name || value || staffMembers[0]?.name || "Unassigned"; })(), address: mappedProfessionalValue(row, selectedMapping, "address"), notes: mappedProfessionalValue(row, selectedMapping, "notes"), rowNumber: index + 2, errors, warnings, isDuplicate: !!match, duplicateInfo: match?.name, excluded: false, existingProfessional: match, leadMatch: { kind: "none" }, leadDecision: "auto" };
+        professional.leadMatch = resolveLeadMatch(professional, leads); if (professional.leadMatch.kind === "existing") warnings.push(`Will link to ${professional.leadMatch.leads.length} matching lead${professional.leadMatch.leads.length === 1 ? "" : "s"}`); if (professional.leadMatch.kind === "review") warnings.push("Possible lead match requires a decision before import"); return professional;
       });
-
-      const existingPhones = await fetchExistingPhones();
-      const typeOptions = getFieldOptions("professionals", "professional_type");
-      const parsed: ParsedProfessional[] = [];
-
-      for (let i = 0; i < dataRows.length; i++) {
-        const row = dataRows[i];
-        const errors: string[] = [];
-        const warnings: string[] = [];
-
-        const name = getColumnValue(row, ["Name*", "Name"]);
-        const phoneRaw = getColumnValue(row, ["Mobile 1*", "Mobile 1", "Phone*", "Phone"]);
-        const profType = getColumnValue(row, ["Designation*", "Designation", "Professional Type*", "Professional Type"]);
-        const mobile2Raw = getColumnValue(row, ["Mobile 2"]);
-        const mobile3Raw = getColumnValue(row, ["Mobile 3"]);
-        const landline = getColumnValue(row, ["Landline"]);
-        const additionalAddress = getColumnValue(row, ["Additional Address"]);
-
-        if (!name) errors.push("Name is required");
-
-        const phone = phoneRaw.replace(/\D/g, "").slice(-10);
-        if (!phone) {
-          errors.push("Phone is required");
-        } else if (phone.length !== 10) {
-          errors.push("Phone must be 10 digits");
-        } else if (!/^[6-9]/.test(phone)) {
-          errors.push("Phone must start with 6-9");
-        }
-
-        if (!profType) errors.push("Professional Type is required");
-
-        const isDuplicate = existingPhones.has(phone);
-        let duplicateInfo = "";
-        if (isDuplicate) {
-          duplicateInfo = existingPhones.get(phone) || "Existing professional";
-          warnings.push(`Duplicate: ${duplicateInfo}`);
-        }
-
-        // Parse priority
-        let priority = 3;
-        const priorityRaw = getColumnValue(row, ["Priority"]);
-        if (priorityRaw) {
-          const num = parseInt(priorityRaw.charAt(0));
-          if (num >= 1 && num <= 5) priority = num;
-        }
-
-        // Match type value
-        const matchedType = typeOptions.find(
-          t => t.label.toLowerCase() === profType.toLowerCase() || t.value === profType.toLowerCase()
-        );
-
-        // Build alternate phone from Mobile 2
-        const altPhone = mobile2Raw.replace(/\D/g, "").slice(-10);
-        
-        // Build notes with extra phone/address info
-        const extraInfo: string[] = [];
-        const m3 = mobile3Raw.replace(/\D/g, "").slice(-10);
-        if (m3) extraInfo.push(`Mobile 3: ${m3}`);
-        if (landline) extraInfo.push(`Landline: ${landline}`);
-        if (additionalAddress) extraInfo.push(`Additional Address: ${additionalAddress}`);
-        const baseNotes = getColumnValue(row, ["Notes"]);
-        const combinedNotes = [baseNotes, ...extraInfo].filter(Boolean).join("\n");
-
-        parsed.push({
-          name,
-          phone,
-          alternate_phone: altPhone || "",
-          email: getColumnValue(row, ["Email"]),
-          firm_name: getColumnValue(row, ["Firm Name"]),
-          professional_type: matchedType?.value || profType.toLowerCase().replace(/\s+/g, "_"),
-          service_category: getColumnValue(row, ["Service Category"]).toLowerCase().replace(/\s+/g, "_") || "",
-          city: getColumnValue(row, ["City"]).toLowerCase() || "",
-          status: getColumnValue(row, ["Status"]).toLowerCase() || "active",
-          priority,
-          assigned_to: getColumnValue(row, ["Assigned To"]) || staffMembers[0]?.name || "Unassigned",
-          address: getColumnValue(row, ["Address"]),
-          notes: combinedNotes,
-          rowNumber: i + 2,
-          errors,
-          warnings,
-          isDuplicate,
-          duplicateInfo,
-        });
-      }
-
-      setParsedProfessionals(parsed);
-    } catch (error: any) {
-      toast({ title: "Error parsing file", description: error.message, variant: "destructive" });
-      setStep("upload");
-    } finally {
-      setIsValidating(false);
-    }
+      const occurrences = new Map<string, number>(); parsed.forEach((item) => item.phone && occurrences.set(item.phone, (occurrences.get(item.phone) || 0) + 1)); parsed.forEach((item) => { if (item.phone && (occurrences.get(item.phone) || 0) > 1) item.warnings.push("Same phone appears more than once in this file"); }); setParsedProfessionals(parsed);
+    } catch (error) { console.error("Professional import validation failed:", error); toast({ title: "Error parsing file", description: error instanceof Error ? error.message : undefined, variant: "destructive" }); setStep("upload"); } finally { setIsValidating(false); }
   };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; if (!file) return; if (file.size > 5 * 1024 * 1024) { toast({ title: "File too large", description: "Maximum file size is 5MB", variant: "destructive" }); return; }
+    const extension = file.name.split(".").pop()?.toLowerCase(); if (!extension || !["xlsx", "xls", "csv"].includes(extension)) { toast({ title: "Invalid file type", description: "Only .xlsx, .xls, and .csv files are allowed", variant: "destructive" }); return; }
+    try { const workbook = XLSX.read(await file.arrayBuffer()); const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 0, defval: "" }) as Record<string, unknown>[]; const fileHeaders = Object.keys(rows[0] || {}); if (!fileHeaders.length) throw new Error("The first row must contain column headers."); const detectedMapping = detectBulkProfessionalColumns(fileHeaders); setRawRows(rows); setHeaders(fileHeaders); setMapping(detectedMapping); if (professionalMappingScore(detectedMapping) >= 0.7) await validateRows(rows, detectedMapping); else setStep("mapping"); } catch (error) { console.error("Professional file parsing failed:", error); toast({ title: "Error parsing file", description: error instanceof Error ? error.message : undefined, variant: "destructive" }); setStep("upload"); }
+  };
+
+  const updateLeadDecision = (index: number, decision: LeadDecision, leadId?: string) => setParsedProfessionals((current) => current.map((professional, itemIndex) => itemIndex !== index || professional.leadMatch.kind !== "review" ? professional : { ...professional, leadDecision: decision, selectedLeadId: decision === "link-existing" ? leadId : undefined }));
+  const toggleRowExcluded = (index: number, checked: boolean) => setParsedProfessionals((current) => current.map((professional, itemIndex) => itemIndex === index ? { ...professional, excluded: !checked } : professional));
 
   const startImport = async () => {
-    setIsImporting(true);
-    setStep("import");
-    let imported = 0, skipped = 0, errors = 0;
-
-    const toImport = parsedProfessionals.filter(p => {
-      if (p.errors.length > 0) return false;
-      if (skipDuplicates && p.isDuplicate) return false;
-      return true;
-    });
-
-    for (let i = 0; i < toImport.length; i++) {
-      const p = toImport[i];
-      try {
-        const { error } = await supabase.from("professionals").insert({
-          name: p.name,
-          phone: p.phone,
-          alternate_phone: p.alternate_phone || null,
-          email: p.email || null,
-          firm_name: p.firm_name || null,
-          professional_type: p.professional_type,
-          service_category: p.service_category || null,
-          city: p.city || null,
-          status: p.status,
-          priority: p.priority,
-          assigned_to: p.assigned_to,
-          address: p.address || null,
-          notes: p.notes || null,
-        });
-        if (error) throw error;
-        imported++;
-      } catch {
-        errors++;
-      }
-      setImportProgress(Math.round(((i + 1) / toImport.length) * 100));
-    }
-
-    skipped = parsedProfessionals.length - toImport.length;
-    setImportedCount(imported);
-    setSkippedCount(skipped);
-    setErrorCount(errors);
-    setIsImporting(false);
-    setStep("complete");
-    onProfessionalsCreated();
+    const unresolved = parsedProfessionals.filter((professional) => !professional.excluded && professional.errors.length === 0 && professional.leadMatch.kind === "review" && professional.leadDecision === "auto"); if (unresolved.length) { toast({ title: "Lead matches need review", description: `${unresolved.length} selected row${unresolved.length === 1 ? "" : "s"} need a decision.`, variant: "destructive" }); return; }
+    setIsImporting(true); setStep("import"); const toImport = parsedProfessionals.filter((professional) => !professional.excluded && professional.errors.length === 0 && (!skipDuplicates || !professional.isDuplicate)); const importBatchId = crypto.randomUUID(); let imported = 0; let errors = 0; let linked = 0;
+    for (let index = 0; index < toImport.length; index++) { const professional = toImport[index]; try { let professionalId = professional.existingProfessional?.id || null; if (!professionalId) { const { data, error } = await supabase.from("professionals").insert({ name: professional.name, phone: professional.phone, alternate_phone: professional.alternate_phone || null, email: professional.email || null, firm_name: professional.firm_name || null, professional_type: professional.professional_type, service_category: professional.service_category || null, city: professional.city || null, status: professional.status, priority: professional.priority, assigned_to: professional.assigned_to, address: professional.address || null, notes: professional.notes || null, import_batch_id: importBatchId }).select("id").single(); if (error) throw error; professionalId = data.id; imported++; }
+        const leadIds = professional.leadDecision === "no-link" ? [] : professional.leadMatch.kind === "existing" ? professional.leadMatch.leads.map((lead) => lead.id) : professional.leadDecision === "link-existing" && professional.selectedLeadId ? [professional.selectedLeadId] : [];
+        if (professionalId && leadIds.length) { const { error } = await supabase.from("lead_professionals").upsert(leadIds.map((leadId) => ({ lead_id: leadId, professional_id: professionalId, is_primary_contact: false, contact_designation: professional.professional_type })), { onConflict: "lead_id,professional_id" }); if (error) throw error; linked += leadIds.length; }
+      } catch (error) { console.error("Professional import row failed:", error); errors++; } setImportProgress(Math.round(((index + 1) / Math.max(toImport.length, 1)) * 100)); }
+    setImportedCount(imported); setSkippedCount(parsedProfessionals.length - toImport.length); setErrorCount(errors); setLeadsLinkedCount(linked); setIsImporting(false); setStep("complete"); onProfessionalsCreated();
   };
 
-  const validCount = parsedProfessionals.filter(p => p.errors.length === 0 && !(skipDuplicates && p.isDuplicate)).length;
-  const errorRows = parsedProfessionals.filter(p => p.errors.length > 0);
-  const duplicateRows = parsedProfessionals.filter(p => p.isDuplicate);
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) resetState(); onOpenChange(o); }}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Bulk Professional Upload</DialogTitle>
-          <DialogDescription>Upload professionals via Excel spreadsheet</DialogDescription>
-        </DialogHeader>
-
-        {step === "upload" && (
-          <div className="space-y-6">
-            <div className="border-2 border-dashed rounded-lg p-8 text-center space-y-4">
-              <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
-              <div>
-                <h3 className="font-semibold">Upload Excel File</h3>
-                <p className="text-sm text-muted-foreground">Download the template first, fill in your data, then upload</p>
-              </div>
-              <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={downloadTemplate}>
-                  <Download className="h-4 w-4 mr-1" /> Download Template
-                </Button>
-                <Button onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4 mr-1" /> Upload File
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {step === "validate" && (
-          <div className="space-y-4">
-            {isValidating ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin mr-2" />
-                <span>Validating data...</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-4">
-                  <Badge variant="secondary" className="bg-green-100 text-green-700">
-                    <CheckCircle className="h-3 w-3 mr-1" /> {validCount} Valid
-                  </Badge>
-                  <Badge variant="secondary" className="bg-red-100 text-red-700">
-                    <XCircle className="h-3 w-3 mr-1" /> {errorRows.length} Errors
-                  </Badge>
-                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
-                    <AlertTriangle className="h-3 w-3 mr-1" /> {duplicateRows.length} Duplicates
-                  </Badge>
-                </div>
-
-                {duplicateRows.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Checkbox checked={skipDuplicates} onCheckedChange={(c) => setSkipDuplicates(!!c)} />
-                    <span className="text-sm">Skip duplicate phone numbers</span>
-                  </div>
-                )}
-
-                <ScrollArea className="h-[400px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Row</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Issues</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parsedProfessionals.map((p, i) => (
-                        <TableRow key={i} className={p.errors.length > 0 ? "bg-destructive/5" : p.isDuplicate ? "bg-yellow-50" : ""}>
-                          <TableCell>{p.rowNumber}</TableCell>
-                          <TableCell>
-                            {p.errors.length > 0 ? (
-                              <XCircle className="h-4 w-4 text-destructive" />
-                            ) : p.isDuplicate ? (
-                              <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                            ) : (
-                              <CheckCircle className="h-4 w-4 text-green-500" />
-                            )}
-                          </TableCell>
-                          <TableCell>{p.name || '-'}</TableCell>
-                          <TableCell>{p.phone || '-'}</TableCell>
-                          <TableCell className="capitalize">{p.professional_type.replace('_', ' ')}</TableCell>
-                          <TableCell className="text-sm">
-                            {p.errors.map((e, j) => <div key={j} className="text-destructive">{e}</div>)}
-                            {p.warnings.map((w, j) => <div key={j} className="text-yellow-600">{w}</div>)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={resetState}>Cancel</Button>
-                  <Button onClick={startImport} disabled={validCount === 0}>
-                    Import {validCount} Professional{validCount !== 1 ? 's' : ''}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {step === "import" && (
-          <div className="space-y-4 py-8">
-            <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-              <p>Importing professionals...</p>
-            </div>
-            <Progress value={importProgress} />
-            <p className="text-sm text-center text-muted-foreground">{importProgress}% complete</p>
-          </div>
-        )}
-
-        {step === "complete" && (
-          <div className="space-y-4 py-8 text-center">
-            <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
-            <h3 className="font-semibold text-lg">Import Complete</h3>
-            <div className="flex gap-4 justify-center">
-              <Badge variant="secondary" className="bg-green-100 text-green-700">
-                {importedCount} Imported
-              </Badge>
-              <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
-                {skippedCount} Skipped
-              </Badge>
-              {errorCount > 0 && (
-                <Badge variant="secondary" className="bg-red-100 text-red-700">
-                  {errorCount} Failed
-                </Badge>
-              )}
-            </div>
-            <Button onClick={() => { resetState(); onOpenChange(false); }}>Done</Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
+  const validCount = parsedProfessionals.filter((professional) => professional.errors.length === 0 && !professional.excluded && (!skipDuplicates || !professional.isDuplicate)).length; const errors = parsedProfessionals.filter((professional) => professional.errors.length > 0); const duplicates = parsedProfessionals.filter((professional) => professional.isDuplicate); const needsReview = parsedProfessionals.filter((professional) => !professional.excluded && professional.errors.length === 0 && professional.leadMatch.kind === "review" && professional.leadDecision === "auto");
+  return <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) resetState(); onOpenChange(isOpen); }}><DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden"><DialogHeader className="shrink-0"><DialogTitle className="flex items-center gap-2"><Upload className="h-5 w-5" />Bulk Professional Upload</DialogTitle><DialogDescription>Import professionals from Excel or CSV with duplicate and lead-relationship review.</DialogDescription></DialogHeader>
+    {step === "upload" && <div className="space-y-6"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">Download the template or use an existing spreadsheet with familiar headings.</p><Button variant="outline" size="sm" onClick={downloadTemplate}><Download className="mr-2 h-4 w-4" />Download Template</Button></div><div className="cursor-pointer space-y-3 rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:border-primary" onClick={() => fileInputRef.current?.click()}><FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground" /><p className="text-lg font-medium">Click to upload a spreadsheet</p><p className="text-sm text-muted-foreground">Accepts .xlsx, .xls, .csv (Max 5MB, up to 1,000 professionals)</p><input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} /></div></div>}
+    {step === "mapping" && <ProfessionalColumnMappingStep headers={headers} mapping={mapping} onChange={(header, field) => setMapping((current) => ({ ...current, [header]: field }))} onBack={() => setStep("upload")} onContinue={() => { void validateRows(rawRows, mapping); }} />}
+    {step === "validate" && (isValidating ? <div className="flex items-center justify-center py-8"><Loader2 className="mr-2 h-8 w-8 animate-spin" />Validating data...</div> : <div className="flex min-h-0 flex-1 flex-col gap-4"><div className="flex flex-wrap gap-3"><Badge variant="secondary"><CheckCircle className="mr-1 h-3 w-3" />{validCount} Ready</Badge><Badge variant="secondary"><XCircle className="mr-1 h-3 w-3" />{errors.length} Errors</Badge><Badge variant="secondary"><AlertTriangle className="mr-1 h-3 w-3" />{duplicates.length} Existing</Badge>{needsReview.length > 0 && <Badge variant="secondary"><AlertTriangle className="mr-1 h-3 w-3" />{needsReview.length} Need review</Badge>}</div>{duplicates.length > 0 && <label className="flex items-center gap-2 text-sm"><Checkbox checked={skipDuplicates} onCheckedChange={(checked) => setSkipDuplicates(checked === true)} />Skip existing professionals</label>}<ScrollArea className="min-h-0 flex-1 border"><Table><TableHeader><TableRow><TableHead>Import</TableHead><TableHead>Row</TableHead><TableHead>Name</TableHead><TableHead>Phone</TableHead><TableHead>Designation</TableHead><TableHead>Lead relationship</TableHead><TableHead>Issues</TableHead></TableRow></TableHeader><TableBody>{parsedProfessionals.map((professional, index) => <TableRow key={professional.rowNumber} className={professional.errors.length ? "bg-destructive/10" : professional.excluded ? "opacity-50" : professional.isDuplicate ? "bg-amber-500/10" : ""}><TableCell><Checkbox checked={!professional.excluded && professional.errors.length === 0} disabled={professional.errors.length > 0} onCheckedChange={(checked) => toggleRowExcluded(index, checked === true)} aria-label={`Import row ${professional.rowNumber}`} /></TableCell><TableCell>{professional.rowNumber}</TableCell><TableCell>{professional.name || "-"}</TableCell><TableCell>{professional.phone || "-"}</TableCell><TableCell className="capitalize">{professional.professional_type.replace(/_/g, " ")}</TableCell><TableCell className="min-w-[250px]">{professional.leadMatch.kind === "existing" && <Badge variant="secondary">Link {professional.leadMatch.leads.length} lead{professional.leadMatch.leads.length === 1 ? "" : "s"}</Badge>}{professional.leadMatch.kind === "none" && "No matching lead"}{professional.leadMatch.kind === "review" && <div className="space-y-2"><Select onValueChange={(value) => updateLeadDecision(index, "link-existing", value)}><SelectTrigger className="h-8"><SelectValue placeholder="Select possible lead" /></SelectTrigger><SelectContent>{professional.leadMatch.candidates.map((lead) => <SelectItem key={lead.id} value={lead.id}>{lead.name}{lead.firm_name ? ` — ${lead.firm_name}` : ""}</SelectItem>)}</SelectContent></Select><Button size="sm" variant="ghost" onClick={() => updateLeadDecision(index, "no-link")}>Keep separate</Button></div>}</TableCell><TableCell className="max-w-[230px] text-xs"><div className="text-destructive">{professional.errors.join(", ")}</div><div className="text-amber-700">{professional.warnings.join(", ")}</div></TableCell></TableRow>)}</TableBody></Table></ScrollArea><div className="flex justify-between border-t pt-4"><Button variant="outline" onClick={resetState}>Cancel</Button><Button onClick={() => { void startImport(); }} disabled={validCount === 0 || needsReview.length > 0}>Import {validCount} Professional{validCount === 1 ? "" : "s"}</Button></div></div>)}
+    {step === "import" && <div className="space-y-4 py-8 text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin" /><p>Importing professionals...</p><Progress value={importProgress} /><p className="text-sm text-muted-foreground">{importProgress}% complete</p></div>}
+    {step === "complete" && <div className="space-y-4 py-8 text-center"><CheckCircle className="mx-auto h-12 w-12 text-success" /><h3 className="text-lg font-semibold">Import Complete</h3><div className="flex flex-wrap justify-center gap-3"><Badge variant="secondary">{importedCount} Imported</Badge><Badge variant="secondary">{skippedCount} Skipped</Badge>{leadsLinkedCount > 0 && <Badge variant="secondary">{leadsLinkedCount} Lead links</Badge>}{errorCount > 0 && <Badge variant="destructive">{errorCount} Failed</Badge>}</div><Button onClick={() => { resetState(); onOpenChange(false); }}>Done</Button></div>}
+  </DialogContent></Dialog>;
 }
