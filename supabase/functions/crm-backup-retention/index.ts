@@ -142,7 +142,7 @@ serve(async (req) => {
     // 3. Gather candidates
     const { data: jobs, error: jobsErr } = await admin
       .from("backup_jobs")
-      .select("id, status, is_pinned, created_at, total_size_bytes, storage_prefix, zip_path, manifest_path")
+      .select("id, status, is_pinned, backup_tier, created_at, total_size_bytes, storage_prefix, zip_path, manifest_path")
       .eq("status", "completed")
       .eq("is_pinned", false)
       .order("created_at", { ascending: false });
@@ -192,10 +192,12 @@ serve(async (req) => {
         dailyBucket.push(job);
       }
 
-      tierUpdates.push({ id: job.id, tier: computedTier });
+      if (job.backup_tier !== computedTier) {
+        tierUpdates.push({ id: job.id, tier: computedTier });
+      }
     }
 
-    // Update backup_tier in database for classified jobs
+    // Update backup_tier in database for classified jobs whose tier actually changed
     if (!isDryRun) {
       for (const patch of tierUpdates) {
         await admin
