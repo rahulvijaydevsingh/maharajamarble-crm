@@ -98,6 +98,17 @@ function statusBadge(status: BackupJobRow["status"]) {
   }
 }
 
+function integrityBadge(integrityStatus: BackupJobRow["integrity_status"]) {
+  switch (integrityStatus) {
+    case "valid":
+      return <Badge className="bg-emerald-600 hover:bg-emerald-700">Integrity: Valid</Badge>;
+    case "failed":
+      return <Badge variant="destructive">Integrity: Failed</Badge>;
+    default:
+      return null;
+  }
+}
+
 function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null || isNaN(bytes)) return "N/A";
   if (bytes === 0) return "0 Bytes";
@@ -129,7 +140,15 @@ type RetentionSettings = {
   updated_by?: string | null;
 };
 
-function RetentionSettingsSection({ onDryRun }: { onDryRun: () => void }) {
+function RetentionSettingsSection({
+  onDryRun,
+  onRunRetention,
+  runningRetention,
+}: {
+  onDryRun: () => void;
+  onRunRetention: () => void;
+  runningRetention: boolean;
+}) {
   const { toast } = useToast();
   const { user, profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -285,10 +304,26 @@ function RetentionSettingsSection({ onDryRun }: { onDryRun: () => void }) {
         )}
 
         <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
-          <Button variant="outline" size="sm" onClick={onDryRun} className="gap-2">
-            <Eye className="h-4 w-4" />
-            Preview Retention Pruning (Dry-Run)
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={onDryRun} className="gap-2">
+              <Eye className="h-4 w-4" />
+              Preview Retention Pruning (Dry-Run)
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onRunRetention}
+              disabled={runningRetention}
+              className="gap-2"
+            >
+              {runningRetention ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Run Retention Now
+            </Button>
+          </div>
 
           <Button size="sm" onClick={handleSave} disabled={saving} className="gap-2">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -387,6 +422,7 @@ function JobRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {statusBadge(job.status)}
+          {integrityBadge(job.integrity_status)}
           {job.backup_tier && (
             <Badge variant="outline" className="capitalize text-xs">
               {job.backup_tier}
@@ -586,6 +622,11 @@ export function BackupRestorePanel() {
     message?: string;
   } | null>(null);
 
+  const [retentionConfirmOpen, setRetentionConfirmOpen] = useState(false);
+  const [retentionFetchingCount, setRetentionFetchingCount] = useState(false);
+  const [retentionExecuting, setRetentionExecuting] = useState(false);
+  const [retentionCandidateCount, setRetentionCandidateCount] = useState<number | null>(null);
+
   const completedJobs = useMemo(
     () => jobs.filter((j) => j.status === "completed" && j.manifest_path),
     [jobs],
@@ -624,6 +665,63 @@ export function BackupRestorePanel() {
       });
     } finally {
       setDryRunLoading(false);
+    }
+  };
+
+  const handleOpenRetentionConfirm = async () => {
+    setRetentionFetchingCount(true);
+    setRetentionCandidateCount(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("crm-backup-retention", {
+        body: { dry_run: true },
+      });
+
+      if (error || (data && data.error)) {
+        const errMsg = error?.message || data?.error || "Failed to evaluate retention candidates";
+        toast({ title: "Could not evaluate retention", description: errMsg, variant: "destructive" });
+        return;
+      }
+
+      setRetentionCandidateCount(data?.candidates_count ?? 0);
+      setRetentionConfirmOpen(true);
+    } catch (err) {
+      toast({
+        title: "Could not evaluate retention",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRetentionFetchingCount(false);
+    }
+  };
+
+  const handleExecuteRetention = async () => {
+    setRetentionConfirmOpen(false);
+    setRetentionExecuting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("crm-backup-retention", {
+        body: { dry_run: false },
+      });
+
+      if (error || (data && data.error)) {
+        const errMsg = error?.message || data?.error || "Failed to execute retention pruning";
+        toast({ title: "Retention pruning failed", description: errMsg, variant: "destructive" });
+      } else {
+        const prunedCount = data?.pruned_count ?? 0;
+        toast({
+          title: "Retention pruning completed",
+          description: `Successfully pruned ${prunedCount} ${prunedCount === 1 ? "backup" : "backups"}.`,
+        });
+        refetchJobs();
+      }
+    } catch (err) {
+      toast({
+        title: "Retention pruning failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRetentionExecuting(false);
     }
   };
 
@@ -729,7 +827,11 @@ export function BackupRestorePanel() {
           </CardContent>
         </Card>
 
-        <RetentionSettingsSection onDryRun={handleRunDryRun} />
+        <RetentionSettingsSection
+          onDryRun={handleRunDryRun}
+          onRunRetention={handleOpenRetentionConfirm}
+          runningRetention={retentionFetchingCount || retentionExecuting}
+        />
 
         <Card>
           <CardHeader>
@@ -755,6 +857,39 @@ export function BackupRestorePanel() {
             )}
           </CardContent>
         </Card>
+
+        <AlertDialog open={retentionConfirmOpen} onOpenChange={setRetentionConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                <ShieldAlert className="h-5 w-5" />
+                Confirm Bulk Retention Pruning
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2">
+                <span>
+                  This will prune <strong>{retentionCandidateCount ?? 0}</strong>{" "}
+                  {retentionCandidateCount === 1 ? "backup" : "backups"} under current GFS retention policies.
+                  Storage files and zip archives for pruned backups will be permanently deleted.
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Pinned backups and the single newest completed backup are protected and will not be pruned.
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleExecuteRetention();
+                }}
+              >
+                Prune {retentionCandidateCount ?? 0} {retentionCandidateCount === 1 ? "Backup" : "Backups"} Now
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <Dialog open={dryRunModalOpen} onOpenChange={setDryRunModalOpen}>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
