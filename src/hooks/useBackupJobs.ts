@@ -14,50 +14,45 @@ export function useBackupJobs() {
   const [jobs, setJobs] = useState<BackupJobRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const requesterName = profile?.full_name ?? '';
+  const fetchJobs = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('backup_jobs' as any)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (!error && data) setJobs(data as unknown as BackupJobRow[]);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!requesterName) {
-        setJobs([]);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('backup_jobs' as any)
-        .select('*')
-        .eq('requested_by', requesterName)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (cancelled) return;
-      if (!error && data) setJobs(data as unknown as BackupJobRow[]);
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [requesterName]);
+    void fetchJobs();
+  }, [fetchJobs]);
 
   useEffect(() => {
     if (!channel) return;
     const handler = (payload: BackupJobsRealtimePayload) => {
       const row = payload.new;
-      if (!row || row.requested_by !== requesterName) return;
-      if (payload.eventType === 'DELETE') {
+      if (payload.eventType === 'DELETE' || (!row && payload.old?.id)) {
         setJobs((prev) => prev.filter((j) => j.id !== payload.old?.id));
         return;
       }
+      if (!row) return;
       setJobs((prev) => {
         const idx = prev.findIndex((j) => j.id === row.id);
-        if (idx === -1) return [row, ...prev].slice(0, 20);
         const next = [...prev];
-        next[idx] = row;
-        return next;
+        if (idx === -1) {
+          next.push(row);
+        } else {
+          next[idx] = row;
+        }
+        next.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return next.slice(0, 20);
       });
     };
     channel.addListener(handler);
     return () => channel.removeListener(handler);
-  }, [channel, requesterName]);
+  }, [channel]);
 
   const createBackupJob = useCallback(
     async (params: { includeModules: BackupModuleKey[]; includeFiles: boolean }) => {
@@ -79,5 +74,5 @@ export function useBackupJobs() {
     [profile?.full_name]
   );
 
-  return { jobs, loading, createBackupJob };
+  return { jobs, loading, createBackupJob, refetch: fetchJobs };
 }

@@ -264,8 +264,8 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
   saved_filter_monitoring: "id",
   control_panel_options: "id",
   control_panel_option_values: "id",
-  crm_backups: "id",
-  crm_restores: "id",
+  crm_backups_legacy: "id",
+  crm_restores_legacy: "id",
 
   // KIT
   kit_subscriptions: "id",
@@ -317,8 +317,8 @@ export const UPSERT_CONFLICT_TARGET: Record<string, string> = {
 // crm_backups / crm_restores are operational metadata, not business data.
 // auth.* is managed separately via Supabase Auth dashboard export.
 export const BACKUP_EXCLUDED_TABLES: Set<string> = new Set([
-  "crm_backups",
-  "crm_restores",
+  "crm_backups_legacy",
+  "crm_restores_legacy",
   "schema_migrations",
   "supabase_migrations",
 ]);
