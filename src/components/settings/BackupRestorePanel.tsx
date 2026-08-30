@@ -174,15 +174,15 @@ function RetentionSettingsSection({ onDryRun }: { onDryRun: () => void }) {
     const updatedBy = profile?.full_name || user?.email || "Unknown";
     const { error } = await supabase
       .from("backup_retention_settings" as any)
-      .update({
+      .upsert({
+        id: true,
         daily_keep: Number(settings.daily_keep),
         weekly_keep: Number(settings.weekly_keep),
         monthly_keep: Number(settings.monthly_keep),
         is_enabled: settings.is_enabled,
         updated_by: updatedBy,
         updated_at: new Date().toISOString(),
-      })
-      .eq("id", true);
+      });
 
     setSaving(false);
 

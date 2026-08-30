@@ -26,20 +26,8 @@ export function useBackupJobs() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('backup_jobs' as any)
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (cancelled) return;
-      if (!error && data) setJobs(data as unknown as BackupJobRow[]);
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, []);
+    void fetchJobs();
+  }, [fetchJobs]);
 
   useEffect(() => {
     if (!channel) return;
@@ -52,10 +40,14 @@ export function useBackupJobs() {
       if (!row) return;
       setJobs((prev) => {
         const idx = prev.findIndex((j) => j.id === row.id);
-        if (idx === -1) return [row, ...prev].slice(0, 20);
         const next = [...prev];
-        next[idx] = row;
-        return next;
+        if (idx === -1) {
+          next.push(row);
+        } else {
+          next[idx] = row;
+        }
+        next.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return next.slice(0, 20);
       });
     };
     channel.addListener(handler);
