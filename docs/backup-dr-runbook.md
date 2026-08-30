@@ -26,7 +26,7 @@ This document describes the operational behavior, capabilities, and procedures f
    - Option: Toggle **Include attachment files** to include stored file objects alongside database JSON/CSV exports.
 3. **Execution Mechanism:**
    - Clicking **Start Backup** initializes a background job on the server (`backup_jobs` table).
-   - The worker exports modules sequentially table-by-table. A full backup across all modules typically takes 1 to 3 minutes.
+   - The worker exports modules sequentially table-by-table. Duration will vary with data volume; check the completed backup's actual duration once telemetry populates.
 4. **Monitoring & Triage:**
    - Progress and current tables being exported are rendered in the **Recent Backups** list.
    - If a backup remains stuck in `processing` status for several hours, refer to **Section 4: Triage**.

@@ -305,7 +305,13 @@ function RetentionSettingsSection({
 
         <div className="flex items-center justify-between gap-2 pt-2 border-t flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={onDryRun} className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDryRun}
+              disabled={runningRetention}
+              className="gap-2"
+            >
               <Eye className="h-4 w-4" />
               Preview Retention Pruning (Dry-Run)
             </Button>
@@ -676,7 +682,7 @@ export function BackupRestorePanel() {
         body: { dry_run: true },
       });
 
-      if (error || (data && data.error)) {
+      if (error || !data || data.error) {
         const errMsg = error?.message || data?.error || "Failed to evaluate retention candidates";
         toast({ title: "Could not evaluate retention", description: errMsg, variant: "destructive" });
         return;
@@ -830,7 +836,7 @@ export function BackupRestorePanel() {
         <RetentionSettingsSection
           onDryRun={handleRunDryRun}
           onRunRetention={handleOpenRetentionConfirm}
-          runningRetention={retentionFetchingCount || retentionExecuting}
+          runningRetention={dryRunLoading || retentionFetchingCount || retentionExecuting}
         />
 
         <Card>
