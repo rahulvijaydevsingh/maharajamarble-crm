@@ -171,14 +171,15 @@ function RetentionSettingsSection({
         .single();
 
       if (cancelled) return;
-      if (!error && data) {
+      const retentionSettings = data as unknown as Partial<RetentionSettings> | null;
+      if (!error && retentionSettings) {
         setSettings({
-          daily_keep: data.daily_keep ?? 7,
-          weekly_keep: data.weekly_keep ?? 4,
-          monthly_keep: data.monthly_keep ?? 6,
-          is_enabled: data.is_enabled ?? true,
-          updated_at: data.updated_at,
-          updated_by: data.updated_by,
+          daily_keep: retentionSettings.daily_keep ?? 7,
+          weekly_keep: retentionSettings.weekly_keep ?? 4,
+          monthly_keep: retentionSettings.monthly_keep ?? 6,
+          is_enabled: retentionSettings.is_enabled ?? true,
+          updated_at: retentionSettings.updated_at,
+          updated_by: retentionSettings.updated_by,
         });
       }
       setLoading(false);
