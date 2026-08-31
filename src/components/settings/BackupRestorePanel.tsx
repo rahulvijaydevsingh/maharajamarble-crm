@@ -620,7 +620,7 @@ export function BackupRestorePanel() {
   const daysSinceLastBackup = latestValidBackup
     ? Math.floor((Date.now() - new Date(latestValidBackup.created_at).getTime()) / (1000 * 60 * 60 * 24))
     : null;
-  const isBackupStale = daysSinceLastBackup === null || daysSinceLastBackup >= 3;
+  const isBackupStale = !jobsLoading && (daysSinceLastBackup === null || daysSinceLastBackup >= 3);
 
   const [includeModules, setIncludeModules] = useState<BackupModuleKey[]>(ALL_MODULE_KEYS);
   const [includeFiles, setIncludeFiles] = useState(true);
