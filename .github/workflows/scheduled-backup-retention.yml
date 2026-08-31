@@ -1,0 +1,71 @@
+name: Nightly Backup & GFS Retention
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup-and-prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create pending backup job
+        id: create_job
+        run: |
+          RESPONSE=$(curl -sS -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            -d '{
+              "include_modules": ["leads","customers","professionals","tasks","reminders","quotations","automation","communication","users_access","company_system","todo","attachments_files","kit","performance","staff_logs","whatsapp","hr_attendance","api_access"],
+              "include_files": true,
+              "requested_by": "GitHub Actions Scheduler"
+            }')
+
+          JOB_ID=$(echo "$RESPONSE" | jq -r '.[0].id // empty')
+          if [ -z "$JOB_ID" ]; then
+            echo "Failed to create backup job record: $RESPONSE"
+            exit 1
+          fi
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "Created backup job: $JOB_ID"
+
+      - name: Trigger backup worker
+        run: |
+          curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"job_id\": \"${{ steps.create_job.outputs.job_id }}\"}"
+
+      - name: Poll until completion (10-minute ceiling)
+        run: |
+          JOB_ID="${{ steps.create_job.outputs.job_id }}"
+          for i in {1..30}; do
+            RESP=$(curl -sS "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs?id=eq.$JOB_ID&select=status,integrity_status,error_message" \
+              -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}")
+
+            STATUS=$(echo "$RESP" | jq -r '.[0].status // empty')
+            INTEGRITY=$(echo "$RESP" | jq -r '.[0].integrity_status // empty')
+            echo "Check $i/30: status=$STATUS integrity=$INTEGRITY"
+
+            if [ "$STATUS" = "completed" ]; then
+              echo "Backup completed. Integrity: $INTEGRITY"
+              exit 0
+            elif [ "$STATUS" = "failed" ]; then
+              ERR=$(echo "$RESP" | jq -r '.[0].error_message // "unknown error"')
+              echo "Backup failed: $ERR"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Backup did not reach a terminal state within 10 minutes (last status: $STATUS)."
+          exit 1
+
+      - name: Run GFS retention pruning
+        run: |
+          curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-retention" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"dry_run": false}'

@@ -49,6 +49,7 @@ import {
   Save,
   Clock,
   HardDrive,
+  AlertTriangle,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -612,6 +613,15 @@ export function BackupRestorePanel() {
   const { restoring, restoreBackup } = useCrmBackups();
   const { jobs, loading: jobsLoading, createBackupJob, refetch: refetchJobs } = useBackupJobs();
 
+  const latestValidBackup = useMemo(
+    () => jobs.find((j) => j.status === "completed" && j.integrity_status === "valid"),
+    [jobs],
+  );
+  const daysSinceLastBackup = latestValidBackup
+    ? Math.floor((Date.now() - new Date(latestValidBackup.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isBackupStale = daysSinceLastBackup === null || daysSinceLastBackup >= 3;
+
   const [includeModules, setIncludeModules] = useState<BackupModuleKey[]>(ALL_MODULE_KEYS);
   const [includeFiles, setIncludeFiles] = useState(true);
 
@@ -745,7 +755,7 @@ export function BackupRestorePanel() {
       await createBackupJob({ includeModules, includeFiles });
       toast({
         title: "Backup initiated",
-        description: "This usually takes 1–3 minutes. Track progress below.",
+        description: "Duration will vary — track progress below.",
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to start backup";
@@ -780,11 +790,27 @@ export function BackupRestorePanel() {
   };
 
   return (
-    <Tabs defaultValue="create" className="w-full">
-      <TabsList>
-        <TabsTrigger value="create">Create Backup</TabsTrigger>
-        <TabsTrigger value="restore">Restore</TabsTrigger>
-      </TabsList>
+    <div className="space-y-4">
+      {isBackupStale && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-4 text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+            <span className="text-sm font-medium">
+              {daysSinceLastBackup === null
+                ? "No valid backup found. Run one now to establish a recovery point."
+                : `Last valid backup was ${daysSinceLastBackup} day${daysSinceLastBackup === 1 ? "" : "s"} ago.`}
+            </span>
+          </div>
+          <Button size="sm" variant="outline" onClick={runCreate} disabled={includeModules.length === 0}>
+            Run Backup Now
+          </Button>
+        </div>
+      )}
+      <Tabs defaultValue="create" className="w-full">
+        <TabsList>
+          <TabsTrigger value="create">Create Backup</TabsTrigger>
+          <TabsTrigger value="restore">Restore</TabsTrigger>
+        </TabsList>
 
       <TabsContent value="create" className="mt-4 space-y-4">
         <Card>
@@ -1076,5 +1102,6 @@ export function BackupRestorePanel() {
         </AlertDialog>
       </TabsContent>
     </Tabs>
+  </div>
   );
 }
