@@ -13,18 +13,7 @@ export type LeadBriefProfessional = {
   designation: string | null;
 };
 
-export function LeadBriefPeopleStrip({
-  leadId,
-  name,
-  status,
-  phone,
-  alternatePhone,
-  additionalContacts,
-  firmName,
-  professionals,
-  onLeadClick,
-  getOptionLabel,
-}: {
+export function LeadBriefPeopleStrip({ leadId, name, status, phone, alternatePhone, additionalContacts, firmName, professionals, onLeadClick, getOptionLabel }: {
   leadId: string;
   name: string;
   status?: string | null;
@@ -44,7 +33,7 @@ export function LeadBriefPeopleStrip({
     <div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="link" className="h-auto p-0 text-base font-semibold" onClick={onLeadClick}>{name}</Button>
-        {status && <Badge variant="outline">{getOptionLabel("leads", "status", status)}</Badge>}
+        {status && <Badge variant="outline">{getOptionLabel("leads", "status", status) || status}</Badge>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {phone && <PhoneLink phone={phone} log={{ relatedEntityType: "lead", relatedEntityId: leadId }} />}
           {phone && <Button asChild variant="outline" size="sm"><a href={`https://wa.me/${phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer noopener">WhatsApp</a></Button>}
@@ -54,7 +43,6 @@ export function LeadBriefPeopleStrip({
         {alternatePhone && <PhoneLink phone={alternatePhone} log={{ relatedEntityType: "lead", relatedEntityId: leadId }} />}
         {firmName && <span>🏢 {firmName}</span>}
       </div>
-
       {contacts.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {contacts.slice(0, 4).map((contact, index) => (
@@ -65,15 +53,18 @@ export function LeadBriefPeopleStrip({
           ))}
         </div>
       )}
-
       {professionals.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {professionals.slice(0, 4).map((p) => (
-            <div key={p.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
-              <span>{p.designation || "Professional"}: {p.name}</span>
-              {p.phone ? <PhoneLink phone={p.phone} log={{ relatedEntityType: "professional", relatedEntityId: p.id }} /> : <Phone className="h-3 w-3 text-muted-foreground" />}
-            </div>
-          ))}
+          {professionals.slice(0, 4).map((p) => {
+            const rawDesignation = p.designation || "";
+            const designation = (rawDesignation ? getOptionLabel("professionals", "professional_type", rawDesignation) : "") || rawDesignation || "Professional";
+            return (
+              <div key={p.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
+                <span>{designation}: {p.name}</span>
+                {p.phone ? <PhoneLink phone={p.phone} log={{ relatedEntityType: "professional", relatedEntityId: p.id }} /> : <Phone className="h-3 w-3 text-muted-foreground" />}
+              </div>
+            );
+          })}
           {professionals.length > 4 && <Badge variant="secondary">+{professionals.length - 4} more</Badge>}
         </div>
       )}
