@@ -69,8 +69,11 @@ jobs:
               LAST_DONE="$DONE"
             fi
 
-            if [ "$STALL_CHECKS" -ge 3 ]; then
-              echo "No progress for ~60s -- nudging the worker to resume from job_id=$JOB_ID."
+            # 9 checks x 20s = 180s (3 minutes). Shorter thresholds risk double-claiming
+            # a job that's still legitimately processing a large table, since claim logic
+            # doesn't distinguish genuinely stuck from still working.
+            if [ "$STALL_CHECKS" -ge 9 ]; then
+              echo "No progress for ~3 minutes -- nudging the worker to resume from job_id=$JOB_ID."
               curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
                 -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
                 -H "Content-Type: application/json" \
