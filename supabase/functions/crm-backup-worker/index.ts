@@ -201,19 +201,17 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq("id", job.id);
 
-    if (newCompleted.length < tablesToExport.length) {
-      const selfUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/crm-backup-worker`;
-      const selfCall = fetch(selfUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-        },
-        body: JSON.stringify({ job_id: job.id }),
-      }).catch((e) => console.error("self-chain failed:", e));
-      // @ts-ignore - EdgeRuntime is available in Supabase's Deno runtime
-      if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(selfCall);
-    }
+    const selfUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/crm-backup-worker`;
+    const selfCall = fetch(selfUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ job_id: job.id }),
+    }).catch((e) => console.error("self-chain failed:", e));
+    // @ts-ignore - EdgeRuntime is available in Supabase's Deno runtime
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(selfCall);
 
     return jsonResponse({
       status: "processing",

@@ -38,17 +38,20 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"job_id\": \"${{ steps.create_job.outputs.job_id }}\"}"
 
-      - name: Poll until completion (10-minute ceiling)
+      - name: Poll until completion (10-minute ceiling, with stall recovery)
         run: |
           JOB_ID="${{ steps.create_job.outputs.job_id }}"
+          LAST_DONE=-1
+          STALL_CHECKS=0
           for i in {1..30}; do
-            RESP=$(curl -sS "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs?id=eq.$JOB_ID&select=status,integrity_status,error_message" \
+            RESP=$(curl -sS "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs?id=eq.$JOB_ID&select=status,integrity_status,error_message,progress" \
               -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
               -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}")
 
             STATUS=$(echo "$RESP" | jq -r '.[0].status // empty')
             INTEGRITY=$(echo "$RESP" | jq -r '.[0].integrity_status // empty')
-            echo "Check $i/30: status=$STATUS integrity=$INTEGRITY"
+            DONE=$(echo "$RESP" | jq -r '.[0].progress.tables_done // -1')
+            echo "Check $i/30: status=$STATUS integrity=$INTEGRITY tables_done=$DONE"
 
             if [ "$STATUS" = "completed" ]; then
               echo "Backup completed. Integrity: $INTEGRITY"
@@ -58,6 +61,26 @@ jobs:
               echo "Backup failed: $ERR"
               exit 1
             fi
+
+            if [ "$DONE" = "$LAST_DONE" ]; then
+              STALL_CHECKS=$((STALL_CHECKS + 1))
+            else
+              STALL_CHECKS=0
+              LAST_DONE="$DONE"
+            fi
+
+            # 9 checks x 20s = 180s (3 minutes). Shorter thresholds risk double-claiming
+            # a job that's still legitimately processing a large table, since claim logic
+            # doesn't distinguish genuinely stuck from still working.
+            if [ "$STALL_CHECKS" -ge 9 ]; then
+              echo "No progress for ~3 minutes -- nudging the worker to resume from job_id=$JOB_ID."
+              curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
+                -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+                -H "Content-Type: application/json" \
+                -d "{\"job_id\": \"$JOB_ID\"}" || echo "Nudge call itself failed, will retry on next stall check"
+              STALL_CHECKS=0
+            fi
+
             sleep 20
           done
           echo "Backup did not reach a terminal state within 10 minutes (last status: $STATUS)."
