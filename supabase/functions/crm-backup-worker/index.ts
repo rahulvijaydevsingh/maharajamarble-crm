@@ -190,16 +190,13 @@ serve(async (req) => {
       { contentType: "text/csv", upsert: true },
     );
 
-    const newCompleted = [...completed, nextTable];
-    await admin.from("backup_jobs").update({
-      tables_completed: newCompleted,
-      progress: {
-        tables_done: newCompleted.length,
-        tables_total: tablesToExport.length,
-        current_table: nextTable,
-      },
-      updated_at: new Date().toISOString(),
-    }).eq("id", job.id);
+    const { data: doneCount, error: claimErr } = await admin.rpc("claim_backup_table", {
+      p_job_id: job.id,
+      p_table_name: nextTable,
+    });
+    if (claimErr) {
+      throw new Error(`claim_backup_table failed: ${claimErr.message}`);
+    }
 
     const selfUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/crm-backup-worker`;
     const selfCall = fetch(selfUrl, {
@@ -216,7 +213,7 @@ serve(async (req) => {
     return jsonResponse({
       status: "processing",
       table: nextTable,
-      done: newCompleted.length,
+      done: doneCount,
       total: tablesToExport.length,
     });
   } catch (e) {
