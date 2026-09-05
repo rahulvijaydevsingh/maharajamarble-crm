@@ -9,11 +9,15 @@ export interface EntityAttachmentRow {
   entity_type: AttachmentEntityType;
   entity_id: string;
   file_name: string;
-  file_path: string;
+  file_path: string | null;
   mime_type: string | null;
   file_size: number | null;
   uploaded_by: string;
   created_at: string;
+  source_type?: "activity" | "task" | "note" | "direct" | null;
+  source_id?: string | null;
+  source_label?: string | null;
+  storage_missing?: boolean | null;
 }
 
 export interface EntityAttachment extends EntityAttachmentRow {
@@ -23,10 +27,10 @@ export interface EntityAttachment extends EntityAttachmentRow {
 const BUCKET = "crm-attachments";
 
 function sanitizeFileName(name: string) {
-  return name
+  return (name
     .replace(/\s+/g, "-")
     .replace(/[^a-zA-Z0-9._-]/g, "")
-    .slice(0, 120);
+    .slice(0, 120)) || "file";
 }
 
 function buildPath(entityType: AttachmentEntityType, entityId: string, file: File) {
@@ -71,7 +75,8 @@ export function useEntityAttachments(entityType: AttachmentEntityType, entityId:
     fetchAttachments();
   }, [fetchAttachments]);
 
-  const getSignedUrl = useCallback(async (filePath: string) => {
+  const getSignedUrl = useCallback(async (filePath: string | null | undefined) => {
+    if (!filePath) throw new Error("This file is unavailable because it is not stored in CRM.");
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, 60 * 60);
     if (error) throw error;
     return data.signedUrl;
@@ -105,7 +110,10 @@ export function useEntityAttachments(entityType: AttachmentEntityType, entityId:
             mime_type: file.type || null,
             file_size: file.size,
           });
-          if (insertError) throw insertError;
+          if (insertError) {
+            await supabase.storage.from(BUCKET).remove([filePath]);
+            throw insertError;
+          }
         }
 
         toast({ title: "Uploaded", description: `Added ${files.length} attachment(s)` });
@@ -123,15 +131,24 @@ export function useEntityAttachments(entityType: AttachmentEntityType, entityId:
   const removeAttachment = useCallback(
     async (attachmentId: string) => {
       try {
+        const attachment = rows.find((row) => row.id === attachmentId);
+        if (!attachment) return;
+
+        if (attachment.file_path) {
+          const { error: storageError } = await supabase.storage.from(BUCKET).remove([attachment.file_path]);
+          if (storageError) throw storageError;
+        }
+
         const { error } = await supabase.from("entity_attachments").delete().eq("id", attachmentId);
         if (error) throw error;
         setRows((prev) => prev.filter((r) => r.id !== attachmentId));
+        toast({ title: "Attachment deleted" });
       } catch (e: any) {
         console.error("Remove attachment failed:", e);
         toast({ title: "Delete failed", description: e.message, variant: "destructive" });
       }
     },
-    [toast]
+    [rows, toast]
   );
 
   return {
