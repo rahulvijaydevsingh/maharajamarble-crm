@@ -1096,10 +1096,14 @@ export type Database = {
           entity_id: string
           entity_type: string
           file_name: string
-          file_path: string
+          file_path: string | null
           file_size: number | null
           id: string
           mime_type: string | null
+          source_id: string | null
+          source_label: string | null
+          source_type: string | null
+          storage_missing: boolean
           uploaded_by: string
         }
         Insert: {
@@ -1107,10 +1111,14 @@ export type Database = {
           entity_id: string
           entity_type: string
           file_name: string
-          file_path: string
+          file_path?: string | null
           file_size?: number | null
           id?: string
           mime_type?: string | null
+          source_id?: string | null
+          source_label?: string | null
+          source_type?: string | null
+          storage_missing?: boolean
           uploaded_by?: string
         }
         Update: {
@@ -1118,10 +1126,14 @@ export type Database = {
           entity_id?: string
           entity_type?: string
           file_name?: string
-          file_path?: string
+          file_path?: string | null
           file_size?: number | null
           id?: string
           mime_type?: string | null
+          source_id?: string | null
+          source_label?: string | null
+          source_type?: string | null
+          storage_missing?: boolean
           uploaded_by?: string
         }
         Relationships: []
@@ -3754,6 +3766,10 @@ export type Database = {
       is_assigned_to_me: {
         Args: { assigned_to_value: string }
         Returns: boolean
+      }
+      recalculate_lead_follow_up: {
+        Args: { lead_uuid: string }
+        Returns: undefined
       }
       snooze_task: {
         Args: {
