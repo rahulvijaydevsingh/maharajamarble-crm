@@ -30,6 +30,15 @@ import { cn } from "@/lib/utils";
 import { MANUAL_ACTIVITY_TYPES } from "@/constants/activityLogConstants";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
+import { AttachmentEntityType } from "@/hooks/useEntityAttachments";
+
+const ATTACHMENT_BUCKET = "crm-attachments";
+
+function buildActivityFilePath(entityType: AttachmentEntityType, entityId: string, file: File) {
+  const safeName = (file.name.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 120)) || "file";
+  return `${entityType}/${entityId}/${crypto.randomUUID()}-${safeName}`;
+}
 
 interface AddManualActivityDialogProps {
   open: boolean;
@@ -121,15 +130,44 @@ export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId
 
     try {
       const activityLabel = MANUAL_ACTIVITY_TYPES.find(t => t.value === activityType)?.label || activityType;
-      
-      // For now, store attachment names (file upload would need storage bucket setup)
-      const attachmentData = attachments.map(file => ({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      }));
+      const activityId = crypto.randomUUID();
+      const entityType: AttachmentEntityType = leadId ? "lead" : customerId ? "customer" : "professional";
+      const uploaded: { id: string; file_path: string; file_name: string; mime_type: string | null; file_size: number }[] = [];
 
-      await createActivity({
+      try {
+        for (const file of attachments) {
+          const filePath = buildActivityFilePath(entityType, entityId, file);
+          const { error: uploadError } = await supabase.storage.from(ATTACHMENT_BUCKET).upload(filePath, file, {
+            contentType: file.type || undefined,
+            upsert: false,
+          });
+          if (uploadError) throw uploadError;
+
+          const { data: attachmentRow, error: attachmentError } = await supabase
+            .from("entity_attachments")
+            .insert({
+              entity_type: entityType,
+              entity_id: entityId,
+              file_name: file.name,
+              file_path: filePath,
+              mime_type: file.type || null,
+              file_size: file.size,
+              source_type: "activity",
+              source_id: activityId,
+              source_label: `Via activity: ${activityLabel}`,
+              storage_missing: false,
+            })
+            .select("id, file_path, file_name, mime_type, file_size")
+            .single();
+          if (attachmentError) {
+            await supabase.storage.from(ATTACHMENT_BUCKET).remove([filePath]);
+            throw attachmentError;
+          }
+          uploaded.push(attachmentRow);
+        }
+
+        await createActivity({
+          id: activityId,
         lead_id: leadId || null,
         customer_id: customerId || null,
         activity_type: activityType as any,
@@ -139,11 +177,20 @@ export function AddManualActivityDialog({ open, onOpenChange, leadId, customerId
         metadata: {
           manual_entry: true,
         },
-        attachments: attachmentData,
+        attachments: uploaded,
         is_manual: true,
         activity_timestamp: selectedDateTime.toISOString(),
         ...(professionalId ? { related_entity_type: 'professional', related_entity_id: professionalId } : {})
-      });
+        });
+      } catch (error) {
+        if (uploaded.length) {
+          await Promise.all([
+            supabase.storage.from(ATTACHMENT_BUCKET).remove(uploaded.map((file) => file.file_path)),
+            supabase.from("entity_attachments").delete().in("id", uploaded.map((file) => file.id)),
+          ]);
+        }
+        throw error;
+      }
 
       toast({
         title: "Activity Added",

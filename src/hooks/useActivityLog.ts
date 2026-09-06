@@ -30,6 +30,7 @@ export interface ActivityLogEntry {
 }
 
 export interface CreateActivityParams {
+  id?: string;
   lead_id?: string;
   customer_id?: string;
   activity_type: ActivityType;
@@ -118,6 +119,7 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
       const { data, error } = await supabase
         .from('activity_log')
         .insert({
+          id: params.id,
           lead_id: params.lead_id || leadId,
           customer_id: params.customer_id || customerId,
           activity_type: params.activity_type,

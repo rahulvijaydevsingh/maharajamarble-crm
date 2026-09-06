@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Upload, Paperclip, Download, Trash2, Eye, File, Image, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AttachmentEntityType, useEntityAttachments } from "@/hooks/useEntityAttachments";
+import { AttachmentPreviewDialog } from "@/components/shared/AttachmentPreviewDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface EntityAttachmentsTabProps {
   entityType: AttachmentEntityType;
@@ -31,6 +33,8 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
   );
   const [isDragging, setIsDragging] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ name: string; type: string | null; url: string } | null>(null);
+  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasAttachments = attachments.length > 0;
@@ -77,26 +81,30 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
     }
   };
 
-  const openInNewTab = async (filePath: string) => {
-    setBusyId(filePath);
+  const openFile = async (file: typeof attachments[number], download = false) => {
+    if (file.storage_missing || !file.file_path) return;
+    setBusyId(file.id);
     try {
-      const url = await getSignedUrl(filePath);
-      window.open(url, "_blank", "noopener,noreferrer");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const downloadFile = async (filePath: string) => {
-    setBusyId(filePath);
-    try {
-      const url = await getSignedUrl(filePath);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      const url = await getSignedUrl(file.file_path);
+      if (download) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = file.file_name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else if (file.mime_type?.startsWith("image/") || file.mime_type === "application/pdf") {
+        setPreview({ name: file.file_name, type: file.mime_type, url });
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      console.error("Attachment unavailable:", error);
+      toast({
+        title: "File not found",
+        description: "This file is unavailable in CRM storage.",
+        variant: "destructive",
+      });
     } finally {
       setBusyId(null);
     }
@@ -150,7 +158,8 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {attachments.map((file) => {
             const FileIcon = getFileIcon(file.mime_type);
-            const isBusy = busyId === file.file_path;
+            const isBusy = busyId === file.id;
+            const unavailable = file.storage_missing || !file.file_path;
             return (
               <div
                 key={file.id}
@@ -166,15 +175,17 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
                   <p className="text-xs text-muted-foreground">
                     {formatFileSize(file.file_size)} • {file.uploaded_by}
                   </p>
+                   {file.source_label && <p className="mt-1 text-xs text-muted-foreground truncate">{file.source_label}</p>}
+                   {unavailable && <p className="mt-1 text-xs text-muted-foreground">Unavailable — file not in storage</p>}
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    disabled={isBusy}
-                    onClick={() => void openInNewTab(file.file_path)}
-                    title="Open"
+                    disabled={isBusy || unavailable}
+                    onClick={() => void openFile(file)}
+                    title={unavailable ? "File unavailable" : "View"}
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
@@ -182,8 +193,8 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    disabled={isBusy}
-                    onClick={() => void downloadFile(file.file_path)}
+                    disabled={isBusy || unavailable}
+                    onClick={() => void openFile(file, true)}
                     title="Download"
                   >
                     <Download className="h-4 w-4" />
@@ -203,6 +214,7 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
           })}
         </div>
       )}
+      <AttachmentPreviewDialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }} fileName={preview?.name || "Attachment"} mimeType={preview?.type} url={preview?.url || null} />
     </div>
   );
 }
