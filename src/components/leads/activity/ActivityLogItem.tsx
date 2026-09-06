@@ -26,6 +26,7 @@ import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
 import { useEntityAttachments } from "@/hooks/useEntityAttachments";
 import { AttachmentPreviewDialog } from "@/components/shared/AttachmentPreviewDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface ActivityLogItemProps {
   activity: ActivityLogEntry;
@@ -47,6 +48,7 @@ export function ActivityLogItem({
   const navigate = useNavigate();
   const { staffMembers } = useActiveStaff();
   const { getSignedUrl } = useEntityAttachments("lead", activity.lead_id);
+  const { toast } = useToast();
   const [preview, setPreview] = useState<{ name: string; type: string | null; url: string } | null>(null);
   const [busyAttachment, setBusyAttachment] = useState<string | null>(null);
   const typeLabel =
@@ -112,6 +114,11 @@ export function ActivityLogItem({
       }
     } catch (error) {
       console.error("Attachment unavailable:", error);
+      toast({
+        title: "File not found",
+        description: "This file is unavailable in CRM storage.",
+        variant: "destructive",
+      });
     } finally {
       setBusyAttachment(null);
     }

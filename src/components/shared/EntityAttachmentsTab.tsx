@@ -4,6 +4,7 @@ import { Upload, Paperclip, Download, Trash2, Eye, File, Image, FileText } from 
 import { cn } from "@/lib/utils";
 import { AttachmentEntityType, useEntityAttachments } from "@/hooks/useEntityAttachments";
 import { AttachmentPreviewDialog } from "@/components/shared/AttachmentPreviewDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface EntityAttachmentsTabProps {
   entityType: AttachmentEntityType;
@@ -33,6 +34,7 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
   const [isDragging, setIsDragging] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ name: string; type: string | null; url: string } | null>(null);
+  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasAttachments = attachments.length > 0;
@@ -96,6 +98,13 @@ export function EntityAttachmentsTab({ entityType, entityId, title = "Attachment
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
       }
+    } catch (error) {
+      console.error("Attachment unavailable:", error);
+      toast({
+        title: "File not found",
+        description: "This file is unavailable in CRM storage.",
+        variant: "destructive",
+      });
     } finally {
       setBusyId(null);
     }
