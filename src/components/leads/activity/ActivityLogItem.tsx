@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { 
@@ -7,6 +7,9 @@ import {
   ExternalLink,
   CheckSquare,
   Bell,
+  Download,
+  Eye,
+  Paperclip,
 } from "lucide-react";
 import { format } from "date-fns";
 import { 
@@ -19,9 +22,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { getStaffDisplayName } from "@/lib/kitHelpers";
+import { useEntityAttachments } from "@/hooks/useEntityAttachments";
+import { AttachmentPreviewDialog } from "@/components/shared/AttachmentPreviewDialog";
 
 interface ActivityLogItemProps {
   activity: ActivityLogEntry;
@@ -42,6 +46,9 @@ export function ActivityLogItem({
 }: ActivityLogItemProps) {
   const navigate = useNavigate();
   const { staffMembers } = useActiveStaff();
+  const { getSignedUrl } = useEntityAttachments("lead", activity.lead_id);
+  const [preview, setPreview] = useState<{ name: string; type: string | null; url: string } | null>(null);
+  const [busyAttachment, setBusyAttachment] = useState<string | null>(null);
   const typeLabel =
     ACTIVITY_TYPE_LABELS[activity.activity_type] || activity.title;
 
@@ -82,6 +89,31 @@ export function ActivityLogItem({
       navigate(`/professionals?view=${activity.related_entity_id}`);
     } else if (activity.related_entity_type === "quotation") {
       navigate(`/quotations?view=${activity.related_entity_id}`);
+    }
+  };
+
+  const openAttachment = async (attachment: any, download = false) => {
+    if (attachment.storage_missing || !attachment.file_path) return;
+    setBusyAttachment(attachment.id || attachment.file_path);
+    try {
+      const url = await getSignedUrl(attachment.file_path);
+      const mimeType = attachment.mime_type || attachment.type || null;
+      if (download) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.file_name || attachment.name || "";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else if (mimeType?.startsWith("image/") || mimeType === "application/pdf") {
+        setPreview({ name: attachment.file_name || attachment.name || "Attachment", type: mimeType, url });
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      console.error("Attachment unavailable:", error);
+    } finally {
+      setBusyAttachment(null);
     }
   };
 
@@ -321,15 +353,26 @@ export function ActivityLogItem({
                 </Button>
               )}
             {/* attachments */}
-            {activity.attachments && activity.attachments.length > 0 &&
-              activity.attachments.map((attachment: any, index: number) => (
-                <Badge key={index} variant="secondary" className="text-[11px] gap-1">
-                  📎 {attachment.name}
-                </Badge>
-              ))}
+             {activity.attachments && activity.attachments.length > 0 &&
+               activity.attachments.map((attachment: any, index: number) => {
+                 const unavailable = attachment.storage_missing || !attachment.file_path;
+                 const label = attachment.file_name || attachment.name || "Attachment";
+                 const isBusy = busyAttachment === (attachment.id || attachment.file_path);
+                 return (
+                   <div key={attachment.id || index} className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-1 text-[11px]">
+                     <Paperclip className="h-3 w-3 shrink-0" />
+                     <span className="max-w-[12rem] truncate" title={label}>{label}</span>
+                     {unavailable ? <span className="text-muted-foreground">Unavailable — file not in storage</span> : <>
+                       <Button variant="ghost" size="icon" className="h-5 w-5" disabled={isBusy} onClick={() => void openAttachment(attachment)} aria-label={`View ${label}`}><Eye className="h-3 w-3" /></Button>
+                       <Button variant="ghost" size="icon" className="h-5 w-5" disabled={isBusy} onClick={() => void openAttachment(attachment, true)} aria-label={`Download ${label}`}><Download className="h-3 w-3" /></Button>
+                     </>}
+                   </div>
+                 );
+               })}
           </div>
         )}
       </div>
+      <AttachmentPreviewDialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }} fileName={preview?.name || "Attachment"} mimeType={preview?.type} url={preview?.url || null} />
     </div>
   );
 }
