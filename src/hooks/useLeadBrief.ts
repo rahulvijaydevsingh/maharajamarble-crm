@@ -136,6 +136,7 @@ export function useLeadBrief(
             "id,created_at,completed_at,completion_notes,reschedule_reason,status,assigned_to,lead_id,related_entity_type,related_entity_id",
           )
           .eq("lead_id", resolvedLeadId)
+          .eq("is_deleted", false)
           .order("created_at", { ascending: false })
           .limit(50),
         supabase
@@ -145,6 +146,7 @@ export function useLeadBrief(
           )
           .eq("related_entity_type", "lead")
           .eq("related_entity_id", resolvedLeadId)
+          .eq("is_deleted", false)
           .order("created_at", { ascending: false })
           .limit(50),
       ]);

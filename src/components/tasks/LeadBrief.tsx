@@ -31,15 +31,15 @@ export function LeadBrief({ leadId, taskId, onLeadClick }: LeadBriefProps) {
   }, []);
 
   if (!leadId && !taskId) return null;
-  if (loading && !lead) {
+  if (loading && !lead && professionals.length === 0) {
     return <Card className="mb-6"><CardContent className="py-4 text-xs text-muted-foreground">Loading lead brief…</CardContent></Card>;
   }
-  if (!lead) {
+  if (!lead && professionals.length === 0) {
     return <Card className="mb-6"><CardContent className="py-4 text-xs text-muted-foreground">Lead context unavailable.</CardContent></Card>;
   }
 
-  const isLost = Boolean(lead.deleted_at) || /lost|deleted/i.test(lead.status || "");
-  const displayStatus = lead.status || (lead.deleted_at ? "Deleted" : null);
+  const isLost = lead ? Boolean(lead.deleted_at) || /lost|deleted/i.test(lead.status || "") : false;
+  const displayStatus = lead?.status || (lead?.deleted_at ? "Deleted" : null);
 
   const toggle = (value: boolean) => {
     setOpen(value);
@@ -65,27 +65,31 @@ export function LeadBrief({ leadId, taskId, onLeadClick }: LeadBriefProps) {
           </div>
           <CollapsibleContent className="pt-1">
             <LeadBriefPeopleStrip
-              leadId={lead.id}
-              name={lead.name}
+              leadId={lead?.id}
+              name={lead?.name}
               status={isLost ? displayStatus || "Deleted" : displayStatus}
-              phone={lead.phone}
-              alternatePhone={lead.alternate_phone}
-              additionalContacts={lead.additional_contacts}
-              firmName={lead.firm_name}
+              phone={lead?.phone}
+              alternatePhone={lead?.alternate_phone}
+              additionalContacts={lead?.additional_contacts}
+              firmName={lead?.firm_name}
               professionals={professionals}
-              onLeadClick={onLeadClick}
+              onLeadClick={lead ? onLeadClick : undefined}
               getOptionLabel={getOptionLabel}
             />
-            <LeadBriefSiteStrip
-              leadId={lead.id}
-              siteLocation={lead.site_location}
-              plusCode={lead.site_plus_code}
-              constructionStage={lead.construction_stage}
-              materialInterests={lead.material_interests}
-              estimatedQuantity={lead.estimated_quantity}
-              getOptionLabel={getOptionLabel}
-            />
-            <LeadBriefConversationTrail entries={trail} />
+            {lead && (
+              <>
+                <LeadBriefSiteStrip
+                  leadId={lead.id}
+                  siteLocation={lead.site_location}
+                  plusCode={lead.site_plus_code}
+                  constructionStage={lead.construction_stage}
+                  materialInterests={lead.material_interests}
+                  estimatedQuantity={lead.estimated_quantity}
+                  getOptionLabel={getOptionLabel}
+                />
+                <LeadBriefConversationTrail entries={trail} />
+              </>
+            )}
           </CollapsibleContent>
         </div>
       </Collapsible>
