@@ -41,7 +41,11 @@ function buildPath(entityType: AttachmentEntityType, entityId: string, file: Fil
   return `${entityType}/${entityId}/${base}-${safe}`;
 }
 
-export function useEntityAttachments(entityType: AttachmentEntityType, entityId: string | null | undefined) {
+export function useEntityAttachments(
+  entityType: AttachmentEntityType,
+  entityId: string | null | undefined,
+  options: { skipFetch?: boolean } = {}
+) {
   const { toast } = useToast();
   const [rows, setRows] = useState<EntityAttachmentRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,8 +76,9 @@ export function useEntityAttachments(entityType: AttachmentEntityType, entityId:
   }, [entityId, entityType, toast]);
 
   useEffect(() => {
+    if (options.skipFetch) return;
     fetchAttachments();
-  }, [fetchAttachments]);
+  }, [fetchAttachments, options.skipFetch]);
 
   const getSignedUrl = useCallback(async (filePath: string | null | undefined) => {
     if (!filePath) throw new Error("This file is unavailable because it is not stored in CRM.");
