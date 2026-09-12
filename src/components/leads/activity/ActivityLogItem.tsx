@@ -47,7 +47,7 @@ export function ActivityLogItem({
 }: ActivityLogItemProps) {
   const navigate = useNavigate();
   const { staffMembers } = useActiveStaff();
-  const { getSignedUrl } = useEntityAttachments("lead", activity.lead_id);
+  const { getSignedUrl } = useEntityAttachments("lead", activity.lead_id, { skipFetch: true });
   const { toast } = useToast();
   const [preview, setPreview] = useState<{ name: string; type: string | null; url: string } | null>(null);
   const [busyAttachment, setBusyAttachment] = useState<string | null>(null);
