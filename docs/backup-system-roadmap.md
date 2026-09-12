@@ -10,13 +10,13 @@ This document records key architectural decisions, deferred scope, and future co
 
 ---
 
-## 2. Phase 6: Scheduled Automation (Deferred)
-- **Status:** Deferred.
-- **Identified Gaps:** Neither backup creation nor retention/pruning currently runs on an automated schedule; both require manual trigger actions in the UI.
-- **Root Cause Analysis:**
+## 2. Phase 6: Scheduled Automation (Live via GitHub Actions)
+- **Status:** Live — via GitHub Actions, not the originally-planned pg_cron.
+- **What changed:** Backup creation and retention/pruning now run automatically every night via `.github/workflows/scheduled-backup-retention.yml` (PR #124). Nightly runs are confirmed completing successfully with valid integrity checks.
+- **Root Cause Analysis (why not pg_cron):**
   - On **2026-08-04**, the project's Supabase `pg_cron` extension stopped executing scheduled jobs entirely (after operating reliably for ~52 days).
-  - This execution freeze is directly linked to hosting environment constraints: projects on the Supabase Free Tier auto-pause during periods of inactivity, which can desynchronize or disable background `pg_cron` workers upon resumption.
-- **Current Decision:** Moving to a paid hosting tier to restore `pg_cron` functionality is not being pursued at this time. This work will be revisited if automated scheduling becomes a hard requirement in production.
+  - Linked to Supabase Free Tier auto-pause on inactivity, which can desync or disable background `pg_cron` workers on resume.
+- **Current Decision:** GitHub Actions is used as a working substitute rather than fixing the underlying platform issue. Moving to a paid tier to restore native pg_cron is not being pursued now; revisit if in-database scheduling becomes a hard requirement.
 
 ---
 
