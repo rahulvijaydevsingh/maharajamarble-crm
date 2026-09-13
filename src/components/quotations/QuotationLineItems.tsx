@@ -76,7 +76,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-foreground">Line Items</h3>
         <Button type="button" variant="outline" size="sm" onClick={addItem}>
           <Plus className="h-4 w-4 mr-1" />
@@ -84,15 +84,15 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
         </Button>
       </div>
 
-      <div className="border rounded-lg overflow-x-auto">
-        <Table>
+      <div className="w-full border rounded-lg overflow-x-auto overscroll-x-contain">
+        <Table className="min-w-[880px]">
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="w-8"></TableHead>
               <TableHead className="min-w-[200px]">Item</TableHead>
-              <TableHead className="w-24">Qty</TableHead>
+              <TableHead className="w-36">Qty</TableHead>
               <TableHead className="w-32">Unit</TableHead>
-              <TableHead className="w-32">Rate</TableHead>
+              <TableHead className="w-44">Rate</TableHead>
               <TableHead className="w-32 text-right">Amount</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
@@ -115,7 +115,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
                       value={item.item_name}
                       onChange={(e) => updateItem(index, 'item_name', e.target.value)}
                       placeholder="Item name..."
-                      className="border-0 bg-transparent focus-visible:ring-0 px-0"
+                      className="min-w-[8rem] border-0 bg-transparent px-0 text-base tabular-nums focus-visible:ring-0"
                     />
                   </TableCell>
                   <TableCell>
@@ -125,7 +125,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
                       onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                       min={0}
                       step={0.01}
-                      className="border-0 bg-transparent focus-visible:ring-0 px-0"
+                      className="min-w-[7.5rem] border-0 bg-transparent px-0 text-base tabular-nums focus-visible:ring-0"
                     />
                   </TableCell>
                   <TableCell>
@@ -152,7 +152,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
                       onChange={(e) => updateItem(index, 'rate', parseFloat(e.target.value) || 0)}
                       min={0}
                       step={0.01}
-                      className="border-0 bg-transparent focus-visible:ring-0 px-0"
+                      className="min-w-[9.5rem] border-0 bg-transparent px-0 text-base tabular-nums focus-visible:ring-0"
                     />
                   </TableCell>
                   <TableCell className="text-right font-medium">

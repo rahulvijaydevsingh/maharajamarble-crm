@@ -234,7 +234,7 @@ export function AddQuotationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden ${contentClassName || ''}`} overlayClassName={overlayClassName}>
+      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 ${contentClassName || ''}`} overlayClassName={overlayClassName}>
         <DialogHeader>
           <DialogTitle>
             {editQuotation ? 'Edit Quotation' : 'New Quotation'}
@@ -307,7 +307,7 @@ export function AddQuotationDialog({
 
           {/* Calculations */}
           <div className="flex justify-end">
-            <div className="w-64 space-y-2">
+            <div className="w-full max-w-64 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal:</span>
                 <span>{formatCurrency(calculations.subtotal)}</span>
@@ -321,7 +321,7 @@ export function AddQuotationDialog({
                     ...prev, 
                     gst_percentage: parseFloat(e.target.value) || 0 
                   }))}
-                  className="w-20 h-8 text-right"
+                  className="w-24 h-9 text-right"
                   min={0}
                   max={100}
                 />
@@ -338,7 +338,7 @@ export function AddQuotationDialog({
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-4 border-t">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
             <Select
               value={formData.status}
               onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
@@ -355,7 +355,7 @@ export function AddQuotationDialog({
               </SelectContent>
             </Select>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
