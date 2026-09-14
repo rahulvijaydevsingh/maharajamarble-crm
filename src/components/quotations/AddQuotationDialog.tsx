@@ -338,7 +338,7 @@ export function AddQuotationDialog({
           </div>
 
           {/* Footer Actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
+          <div className="flex flex-col gap-3 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
             <Select
               value={formData.status}
               onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
@@ -355,7 +355,7 @@ export function AddQuotationDialog({
               </SelectContent>
             </Select>
 
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
               <Button
                 type="button"
                 variant="outline"

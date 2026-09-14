@@ -115,7 +115,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
                       value={item.item_name}
                       onChange={(e) => updateItem(index, 'item_name', e.target.value)}
                       placeholder="Item name..."
-                      className="min-w-[8rem] border-0 bg-transparent px-0 text-base tabular-nums focus-visible:ring-0"
+                      className="min-w-[8rem] border-0 bg-transparent px-2 text-base tabular-nums focus-visible:ring-0"
                     />
                   </TableCell>
                   <TableCell>
@@ -125,7 +125,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
                       onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                       min={0}
                       step={0.01}
-                      className="min-w-[7.5rem] border-0 bg-transparent px-0 text-base tabular-nums focus-visible:ring-0"
+                      className="min-w-[7.5rem] border-0 bg-transparent px-2 text-base tabular-nums focus-visible:ring-0"
                     />
                   </TableCell>
                   <TableCell>
@@ -152,7 +152,7 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
                       onChange={(e) => updateItem(index, 'rate', parseFloat(e.target.value) || 0)}
                       min={0}
                       step={0.01}
-                      className="min-w-[9.5rem] border-0 bg-transparent px-0 text-base tabular-nums focus-visible:ring-0"
+                      className="min-w-[9.5rem] border-0 bg-transparent px-2 text-base tabular-nums focus-visible:ring-0"
                     />
                   </TableCell>
                   <TableCell className="text-right font-medium">
