@@ -8,15 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Plus, Trash2, GripVertical, Copy } from 'lucide-react';
+import { Plus, Trash2, Copy } from 'lucide-react';
 import { QuotationItem, QUOTATION_UNITS } from '@/types/quotation';
 
 interface QuotationLineItemsProps {
@@ -83,132 +75,14 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
           variant="outline"
           size="sm"
           onClick={addItem}
-          className="hidden shrink-0 sm:inline-flex"
+          className="shrink-0"
         >
           <Plus className="h-4 w-4 mr-1" />
           Add Item
         </Button>
       </div>
 
-      <Button
-        type="button"
-        onClick={addItem}
-        className="flex w-full sm:hidden"
-      >
-        <Plus className="mr-2 h-4 w-4" />
-        Add Item
-      </Button>
-
-      <div className="hidden w-full overflow-x-auto rounded-lg border overscroll-x-contain sm:block">
-        <Table className="min-w-[880px]">
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="w-8"></TableHead>
-              <TableHead className="min-w-[200px]">Item</TableHead>
-              <TableHead className="w-36">Qty</TableHead>
-              <TableHead className="w-32">Unit</TableHead>
-              <TableHead className="w-44">Rate</TableHead>
-              <TableHead className="w-32 text-right">Amount</TableHead>
-              <TableHead className="w-20"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  <div className="flex flex-col items-center gap-3">
-                    <span>No items added.</span>
-                    <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                      <Plus className="mr-1 h-4 w-4" />
-                      Add First Item
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              items.map((item, index) => (
-                <TableRow key={item.id}>
-                  <TableCell className="text-muted-foreground">
-                    <GripVertical className="h-4 w-4 cursor-grab" />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={item.item_name}
-                      onChange={(e) => updateItem(index, 'item_name', e.target.value)}
-                      placeholder="Item name..."
-                      className="min-w-[8rem] border-0 bg-transparent px-2 text-base tabular-nums focus-visible:ring-0"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                      min={0}
-                      step={0.01}
-                      className="min-w-[7.5rem] border-0 bg-transparent px-2 text-base tabular-nums focus-visible:ring-0"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={item.unit}
-                      onValueChange={(value) => updateItem(index, 'unit', value)}
-                    >
-                      <SelectTrigger className="border-0 bg-transparent focus:ring-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {QUOTATION_UNITS.map((unit) => (
-                          <SelectItem key={unit.value} value={unit.value}>
-                            {unit.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      value={item.rate}
-                      onChange={(e) => updateItem(index, 'rate', parseFloat(e.target.value) || 0)}
-                      min={0}
-                      step={0.01}
-                      className="min-w-[9.5rem] border-0 bg-transparent px-2 text-base tabular-nums focus-visible:ring-0"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(item.amount)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => duplicateItem(index)}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => removeItem(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="space-y-3 sm:hidden">
+      <div className="space-y-3">
         {items.length === 0 ? (
           <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             No items added yet.
