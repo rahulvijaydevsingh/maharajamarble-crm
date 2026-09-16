@@ -76,9 +76,15 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-foreground">Line Items</h3>
-        <Button type="button" variant="outline" size="sm" onClick={addItem}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addItem}
+          className="shrink-0"
+        >
           <Plus className="h-4 w-4 mr-1" />
           Add Item
         </Button>
@@ -101,7 +107,13 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
             {items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  No items added.
+                  <div className="flex flex-col items-center gap-3">
+                    <span>No items added.</span>
+                    <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                      <Plus className="mr-1 h-4 w-4" />
+                      Add First Item
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
