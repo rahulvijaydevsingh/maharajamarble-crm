@@ -34,6 +34,7 @@ export interface Quotation {
   gst_percentage: number;
   gst_amount: number;
   freight_amount: number;
+  freight_taxable: boolean;
   total: number;
   status: string;
   notes?: string;
@@ -59,6 +60,7 @@ export interface QuotationInsert {
   gst_percentage?: number;
   gst_amount?: number;
   freight_amount?: number;
+  freight_taxable?: boolean;
   total?: number;
   status?: string;
   notes?: string;
@@ -77,6 +79,7 @@ export interface QuotationFormData {
   valid_until: string;
   gst_percentage: number;
   freight_amount: number;
+  freight_taxable: boolean;
   status: string;
   notes: string;
   terms_and_conditions: string;
