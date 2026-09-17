@@ -37,6 +37,7 @@ export interface Quotation {
   total: number;
   status: string;
   notes?: string;
+  terms_and_conditions?: string;
   valid_until?: string;
   assigned_to: string;
   created_by: string;
@@ -61,6 +62,7 @@ export interface QuotationInsert {
   total?: number;
   status?: string;
   notes?: string;
+  terms_and_conditions?: string;
   valid_until?: string;
   assigned_to: string;
   items?: Omit<QuotationItem, 'id'>[];
@@ -77,6 +79,7 @@ export interface QuotationFormData {
   freight_amount: number;
   status: string;
   notes: string;
+  terms_and_conditions: string;
   items: QuotationItem[];
 }
 
