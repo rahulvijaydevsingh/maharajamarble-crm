@@ -15,35 +15,42 @@ set quotation_terms_and_conditions = coalesce(
 )
 where quotation_terms_and_conditions is null;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'storage' and tablename = 'objects'
-      and policyname = 'Users can upload quotation attachments'
-  ) then
-    create policy "Users can upload quotation attachments"
-      on storage.objects for insert to authenticated
-      with check (bucket_id = 'crm-attachments' and name like 'quotations/%');
-  end if;
+drop policy if exists "Users can upload quotation attachments" on storage.objects;
+drop policy if exists "Users can view quotation attachments" on storage.objects;
+drop policy if exists "Users can delete quotation attachments" on storage.objects;
 
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'storage' and tablename = 'objects'
-      and policyname = 'Users can view quotation attachments'
-  ) then
-    create policy "Users can view quotation attachments"
-      on storage.objects for select to authenticated
-      using (bucket_id = 'crm-attachments' and name like 'quotations/%');
-  end if;
+create policy "Users can upload quotation attachments"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'crm-attachments'
+    and name ~ '^quotations/[0-9a-fA-F-]{36}/'
+    and exists (
+      select 1 from public.quotations q
+      where q.id::text = split_part(name, '/', 2)
+        and (q.assigned_to = get_current_user_email() or q.created_by = get_current_user_email() or is_admin())
+    )
+  );
 
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'storage' and tablename = 'objects'
-      and policyname = 'Users can delete quotation attachments'
-  ) then
-    create policy "Users can delete quotation attachments"
-      on storage.objects for delete to authenticated
-      using (bucket_id = 'crm-attachments' and name like 'quotations/%');
-  end if;
-end $$;
+create policy "Users can view quotation attachments"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'crm-attachments'
+    and name ~ '^quotations/[0-9a-fA-F-]{36}/'
+    and exists (
+      select 1 from public.quotations q
+      where q.id::text = split_part(name, '/', 2)
+        and (q.assigned_to = get_current_user_email() or q.created_by = get_current_user_email() or is_admin())
+    )
+  );
+
+create policy "Users can delete quotation attachments"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'crm-attachments'
+    and name ~ '^quotations/[0-9a-fA-F-]{36}/'
+    and exists (
+      select 1 from public.quotations q
+      where q.id::text = split_part(name, '/', 2)
+        and (q.assigned_to = get_current_user_email() or q.created_by = get_current_user_email() or is_admin())
+    )
+  );
