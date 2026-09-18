@@ -11,7 +11,7 @@ import { Clock, CalendarClock, Sunrise } from "lucide-react";
 import { SNOOZE_PRESETS } from "@/constants/taskConstants";
 
 interface SnoozeMenuProps {
-  onSnooze: (hours: number) => void;
+  onSnooze: (hours: number, options?: { preserveTaskTime?: boolean }) => void;
   onCustomSnooze?: () => void;
   disabled?: boolean;
   variant?: "icon" | "button";
@@ -35,7 +35,7 @@ export function SnoozeMenu({
   variant = "button",
 }: SnoozeMenuProps) {
   const quickActions = SNOOZE_PRESETS.filter((p) =>
-    ["later_today", "tomorrow", "2_days", "next_week"].includes(p.value)
+    ["later_today", "tomorrow", "2_days", "4_days_task_time", "next_week"].includes(p.value)
   );
   const durationOptions = SNOOZE_PRESETS.filter((p) =>
     ["15_min", "30_min", "1_hour", "2_hours"].includes(p.value)
@@ -57,7 +57,10 @@ export function SnoozeMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48 z-[130]">
         {quickActions.map((preset) => (
-          <DropdownMenuItem key={preset.value} onClick={() => onSnooze(preset.hours)}>
+          <DropdownMenuItem
+            key={preset.value}
+            onClick={() => onSnooze(preset.hours, { preserveTaskTime: preset.preserveTaskTime })}
+          >
             <CalendarClock className="h-4 w-4 mr-2" />
             {preset.label}
           </DropdownMenuItem>

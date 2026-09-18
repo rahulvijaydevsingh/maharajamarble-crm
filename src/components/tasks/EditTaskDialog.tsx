@@ -269,9 +269,9 @@ export function EditTaskDialog({ open, onOpenChange, taskData, onSave, contentCl
     await deleteSubtask(id);
   };
 
-  const handleSnooze = async (hours: number) => {
+  const handleSnooze = async (hours: number, options?: { preserveTaskTime?: boolean }) => {
     if (taskData?.id) {
-      await snoozeTask(taskData.id, hours);
+      await snoozeTask(taskData.id, hours, options);
       
       // Log snooze to activity log if task is linked to a lead or customer
       const leadId = taskData.lead_id || taskData.leadId;

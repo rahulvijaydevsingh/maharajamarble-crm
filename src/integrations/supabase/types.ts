@@ -713,6 +713,7 @@ export type Database = {
           name: string
           phone: string | null
           pincode: string | null
+          quotation_terms_and_conditions: string | null
           state: string | null
           updated_at: string
           website: string | null
@@ -728,6 +729,7 @@ export type Database = {
           name?: string
           phone?: string | null
           pincode?: string | null
+          quotation_terms_and_conditions?: string | null
           state?: string | null
           updated_at?: string
           website?: string | null
@@ -743,6 +745,7 @@ export type Database = {
           name?: string
           phone?: string | null
           pincode?: string | null
+          quotation_terms_and_conditions?: string | null
           state?: string | null
           updated_at?: string
           website?: string | null
@@ -2264,6 +2267,8 @@ export type Database = {
           client_type: string
           created_at: string
           created_by: string
+          freight_amount: number
+          freight_taxable: boolean
           gst_amount: number
           gst_percentage: number
           id: string
@@ -2272,6 +2277,7 @@ export type Database = {
           quotation_number: string
           status: string
           subtotal: number
+          terms_and_conditions: string | null
           total: number
           updated_at: string
           valid_until: string | null
@@ -2286,6 +2292,8 @@ export type Database = {
           client_type?: string
           created_at?: string
           created_by?: string
+          freight_amount?: number
+          freight_taxable?: boolean
           gst_amount?: number
           gst_percentage?: number
           id?: string
@@ -2294,6 +2302,7 @@ export type Database = {
           quotation_number: string
           status?: string
           subtotal?: number
+          terms_and_conditions?: string | null
           total?: number
           updated_at?: string
           valid_until?: string | null
@@ -2308,6 +2317,8 @@ export type Database = {
           client_type?: string
           created_at?: string
           created_by?: string
+          freight_amount?: number
+          freight_taxable?: boolean
           gst_amount?: number
           gst_percentage?: number
           id?: string
@@ -2316,6 +2327,7 @@ export type Database = {
           quotation_number?: string
           status?: string
           subtotal?: number
+          terms_and_conditions?: string | null
           total?: number
           updated_at?: string
           valid_until?: string | null
