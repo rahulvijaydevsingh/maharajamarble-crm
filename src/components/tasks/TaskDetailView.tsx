@@ -601,9 +601,9 @@ export function TaskDetailView({
               <SnoozeMenu
                 variant="button"
                 disabled={!task || task.status === "Completed"}
-                onSnooze={(hours) => {
+                onSnooze={(hours, options) => {
                   if (!task) return;
-                  void snoozeTask(task.id, hours);
+                  void snoozeTask(task.id, hours, options);
                 }}
               />
 

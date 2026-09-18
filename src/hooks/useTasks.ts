@@ -930,12 +930,22 @@ function useTasksStore() {
 
 
 
-  const snoozeTask = async (id: string, hoursToAdd: number) => {
+  const snoozeTask = async (
+    id: string,
+    hoursToAdd: number,
+    options?: { preserveTaskTime?: boolean }
+  ) => {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
     try {
       const snoozedUntil = new Date(Date.now() + hoursToAdd * 60 * 60 * 1000);
+      if (options?.preserveTaskTime && task.due_time) {
+        const [hours, minutes] = task.due_time.split(":").map(Number);
+        if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+          snoozedUntil.setHours(hours, minutes, 0, 0);
+        }
+      }
       const newDueDate = snoozedUntil.toISOString().split("T")[0];
       const newDueTime = snoozedUntil.toTimeString().slice(0, 5);
 
