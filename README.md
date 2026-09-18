@@ -1,73 +1,51 @@
-# Welcome to your Lovable project
+# Maharaja Marble CRM
 
-## Project info
+Internal CRM for Maharaja Marble & Granites — manages the sales lifecycle from lead to quotation to customer, along with the operational tooling that keeps it running.
 
-**URL**: https://lovable.dev/projects/50b70fe7-979b-4cba-98aa-75408ba41272
+## Features
 
-## How can I edit this code?
+- **Leads & pipeline** — capture, qualify, and track leads through status, priority, and source, with site details, material interests, and construction stage.
+- **Professionals & Architects** — a linked network of architects and contractors tied to the leads and projects they're involved in.
+- **Customers** — converted leads carry their history forward as customers.
+- **Quotations** — line-item quotations with GST and freight handling, editable terms & conditions, file attachments, and PDF export.
+- **Tasks** — assignable tasks with reminders, completion notes, reschedule tracking, and a contextual brief showing the linked lead or professional.
+- **Activity logging** — an audit trail across leads, tasks, and staff actions.
+- **Backup & disaster recovery** — automated nightly backups with GFS-style retention, integrity verification, and admin controls to pin or delete backups.
+- **Configurable options** — dropdown fields (status, designation, construction stage, and similar) are managed from an in-app Control Panel rather than hardcoded.
 
-There are several ways of editing your application.
+## Tech stack
 
-**Use Lovable**
+- [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
+- [shadcn/ui](https://ui.shadcn.com/) + [Tailwind CSS](https://tailwindcss.com/)
+- [TanStack Query](https://tanstack.com/query) for data fetching, [React Router](https://reactrouter.com/) for routing
+- [Supabase](https://supabase.com/) — Postgres database, authentication, file storage, and edge functions
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/50b70fe7-979b-4cba-98aa-75408ba41272) and start prompting.
+## Getting started
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Requires Node.js & npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating) if you don't have them.
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Clone the repository
+git clone https://github.com/rahulvijaydevsingh/maharajamarble-crm.git
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Navigate into the project directory
+cd maharajamarble-crm
 
-# Step 3: Install the necessary dependencies.
+# Install dependencies
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start the development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in a `.env` file to point the app at a specific Supabase project — development should generally use the mirror/preview project, not production.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Editing the code
 
-**Use GitHub Codespaces**
+- **Locally** — clone the repo, make changes in your editor of choice, commit and push.
+- **Directly on GitHub** — open the file, click the pencil (edit) icon, make your changes, and commit.
+- **GitHub Codespaces** — from the repo's Code button, open a Codespace and edit in the browser.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Deployment
 
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/50b70fe7-979b-4cba-98aa-75408ba41272) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+This project is deployed on [Vercel](https://vercel.com/), connected directly to this GitHub repository. Pushes to `main` deploy to production; pull requests get their own preview deployment automatically.
