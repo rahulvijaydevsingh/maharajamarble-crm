@@ -1,384 +1,42 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Pencil, Save } from 'lucide-react';
 import { QuotationLineItems } from './QuotationLineItems';
-import { QuotationAttachments } from './QuotationAttachments';
+import { QuotationAttachments, UploadedFile } from './QuotationAttachments';
 import { ClientSearchSelect, ClientOption } from './ClientSearchSelect';
 import { Quotation, QuotationItem, QuotationInsert, QUOTATION_STATUSES } from '@/types/quotation';
 import { useQuotations } from '@/hooks/useQuotations';
 import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useAuth } from '@/contexts/AuthContext';
-import { useStaffActivityLog } from '@/hooks/useStaffActivityLog';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
-interface AddQuotationDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  editQuotation?: Quotation | null;
-  prefillData?: {
-    client_name?: string;
-    client_phone?: string;
-    client_email?: string;
-    client_address?: string;
-    client_id?: string;
-    client_type?: 'lead' | 'customer';
-  };
-  contentClassName?: string;
-  overlayClassName?: string;
-}
-
-interface UploadedFile {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  file?: File;
-  preview?: string;
-}
-
-export function AddQuotationDialog({ 
-  open, 
-  onOpenChange, 
-  editQuotation,
-  prefillData,
-  contentClassName,
-  overlayClassName,
-}: AddQuotationDialogProps) {
-  const { addQuotation, updateQuotation } = useQuotations();
-  const { leads } = useLeads();
-  const { customers } = useCustomers();
-  const { profile } = useAuth();
-  const { logStaffAction } = useStaffActivityLog();
-  
-  const [formData, setFormData] = useState({
-    client_name: '',
-    client_phone: '',
-    client_email: '',
-    client_address: '',
-    quotation_date: format(new Date(), 'yyyy-MM-dd'),
-    gst_percentage: 18,
-    status: 'draft',
-    notes: '',
-  });
-
-  const [items, setItems] = useState<QuotationItem[]>([]);
-  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [selectedClientType, setSelectedClientType] = useState<'lead' | 'customer'>('lead');
-
-  // Transform leads and customers to ClientOption format
-  const leadOptions: ClientOption[] = useMemo(() => 
-    leads.map(l => ({
-      id: l.id,
-      name: l.name,
-      phone: l.phone,
-      email: l.email,
-      address: l.address,
-      type: 'lead' as const,
-    })), [leads]);
-
-  const customerOptions: ClientOption[] = useMemo(() => 
-    customers.map(c => ({
-      id: c.id,
-      name: c.name,
-      phone: c.phone,
-      email: c.email,
-      address: c.address,
-      type: 'customer' as const,
-    })), [customers]);
-
-  // Calculate totals
-  const calculations = useMemo(() => {
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-    const gstAmount = subtotal * (formData.gst_percentage / 100);
-    const total = subtotal + gstAmount;
-    return { subtotal, gstAmount, total };
-  }, [items, formData.gst_percentage]);
-
-  // Reset form when dialog opens/closes
-  useEffect(() => {
-    if (open) {
-      if (editQuotation) {
-        setFormData({
-          client_name: editQuotation.client_name,
-          client_phone: editQuotation.client_phone || '',
-          client_email: editQuotation.client_email || '',
-          client_address: editQuotation.client_address || '',
-          quotation_date: editQuotation.quotation_date,
-          gst_percentage: editQuotation.gst_percentage,
-          status: editQuotation.status,
-          notes: editQuotation.notes || '',
-        });
-        setItems(editQuotation.items || []);
-        setSelectedClientId(editQuotation.client_id || '');
-        setSelectedClientType(editQuotation.client_type || 'lead');
-      } else if (prefillData) {
-        setFormData(prev => ({
-          ...prev,
-          client_name: prefillData.client_name || '',
-          client_phone: prefillData.client_phone || '',
-          client_email: prefillData.client_email || '',
-          client_address: prefillData.client_address || '',
-        }));
-        setSelectedClientId(prefillData.client_id || '');
-        setSelectedClientType(prefillData.client_type || 'lead');
-      } else {
-        // Reset to defaults
-        setFormData({
-          client_name: '',
-          client_phone: '',
-          client_email: '',
-          client_address: '',
-          quotation_date: format(new Date(), 'yyyy-MM-dd'),
-          gst_percentage: 18,
-          status: 'draft',
-          notes: '',
-        });
-        setItems([]);
-        setSelectedClientId('');
-        setSelectedClientType('lead');
-      }
-      setAttachments([]);
-    }
-  }, [open, editQuotation, prefillData]);
-
-  // Handle client selection from search
-  const handleClientSelect = (client: ClientOption | null) => {
-    if (client) {
-      setSelectedClientId(client.id);
-      setSelectedClientType(client.type);
-      setFormData(prev => ({
-        ...prev,
-        client_name: client.name,
-        client_phone: client.phone,
-        client_email: client.email || '',
-        client_address: client.address || '',
-      }));
-    } else {
-      setSelectedClientId('');
-      setFormData(prev => ({
-        ...prev,
-        client_name: '',
-        client_phone: '',
-        client_email: '',
-        client_address: '',
-      }));
-    }
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.client_name) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const quotationData: QuotationInsert = {
-        client_name: formData.client_name,
-        client_phone: formData.client_phone,
-        client_email: formData.client_email,
-        client_address: formData.client_address,
-        client_id: selectedClientId || undefined,
-        client_type: selectedClientType,
-        quotation_date: formData.quotation_date,
-        gst_percentage: formData.gst_percentage,
-        status: formData.status,
-        notes: formData.notes,
-        assigned_to: profile?.full_name || profile?.email || 'System',
-      };
-
-      const itemsData = items.map(({ id, ...item }) => item);
-
-      if (editQuotation) {
-        await updateQuotation(editQuotation.id, quotationData, itemsData);
-      } else {
-        await addQuotation(quotationData, itemsData);
-        logStaffAction('create_quotation', `Created quotation for ${formData.client_name}`, 'quotation');
-      }
-
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Error saving quotation:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 ${contentClassName || ''}`} overlayClassName={overlayClassName}>
-        <DialogHeader>
-          <DialogTitle>
-            {editQuotation ? 'Edit Quotation' : 'New Quotation'}
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Client Selection */}
-          <div className="space-y-2">
-            <Label>Select Client (Lead/Customer)</Label>
-            <ClientSearchSelect
-              leads={leadOptions}
-              customers={customerOptions}
-              selectedId={selectedClientId}
-              onSelect={handleClientSelect}
-              placeholder="Search and select a client..."
-            />
-            <p className="text-xs text-muted-foreground">
-              Search by name or phone number. Or enter details manually below.
-            </p>
-          </div>
-
-          {/* Client Information */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="client_name">Client Name *</Label>
-              <Input
-                id="client_name"
-                value={formData.client_name}
-                onChange={(e) => setFormData(prev => ({ ...prev, client_name: e.target.value }))}
-                placeholder="Enter client name"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="client_phone">Phone</Label>
-              <Input
-                id="client_phone"
-                value={formData.client_phone}
-                onChange={(e) => setFormData(prev => ({ ...prev, client_phone: e.target.value }))}
-                placeholder="Phone number"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quotation_date">Date</Label>
-              <Input
-                id="quotation_date"
-                type="date"
-                value={formData.quotation_date}
-                onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="client_address">Address</Label>
-            <Input
-              id="client_address"
-              value={formData.client_address}
-              onChange={(e) => setFormData(prev => ({ ...prev, client_address: e.target.value }))}
-              placeholder="Client address"
-            />
-          </div>
-
-          {/* Line Items */}
-          <QuotationLineItems items={items} onChange={setItems} />
-
-          {/* Attachments */}
-          <QuotationAttachments attachments={attachments} onChange={setAttachments} />
-
-          {/* Calculations */}
-          <div className="flex justify-end">
-            <div className="w-full max-w-64 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span>{formatCurrency(calculations.subtotal)}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">GST (%):</span>
-                <Input
-                  type="number"
-                  value={formData.gst_percentage}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    gst_percentage: parseFloat(e.target.value) || 0 
-                  }))}
-                  className="w-24 h-9 text-right"
-                  min={0}
-                  max={100}
-                />
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">GST Amount:</span>
-                <span>{formatCurrency(calculations.gstAmount)}</span>
-              </div>
-              <div className="flex justify-between text-base font-semibold border-t pt-2">
-                <span>Total:</span>
-                <span>{formatCurrency(calculations.total)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer Actions */}
-          <div className="flex flex-col gap-3 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
-            <Select
-              value={formData.status}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                {QUOTATION_STATUSES.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting || !formData.client_name}
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-              >
-                {isSubmitting 
-                  ? 'Saving...' 
-                  : editQuotation 
-                    ? 'Update Quotation' 
-                    : 'Save Quotation'
-                }
-              </Button>
-            </div>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+const DEFAULT_TERMS = 'All disputes subject to Chandigarh jurisdiction only.\nInterest @18% per annum will be charged if bills are not paid within 15 days.\nGoods once sold will not be taken back.';
+const blankItem = (): QuotationItem => ({ id: `temp-${Date.now()}-${Math.random()}`, item_name: '', quantity: 1, unit: 'pcs', rate: 0, amount: 0, sort_order: 0 });
+interface Props { open:boolean; onOpenChange:(open:boolean)=>void; editQuotation?:Quotation|null; prefillData?:{client_name?:string;client_phone?:string;client_email?:string;client_address?:string;client_id?:string;client_type?:'lead'|'customer'}; contentClassName?:string; overlayClassName?:string; }
+export function AddQuotationDialog({open,onOpenChange,editQuotation,prefillData,contentClassName,overlayClassName}:Props){
+ const {addQuotation,updateQuotation}=useQuotations(); const {leads}=useLeads(); const {customers}=useCustomers(); const {profile}=useAuth(); const {toast}=useToast();
+ const [formData,setFormData]=useState({client_name:'',client_phone:'',client_email:'',client_address:'',quotation_date:format(new Date(),'yyyy-MM-dd'),gst_percentage:18,freight_amount:0,freight_taxable:true,status:'draft',notes:'',terms_and_conditions:DEFAULT_TERMS});
+ const [items,setItems]=useState<QuotationItem[]>([blankItem()]); const [attachments,setAttachments]=useState<UploadedFile[]>([]); const [isSubmitting,setIsSubmitting]=useState(false); const [selectedClientId,setSelectedClientId]=useState(''); const [selectedClientType,setSelectedClientType]=useState<'lead'|'customer'>('lead'); const [editTerms,setEditTerms]=useState(false);
+ const leadOptions:ClientOption[]=useMemo(()=>leads.map(l=>({id:l.id,name:l.name,phone:l.phone,email:l.email,address:l.address,type:'lead' as const})),[leads]); const customerOptions:ClientOption[]=useMemo(()=>customers.map(c=>({id:c.id,name:c.name,phone:c.phone,email:c.email,address:c.address,type:'customer' as const})),[customers]);
+ const calculations=useMemo(()=>{const subtotal=items.reduce((s,i)=>s+Number(i.amount||0),0),gstBase=subtotal+(formData.freight_taxable?Math.max(0,Number(formData.freight_amount||0)):0),gst=gstBase*(Number(formData.gst_percentage||0)/100),freight=Math.max(0,Number(formData.freight_amount||0));return{subtotal,gstBase,gst,freight,total:subtotal+gst+freight};},[items,formData.gst_percentage,formData.freight_amount,formData.freight_taxable]);
+ useEffect(()=>{if(!open)return; const load=async()=>{if(editQuotation){setFormData({client_name:editQuotation.client_name,client_phone:editQuotation.client_phone||'',client_email:editQuotation.client_email||'',client_address:editQuotation.client_address||'',quotation_date:editQuotation.quotation_date,gst_percentage:editQuotation.gst_percentage,freight_amount:Number(editQuotation.freight_amount||0),freight_taxable:editQuotation.freight_taxable!==false,status:editQuotation.status,notes:editQuotation.notes||'',terms_and_conditions:editQuotation.terms_and_conditions||DEFAULT_TERMS});setItems(editQuotation.items?.length?editQuotation.items: [blankItem()]);setSelectedClientId(editQuotation.client_id||'');setSelectedClientType(editQuotation.client_type||'lead');const{data}=await supabase.from('quotation_attachments').select('*').eq('quotation_id',editQuotation.id).order('created_at');setAttachments((data||[]).map((a:any)=>({id:a.id,name:a.file_name,size:a.file_size||0,type:a.file_type||'application/octet-stream',file_path:a.file_path})));}else{setFormData({client_name:prefillData?.client_name||'',client_phone:prefillData?.client_phone||'',client_email:prefillData?.client_email||'',client_address:prefillData?.client_address||'',quotation_date:format(new Date(),'yyyy-MM-dd'),gst_percentage:18,freight_amount:0,freight_taxable:true,status:'draft',notes:'',terms_and_conditions:DEFAULT_TERMS});setItems([blankItem()]);setAttachments([]);setSelectedClientId(prefillData?.client_id||'');setSelectedClientType(prefillData?.client_type||'lead');}setEditTerms(false)};load()},[open,editQuotation,prefillData]);
+ const handleClientSelect=(c:ClientOption|null)=>{if(!c){setSelectedClientId('');setFormData(p=>({...p,client_name:'',client_phone:'',client_email:'',client_address:''}));return}setSelectedClientId(c.id);setSelectedClientType(c.type);setFormData(p=>({...p,client_name:c.name,client_phone:c.phone,client_email:c.email||'',client_address:c.address||''}))};
+ const money=(v:number)=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0,maximumFractionDigits:0}).format(v);
+ const syncAttachments=async(id:string)=>{if(editQuotation){const{data:dbAttachments,error:fetchError}=await supabase.from('quotation_attachments').select('id,file_path').eq('quotation_id',id);if(fetchError)throw fetchError;const currentIds=new Set(attachments.map(a=>a.id));for(const a of(dbAttachments||[]).filter(a=>!currentIds.has(a.id))){const{error:dbError}=await supabase.from('quotation_attachments').delete().eq('id',a.id);if(dbError)throw dbError;const{error:storageError}=await supabase.storage.from('crm-attachments').remove([a.file_path]);if(storageError)throw storageError;}}for(const a of attachments.filter(x=>x.file)){const safe=a.name.replace(/[^a-zA-Z0-9._-]/g,'_'),path=`quotations/${id}/${Date.now()}-${safe}`;const{error}=await supabase.storage.from('crm-attachments').upload(path,a.file!,{contentType:a.type,upsert:false});if(error)throw error;const{error:rowError}=await supabase.from('quotation_attachments').insert({quotation_id:id,file_name:a.name,file_path:path,file_size:a.size,file_type:a.type,uploaded_by:profile?.email||profile?.full_name||'System'} as any);if(rowError){await supabase.storage.from('crm-attachments').remove([path]);throw rowError;}}};
+ const submit=async(e:React.FormEvent)=>{e.preventDefault();if(!formData.client_name||!items.length||items.some(i=>!i.item_name.trim()))return;setIsSubmitting(true);try{const q:QuotationInsert={client_name:formData.client_name,client_phone:formData.client_phone,client_email:formData.client_email,client_address:formData.client_address,client_id:selectedClientId||undefined,client_type:selectedClientType,quotation_date:formData.quotation_date,gst_percentage:Number(formData.gst_percentage)||0,freight_amount:calculations.freight,freight_taxable:formData.freight_taxable,notes:formData.notes,terms_and_conditions:formData.terms_and_conditions,status:formData.status,assigned_to:profile?.full_name||profile?.email||'System'};const data=items.map(({id,...x})=>x);let saved:Quotation|null=null;if(editQuotation){await updateQuotation(editQuotation.id,q,data);saved={...editQuotation,...q,freight_amount:calculations.freight,freight_taxable:formData.freight_taxable,subtotal:calculations.subtotal,gst_amount:calculations.gst,total:calculations.total} as Quotation}else saved=await addQuotation(q,data);if(!saved)throw new Error('Quotation could not be saved.');let attachmentWarning=false;try{await syncAttachments(saved.id)}catch(err){console.error('Quotation attachment sync failed:',err);attachmentWarning=true}onOpenChange(false);toast(attachmentWarning?{title:'Quotation saved with attachment warning',description:'The quotation was saved, but some attachment changes could not be completed.',variant:'destructive'}:{title:'Quotation saved',description:'Quotation and attachments were saved successfully.'})}catch(err:any){toast({title:'Could not save quotation',description:err.message||'Please try again.',variant:'destructive'})}finally{setIsSubmitting(false)}};
+ const pill=(v:number,label:string)=><Button type="button" size="sm" variant={formData.gst_percentage===v?'default':'outline'} onClick={()=>setFormData(p=>({...p,gst_percentage:v}))}>{label}</Button>;
+ return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className={`max-w-5xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 ${contentClassName||''}`} overlayClassName={overlayClassName}><DialogHeader><DialogTitle>{editQuotation?'Edit Quotation':'New Quotation'}</DialogTitle></DialogHeader><form onSubmit={submit} className="space-y-5">
+ <section className="space-y-3 rounded-lg border p-3 sm:p-4"><div><Label>Select Client (Lead/Customer)</Label><ClientSearchSelect leads={leadOptions} customers={customerOptions} selectedId={selectedClientId} onSelect={handleClientSelect} placeholder="Search by name or phone..."/></div><div className="grid gap-3 sm:grid-cols-3"><div><Label htmlFor="client_name">Client Name *</Label><Input id="client_name" value={formData.client_name} onChange={e=>setFormData(p=>({...p,client_name:e.target.value}))} required/></div><div><Label htmlFor="client_phone">Phone</Label><Input id="client_phone" value={formData.client_phone} onChange={e=>setFormData(p=>({...p,client_phone:e.target.value}))}/></div><div><Label htmlFor="quotation_date">Date</Label><Input id="quotation_date" type="date" value={formData.quotation_date} onChange={e=>setFormData(p=>({...p,quotation_date:e.target.value}))}/></div></div><div><Label htmlFor="client_address">Address</Label><Input id="client_address" value={formData.client_address} onChange={e=>setFormData(p=>({...p,client_address:e.target.value}))}/></div></section>
+ <QuotationLineItems items={items} onChange={setItems}/>
+ <section className="rounded-lg border px-3 py-2.5 sm:px-4"><div className="flex flex-wrap items-center gap-3"><span className="text-sm font-semibold">GST</span><div className="flex gap-1">{pill(18,'18%')}{pill(0,'0%')}<Button type="button" size="sm" variant="outline" onClick={()=>document.getElementById('gst-custom')?.focus()}>Custom</Button></div><div className="flex items-center gap-1.5"><Label htmlFor="gst-custom" className="text-xs text-muted-foreground">Rate</Label><Input id="gst-custom" className="h-8 w-20 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" type="number" min="0" max="100" step="0.01" value={formData.gst_percentage} onChange={e=>setFormData(p=>({...p,gst_percentage:Number(e.target.value)||0}))}/></div><div className="flex items-center gap-1.5"><Label htmlFor="freight" className="text-xs text-muted-foreground">Freight / Cartage ₹</Label><Input id="freight" className="h-8 w-28 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" type="number" min="0" step="0.01" value={formData.freight_amount} onChange={e=>setFormData(p=>({...p,freight_amount:Number(e.target.value)||0}))}/></div><label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={formData.freight_taxable} onChange={e=>setFormData(p=>({...p,freight_taxable:e.target.checked}))} />Tax freight</label></div></section>
+ <QuotationAttachments attachments={attachments} onChange={setAttachments}/><section className="grid gap-4 md:grid-cols-2"><div className="rounded-lg border p-3"><div className="mb-2 flex items-center justify-between"><div><h3 className="text-sm font-semibold">Terms & Conditions</h3><p className="text-xs text-muted-foreground">Standard terms are prefilled. Edit when required.</p></div><Button type="button" size="sm" variant="outline" onClick={()=>setEditTerms(v=>!v)}><Pencil className="mr-1.5 h-3.5 w-3.5"/>{editTerms?'Done':'Edit'}</Button></div>{editTerms?<Textarea value={formData.terms_and_conditions} onChange={e=>setFormData(p=>({...p,terms_and_conditions:e.target.value}))} rows={5}/>:<p className="whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{formData.terms_and_conditions}</p>}</div><div className="rounded-lg border p-3"><Label htmlFor="notes">Notes / Additional Requirements</Label><Textarea id="notes" value={formData.notes} onChange={e=>setFormData(p=>({...p,notes:e.target.value}))} placeholder="Any additional requirements..." rows={5}/></div></section>
+ <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end sm:justify-between"><div className="w-full max-w-sm space-y-1.5 text-sm"><div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{money(calculations.subtotal)}</span></div><div className="flex justify-between"><span className="text-muted-foreground">GST ({formData.gst_percentage}%){formData.freight_taxable&&calculations.freight>0?' incl. freight':''}</span><span>{money(calculations.gst)}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Freight / Cartage</span><span>{money(calculations.freight)}</span></div><div className="flex justify-between border-t pt-2 text-base font-semibold"><span>Grand Total</span><span>{money(calculations.total)}</span></div></div><div className="flex gap-2"><Select value={formData.status} onValueChange={v=>setFormData(p=>({...p,status:v}))}><SelectTrigger className="w-32"><SelectValue/></SelectTrigger><SelectContent>{QUOTATION_STATUSES.map(s=><SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent></Select><Button type="button" variant="outline" onClick={()=>onOpenChange(false)}>Cancel</Button><Button type="submit" disabled={isSubmitting||!formData.client_name||!items.length||items.some(i=>!i.item_name.trim())}>{isSubmitting?'Saving...':<><Save className="mr-1.5 h-4 w-4"/>{editQuotation?'Update Quotation':'Save Quotation'}</>}</Button></div></div></form></DialogContent></Dialog>;
 }

@@ -33,9 +33,12 @@ export interface Quotation {
   subtotal: number;
   gst_percentage: number;
   gst_amount: number;
+  freight_amount: number;
+  freight_taxable: boolean;
   total: number;
   status: string;
   notes?: string;
+  terms_and_conditions?: string;
   valid_until?: string;
   assigned_to: string;
   created_by: string;
@@ -56,9 +59,12 @@ export interface QuotationInsert {
   subtotal?: number;
   gst_percentage?: number;
   gst_amount?: number;
+  freight_amount?: number;
+  freight_taxable?: boolean;
   total?: number;
   status?: string;
   notes?: string;
+  terms_and_conditions?: string;
   valid_until?: string;
   assigned_to: string;
   items?: Omit<QuotationItem, 'id'>[];
@@ -70,10 +76,13 @@ export interface QuotationFormData {
   client_email: string;
   client_address: string;
   quotation_date: string;
+  valid_until: string;
   gst_percentage: number;
+  freight_amount: number;
+  freight_taxable: boolean;
   status: string;
   notes: string;
-  valid_until: string;
+  terms_and_conditions: string;
   items: QuotationItem[];
 }
 
