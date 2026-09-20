@@ -26,23 +26,25 @@ export function QuotationLineItems({ items, onChange }: QuotationLineItemsProps)
         <div><h3 className="text-sm font-semibold">Items</h3><p className="text-xs text-muted-foreground">Add products, quantity and rate.</p></div>
         <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="mr-1 h-4 w-4" />Add Item</Button>
       </div>
-      <div className="hidden overflow-hidden rounded-lg border md:block">
-        <div className="grid grid-cols-[40px_minmax(180px,1fr)_110px_100px_130px_140px_72px] items-center gap-2 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
-          <span>#</span><span>Item</span><span>Unit</span><span>Qty</span><span>Unit Rate (₹)</span><span className="text-right">Line Total (₹)</span><span />
-        </div>
-        {items.map((item, index) => (
-          <div key={item.id} className="grid grid-cols-[40px_minmax(180px,1fr)_110px_100px_130px_140px_72px] items-center gap-2 border-t px-3 py-2">
-            <span className="text-xs text-muted-foreground">{index + 1}</span>
-            <Input value={item.item_name} onChange={e => updateItem(index, 'item_name', e.target.value)} placeholder="Item name" />
-            <Select value={item.unit} onValueChange={v => updateItem(index, 'unit', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{QUOTATION_UNITS.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}</SelectContent></Select>
-            <Input className={numberClass} type="number" min="0" step="0.01" value={item.quantity} onChange={e => updateItem(index, 'quantity', Number(e.target.value) || 0)} />
-            <Input className={numberClass} type="number" min="0" step="0.01" value={item.rate} onChange={e => updateItem(index, 'rate', Number(e.target.value) || 0)} />
-            <div className="text-right text-sm font-semibold tabular-nums">{formatCurrency(item.amount)}</div>
-            <div className="flex justify-end gap-0.5"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => duplicateItem(index)} aria-label="Duplicate item"><Copy className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(index)} aria-label="Remove item"><Trash2 className="h-3.5 w-3.5" /></Button></div>
+      <div className="hidden overflow-x-auto overscroll-x-contain rounded-lg border lg:block">
+        <div className="min-w-[820px]">
+          <div className="grid grid-cols-[40px_minmax(180px,1fr)_110px_100px_130px_140px_72px] items-center gap-2 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+            <span>#</span><span>Item</span><span>Unit</span><span>Qty</span><span>Unit Rate (₹)</span><span className="text-right">Line Total (₹)</span><span />
           </div>
-        ))}
+          {items.map((item, index) => (
+            <div key={item.id} className="grid grid-cols-[40px_minmax(180px,1fr)_110px_100px_130px_140px_72px] items-center gap-2 border-t px-3 py-2">
+              <span className="text-xs text-muted-foreground">{index + 1}</span>
+              <Input value={item.item_name} onChange={e => updateItem(index, 'item_name', e.target.value)} placeholder="Item name" />
+              <Select value={item.unit} onValueChange={v => updateItem(index, 'unit', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{QUOTATION_UNITS.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}</SelectContent></Select>
+              <Input className={numberClass} type="number" min="0" step="0.01" value={item.quantity} onChange={e => updateItem(index, 'quantity', Number(e.target.value) || 0)} />
+              <Input className={numberClass} type="number" min="0" step="0.01" value={item.rate} onChange={e => updateItem(index, 'rate', Number(e.target.value) || 0)} />
+              <div className="text-right text-sm font-semibold tabular-nums">{formatCurrency(item.amount)}</div>
+              <div className="flex justify-end gap-0.5"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => duplicateItem(index)} aria-label="Duplicate item"><Copy className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(index)} aria-label="Remove item"><Trash2 className="h-3.5 w-3.5" /></Button></div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="space-y-2 md:hidden">
+      <div className="space-y-2 lg:hidden">
         {items.map((item, index) => (
           <div key={item.id} className="rounded-lg border p-3">
             <div className="mb-3 flex items-center justify-between"><span className="text-xs font-semibold text-muted-foreground">ITEM {index + 1}</span><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => duplicateItem(index)}><Copy className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(index)}><Trash2 className="h-3.5 w-3.5" /></Button></div></div>
