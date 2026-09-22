@@ -90,6 +90,7 @@ const FIELD_OPTIONS = [
   { value: "due_today_tasks", label: "Due Today Tasks", type: "number", category: "Tasks" },
   { value: "upcoming_tasks", label: "Upcoming Tasks", type: "number", category: "Tasks" },
   { value: "tasks_status", label: "Tasks Status", type: "select", category: "Tasks" },
+  { value: "task_type", label: "Task Type", type: "select", category: "Tasks" },
 ];
 
 // Operators by field type
@@ -336,6 +337,11 @@ export function SavedFilterDialog({
           { value: "has_overdue", label: "Has Overdue" },
           { value: "no_tasks", label: "No Tasks" },
         ];
+      case "task_type":
+        return getFieldOptions('tasks', 'type').map((option) => ({
+          value: option.value,
+          label: option.label,
+        }));
       default:
         return [];
     }

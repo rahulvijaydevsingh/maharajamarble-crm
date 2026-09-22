@@ -199,7 +199,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
   const { toast } = useToast();
   const { canEdit, canDelete, canBulkAction, hasPermission } = usePermissions();
   const { staffMembers } = useActiveStaff();
-  const { addTask } = useTasks();
+  const { addTask, tasks } = useTasks();
   
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
     return (sessionStorage.getItem("leadViewMode") as "list" | "kanban") || "list";
@@ -402,6 +402,18 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
     return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
   }, [leads, staffMembers]);
 
+  const getLeadTaskTypes = useCallback((leadId: string): string[] => {
+    return Array.from(new Set(
+      tasks
+        .filter((task) =>
+          task.lead_id === leadId ||
+          (task.related_entity_type === "lead" && task.related_entity_id === leadId)
+        )
+        .map((task) => task.type)
+        .filter((type): type is string => Boolean(type))
+    ));
+  }, [tasks]);
+
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
     let result = leads.filter(lead => {
@@ -456,7 +468,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
       })();
 
       const advancedMatch = activeAdvancedRules.length === 0 ||
-        evaluateRules(lead as Record<string, any>, activeAdvancedRules, { getLeadTasks });
+        evaluateRules(lead as Record<string, any>, activeAdvancedRules, { getLeadTasks, getLeadTaskTypes });
       return searchMatch && statusMatch && assignedMatch && sourceMatch && priorityMatch && 
              materialsMatch && createdByMatch && designationMatch && constructionStageMatch && createdDateMatch && lastFollowUpMatch && nextFollowUpMatch && tasksMatch && advancedMatch;
     });
@@ -489,7 +501,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     return result;
   }, [leads, searchTerm, statusFilter, assignedToFilter, sourceFilter, priorityFilter, 
-      materialsFilter, constructionStageFilter, createdByFilter, designationFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, activeAdvancedRules]);
+      materialsFilter, constructionStageFilter, createdByFilter, designationFilter, createdDateRange, lastFollowUpRange, nextFollowUpRange, tasksFilter, sortField, sortDirection, getLeadTasks, getLeadTaskTypes, activeAdvancedRules]);
 
   // Filter counts for saved filters
   const getFilterCount = (filter: SavedFilter): number => {
@@ -503,7 +515,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         ((lead.material_interests as string[]) || []).includes(material)
       );
       const advancedMatch = ((config as any).advancedRules?.length || 0) === 0 ||
-        evaluateRules(lead as Record<string, any>, (config as any).advancedRules || [], { getLeadTasks });
+        evaluateRules(lead as Record<string, any>, (config as any).advancedRules || [], { getLeadTasks, getLeadTaskTypes });
       return statusMatch && assignedMatch && sourceMatch && priorityMatch && materialsMatch && advancedMatch;
     }).length;
   };

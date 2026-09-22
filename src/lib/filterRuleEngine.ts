@@ -32,6 +32,7 @@ export interface AdvancedRule {
 
 export interface Context {
   getLeadTasks?: (leadId: string) => { total: number; overdue: number; dueToday: number; upcoming: number };
+  getLeadTaskTypes?: (leadId: string) => string[];
   getCustomerTasks?: (customerId: string) => { total: number; overdue: number; dueToday: number; upcoming: number };
   staffMembers?: any[];
 }
@@ -137,6 +138,16 @@ export function evaluateRule(record: Record<string, any>, rule: AdvancedRule, co
     if (rule.value === "has_overdue")  return taskInfo.overdue > 0;
     if (rule.value === "due_today")    return taskInfo.dueToday > 0;
     if (rule.value === "has_upcoming") return taskInfo.upcoming > 0;
+    return true;
+  } else if (rule.field === "task_type") {
+    const taskTypes = context?.getLeadTaskTypes?.(record.id);
+    if (!taskTypes) return true;
+
+    const hasType = taskTypes.some((type) => type.toLowerCase() === rule.value.toLowerCase());
+    if (rule.operator === "equals") return hasType;
+    if (rule.operator === "not_equals") return !hasType;
+    if (rule.operator === "is_empty") return taskTypes.length === 0;
+    if (rule.operator === "is_not_empty") return taskTypes.length > 0;
     return true;
   } else if (rule.field === "overdue_tasks") {
     const taskInfo = context?.getLeadTasks
