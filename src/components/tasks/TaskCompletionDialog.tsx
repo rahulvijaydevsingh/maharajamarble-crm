@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import { Calendar as CalendarIcon, Loader2, ChevronDown, ChevronUp, Bell } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTaskCompletionTemplates } from "@/hooks/useTaskCompletionTemplates";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
@@ -109,6 +110,7 @@ export function TaskCompletionDialog({
 }: TaskCompletionDialogProps) {
   const { toast } = useToast();
   const { user, profile } = useAuth();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const { templates, hasTemplates, loading: templatesLoading } = useTaskCompletionTemplates(task?.type || null);
   const { staffMembers, loading: staffLoading } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
@@ -266,7 +268,10 @@ export function TaskCompletionDialog({
     setNextDate(undefined);
     setNextTime("10:00");
     setCloseTask(false);
-    setReminderOffsetHours("");
+    // Completion reschedules are task scheduling actions, so honor the same
+    // organization-wide default used by the New Task form. One hour is the
+    // first available quick option in this compact reminder control.
+    setReminderOffsetHours(defaultRemindersEnabled ? "1" : "");
     setCustomReminderAt("");
     setShowCustomReminder(false);
     setRescheduleReason("");
@@ -277,7 +282,7 @@ export function TaskCompletionDialog({
       title: "", type: "Follow-up Call", assignedTo: "",
       priority: "Medium",
       dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      dueTime: "10:00", description: "", reminder: false,
+      dueTime: "10:00", description: "", reminder: defaultRemindersEnabled,
       reminderTime: "30", isStarred: false,
     });
     setFollowUpRecurrence({
@@ -290,7 +295,7 @@ export function TaskCompletionDialog({
     setFollowUpExpanded(false);
     setFollowUpErrors({});
     setFollowUpCharCount(0);
-  }, [open, task?.id]);
+  }, [open, task?.id, defaultRemindersEnabled]);
 
   useEffect(() => {
     if (nextAction === "follow_up" && task) {
@@ -567,6 +572,10 @@ export function TaskCompletionDialog({
           due_time: nextTime || null,
           reschedule_count: (task.reschedule_count ?? 0) + 1,
           reschedule_reason: rescheduleReason.trim(),
+          reminder: reminderOffsetHours !== "",
+          reminder_time: reminderOffsetHours && reminderOffsetHours !== "custom"
+            ? String(parseInt(reminderOffsetHours, 10) * 60)
+            : task.reminder_time,
           reminder_offset_hours: (reminderOffsetHours && reminderOffsetHours !== "custom") ? parseInt(reminderOffsetHours, 10) : null,
           custom_reminder_at: reminderOffsetHours === "custom" ? customReminderAt || null : null,
         });
@@ -611,9 +620,10 @@ export function TaskCompletionDialog({
           due_time: followUpFormData.dueTime || null,
           status: "Pending",
           description: followUpFormData.description.trim() || null,
-          reminder: followUpFormData.reminder,
-          reminder_time: followUpFormData.reminder
-            ? followUpFormData.reminderTime : null,
+          reminder: reminderOffsetHours !== "",
+          reminder_time: reminderOffsetHours && reminderOffsetHours !== "custom"
+            ? String(parseInt(reminderOffsetHours, 10) * 60)
+            : followUpFormData.reminderTime,
           is_starred: followUpFormData.isStarred,
           is_recurring: followUpRecurrence.isRecurring,
           recurrence_frequency: followUpRecurrence.isRecurring
