@@ -354,6 +354,7 @@ const syncTaskReminder = async (
     status?: string | null;
     reminder?: boolean | null;
     reminder_time?: string | null;
+    custom_reminder_at?: string | null;
     due_date?: string | null;
     due_time?: string | null;
     assigned_to?: string | null;
@@ -369,7 +370,10 @@ const syncTaskReminder = async (
   const isClosed = task.status === 'Completed' || task.status === 'Cancelled';
   const wantsReminder = !!task.reminder && !isClosed;
 
-  const fireAt = overrides?.fireAt || (wantsReminder ? computeTaskReminderFireAt(task) : null);
+  const customFireAt = task.custom_reminder_at
+    ? new Date(task.custom_reminder_at).toISOString()
+    : null;
+  const fireAt = overrides?.fireAt || (wantsReminder ? customFireAt || computeTaskReminderFireAt(task) : null);
   const isFuture = fireAt ? new Date(fireAt).getTime() > Date.now() : false;
 
   try {
