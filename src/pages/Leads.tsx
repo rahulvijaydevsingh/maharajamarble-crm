@@ -188,6 +188,7 @@ const Leads = () => {
       }
 
       // Create associated task
+      let createdTaskId: string | undefined;
       if (generatedTask && newLead) {
         // Resolve generatedTask.assignedTo (could be name or ID) to email
         const matchedStaff = staffMembers.find(m =>
@@ -197,7 +198,7 @@ const Leads = () => {
         );
         const assignedToName = matchedStaff?.name || generatedTask.assignedTo;
 
-        await addTask({
+        const createdTask = await addTask({
           title: generatedTask.title,
           description: generatedTask.description,
           type: "Follow-up Call",
@@ -212,6 +213,7 @@ const Leads = () => {
             ? { related_entity_type: "professional", related_entity_id: primaryProfessionalId }
             : {}),
         });
+        createdTaskId = createdTask?.id;
       }
 
       // Create reminder if requested
@@ -229,8 +231,10 @@ const Leads = () => {
             title: `Follow-up: ${formData.fullName || formData.primaryPhone}`,
             description: `Lead: ${formData.fullName || formData.primaryPhone}`,
             reminder_datetime: reminderDatetime.toISOString(),
-            entity_type: "lead",
-            entity_id: newLead.id,
+            // A reminder created with the initial follow-up belongs to that task.
+            // Fall back to the lead only if no task was generated.
+            entity_type: createdTaskId ? "task" : "lead",
+            entity_id: createdTaskId || newLead.id,
             assigned_to: assignedToName,
           });
         } catch (reminderErr) {
