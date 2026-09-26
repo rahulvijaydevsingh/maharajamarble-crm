@@ -80,7 +80,7 @@ export function LeadBrief({ leadId, taskId, onLeadClick }: LeadBriefProps) {
               <>
                 <LeadBriefSiteStrip
                   leadId={lead.id}
-                  siteLocation={lead.site_location}
+                  siteLocation={lead.site_location || lead.address}
                   plusCode={lead.site_plus_code}
                   constructionStage={lead.construction_stage}
                   materialInterests={lead.material_interests}

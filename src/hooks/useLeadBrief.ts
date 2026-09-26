@@ -14,6 +14,7 @@ interface LeadBriefLead {
   additional_contacts: unknown;
   deleted_at?: string | null;
   site_location: string | null;
+  address: string | null;
   site_plus_code: string | null;
   construction_stage: string | null;
   estimated_quantity: number | null;
@@ -120,7 +121,7 @@ export function useLeadBrief(
         supabase
           .from("leads")
           .select(
-            "id,name,status,phone,alternate_phone,firm_name,additional_contacts,deleted_at,site_location,site_plus_code,construction_stage,estimated_quantity,material_interests",
+            "id,name,status,phone,alternate_phone,firm_name,additional_contacts,deleted_at,site_location,address,site_plus_code,construction_stage,estimated_quantity,material_interests",
           )
           .eq("id", resolvedLeadId)
           .maybeSingle(),
