@@ -840,6 +840,7 @@ export function BulkUploadDialog({
           designation: lead.designation,
           source: lead.source,
           address: lead.address || null,
+           site_location: lead.address || null,
           status: lead.status,
           priority: lead.priority,
           assigned_to: lead.assigned_to,
