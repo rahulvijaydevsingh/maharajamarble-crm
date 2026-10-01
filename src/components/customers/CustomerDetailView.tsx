@@ -149,46 +149,6 @@ export function CustomerDetailView({
     
     setConvertingToLead(true);
     try {
-      const purchaseLines: string[] = [];
-
-      if (customer.materials_purchased?.length) {
-        purchaseLines.push(
-          "Materials: " +
-            customer.materials_purchased
-              .map((value) => getOptionLabel("materials", "materials", value))
-              .join(", "),
-        );
-      }
-
-      if (customer.quantity_purchased !== null && customer.quantity_purchased !== undefined) {
-        const unitLabel =
-          QUOTATION_UNITS.find((unit) => unit.value === customer.quantity_unit)?.label ||
-          customer.quantity_unit;
-        purchaseLines.push("Quantity: " + customer.quantity_purchased + " " + unitLabel);
-      }
-
-      if (customer.bill_number) {
-        purchaseLines.push("Bill number: " + customer.bill_number);
-      }
-
-      if (customer.profession) {
-        purchaseLines.push("Profession: " + customer.profession);
-      }
-
-      if (customer.pending_followups?.length) {
-        purchaseLines.push(
-          "Pending follow-ups: " +
-            customer.pending_followups
-              .map((value) => getOptionLabel("customers", "pending_followup", value))
-              .join(", "),
-        );
-      }
-
-      const previousPurchaseBlock =
-        purchaseLines.length > 0
-          ? "\n\nPrevious purchase\n" + purchaseLines.map((line) => "- " + line).join("\n")
-          : "";
-
       const storedReferredBy = extractReferredBy(customer.referred_by);
       let referredByForLead = storedReferredBy.name
         ? {
