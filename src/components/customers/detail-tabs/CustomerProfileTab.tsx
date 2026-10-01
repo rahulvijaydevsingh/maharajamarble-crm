@@ -36,6 +36,7 @@ import { useLogActivity } from '@/hooks/useActivityLog';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { realtimeRegistry } from '@/lib/realtimeRegistry';
 import { QUOTATION_UNITS } from '@/types/quotation';
+import { getCustomerSourceLabel } from '@/lib/customerSource';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -66,7 +67,9 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
   } | null>(null);
 
   useEffect(() => {
+    let active = true;
     setOriginalLead(null);
+
     const leadIds = Array.from(
       new Set(
         [customer.created_from_lead_id, customer.lead_id, customer.original_lead_id].filter(
@@ -77,25 +80,34 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
 
     if (leadIds.length > 0) {
       (async () => {
-        for (const leadId of leadIds) {
-          const { data } = await supabase
-            .from("leads")
-            .select(
-              "id, source, construction_stage, material_interests, site_location, estimated_quantity",
-            )
-            .eq("id", leadId)
-            .maybeSingle();
+        const { data } = await supabase
+          .from("leads")
+          .select(
+            "id, source, construction_stage, material_interests, site_location, estimated_quantity",
+          )
+          .in("id", leadIds);
 
-          if (data) {
-            setOriginalLead(data);
-            break;
-          }
+        if (!active) {
+          return;
+        }
+
+        const orderedLead = leadIds
+          .map((leadId) => data?.find((lead) => lead.id === leadId))
+          .find((lead) => Boolean(lead));
+
+        if (orderedLead) {
+          setOriginalLead(orderedLead);
         }
       })();
     }
 
     setLatestActivity(null);
-    if (!customer?.id) return;
+    if (!customer?.id) {
+      return () => {
+        active = false;
+      };
+    }
+
     const load = () => {
       supabase
         .from('activity_log')
@@ -106,7 +118,9 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
         .maybeSingle()
         .then(({ data }) => setLatestActivity((data as any) || null));
     };
+
     load();
+
     const unsubscribe = realtimeRegistry.subscribe(
       `customer_activity_${customer.id}`,
       {
@@ -117,8 +131,17 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
       },
       () => load()
     );
-    return () => { unsubscribe(); };
-  }, [customer.id]);
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [
+    customer.id,
+    customer.created_from_lead_id,
+    customer.lead_id,
+    customer.original_lead_id,
+  ]);
   
   const statusConfig = CUSTOMER_STATUSES[customer.status] || { label: customer.status, className: 'bg-gray-100 text-gray-700' };
   const priorityConfig = PRIORITY_LEVELS[customer.priority] || { label: 'Normal', color: 'text-gray-600' };
@@ -241,17 +264,7 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</div>
             <div className="font-medium">
-              {customer.source
-  ? (() => {
-      const label = getOptionLabel("leads", "source", customer.source);
-      return label === customer.source
-        ? customer.source
-            .split("_")
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(" ")
-        : label;
-    })()
-  : "—"}
+              {getCustomerSourceLabel(customer.source, getOptionLabel)}
             </div>
           </CardContent>
         </Card>

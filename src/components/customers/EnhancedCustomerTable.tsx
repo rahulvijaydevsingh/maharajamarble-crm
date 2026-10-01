@@ -71,6 +71,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CUSTOMER_STATUSES, PRIORITY_LEVELS, CUSTOMER_TYPES } from "@/constants/customerConstants";
 import { CustomerSavedFilterDialog } from "./filters/CustomerSavedFilterDialog";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { getCustomerSourceLabel } from "@/lib/customerSource";
 import { CustomerManageFiltersDialog } from "./filters/CustomerManageFiltersDialog";
 import { CustomerDetailView } from "./CustomerDetailView";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -342,19 +343,6 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     [getOptionLabel],
   );
 
-  const customerSourceLabel = useCallback(
-    (value: string | null) => {
-      if (!value) return "—";
-      const label = getOptionLabel("leads", "source", value);
-      if (label !== value) return label;
-      return value
-        .split("_")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
-    },
-    [getOptionLabel],
-  );
-
   const uniqueStatuses = useMemo(() => {
     const canonical = getFieldOptions('customers', 'customer_status');
     const canonicalValues = canonical.map(o => o.value);
@@ -491,12 +479,13 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     toast({ title: "Data refreshed" });
   };
 
-  const allowedColumnKeys = new Set([
-    "name", "phone", "email", "customerType", "sitePlusCode", "status", "priority",
-    "assignedTo", "pendingFollowup", "tasks", "totalOrders", "totalSpent", "createdAt", "actions",
-  ]);
-  const safeColumns = columns.filter((column) => allowedColumnKeys.has(column.key));
-  const safeVisibleColumns = visibleColumns.filter((column) => allowedColumnKeys.has(column.key));
+  const removedLegacyColumnKeys = new Set(["city", "industry"]);
+  const safeColumns = columns.filter(
+    (column) => !removedLegacyColumnKeys.has(column.key),
+  );
+  const safeVisibleColumns = visibleColumns.filter(
+    (column) => !removedLegacyColumnKeys.has(column.key),
+  );
 
   const handleSelectAll = (checked: boolean) => {
     setSelectedItems(checked ? filteredCustomers.map(c => c.id) : []);
@@ -978,7 +967,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       case "totalSpent":
         return formatCurrency(customer.total_spent);
       case "source":
-        return <span>{customerSourceLabel(customer.source)}</span>;
+        return <span>{getCustomerSourceLabel(customer.source, getOptionLabel)}</span>;
       case "createdAt":
         return <span className="text-muted-foreground text-sm">{format(new Date(customer.created_at), "PP")}</span>;
       case "actions":

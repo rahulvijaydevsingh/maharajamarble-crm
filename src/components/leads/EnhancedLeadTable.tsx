@@ -76,7 +76,7 @@ import {
   ClipboardList
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { addDays, format, startOfToday } from "date-fns";
 // EditLeadDialog removed - now using LeadDetailView with EditSmartLeadForm
 import { AddToCustomerDialog } from "./actions/AddToCustomerDialog";
 import { LeadKanbanView } from "./LeadKanbanView";
@@ -102,6 +102,7 @@ import { ColumnManagerDialog } from "@/components/shared/ColumnManagerDialog";
 import { evaluateRules, AdvancedRule } from "@/lib/filterRuleEngine";
 import { ScrollableTableContainer } from "@/components/shared/ScrollableTableContainer";
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { extractReferredBy } from '@/lib/referredBy';
 
 const COLUMN_VISIBILITY_KEY = "leads_column_visibility";
 
@@ -690,6 +691,7 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
 
     let successCount = 0;
     let errorCount = 0;
+    let reviewTaskErrorCount = 0;
     const BATCH_SIZE = 10;
 
     try {
@@ -701,33 +703,74 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
             if (!lead) return;
 
             if (bulkActionType === "convert_customer") {
-              await addCustomer({
-                name: lead.name, phone: lead.phone, alternate_phone: lead.alternate_phone,
-                email: lead.email, company_name: lead.firm_name, address: lead.site_location || lead.address,
-                assigned_to: lead.assigned_to, source: lead.source, lead_id: lead.id, notes: lead.notes,
-                customer_type: "individual", status: "active", priority: lead.priority,
+              const assignedCandidate = lead.assigned_to?.trim() || "";
+              const matchedStaff = staffMembers.find(
+                (member) =>
+                  member.id === assignedCandidate ||
+                  member.name?.trim() === assignedCandidate,
+              );
+              const customerAssignedName =
+                matchedStaff?.name?.trim() ||
+                (assignedCandidate.includes(" ") ? assignedCandidate : "");
+
+              if (!customerAssignedName) {
+                throw new Error(
+                  "The lead has no resolvable staff full name for customer assignment.",
+                );
+              }
+
+              const referredByValue = extractReferredBy(lead.referred_by);
+
+              const newCustomer = await addCustomer({
+                name: lead.name,
+                phone: lead.phone,
+                alternate_phone: lead.alternate_phone,
+                email: lead.email,
+                company_name: lead.firm_name,
+                address: lead.site_location || lead.address,
+                assigned_to: customerAssignedName,
+                source: lead.source,
+                lead_id: lead.id,
+                notes: lead.notes,
+                customer_type: "individual",
+                status: "active",
+                priority: lead.priority,
                 additional_contacts: Array.isArray(lead.additional_contacts)
                   ? lead.additional_contacts
                   : [],
-                referred_by:
-                  lead.referred_by &&
-                  typeof lead.referred_by === "object" &&
-                  !Array.isArray(lead.referred_by) &&
-                  "name" in lead.referred_by &&
-                  typeof lead.referred_by.name === "string"
-                    ? lead.referred_by.name
-                    : typeof lead.referred_by === "string"
-                      ? lead.referred_by
-                      : null,
-                referred_by_professional_id:
-                  lead.referred_by &&
-                  typeof lead.referred_by === "object" &&
-                  !Array.isArray(lead.referred_by) &&
-                  "id" in lead.referred_by &&
-                  typeof lead.referred_by.id === "string"
-                    ? lead.referred_by.id
-                    : null,
+                referred_by: referredByValue.name,
+                referred_by_professional_id: referredByValue.id,
               });
+
+              if (!newCustomer?.id) {
+                throw new Error("Customer creation returned no customer id.");
+              }
+
+              try {
+                await addTask({
+                  title: "Collect feedback from " + lead.name,
+                  type: "Feedback Collection",
+                  assigned_to: newCustomer.assigned_to,
+                  priority: "Medium",
+                  status: "Pending",
+                  due_date: format(
+                    addDays(startOfToday(), 7),
+                    "yyyy-MM-dd",
+                  ),
+                  due_time: "10:00",
+                  reminder: false,
+                  reminder_time: null,
+                  related_entity_type: "customer",
+                  related_entity_id: newCustomer.id,
+                });
+              } catch (error) {
+                reviewTaskErrorCount += 1;
+                console.error(
+                  "[bulk customer conversion] Failed to create review task:",
+                  error,
+                );
+              }
+
               await updateLead(leadId, { status: "won" });
             } else if (bulkActionType === "status") {
               await updateLead(leadId, { status: bulkActionValue });
@@ -747,9 +790,13 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
         await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      const msg = bulkActionType === "convert_customer"
+      const conversionMessage = bulkActionType === "convert_customer"
         ? `Converted ${successCount} leads to customers`
         : `Updated ${successCount} of ${total} leads${errorCount > 0 ? ` (${errorCount} errors)` : ''}`;
+      const msg =
+        bulkActionType === "convert_customer" && reviewTaskErrorCount > 0
+          ? conversionMessage + ` (${reviewTaskErrorCount} review tasks failed)`
+          : conversionMessage;
       toast({ title: msg });
       setSelectedLeads([]);
       setBulkActionDialogOpen(false);

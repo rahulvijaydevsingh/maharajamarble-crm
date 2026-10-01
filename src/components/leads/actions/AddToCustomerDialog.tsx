@@ -35,6 +35,7 @@ import { useLogActivity } from "@/hooks/useActivityLog";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { extractReferredBy } from "@/lib/referredBy";
 
 interface AddToCustomerDialogProps {
   open: boolean;
@@ -71,7 +72,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   const [dupChoice, setDupChoice] = useState<'link' | 'create_new' | null>(null);
 
   const [reminderData, setReminderData] = useState({
-    reminderDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    reminderDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     reminderTypes: {
       email: true,
       task: true,
@@ -194,25 +195,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         });
       } else {
         // Normal path: create new customer
-        const referredByValue =
-          typeof leadData.referred_by === "string"
-            ? { id: null, name: leadData.referred_by }
-            : leadData.referred_by &&
-                typeof leadData.referred_by === "object" &&
-                !Array.isArray(leadData.referred_by)
-              ? {
-                  id:
-                    "id" in leadData.referred_by &&
-                    typeof leadData.referred_by.id === "string"
-                      ? leadData.referred_by.id
-                      : null,
-                  name:
-                    "name" in leadData.referred_by &&
-                    typeof leadData.referred_by.name === "string"
-                      ? leadData.referred_by.name
-                      : null,
-                }
-              : { id: null, name: null };
+        const referredByValue = extractReferredBy(leadData.referred_by);
 
         // Normal path: create new customer
         const customerData = {
