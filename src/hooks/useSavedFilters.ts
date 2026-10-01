@@ -6,6 +6,7 @@ import { Json } from "@/integrations/supabase/types";
 export interface FilterConfig {
   statusFilter: string[];
   assignedToFilter: string[];
+  pendingFollowupFilter?: string[];
   sourceFilter: string[];
   priorityFilter: string[];
   materialsFilter: string[];

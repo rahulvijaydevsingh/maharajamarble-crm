@@ -50,6 +50,8 @@ interface AddToCustomerDialogProps {
     source?: string;
     notes?: string;
     site_plus_code?: string;
+    additional_contacts?: unknown;
+    referred_by?: unknown;
   };
   onConvert: (conversionData: any) => void;
 }
@@ -192,6 +194,27 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         });
       } else {
         // Normal path: create new customer
+        const referredByValue =
+          typeof leadData.referred_by === "string"
+            ? { id: null, name: leadData.referred_by }
+            : leadData.referred_by &&
+                typeof leadData.referred_by === "object" &&
+                !Array.isArray(leadData.referred_by)
+              ? {
+                  id:
+                    "id" in leadData.referred_by &&
+                    typeof leadData.referred_by.id === "string"
+                      ? leadData.referred_by.id
+                      : null,
+                  name:
+                    "name" in leadData.referred_by &&
+                    typeof leadData.referred_by.name === "string"
+                      ? leadData.referred_by.name
+                      : null,
+                }
+              : { id: null, name: null };
+
+        // Normal path: create new customer
         const customerData = {
           name: leadData.name,
           phone: leadData.phone || '',
@@ -202,6 +225,11 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           source: leadData.source || 'lead_conversion',
           notes: leadData.notes || null,
           site_plus_code: leadData.site_plus_code || null,
+          additional_contacts: Array.isArray(leadData.additional_contacts)
+            ? leadData.additional_contacts
+            : [],
+          referred_by: referredByValue.name,
+          referred_by_professional_id: referredByValue.id,
           created_from_lead_id: leadData.id,
           status: 'active',
           customer_type: 'individual',

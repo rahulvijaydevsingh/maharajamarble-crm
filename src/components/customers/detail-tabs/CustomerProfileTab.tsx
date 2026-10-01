@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +19,6 @@ import {
   Phone, 
   Mail, 
   MapPin, 
-  Building2, 
   User, 
   Calendar, 
   DollarSign,
@@ -35,6 +35,7 @@ import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { realtimeRegistry } from '@/lib/realtimeRegistry';
+import { QUOTATION_UNITS } from '@/types/quotation';
 
 interface CustomerProfileTabProps {
   customer: Customer;
@@ -44,10 +45,19 @@ interface CustomerProfileTabProps {
 
 export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: CustomerProfileTabProps) {
   const { getOptionLabel } = useControlPanelSettings();
+  const navigate = useNavigate();
   const { updateCustomer } = useCustomers();
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [originalLead, setOriginalLead] = useState<{
+    id: string;
+    source: string;
+    construction_stage: string | null;
+    material_interests: string[] | null;
+    site_location: string | null;
+    estimated_quantity: number | null;
+  } | null>(null);
   const [latestActivity, setLatestActivity] = useState<{
     activity_type: string;
     title: string;
@@ -56,6 +66,34 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
   } | null>(null);
 
   useEffect(() => {
+    setOriginalLead(null);
+    const leadIds = Array.from(
+      new Set(
+        [customer.created_from_lead_id, customer.lead_id, customer.original_lead_id].filter(
+          (value): value is string => Boolean(value),
+        ),
+      ),
+    );
+
+    if (leadIds.length > 0) {
+      (async () => {
+        for (const leadId of leadIds) {
+          const { data } = await supabase
+            .from("leads")
+            .select(
+              "id, source, construction_stage, material_interests, site_location, estimated_quantity",
+            )
+            .eq("id", leadId)
+            .maybeSingle();
+
+          if (data) {
+            setOriginalLead(data);
+            break;
+          }
+        }
+      })();
+    }
+
     setLatestActivity(null);
     if (!customer?.id) return;
     const load = () => {
@@ -203,7 +241,17 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</div>
             <div className="font-medium">
-              {customer.source ? getOptionLabel('customers', 'customer_source', customer.source) : '-'}
+              {customer.source
+  ? (() => {
+      const label = getOptionLabel("leads", "source", customer.source);
+      return label === customer.source
+        ? customer.source
+            .split("_")
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ")
+        : label;
+    })()
+  : "—"}
             </div>
           </CardContent>
         </Card>
@@ -291,7 +339,6 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
                 <div>
                   <div className="text-xs text-muted-foreground">Address</div>
                   <div className="font-medium">{customer.address}</div>
-                  {customer.city && <div className="text-sm text-muted-foreground">{customer.city}</div>}
                 </div>
               </div>
             )}
@@ -313,17 +360,6 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
               </div>
             )}
 
-            {customer.industry && (
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-indigo-50 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-indigo-600" />
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Industry</div>
-                  <div className="font-medium capitalize">{customer.industry.replace(/_/g, ' ')}</div>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -405,6 +441,164 @@ export function CustomerProfileTab({ customer, onEdit, onViewActivityLog }: Cust
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+              Purchase details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {customer.materials_purchased?.length ? (
+              <div>
+                <div className="mb-2 text-xs text-muted-foreground">Materials purchased</div>
+                <div className="flex flex-wrap gap-2">
+                  {customer.materials_purchased.map((value) => (
+                    <Badge key={value} variant="secondary">
+                      {getOptionLabel("materials", "materials", value)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {customer.quantity_purchased !== null && customer.quantity_purchased !== undefined ? (
+              <div>
+                <div className="text-xs text-muted-foreground">Quantity</div>
+                <div className="font-medium">
+                  {customer.quantity_purchased}{" "}
+                  {QUOTATION_UNITS.find((unit) => unit.value === customer.quantity_unit)?.label ||
+                    customer.quantity_unit}
+                </div>
+              </div>
+            ) : null}
+            {customer.bill_number ? (
+              <div>
+                <div className="text-xs text-muted-foreground">Bill number</div>
+                <div className="font-medium">{customer.bill_number}</div>
+              </div>
+            ) : null}
+            {customer.profession ? (
+              <div>
+                <div className="text-xs text-muted-foreground">Profession</div>
+                <div className="font-medium">{customer.profession}</div>
+              </div>
+            ) : null}
+            {customer.pending_followups?.length ? (
+              <div>
+                <div className="mb-2 text-xs text-muted-foreground">Pending follow-ups</div>
+                <div className="flex flex-wrap gap-2">
+                  {customer.pending_followups.map((value) => (
+                    <Badge key={value} variant="outline">
+                      {getOptionLabel("customers", "pending_followup", value)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {customer.referred_by ? (
+              <div>
+                <div className="text-xs text-muted-foreground">Referred by</div>
+                <div className="font-medium">{customer.referred_by}</div>
+              </div>
+            ) : null}
+            {Array.isArray(customer.additional_contacts) && customer.additional_contacts.length > 0 ? (
+              <div>
+                <div className="mb-2 text-xs text-muted-foreground">Additional contacts</div>
+                <div className="space-y-2">
+                  {customer.additional_contacts.map((contact, index) => {
+                    if (!contact || typeof contact !== "object" || Array.isArray(contact)) return null;
+                    const record = contact as Record<string, unknown>;
+                    return (
+                      <div key={index} className="rounded-md border p-2">
+                        <div className="font-medium">
+                          {typeof record.name === "string" ? record.name : "—"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {[
+                            typeof record.designation === "string" ? record.designation : "",
+                            typeof record.phone === "string" ? record.phone : "",
+                            typeof record.email === "string" ? record.email : "",
+                          ].filter(Boolean).join(" • ")}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {customer.site_plus_code ? (
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">Location code</div>
+                <PlusCodeLink
+                  plusCode={customer.site_plus_code}
+                  log={{
+                    customerId: customer.id,
+                    relatedEntityType: "customer",
+                    relatedEntityId: customer.id,
+                  }}
+                />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {originalLead ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                Original lead
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Lead source</div>
+                <div className="font-medium">{getOptionLabel("leads", "source", originalLead.source)}</div>
+              </div>
+              {originalLead.construction_stage ? (
+                <div>
+                  <div className="text-xs text-muted-foreground">Construction stage</div>
+                  <div className="font-medium">
+                    {getOptionLabel("leads", "construction_stage", originalLead.construction_stage)}
+                  </div>
+                </div>
+              ) : null}
+              {originalLead.material_interests?.length ? (
+                <div>
+                  <div className="mb-2 text-xs text-muted-foreground">Material interests</div>
+                  <div className="flex flex-wrap gap-2">
+                    {originalLead.material_interests.map((value) => (
+                      <Badge key={value} variant="secondary">
+                        {getOptionLabel("materials", "materials", value)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {originalLead.site_location ? (
+                <div>
+                  <div className="text-xs text-muted-foreground">Site location</div>
+                  <div className="font-medium">{originalLead.site_location}</div>
+                </div>
+              ) : null}
+              {originalLead.estimated_quantity !== null && originalLead.estimated_quantity !== undefined ? (
+                <div>
+                  <div className="text-xs text-muted-foreground">Estimated quantity</div>
+                  <div className="font-medium">{originalLead.estimated_quantity}</div>
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/leads?view=" + originalLead.id)}
+              >
+                View original lead
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       {/* Notes Section */}

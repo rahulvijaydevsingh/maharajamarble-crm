@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { NotificationDropdown } from "./NotificationDropdown";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
-import { AddCustomerDialog } from "@/components/customers/AddCustomerDialog";
+import { SmartCustomerForm } from "@/components/customers/SmartCustomerForm";
 import { AddProfessionalDialog } from "@/components/professionals/AddProfessionalDialog";
 import { AddQuotationDialog } from "@/components/quotations/AddQuotationDialog";
 import { AddTaskDialog } from "@/components/tasks/AddTaskDialog";
@@ -374,7 +374,7 @@ export function Header() {
       </header>
 
       {/* Quick Add Dialogs */}
-      <AddCustomerDialog open={addCustomerOpen} onOpenChange={setAddCustomerOpen} />
+      <SmartCustomerForm open={addCustomerOpen} onOpenChange={setAddCustomerOpen} />
       <AddProfessionalDialog open={addProfessionalOpen} onOpenChange={setAddProfessionalOpen} />
       <AddQuotationDialog open={addQuotationOpen} onOpenChange={setAddQuotationOpen} />
       <AddTaskDialog open={addTaskOpen} onOpenChange={setAddTaskOpen} onTaskCreate={() => { setAddTaskOpen(false); toast({ title: "Task created" }); }} />

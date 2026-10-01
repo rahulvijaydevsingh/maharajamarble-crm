@@ -706,6 +706,27 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
                 email: lead.email, company_name: lead.firm_name, address: lead.site_location || lead.address,
                 assigned_to: lead.assigned_to, source: lead.source, lead_id: lead.id, notes: lead.notes,
                 customer_type: "individual", status: "active", priority: lead.priority,
+                additional_contacts: Array.isArray(lead.additional_contacts)
+                  ? lead.additional_contacts
+                  : [],
+                referred_by:
+                  lead.referred_by &&
+                  typeof lead.referred_by === "object" &&
+                  !Array.isArray(lead.referred_by) &&
+                  "name" in lead.referred_by &&
+                  typeof lead.referred_by.name === "string"
+                    ? lead.referred_by.name
+                    : typeof lead.referred_by === "string"
+                      ? lead.referred_by
+                      : null,
+                referred_by_professional_id:
+                  lead.referred_by &&
+                  typeof lead.referred_by === "object" &&
+                  !Array.isArray(lead.referred_by) &&
+                  "id" in lead.referred_by &&
+                  typeof lead.referred_by.id === "string"
+                    ? lead.referred_by.id
+                    : null,
               });
               await updateLead(leadId, { status: "won" });
             } else if (bulkActionType === "status") {
