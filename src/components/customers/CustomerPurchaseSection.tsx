@@ -53,6 +53,9 @@ function MultiSelectField({
 }) {
   const [open, setOpen] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mouse-leave closing is armed only after the pointer has been inside the list, so the
+  // menu never closes while the pointer is still travelling from the button to the list.
+  const pointerHasEnteredMenuRef = useRef(false);
 
   const cancelCloseTimer = () => {
     if (closeTimerRef.current) {
@@ -62,7 +65,7 @@ function MultiSelectField({
   };
 
   const scheduleMouseClose = (pointerType: string) => {
-    if (pointerType !== "mouse") {
+    if (pointerType !== "mouse" || !pointerHasEnteredMenuRef.current) {
       return;
     }
 
@@ -72,6 +75,12 @@ function MultiSelectField({
       closeTimerRef.current = null;
     }, 400);
   };
+
+  useEffect(() => {
+    if (!open) {
+      pointerHasEnteredMenuRef.current = false;
+    }
+  }, [open]);
 
   useEffect(() => {
     return () => {
@@ -102,7 +111,6 @@ function MultiSelectField({
             variant="outline"
             className="min-h-11 h-auto w-full justify-between gap-2 text-left font-normal"
             onPointerEnter={cancelCloseTimer}
-            onPointerLeave={(event) => scheduleMouseClose(event.pointerType)}
           >
             <span className="flex min-w-0 flex-wrap gap-1">
               {selectedLabels.length > 0 ? (
@@ -122,7 +130,12 @@ function MultiSelectField({
         <DropdownMenuContent
           align="start"
           className="w-[min(22rem,calc(100vw-2rem))] p-0"
-          onPointerEnter={cancelCloseTimer}
+          onPointerEnter={(event) => {
+            if (event.pointerType === "mouse") {
+              pointerHasEnteredMenuRef.current = true;
+            }
+            cancelCloseTimer();
+          }}
           onPointerLeave={(event) => scheduleMouseClose(event.pointerType)}
         >
           <DropdownMenuLabel className="px-3 py-3">{label}</DropdownMenuLabel>

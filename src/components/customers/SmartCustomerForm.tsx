@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { addDays, format, startOfToday } from "date-fns";
 import { AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CustomerInsert, useCustomers } from "@/hooks/useCustomers";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 import { useTasks } from "@/hooks/useTasks";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { CustomerAddressSection, isValidCustomerPlusCode } from "./CustomerAddressSection";
 import { CustomerDetailsSection } from "./CustomerDetailsSection";
@@ -81,6 +82,12 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
   const [reviewEnabled, setReviewEnabled] = useState(true);
   const [reviewDueDate, setReviewDueDate] = useState(getDateFromToday(7));
   const [reviewDueTime, setReviewDueTime] = useState("10:00");
+  const { defaultRemindersEnabled } = useSystemSettings();
+  // Read through a ref so a settings change never triggers a form reset while the dialog is open.
+  const defaultRemindersRef = useRef(!!defaultRemindersEnabled);
+  useEffect(() => {
+    defaultRemindersRef.current = !!defaultRemindersEnabled;
+  }, [defaultRemindersEnabled]);
   const [reviewReminderEnabled, setReviewReminderEnabled] = useState(false);
   const [reviewReminderTime, setReviewReminderTime] = useState("60");
   const [materialEnabled, setMaterialEnabled] = useState(false);
@@ -119,12 +126,12 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
     setReviewEnabled(true);
     setReviewDueDate(getDateFromToday(7));
     setReviewDueTime("10:00");
-    setReviewReminderEnabled(false);
+    setReviewReminderEnabled(defaultRemindersRef.current);
     setReviewReminderTime("60");
     setMaterialEnabled(false);
     setMaterialDueDate(getDateFromToday(30));
     setMaterialDueTime("10:00");
-    setMaterialReminderEnabled(false);
+    setMaterialReminderEnabled(defaultRemindersRef.current);
     setMaterialReminderTime("60");
     setValidationErrors({});
     setDuplicateResults({});
