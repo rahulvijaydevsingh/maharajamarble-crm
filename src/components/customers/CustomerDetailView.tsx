@@ -55,6 +55,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { QUOTATION_UNITS } from '@/types/quotation';
 import { extractReferredBy, normalizeProfessionalRefType } from '@/lib/referredBy';
+import type { ProfessionalRef } from '@/types/lead';
 import { useReminders } from '@/hooks/useReminders';
 import { useZLayer } from '@/contexts/ZLayerContext';
 
@@ -150,12 +151,13 @@ export function CustomerDetailView({
     setConvertingToLead(true);
     try {
       const storedReferredBy = extractReferredBy(customer.referred_by);
-      let referredByForLead = storedReferredBy.name
+      // Falls back to the stored referral name when the linked professional cannot be loaded below.
+      let referredByForLead: ProfessionalRef | null = storedReferredBy.name
         ? {
             id: storedReferredBy.id || "",
             name: storedReferredBy.name,
             firmName: "",
-            type: "contractor" as const,
+            type: "contractor",
           }
         : null;
 
@@ -177,9 +179,7 @@ export function CustomerDetailView({
             phone: professional.phone || undefined,
             email: professional.email || undefined,
           };
-        } else if (referredByForLead) {
-          // Fall back to the stored referral name when the referenced professional cannot be loaded.
-        }
+
       }
 
       const purchaseLines: string[] = [];

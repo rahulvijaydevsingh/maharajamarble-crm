@@ -18,7 +18,7 @@ interface CustomerAddressSectionProps {
 }
 
 const OPEN_LOCATION_CODE_PATTERN =
-  /^([23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{2,6})(?:\s+[A-Za-z0-9][A-Za-z0-9 ,.\-]*)?$/i;
+  /^([23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{2,6})(?:\s+[A-Za-z0-9][A-Za-z0-9 ,.-]*)?$/i;
 
 export function isValidCustomerPlusCode(value: string): boolean {
   return !value.trim() || OPEN_LOCATION_CODE_PATTERN.test(value.trim());

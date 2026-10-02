@@ -62,7 +62,9 @@ export function CustomerTaskScheduleFields({
             value={dueDate}
             min={minDate}
             onChange={(event) => onDueDateChange(event.target.value)}
-            className={validationErrors.dueDate ? "border-destructive" : ""}
+            className={
+              validationErrors.dueDate ? "min-h-11 border-destructive" : "min-h-11"
+            }
           />
           {validationErrors.dueDate && (
             <p className="text-sm text-destructive">{validationErrors.dueDate}</p>
@@ -76,6 +78,7 @@ export function CustomerTaskScheduleFields({
             type="time"
             value={dueTime}
             onChange={(event) => onDueTimeChange(event.target.value)}
+            className="min-h-11"
           />
         </div>
       </div>

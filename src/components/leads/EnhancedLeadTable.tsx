@@ -709,13 +709,17 @@ export function EnhancedLeadTable({ onEditLead }: EnhancedLeadTableProps) {
                   member.id === assignedCandidate ||
                   member.name?.trim() === assignedCandidate,
               );
+              const looksLikeAccountId =
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                  assignedCandidate,
+                ) || assignedCandidate.includes("@");
               const customerAssignedName =
                 matchedStaff?.name?.trim() ||
-                (assignedCandidate.includes(" ") ? assignedCandidate : "");
+                (looksLikeAccountId ? "" : assignedCandidate);
 
               if (!customerAssignedName) {
                 throw new Error(
-                  "The lead has no resolvable staff full name for customer assignment.",
+                  "The lead's assignee is empty or an unmatched account id, so a staff name cannot be used for the customer.",
                 );
               }
 

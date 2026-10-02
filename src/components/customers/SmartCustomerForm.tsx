@@ -209,16 +209,14 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
     return Object.keys(errors).length === 0;
   };
 
+  // addTask already shows its own error toast; this only reports success so the caller can summarise.
   const createTaskSafely = async (task: Parameters<typeof addTask>[0]) => {
     try {
       await addTask(task);
+      return true;
     } catch (error) {
       console.error("Failed to create customer task:", error);
-      toast({
-        title: "Task creation failed",
-        description: "Failed to create task: " + task.title,
-        variant: "destructive",
-      });
+      return false;
     }
   };
 
@@ -303,8 +301,10 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         related_entity_id: newCustomer.id,
       };
 
+      const failedTasks: string[] = [];
+
       if (reviewEnabled) {
-        await createTaskSafely({
+        const created = await createTaskSafely({
           ...baseTask,
           title: "Collect feedback from " + primaryContact.name.trim(),
           type: "Feedback Collection",
@@ -313,6 +313,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
           reminder: reviewReminderEnabled,
           reminder_time: reviewReminderEnabled ? reviewReminderTime : null,
         });
+        if (!created) failedTasks.push("review & feedback follow-up");
       }
 
       if (materialEnabled && pendingFollowups.length > 0) {
@@ -322,7 +323,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
           )
           .filter((label): label is string => Boolean(label));
 
-        await createTaskSafely({
+        const created = await createTaskSafely({
           ...baseTask,
           title:
             "Follow up: " +
@@ -335,6 +336,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
           reminder: materialReminderEnabled,
           reminder_time: materialReminderEnabled ? materialReminderTime : null,
         });
+        if (!created) failedTasks.push("material follow-up");
       }
 
       logStaffAction(
@@ -343,11 +345,24 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         "customer",
       );
 
-      toast({
-        title: "Customer Created Successfully",
-        description:
-          "Customer " + primaryContact.name.trim() + " has been created.",
-      });
+      if (failedTasks.length > 0) {
+        toast({
+          title: "Customer created, but a follow-up task failed",
+          description:
+            "Customer " +
+            primaryContact.name.trim() +
+            " was created. These tasks were not created, so please add them from the customer's Tasks tab: " +
+            failedTasks.join(", ") +
+            ".",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Customer Created Successfully",
+          description:
+            "Customer " + primaryContact.name.trim() + " has been created.",
+        });
+      }
 
       onOpenChange(false);
       resetForm();
@@ -365,7 +380,10 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[90vh] max-h-[90vh] w-[calc(100vw-1rem)] flex max-w-[800px] flex-col p-0">
+      <DialogContent
+        className="h-[90vh] max-h-[90vh] w-[calc(100vw-1rem)] flex max-w-[800px] flex-col p-0"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <form
           onSubmit={handleSubmit}
           className="flex h-full flex-col overflow-hidden"

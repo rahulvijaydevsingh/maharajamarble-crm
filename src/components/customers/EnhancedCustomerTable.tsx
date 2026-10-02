@@ -104,7 +104,6 @@ const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   pendingTasks: true,
   created_at: true,
   address: false,
-  industry: false,
   notes: false,
 };
 

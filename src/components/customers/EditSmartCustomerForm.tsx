@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -53,6 +54,7 @@ export function EditSmartCustomerForm({
 }: EditSmartCustomerFormProps) {
   const { toast } = useToast();
   const { staffMembers } = useActiveStaff();
+  const existingAssignedName = customer.assigned_to?.trim() || "";
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contacts, setContacts] = useState<ContactPerson[]>([]);
   const [address, setAddress] = useState("");
@@ -152,7 +154,10 @@ export function EditSmartCustomerForm({
     }
 
     if (!assignedTo) {
-      errors.assignedTo = "Select an active team member.";
+      // A customer whose assignee is no longer an active team member keeps that assignee unless changed.
+      if (!existingAssignedName) {
+        errors.assignedTo = "Select an active team member.";
+      }
     } else if (!staffMembers.find((member) => member.id === assignedTo)?.name?.trim()) {
       errors.assignedTo = "The selected team member has no resolvable full name.";
     }
@@ -173,8 +178,10 @@ export function EditSmartCustomerForm({
       return;
     }
 
-    const assignedName =
+    const selectedStaffName =
       staffMembers.find((member) => member.id === assignedTo)?.name?.trim() || "";
+    const assignedName =
+      selectedStaffName || (!assignedTo ? existingAssignedName : "");
 
     if (!assignedName) {
       setValidationErrors((current) => ({
@@ -279,6 +286,12 @@ export function EditSmartCustomerForm({
               onAssignedToChange={setAssignedTo}
               validationErrors={validationErrors}
             />
+            {staffMembers.length > 0 && !assignedTo && existingAssignedName && (
+              <p className="text-xs text-muted-foreground">
+                Currently assigned to {existingAssignedName}, who is not an active
+                team member. Saving keeps this assignee unless you choose someone else.
+              </p>
+            )}
             <Separator />
             <CustomerDetailsSection
               profession={profession}

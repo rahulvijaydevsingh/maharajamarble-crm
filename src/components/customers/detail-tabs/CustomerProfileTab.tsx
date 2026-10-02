@@ -19,6 +19,7 @@ import {
   Phone, 
   Mail, 
   MapPin, 
+  Building2, 
   User, 
   Calendar, 
   DollarSign,
