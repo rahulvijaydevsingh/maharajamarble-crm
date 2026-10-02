@@ -1,24 +1,22 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import React, { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, ArrowLeft } from "lucide-react";
-import { addDays, format } from "date-fns";
-
-import { ContactDetailsSection, ContactPerson } from "@/components/leads/smart-form/ContactDetailsSection";
-import { SiteDetailsSection } from "@/components/leads/smart-form/SiteDetailsSection";
-import { SourceRelationshipSection } from "@/components/leads/smart-form/SourceRelationshipSection";
-import { ActionTriggerSection } from "@/components/leads/smart-form/ActionTriggerSection";
-
 import {
-  LeadSource,
-  ConstructionStage,
-  FollowUpPriority,
-  ProfessionalRef,
-} from "@/types/lead";
-import { TEAM_MEMBERS } from "@/constants/leadConstants";
+  ContactDetailsSection,
+  ContactPerson,
+} from "@/components/leads/smart-form/ContactDetailsSection";
+import { SourceRelationshipSection } from "@/components/leads/smart-form/SourceRelationshipSection";
+import { LeadSource, ProfessionalRef, DuplicateCheckResult } from "@/types/lead";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { Customer } from "@/hooks/useCustomers";
+import { CustomerAddressSection, isValidCustomerPlusCode } from "./CustomerAddressSection";
+import { CustomerDetailsSection } from "./CustomerDetailsSection";
+import { CustomerPurchaseSection } from "./CustomerPurchaseSection";
+import { serializeCustomerAdditionalContacts } from "@/lib/customerContacts";
 
 interface EditSmartCustomerFormProps {
   customer: Customer;
@@ -26,107 +24,173 @@ interface EditSmartCustomerFormProps {
   onCancel: () => void;
 }
 
-export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartCustomerFormProps) {
+function parseAdditionalContacts(value: unknown): ContactPerson[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item),
+    )
+    .map((item, index) => ({
+      id: "contact_" + Date.now() + "_" + index,
+      designation:
+        typeof item.designation === "string" ? item.designation : "owner",
+      name: typeof item.name === "string" ? item.name : "",
+      email: typeof item.email === "string" ? item.email : "",
+      phone: typeof item.phone === "string" ? item.phone : "",
+      alternatePhone:
+        typeof item.alternatePhone === "string" ? item.alternatePhone : "",
+      firmName: typeof item.firmName === "string" ? item.firmName : "",
+    }));
+}
+
+export function EditSmartCustomerForm({
+  customer,
+  onSave,
+  onCancel,
+}: EditSmartCustomerFormProps) {
   const { toast } = useToast();
+  const { staffMembers } = useActiveStaff();
+  const existingAssignedName = customer.assigned_to?.trim() || "";
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Form state - Group 1: Contacts
   const [contacts, setContacts] = useState<ContactPerson[]>([]);
-
-  // Form state - Group 2: Site Details
-  const [siteLocation, setSiteLocation] = useState("");
-  const [sitePhotoUrl, setSitePhotoUrl] = useState<string | null>(null);
-  const [sitePlusCode, setSitePlusCode] = useState<string | null>(null);
-  const [constructionStage, setConstructionStage] = useState<ConstructionStage>("plastering");
-  const [estimatedQuantity, setEstimatedQuantity] = useState<number | null>(null);
-  const [materialInterests, setMaterialInterests] = useState<string[]>([]);
-  const [otherMaterial, setOtherMaterial] = useState("");
-
-  // Form state - Group 3: Source & Relationship
+  const [address, setAddress] = useState("");
+  const [sitePlusCode, setSitePlusCode] = useState("");
   const [leadSource, setLeadSource] = useState<LeadSource>("walk_in");
-  const [assignedTo, setAssignedTo] = useState(TEAM_MEMBERS[0].id);
+  const [assignedTo, setAssignedTo] = useState("");
   const [referredBy, setReferredBy] = useState<ProfessionalRef | null>(null);
-
-  // Form state - Group 4: Action Trigger
-  const [followUpPriority, setFollowUpPriority] = useState<FollowUpPriority>("normal");
-  const [nextActionDate, setNextActionDate] = useState(addDays(new Date(), 2));
-  const [nextActionTime, setNextActionTime] = useState("10:00");
+  const [profession, setProfession] = useState("");
+  const [materialsPurchased, setMaterialsPurchased] = useState<string[]>([]);
+  const [quantityPurchased, setQuantityPurchased] = useState<number | null>(null);
+  const [quantityUnit, setQuantityUnit] = useState("sqft");
+  const [billNumber, setBillNumber] = useState("");
+  const [pendingFollowups, setPendingFollowups] = useState<string[]>([]);
   const [initialNote, setInitialNote] = useState("");
-  const [reminderEnabled, setReminderEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState("30");
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [formResetSignal, setFormResetSignal] = useState(0);
 
-  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
-
-  // Initialize form with customer data
   useEffect(() => {
-    if (customer) {
-      // Set primary contact from customer data
-      setContacts([
-        {
-          id: `contact_${Date.now()}`,
-          designation: "owner",
-          name: customer.name,
-          email: customer.email || "",
-          phone: customer.phone,
-          alternatePhone: customer.alternate_phone || "",
-          firmName: customer.company_name || "",
-        },
-      ]);
+    const primary: ContactPerson = {
+      id: "contact_" + Date.now(),
+      designation: "owner",
+      name: customer.name,
+      email: customer.email || "",
+      phone: customer.phone,
+      alternatePhone: customer.alternate_phone || "",
+      firmName: customer.company_name || "",
+    };
 
-      // Set site details
-      setSiteLocation(customer.address || "");
+    setContacts([primary, ...parseAdditionalContacts(customer.additional_contacts)]);
+    setAddress(customer.address || "");
+    setSitePlusCode(customer.site_plus_code || "");
+    setLeadSource((customer.source as LeadSource) || "walk_in");
+    setCustomerAssignment(customer.assigned_to);
+    setReferredBy(
+      customer.referred_by
+        ? {
+            id: customer.referred_by_professional_id || "",
+            name: customer.referred_by,
+            firmName: "",
+            type: "contractor",
+          }
+        : null,
+    );
+    setProfession(customer.profession || "");
+    setMaterialsPurchased(customer.materials_purchased || []);
+    setQuantityPurchased(customer.quantity_purchased ?? null);
+    setQuantityUnit(customer.quantity_unit || "sqft");
+    setBillNumber(customer.bill_number || "");
+    setPendingFollowups(customer.pending_followups || []);
+    setInitialNote(customer.notes || "");
+    setValidationErrors({});
+    setFormResetSignal((value) => value + 1);
+  }, [customer, staffMembers]);
 
-      // Set source & relationship
-      setLeadSource((customer.source as LeadSource) || "walk_in");
-      const memberMatch = TEAM_MEMBERS.find(m => m.name === customer.assigned_to);
-      setAssignedTo(memberMatch?.id || TEAM_MEMBERS[0].id);
-
-      // Set action trigger
-      setFollowUpPriority(
-        customer.priority === 1 ? "urgent" : customer.priority <= 3 ? "normal" : "low"
-      );
-      setNextActionDate(customer.next_follow_up ? new Date(customer.next_follow_up) : addDays(new Date(), 2));
-      setInitialNote(customer.notes || "");
-    }
-  }, [customer]);
-
-  const handleSitePhotoChange = (photoUrl: string | null, plusCode: string | null) => {
-    setSitePhotoUrl(photoUrl);
-    setSitePlusCode(plusCode);
+  const setCustomerAssignment = (assignedName: string | null | undefined) => {
+    const normalizedName = assignedName?.trim().toLowerCase() || "";
+    const match = staffMembers.find(
+      (member) => member.name?.trim().toLowerCase() === normalizedName,
+    );
+    setAssignedTo(match?.id || "");
   };
 
-  // Validation
-  const validateForm = (): boolean => {
-    const errors: { [key: string]: string } = {};
+  const handleDuplicateFound = useCallback(
+    (_result: DuplicateCheckResult, _contactKey: string) => {
+      // Editing an existing customer does not block on the current customer's own phone.
+    },
+    [],
+  );
 
-    // Validate contacts
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+
     contacts.forEach((contact, index) => {
       if (!contact.name.trim()) {
-        errors[`contacts.${index}.name`] = "Name is required";
+        errors["contacts." + index + ".name"] = "Name is required";
       }
       if (!contact.phone || contact.phone.length !== 10) {
-        errors[`contacts.${index}.phone`] = "Valid 10-digit phone number is required";
+        errors["contacts." + index + ".phone"] =
+          "Valid 10-digit phone number is required";
       }
       if (contact.alternatePhone && contact.alternatePhone.length !== 10) {
-        errors[`contacts.${index}.alternatePhone`] = "Invalid phone number (must be 10 digits)";
+        errors["contacts." + index + ".alternatePhone"] =
+          "Invalid phone number (must be 10 digits)";
       }
-      if (contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
-        errors[`contacts.${index}.email`] = "Invalid email format";
+      if (contact.email && !/^\S+@\S+\.\S+$/.test(contact.email)) {
+        errors["contacts." + index + ".email"] = "Invalid email format";
       }
     });
+
+    if (!address.trim()) {
+      errors.address = "Address is required";
+    }
+
+    if (sitePlusCode.trim() && !isValidCustomerPlusCode(sitePlusCode)) {
+      errors.sitePlusCode =
+        "Enter a valid full or short Plus Code, or leave it blank.";
+    }
+
+    if (!assignedTo) {
+      // A customer whose assignee is no longer an active team member keeps that assignee unless changed.
+      if (!existingAssignedName) {
+        errors.assignedTo = "Select an active team member.";
+      }
+    } else if (!staffMembers.find((member) => member.id === assignedTo)?.name?.trim()) {
+      errors.assignedTo = "The selected team member has no resolvable full name.";
+    }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  // Submit handler
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
 
     if (!validateForm()) {
       toast({
         title: "Validation Error",
-        description: "Please fix the highlighted errors before submitting.",
+        description: "Please fix the highlighted errors before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedStaffName =
+      staffMembers.find((member) => member.id === assignedTo)?.name?.trim() || "";
+    const assignedName =
+      selectedStaffName || (!assignedTo ? existingAssignedName : "");
+
+    if (!assignedName) {
+      setValidationErrors((current) => ({
+        ...current,
+        assignedTo: "Select a team member with a resolvable full name.",
+      }));
+      toast({
+        title: "Validation Error",
+        description: "A valid assigned team member is required.",
         variant: "destructive",
       });
       return;
@@ -136,29 +200,36 @@ export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartC
 
     try {
       const primaryContact = contacts[0];
-      const assignedMember = TEAM_MEMBERS.find(m => m.id === assignedTo);
-
       const updatedData: Partial<Customer> = {
-        name: primaryContact.name,
+        name: primaryContact.name.trim(),
         phone: primaryContact.phone,
         alternate_phone: primaryContact.alternatePhone || null,
         email: primaryContact.email || null,
         company_name: primaryContact.firmName || null,
-        address: siteLocation,
+        address: address.trim(),
         source: leadSource,
-        assigned_to: assignedMember?.name || assignedTo,
-        priority: followUpPriority === "urgent" ? 1 : followUpPriority === "normal" ? 3 : 5,
+        assigned_to: assignedName,
         notes: initialNote || null,
-        next_follow_up: format(nextActionDate, "yyyy-MM-dd"),
+        site_plus_code: sitePlusCode.trim() || null,
+        additional_contacts: serializeCustomerAdditionalContacts(contacts),
+        referred_by: referredBy?.name?.trim() || null,
+        referred_by_professional_id: referredBy?.id || null,
+        profession: profession.trim() || null,
+        materials_purchased: materialsPurchased,
+        quantity_purchased: quantityPurchased,
+        quantity_unit: quantityUnit,
+        bill_number: billNumber.trim() || null,
+        pending_followups: pendingFollowups,
       };
 
       await onSave(customer.id, updatedData);
-
       toast({
         title: "Customer Updated",
-        description: `${primaryContact.name}'s information has been updated.`,
+        description:
+          primaryContact.name.trim() + "'s information has been updated.",
       });
     } catch (error) {
+      console.error("Failed to update customer:", error);
       toast({
         title: "Error",
         description: "Failed to update customer. Please try again.",
@@ -170,9 +241,8 @@ export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartC
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 pb-4 border-b">
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 border-b pb-4">
         <Button variant="ghost" size="icon" onClick={onCancel}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -184,41 +254,29 @@ export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartC
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-1 flex-col overflow-hidden"
+      >
         <ScrollArea className="flex-1 pr-4">
           <div className="space-y-6 py-4">
-            {/* Group 1: Contact Details */}
             <ContactDetailsSection
               contacts={contacts}
               onContactsChange={setContacts}
-              onDuplicateFound={() => {}}
+              onDuplicateFound={handleDuplicateFound}
               validationErrors={validationErrors}
               duplicateResults={{}}
             />
-
             <Separator />
-
-            {/* Group 2: Site Details */}
-            <SiteDetailsSection
-              siteLocation={siteLocation}
-              sitePhotoUrl={sitePhotoUrl}
+            <CustomerAddressSection
+              address={address}
               sitePlusCode={sitePlusCode}
-              constructionStage={constructionStage}
-              estimatedQuantity={estimatedQuantity}
-              materialInterests={materialInterests}
-              otherMaterial={otherMaterial}
-              onSiteLocationChange={setSiteLocation}
-              onSitePhotoChange={handleSitePhotoChange}
-              onConstructionStageChange={setConstructionStage}
-              onEstimatedQuantityChange={setEstimatedQuantity}
-              onMaterialInterestsChange={setMaterialInterests}
-              onOtherMaterialChange={setOtherMaterial}
+              onAddressChange={setAddress}
+              onSitePlusCodeChange={setSitePlusCode}
               validationErrors={validationErrors}
+              resetSignal={formResetSignal}
             />
-
             <Separator />
-
-            {/* Group 3: Source & Relationship */}
             <SourceRelationshipSection
               leadSource={leadSource}
               referredBy={referredBy}
@@ -228,37 +286,50 @@ export function EditSmartCustomerForm({ customer, onSave, onCancel }: EditSmartC
               onAssignedToChange={setAssignedTo}
               validationErrors={validationErrors}
             />
-
+            {staffMembers.length > 0 && !assignedTo && existingAssignedName && (
+              <p className="text-xs text-muted-foreground">
+                Currently assigned to {existingAssignedName}, who is not an active
+                team member. Saving keeps this assignee unless you choose someone else.
+              </p>
+            )}
             <Separator />
-
-            {/* Group 4: Action Trigger */}
-            <ActionTriggerSection
-              followUpPriority={followUpPriority}
-              nextActionDate={nextActionDate}
-              nextActionTime={nextActionTime}
-              initialNote={initialNote}
-              leadSource={leadSource}
-              constructionStage={constructionStage}
-              onFollowUpPriorityChange={setFollowUpPriority}
-              onNextActionDateChange={setNextActionDate}
-              onNextActionTimeChange={setNextActionTime}
-              onInitialNoteChange={setInitialNote}
-              reminderEnabled={reminderEnabled}
-              reminderTime={reminderTime}
-              onReminderEnabledChange={setReminderEnabled}
-              onReminderTimeChange={setReminderTime}
-              validationErrors={validationErrors}
+            <CustomerDetailsSection
+              profession={profession}
+              onProfessionChange={setProfession}
             />
+            <Separator />
+            <CustomerPurchaseSection
+              materialsPurchased={materialsPurchased}
+              quantityPurchased={quantityPurchased}
+              quantityUnit={quantityUnit}
+              billNumber={billNumber}
+              pendingFollowups={pendingFollowups}
+              onMaterialsPurchasedChange={setMaterialsPurchased}
+              onQuantityPurchasedChange={setQuantityPurchased}
+              onQuantityUnitChange={setQuantityUnit}
+              onBillNumberChange={setBillNumber}
+              onPendingFollowupsChange={setPendingFollowups}
+            />
+            <Separator />
+            <div className="space-y-2 rounded-lg border p-4">
+              <Label htmlFor="customer-edit-initial-note">Initial note</Label>
+              <textarea
+                id="customer-edit-initial-note"
+                value={initialNote}
+                onChange={(event) => setInitialNote(event.target.value)}
+                placeholder="Add an initial note"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
           </div>
         </ScrollArea>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-4 border-t mt-auto">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="mt-auto flex items-center justify-between border-t pt-4">
+          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
             <CheckCircle className="h-4 w-4" />
             <span>Changes will be saved immediately</span>
           </div>
-          <div className="flex gap-2">
+          <div className="ml-auto flex gap-2">
             <Button
               type="button"
               variant="outline"

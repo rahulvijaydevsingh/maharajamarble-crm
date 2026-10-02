@@ -71,6 +71,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CUSTOMER_STATUSES, PRIORITY_LEVELS, CUSTOMER_TYPES } from "@/constants/customerConstants";
 import { CustomerSavedFilterDialog } from "./filters/CustomerSavedFilterDialog";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { getCustomerSourceLabel } from "@/lib/customerSource";
 import { CustomerManageFiltersDialog } from "./filters/CustomerManageFiltersDialog";
 import { CustomerDetailView } from "./CustomerDetailView";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -95,7 +96,6 @@ const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   email: true,
   company_name: true,
   customer_type: true,
-  city: true,
   status: true,
   priority: true,
   total_spent: true,
@@ -104,7 +104,6 @@ const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   pendingTasks: true,
   created_at: true,
   address: false,
-  industry: false,
   notes: false,
 };
 
@@ -114,7 +113,6 @@ interface ColumnVisibility {
   email: boolean;
   company_name: boolean;
   customer_type: boolean;
-  city: boolean;
   status: boolean;
   priority: boolean;
   total_spent: boolean;
@@ -123,7 +121,6 @@ interface ColumnVisibility {
   pendingTasks: boolean;
   created_at: boolean;
   address: boolean;
-  industry: boolean;
   notes: boolean;
 }
 
@@ -191,7 +188,7 @@ interface DateRange {
   to: Date | undefined;
 }
 
-type SortField = "name" | "phone" | "status" | "customer_type" | "city" | "total_spent" | "created_at" | "priority" | "assigned_to" | null;
+type SortField = "name" | "phone" | "status" | "customer_type" | "total_spent" | "created_at" | "priority" | "assigned_to" | null;
 type SortDirection = "asc" | "desc" | null;
 
 interface EnhancedCustomerTableProps {
@@ -243,7 +240,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [assignedToFilter, setAssignedToFilter] = useState<string[]>([]);
-  const [cityFilter, setCityFilter] = useState<string[]>([]);
+  const [pendingFollowupFilter, setPendingFollowupFilter] = useState<string[]>([]);
   const [pendingTasksFilter, setPendingTasksFilter] = useState<string[]>([]);
   const [createdDateRange, setCreatedDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
@@ -332,12 +329,18 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     return { uniqueAssignedTo: options, assigneeDisplayMap: displayMap };
   }, [customers, staffMembers, resolveAssignedToStaff]);
 
-  const uniqueCities = useMemo(() => {
-    const canonical = getFieldOptions('customers', 'city');
-    const canonicalValues = canonical.map(o => o.value);
-    const extra = customers.map(c => c.city).filter((c): c is string => !!c && !canonicalValues.includes(c));
-    return [...canonicalValues, ...new Set(extra)];
+  const uniquePendingFollowups = useMemo(() => {
+    const canonical = getFieldOptions("customers", "pending_followup").map((option) => option.value);
+    const extra = customers
+      .flatMap((customer) => customer.pending_followups || [])
+      .filter((value) => value && !canonical.includes(value));
+    return [...canonical, ...new Set(extra)];
   }, [customers, getFieldOptions]);
+
+  const pendingFollowupLabel = useCallback(
+    (value: string) => getOptionLabel("customers", "pending_followup", value) || value,
+    [getOptionLabel],
+  );
 
   const uniqueStatuses = useMemo(() => {
     const canonical = getFieldOptions('customers', 'customer_status');
@@ -391,7 +394,9 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       const priorityMatch = priorityFilter.length === 0 || priorityFilter.includes(c.priority.toString());
       const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
       const assignedMatch = assignedToFilter.length === 0 || assignedToFilter.includes(resolvedAssignee);
-      const cityMatch = cityFilter.length === 0 || cityFilter.includes(c.city || "");
+      const pendingFollowupMatch =
+        pendingFollowupFilter.length === 0 ||
+        (c.pending_followups || []).some((value) => pendingFollowupFilter.includes(value));
 
       // Pending tasks filter
       let pendingTasksMatch = true;
@@ -437,7 +442,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           normalizePendingTasksRules(activeAdvancedRules),
           { getCustomerTasks }
         );
-      return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && pendingTasksMatch && createdDateMatch && advancedMatch;
+      return searchMatch && statusMatch && typeMatch && priorityMatch && assignedMatch && pendingFollowupMatch && pendingTasksMatch && createdDateMatch && advancedMatch;
     });
 
     if (sortField && sortDirection) {
@@ -454,7 +459,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       });
     }
     return result;
-  }, [customers, searchTerm, sortField, sortDirection, statusFilter, typeFilter, priorityFilter, assignedToFilter, cityFilter, pendingTasksFilter, createdDateRange, getCustomerTasks, activeAdvancedRules]);
+  }, [customers, searchTerm, sortField, sortDirection, statusFilter, typeFilter, priorityFilter, assignedToFilter, pendingFollowupFilter, pendingTasksFilter, createdDateRange, getCustomerTasks, activeAdvancedRules]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -472,6 +477,14 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     setRefreshing(false);
     toast({ title: "Data refreshed" });
   };
+
+  const removedLegacyColumnKeys = new Set(["city", "industry"]);
+  const safeColumns = columns.filter(
+    (column) => !removedLegacyColumnKeys.has(column.key),
+  );
+  const safeVisibleColumns = visibleColumns.filter(
+    (column) => !removedLegacyColumnKeys.has(column.key),
+  );
 
   const handleSelectAll = (checked: boolean) => {
     setSelectedItems(checked ? filteredCustomers.map(c => c.id) : []);
@@ -496,8 +509,11 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     setTypeFilter(config.typeFilter || []);
     setPriorityFilter(config.priorityFilter || []);
     setAssignedToFilter(config.assignedToFilter || []);
-    setCityFilter(config.cityFilter || []);
-    setActiveAdvancedRules(config.advancedRules || []);
+    setPendingFollowupFilter(config.pendingFollowupFilter || []);
+    const legacyRules = (config.advancedRules || []).filter(
+      (rule: AdvancedRule) => !["city", "industry", "customer_source"].includes(rule.field),
+    );
+    setActiveAdvancedRules(legacyRules);
     setActiveFilterId(filter.id);
   };
 
@@ -506,7 +522,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
     setTypeFilter([]);
     setPriorityFilter([]);
     setAssignedToFilter([]);
-    setCityFilter([]);
+    setPendingFollowupFilter([]);
     setPendingTasksFilter([]);
     setCreatedDateRange({ from: undefined, to: undefined });
     setActiveAdvancedRules([]);
@@ -521,7 +537,9 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       const priorityMatch = (config.priorityFilter?.length || 0) === 0 || (config.priorityFilter || []).includes(c.priority.toString());
       const resolvedAssignee = resolveAssignedToStaff.get(c.assigned_to.toLowerCase()) || c.assigned_to;
       const assignedMatch = (config.assignedToFilter?.length || 0) === 0 || (config.assignedToFilter || []).includes(resolvedAssignee);
-      const cityMatch = (config.cityFilter?.length || 0) === 0 || (config.cityFilter || []).includes(c.city || "");
+      const pendingFollowupMatch =
+        (config.pendingFollowupFilter?.length || 0) === 0 ||
+        (c.pending_followups || []).some((value) => config.pendingFollowupFilter.includes(value));
       const customerTaskInfo = getCustomerTasks(c.id);
       const pendingTasksCategory =
         customerTaskInfo.overdue > 0   ? "has_overdue" :
@@ -538,7 +556,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           normalizePendingTasksRules(config.advancedRules || []),
           { getCustomerTasks }
         );
-      return statusMatch && typeMatch && priorityMatch && assignedMatch && cityMatch && advancedMatch;
+      return statusMatch && typeMatch && priorityMatch && assignedMatch && pendingFollowupMatch && advancedMatch;
     }).length;
   };
 
@@ -737,16 +755,16 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
             />
           </div>
         );
-      case "city":
+      case "pendingFollowup":
         return (
           <div className="flex items-center gap-1">
-            <SortableHeader field="city">{columnLabel}</SortableHeader>
+            <span>{columnLabel}</span>
             <MultiSelectFilter
-              options={uniqueCities}
-              selected={cityFilter}
-              onSelectionChange={setCityFilter}
-              placeholder="Filter by City"
-              renderLabel={(c) => getOptionLabel('customers', 'city', c)}
+              options={uniquePendingFollowups}
+              selected={pendingFollowupFilter}
+              onSelectionChange={setPendingFollowupFilter}
+              placeholder="Filter by Pending Follow-up"
+              renderLabel={pendingFollowupLabel}
             />
           </div>
         );
@@ -897,8 +915,20 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         return customer.company_name || "-";
       case "customerType":
         return <span className="capitalize">{getOptionLabel('customers', 'customer_type', customer.customer_type)}</span>;
-      case "city":
-        return customer.city ? getOptionLabel('customers', 'city', customer.city) : "-";
+      case "pendingFollowup":
+        return (
+          <div className="flex flex-wrap gap-1">
+            {(customer.pending_followups || []).length > 0 ? (
+              customer.pending_followups.map((value) => (
+                <Badge key={value} variant="secondary">
+                  {pendingFollowupLabel(value)}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+        );
       case "status":
         return (
           <Badge variant="secondary" className={CUSTOMER_STATUSES[customer.status]?.className || ""}>
@@ -936,7 +966,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
       case "totalSpent":
         return formatCurrency(customer.total_spent);
       case "source":
-        return <span className="capitalize">{customer.source || "-"}</span>;
+        return <span>{getCustomerSourceLabel(customer.source, getOptionLabel)}</span>;
       case "createdAt":
         return <span className="text-muted-foreground text-sm">{format(new Date(customer.created_at), "PP")}</span>;
       case "actions":
@@ -964,7 +994,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
   };
 
   const hasActiveFilters = statusFilter.length > 0 || typeFilter.length > 0 || priorityFilter.length > 0 ||
-    assignedToFilter.length > 0 || cityFilter.length > 0 || pendingTasksFilter.length > 0 || createdDateRange.from;
+    assignedToFilter.length > 0 || pendingFollowupFilter.length > 0 || pendingTasksFilter.length > 0 || createdDateRange.from;
 
   const pendingTasksOptions = ["has_pending", "no_pending", "has_overdue", "due_today"];
   const pendingTasksLabels: Record<string, string> = {
@@ -1067,7 +1097,7 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
               <TableHead className="w-10 bg-background sticky top-0">
                 <Checkbox checked={selectedItems.length === filteredCustomers.length && filteredCustomers.length > 0} onCheckedChange={handleSelectAll} />
               </TableHead>
-              {visibleColumns.map((column) => (
+              {safeVisibleColumns.map((column) => (
                 <TableHead key={column.key} className="bg-background sticky top-0">
                   {renderTableHeader(column.key, column.label)}
                 </TableHead>
@@ -1076,14 +1106,14 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
           </TableHeader>
           <TableBody>
             {filteredCustomers.length === 0 ? (
-              <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={safeVisibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
             ) : (
               filteredCustomers.map((customer) => (
                 <TableRow key={customer.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewCustomer(customer)}>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox checked={selectedItems.includes(customer.id)} onCheckedChange={(checked) => handleSelectItem(customer.id, !!checked)} />
                   </TableCell>
-                  {visibleColumns.map((column) => (
+                  {safeVisibleColumns.map((column) => (
                     <TableCell key={column.key}>
                       {renderCell(customer, column.key)}
                     </TableCell>
@@ -1147,12 +1177,12 @@ export function EnhancedCustomerTable({ onEdit, onAdd }: EnhancedCustomerTablePr
         }}
       />
 
-      <CustomerSavedFilterDialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen} onSave={addFilter} onUpdate={updateFilter} editingFilter={editingFilter} uniqueAssignedTo={uniqueAssignedTo} uniqueCities={uniqueCities} />
+      <CustomerSavedFilterDialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen} onSave={addFilter} onUpdate={updateFilter} editingFilter={editingFilter} uniqueAssignedTo={uniqueAssignedTo} />
       <CustomerManageFiltersDialog open={manageFiltersDialogOpen} onOpenChange={setManageFiltersDialogOpen} filters={savedFilters} onEdit={(f) => { setEditingFilter(f); setFilterDialogOpen(true); }} onDelete={deleteFilter} getFilterCount={getFilterCount} />
       <ColumnManagerDialog
         open={columnManagerOpen}
         onOpenChange={setColumnManagerOpen}
-        columns={columns}
+        columns={safeColumns}
         onSave={savePreferences}
         onReset={resetToDefaults}
         saving={savingPrefs}
