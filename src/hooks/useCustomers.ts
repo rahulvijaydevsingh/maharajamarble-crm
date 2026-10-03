@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
+import { Json } from "@/integrations/supabase/types";
 
 export interface Customer {
   id: string;
@@ -33,6 +34,15 @@ export interface Customer {
   is_repeat_customer: boolean | null;
   original_lead_id: string | null;
   site_plus_code?: string | null;
+  additional_contacts: Json;
+  referred_by: string | null;
+  referred_by_professional_id: string | null;
+  profession: string | null;
+  materials_purchased: string[];
+  quantity_purchased: number | null;
+  quantity_unit: string;
+  bill_number: string | null;
+  pending_followups: string[];
   updated_by?: string | null;
 }
 
@@ -59,6 +69,15 @@ export interface CustomerInsert {
   last_follow_up?: string | null;
   next_follow_up?: string | null;
   site_plus_code?: string | null;
+  additional_contacts?: Json;
+  referred_by?: string | null;
+  referred_by_professional_id?: string | null;
+  profession?: string | null;
+  materials_purchased?: string[];
+  quantity_purchased?: number | null;
+  quantity_unit?: string;
+  bill_number?: string | null;
+  pending_followups?: string[];
   updated_by?: string | null;
 }
 
