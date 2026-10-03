@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,7 +47,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
   const { user, loading: authLoading } = useAuth();
   const remindersChannel = useRemindersChannel();
 
-  const fetchReminders = async () => {
+  const fetchReminders = useCallback(async () => {
     const buildQuery = () => {
       const nowISO = new Date().toISOString();
       let query = supabase
@@ -100,7 +100,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
     } finally {
       setLoading(false);
     }
-  };
+  }, [assignedTo, entityId, entityType, toast]);
 
   const addReminder = async (reminder: ReminderInsert) => {
     try {
@@ -277,20 +277,22 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
     }
 
     // Handler logic shared between context path and fallback path
+    const reminderMatchesScope = (reminder: Reminder) => {
+      const matchesEntity =
+        !entityType ||
+        (reminder.entity_type === entityType && reminder.entity_id === entityId);
+      const matchesAssignee = !assignedTo || reminder.assigned_to === assignedTo;
+      return matchesEntity && matchesAssignee;
+    };
+
     const handlePayload = (payload: RemindersRealtimePayload) => {
       if (payload.eventType === 'INSERT') {
         const newReminder = payload.new as Reminder;
-        const matchesEntity =
-          !entityType ||
-          (newReminder.entity_type === entityType &&
-            newReminder.entity_id === entityId);
-        const matchesAssignee =
-          !assignedTo || newReminder.assigned_to === assignedTo;
         const isDue =
           new Date(newReminder.reminder_datetime) <= new Date();
         const shouldAdd = (entityType && entityId) || isDue;
 
-        if (matchesEntity && matchesAssignee && shouldAdd) {
+        if (reminderMatchesScope(newReminder) && shouldAdd) {
           setReminders((prev) => {
             if (prev.some((r) => r.id === newReminder.id)) return prev;
             return [...prev, newReminder].sort((a, b) =>
@@ -299,13 +301,16 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
           });
         }
       } else if (payload.eventType === 'UPDATE') {
-        setReminders((prev) =>
-          prev.map((reminder) =>
-            reminder.id === payload.new.id
-              ? (payload.new as Reminder)
-              : reminder
-          )
-        );
+        const updatedReminder = payload.new as Reminder;
+        setReminders((prev) => {
+          const exists = prev.some((reminder) => reminder.id === updatedReminder.id);
+          if (!reminderMatchesScope(updatedReminder)) {
+            return prev.filter((reminder) => reminder.id !== updatedReminder.id);
+          }
+          return exists
+            ? prev.map((reminder) => reminder.id === updatedReminder.id ? updatedReminder : reminder)
+            : prev;
+        });
       } else if (payload.eventType === 'DELETE') {
         setReminders((prev) =>
           prev.filter((reminder) => reminder.id !== payload.old.id)
@@ -334,7 +339,7 @@ export function useReminders(entityType?: string, entityId?: string, assignedTo?
         unsubscribe();
       };
     }
-  }, [entityType, entityId, assignedTo, authLoading, user]);
+  }, [entityType, entityId, assignedTo, authLoading, user, fetchReminders, remindersChannel]);
 
   return {
     reminders,

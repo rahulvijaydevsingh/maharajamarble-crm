@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { useTaskDetailModal } from "@/contexts/TaskDetailModalContext";
 
 export function NotificationDropdown() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { openTask } = useTaskDetailModal();
   const [open, setOpen] = useState(false);
@@ -38,11 +38,14 @@ export function NotificationDropdown() {
     return () => clearInterval(interval);
   }, []);
   
-  // Reminders — filtered by current user
-  const { reminders, dismissReminder, snoozeReminder } = useReminders(undefined, undefined, profile?.full_name);
+  // The bell is always personal. Do not issue an unfiltered request while the
+  // profile is loading, otherwise admins temporarily receive every reminder.
+  const reminderAssignee = profile?.full_name || "__profile_pending__";
+  const { reminders, dismissReminder, snoozeReminder } = useReminders(undefined, undefined, reminderAssignee);
   const now = new Date();
-  const activeReminders = reminders
-    .filter(r => !r.is_dismissed && new Date(r.reminder_datetime) <= now && (!r.is_snoozed || !r.snooze_until || new Date(r.snooze_until) <= now));
+  const activeReminders = authLoading || !profile?.full_name
+    ? []
+    : reminders.filter(r => r.assigned_to === profile.full_name && !r.is_dismissed && new Date(r.reminder_datetime) <= now && (!r.is_snoozed || !r.snooze_until || new Date(r.snooze_until) <= now));
   
   // Notifications - query by email since automation engine stores email as user_id
   const userEmail = user?.email || "";
