@@ -996,6 +996,15 @@ export type Database = {
           phone: string
           priority: number
           site_plus_code: string | null
+          additional_contacts: Json
+          referred_by: string | null
+          referred_by_professional_id: string | null
+          profession: string | null
+          materials_purchased: string[]
+          quantity_purchased: number | null
+          quantity_unit: string
+          bill_number: string | null
+          pending_followups: string[]
           source: string | null
           status: string
           total_orders: number | null
@@ -1029,6 +1038,15 @@ export type Database = {
           phone: string
           priority?: number
           site_plus_code?: string | null
+          additional_contacts?: Json
+          referred_by?: string | null
+          referred_by_professional_id?: string | null
+          profession?: string | null
+          materials_purchased?: string[]
+          quantity_purchased?: number | null
+          quantity_unit?: string
+          bill_number?: string | null
+          pending_followups?: string[]
           source?: string | null
           status?: string
           total_orders?: number | null
@@ -1062,6 +1080,15 @@ export type Database = {
           phone?: string
           priority?: number
           site_plus_code?: string | null
+          additional_contacts?: Json
+          referred_by?: string | null
+          referred_by_professional_id?: string | null
+          profession?: string | null
+          materials_purchased?: string[]
+          quantity_purchased?: number | null
+          quantity_unit?: string
+          bill_number?: string | null
+          pending_followups?: string[]
           source?: string | null
           status?: string
           total_orders?: number | null

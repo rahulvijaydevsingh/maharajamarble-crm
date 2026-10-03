@@ -322,11 +322,6 @@ export const ENTITY_FIELDS: Record<EntityType, EntityField[]> = {
       { value: "inactive", label: "Inactive" },
       { value: "vip", label: "VIP" },
     ]},
-    { name: "customer_type", label: "Customer Type", type: "select", editable: true, options: [
-      { value: "individual", label: "Individual" },
-      { value: "business", label: "Business" },
-      { value: "contractor", label: "Contractor" },
-    ]},
     { name: "priority", label: "Priority", type: "select", editable: true, options: [
       { value: "1", label: "Very High" },
       { value: "2", label: "High" },

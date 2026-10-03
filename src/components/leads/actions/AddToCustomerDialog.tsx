@@ -35,6 +35,7 @@ import { useLogActivity } from "@/hooks/useActivityLog";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { extractReferredBy } from "@/lib/referredBy";
 
 interface AddToCustomerDialogProps {
   open: boolean;
@@ -50,6 +51,8 @@ interface AddToCustomerDialogProps {
     source?: string;
     notes?: string;
     site_plus_code?: string;
+    additional_contacts?: unknown;
+    referred_by?: unknown;
   };
   onConvert: (conversionData: any) => void;
 }
@@ -69,7 +72,7 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
   const [dupChoice, setDupChoice] = useState<'link' | 'create_new' | null>(null);
 
   const [reminderData, setReminderData] = useState({
-    reminderDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    reminderDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     reminderTypes: {
       email: true,
       task: true,
@@ -192,6 +195,9 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         });
       } else {
         // Normal path: create new customer
+        const referredByValue = extractReferredBy(leadData.referred_by);
+
+        // Normal path: create new customer
         const customerData = {
           name: leadData.name,
           phone: leadData.phone || '',
@@ -202,6 +208,11 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
           source: leadData.source || 'lead_conversion',
           notes: leadData.notes || null,
           site_plus_code: leadData.site_plus_code || null,
+          additional_contacts: Array.isArray(leadData.additional_contacts)
+            ? leadData.additional_contacts
+            : [],
+          referred_by: referredByValue.name,
+          referred_by_professional_id: referredByValue.id,
           created_from_lead_id: leadData.id,
           status: 'active',
           customer_type: 'individual',

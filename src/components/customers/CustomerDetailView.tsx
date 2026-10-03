@@ -52,6 +52,10 @@ import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDia
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { CUSTOMER_STATUSES } from '@/constants/customerConstants';
 import { useToast } from '@/hooks/use-toast';
+import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { QUOTATION_UNITS } from '@/types/quotation';
+import { extractReferredBy, normalizeProfessionalRefType } from '@/lib/referredBy';
+import type { ProfessionalRef } from '@/types/lead';
 import { useReminders } from '@/hooks/useReminders';
 import { useZLayer } from '@/contexts/ZLayerContext';
 
@@ -91,6 +95,7 @@ export function CustomerDetailView({
   const { updateCustomer, refetch } = useCustomers();
   const { addLead } = useLeads();
   const { toast } = useToast();
+  const { getOptionLabel } = useControlPanelSettings();
 
   // Lifted sibling dialog states
   const [addQuotationOpen, setAddQuotationOpen] = useState(false);
@@ -145,22 +150,109 @@ export function CustomerDetailView({
     
     setConvertingToLead(true);
     try {
+      const storedReferredBy = extractReferredBy(customer.referred_by);
+      // Falls back to the stored referral name when the linked professional cannot be loaded below.
+      let referredByForLead: ProfessionalRef | null = storedReferredBy.name
+        ? {
+            id: storedReferredBy.id || "",
+            name: storedReferredBy.name,
+            firmName: "",
+            type: "contractor",
+          }
+        : null;
+
+      if (customer.referred_by_professional_id) {
+        const { data: professional, error: professionalError } = await supabase
+          .from("professionals")
+          .select(
+            "id, name, phone, email, firm_name, professional_type",
+          )
+          .eq("id", customer.referred_by_professional_id)
+          .maybeSingle();
+
+        if (!professionalError && professional) {
+          referredByForLead = {
+            id: professional.id,
+            name: professional.name,
+            firmName: professional.firm_name || "",
+            type: normalizeProfessionalRefType(professional.professional_type),
+            phone: professional.phone || undefined,
+            email: professional.email || undefined,
+          };
+        }
+      }
+
+      const purchaseLines: string[] = [];
+
+      if (customer.materials_purchased?.length) {
+        purchaseLines.push(
+          "Materials: " +
+            customer.materials_purchased
+              .map((value) => getOptionLabel("materials", "materials", value))
+              .join(", "),
+        );
+      }
+
+      if (
+        customer.quantity_purchased !== null &&
+        customer.quantity_purchased !== undefined
+      ) {
+        const unitLabel =
+          QUOTATION_UNITS.find((unit) => unit.value === customer.quantity_unit)?.label ||
+          customer.quantity_unit;
+        purchaseLines.push(
+          "Quantity: " + customer.quantity_purchased + " " + unitLabel,
+        );
+      }
+
+      if (customer.bill_number) {
+        purchaseLines.push("Bill number: " + customer.bill_number);
+      }
+
+      if (customer.profession) {
+        purchaseLines.push("Profession: " + customer.profession);
+      }
+
+      if (customer.pending_followups?.length) {
+        purchaseLines.push(
+          "Pending follow-ups: " +
+            customer.pending_followups
+              .map((value) =>
+                getOptionLabel("customers", "pending_followup", value),
+              )
+              .join(", "),
+        );
+      }
+
+      const previousPurchaseBlock =
+        purchaseLines.length > 0
+          ? "\n\nPrevious purchase\n" +
+            purchaseLines.map((line) => "- " + line).join("\n")
+          : "";
+
       const newLead = await addLead({
         name: customer.name,
         phone: customer.phone,
         alternate_phone: customer.alternate_phone,
         email: customer.email,
         firm_name: customer.company_name,
+        additional_contacts: Array.isArray(customer.additional_contacts)
+          ? customer.additional_contacts
+          : [],
         address: customer.address,
         site_plus_code: customer.site_plus_code || null,
         source: 'customer_conversion',
         assigned_to: customer.assigned_to,
         priority: customer.priority,
-        notes: `Converted from customer: ${customer.name}${customer.notes ? '\n\nOriginal notes: ' + customer.notes : ''}`,
-        // created_by omitted — let DB default handle it for RLS compatibility
+        referred_by: referredByForLead,
+        material_interests: customer.materials_purchased || [],
+        notes:
+          "Converted from customer: " +
+          customer.name +
+          (customer.notes ? "\n\nOriginal notes: " + customer.notes : "") +
+          previousPurchaseBlock,
         created_from_customer_id: customer.id,
       });
-
       // Copy history: activities, tasks, reminders, attachments
       if (newLead?.id) {
         // 1) Copy activity log
