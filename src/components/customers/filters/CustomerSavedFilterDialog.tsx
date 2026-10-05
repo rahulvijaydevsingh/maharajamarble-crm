@@ -28,7 +28,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { INDUSTRIES, CUSTOMER_SOURCES } from "@/constants/customerConstants";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 
 interface FilterRule {
@@ -47,7 +46,6 @@ interface CustomerSavedFilterDialogProps {
   onUpdate?: (id: string, filter: Partial<SavedFilterInsert>) => Promise<any>;
   editingFilter?: SavedFilter | null;
   uniqueAssignedTo: string[];
-  uniqueCities: string[];
 }
 
 const FIELD_OPTIONS = [
@@ -56,9 +54,6 @@ const FIELD_OPTIONS = [
   { value: "email", label: "Email", type: "text", category: "Basic Information" },
   { value: "company_name", label: "Company Name", type: "text", category: "Basic Information" },
   { value: "address", label: "Address", type: "text", category: "Basic Information" },
-  { value: "city", label: "City", type: "select", category: "Basic Information" },
-  { value: "customer_type", label: "Customer Type", type: "select", category: "Classification" },
-  { value: "industry", label: "Industry", type: "select", category: "Classification" },
   { value: "status", label: "Status", type: "select", category: "Classification" },
   { value: "priority", label: "Priority", type: "select", category: "Classification" },
   { value: "source", label: "Source", type: "select", category: "Classification" },
@@ -126,7 +121,6 @@ export function CustomerSavedFilterDialog({
   onUpdate,
   editingFilter,
   uniqueAssignedTo,
-  uniqueCities,
 }: CustomerSavedFilterDialogProps) {
   const { getFieldOptions } = useControlPanelSettings();
   const [rules, setRules] = useState<FilterRule[]>([]);
@@ -141,7 +135,10 @@ export function CustomerSavedFilterDialog({
       setIsShared(editingFilter.is_shared);
       setIsDefault(editingFilter.is_default);
       const config = editingFilter.filter_config;
-      const newRules: FilterRule[] = config.advancedRules?.map((rule: any) => {
+      const allowedRules = (config.advancedRules || []).filter(
+        (rule: any) => !["city", "industry", "customer_source", "customer_type"].includes(rule.field),
+      );
+      const newRules: FilterRule[] = allowedRules.map((rule: any) => {
         let operator = rule.operator;
         // Normalize legacy operator aliases when loading saved filters
         if (operator === "greater_or_equal") operator = "greater_than_or_equal";
@@ -155,7 +152,7 @@ export function CustomerSavedFilterDialog({
           logic: rule.logic || "and",
         };
       }) || [createEmptyRule()];
-      setRules(newRules);
+      setRules(newRules.length > 0 ? newRules : [createEmptyRule()]);
     } else {
       resetForm();
     }
@@ -205,22 +202,8 @@ export function CustomerSavedFilterDialog({
         const canonical = getFieldOptions('customers', 'priority');
         return canonical.map(o => ({ value: o.value, label: o.label }));
       }
-      case "customer_type": {
-        const canonical = getFieldOptions('customers', 'customer_type');
-        return canonical.map(o => ({ value: o.value, label: o.label }));
-      }
-      case "industry":
-        return INDUSTRIES;
       case "source":
-        return CUSTOMER_SOURCES;
-      case "city": {
-        const canonical = getFieldOptions('customers', 'city').map(o => ({ value: o.value, label: o.label }));
-        const canonicalValues = canonical.map(o => o.value);
-        const extra = uniqueCities
-          .filter(c => c && !canonicalValues.includes(c))
-          .map(c => ({ value: c, label: c }));
-        return [...canonical, ...extra];
-      }
+        return getFieldOptions("leads", "source").map((option) => ({ value: option.value, label: option.label }));
       case "assigned_to":
         return uniqueAssignedTo.map((a) => ({ value: a, label: a }));
       case "pending_tasks":
@@ -249,7 +232,7 @@ export function CustomerSavedFilterDialog({
       createdDateRange: { from: null, to: null },
       lastFollowUpRange: { from: null, to: null },
       nextFollowUpRange: { from: null, to: null },
-      advancedRules: rules.filter(r => r.field).map((rule) => ({
+      advancedRules: rules.filter((rule) => rule.field && !["city", "industry", "customer_source", "customer_type"].includes(rule.field)).map((rule) => ({
         field: rule.field,
         operator: rule.operator,
         value: rule.value,
