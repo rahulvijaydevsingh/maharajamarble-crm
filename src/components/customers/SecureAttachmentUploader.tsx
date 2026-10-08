@@ -3,6 +3,7 @@ import { FileText, Loader2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   CUSTOMER_ATTACHMENT_ACCEPT,
+  CUSTOMER_ATTACHMENT_ALLOWED_EXTENSIONS,
   CUSTOMER_ATTACHMENT_ALLOWED_MIME_TYPES,
   CUSTOMER_ATTACHMENT_MAX_BYTES,
   CustomerAttachmentError,
@@ -72,10 +73,15 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
       return;
     }
 
-    if (
-      file.type &&
-      !CUSTOMER_ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())
-    ) {
+    // When the browser reports a type it must be an allowed one; when it reports none, use the extension.
+    const extension = file.name.includes(".")
+      ? (file.name.split(".").pop() ?? "").toLowerCase()
+      : "";
+    const typeIsAllowed = file.type
+      ? CUSTOMER_ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())
+      : CUSTOMER_ATTACHMENT_ALLOWED_EXTENSIONS.includes(extension);
+
+    if (!typeIsAllowed) {
       setValidationError("Only PDF, JPG, PNG and WebP files are allowed.");
       setSelectedFile(null);
       setPreviewUrl(null);

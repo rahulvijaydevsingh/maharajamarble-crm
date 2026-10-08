@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
   Download,
@@ -57,27 +57,47 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
   // Delete dialog state
   const [deleteAttachmentItem, setDeleteAttachmentItem] = useState<SecureAttachment | null>(null);
 
+  // Counts preview requests so that a download that finishes after the dialog was closed is ignored.
+  const previewRequestRef = useRef(0);
+
+  // Revoke the preview's object URL whenever it is replaced and when the tab unmounts.
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrl) {
+        URL.revokeObjectURL(previewObjectUrl);
+      }
+    };
+  }, [previewObjectUrl]);
+
   const handleOpenPreview = async (item: SecureAttachment) => {
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
+    setPreviewObjectUrl(null);
     setPreviewAttachment(item);
     setIsLoadingPreview(true);
     try {
       const blob = await downloadFile(item.id);
+      // The dialog was closed (or another file was opened) while this one was downloading.
+      if (previewRequestRef.current !== requestId) return;
       const mimeBlob = new Blob([blob], { type: item.mime_type });
       const url = URL.createObjectURL(mimeBlob);
       setPreviewObjectUrl(url);
     } catch {
-      setPreviewAttachment(null);
+      if (previewRequestRef.current === requestId) {
+        setPreviewAttachment(null);
+      }
     } finally {
-      setIsLoadingPreview(false);
+      if (previewRequestRef.current === requestId) {
+        setIsLoadingPreview(false);
+      }
     }
   };
 
   const handleClosePreview = () => {
-    if (previewObjectUrl) {
-      URL.revokeObjectURL(previewObjectUrl);
-    }
+    previewRequestRef.current += 1;
     setPreviewObjectUrl(null);
     setPreviewAttachment(null);
+    setIsLoadingPreview(false);
   };
 
   const handleDownload = async (item: SecureAttachment) => {
@@ -91,7 +111,8 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Some mobile browsers need the URL to stay valid for a moment after the click.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       // Error handled by hook toast
     }
@@ -131,7 +152,13 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
         <SecureAttachmentUploader
           mode="immediate"
           customerId={customer.id}
-          onUploaded={refetch}
+          onUploaded={
+            canManage
+              ? () => {
+                  void refetch();
+                }
+              : undefined
+          }
         />
         {!canManage && (
           <p className="text-xs text-muted-foreground italic">

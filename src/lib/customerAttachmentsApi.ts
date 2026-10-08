@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export const CUSTOMER_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const CUSTOMER_ATTACHMENT_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
+export const CUSTOMER_ATTACHMENT_ALLOWED_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp"];
 export const CUSTOMER_ATTACHMENT_ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",

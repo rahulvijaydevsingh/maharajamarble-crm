@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   CustomerAttachmentError,
   deleteCustomerAttachment,
@@ -15,13 +16,15 @@ export function useCustomerSecureAttachments(
   options?: { enabled?: boolean },
 ) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const queryKey = ["customer-secure-attachments", customerId];
+  // The user id is part of the key so that one person's cached list is never shown to another person.
+  const queryKey = ["customer-secure-attachments", user?.id, customerId];
 
   const listQuery = useQuery({
     queryKey,
     queryFn: () => listCustomerAttachments(customerId),
-    enabled: !!customerId && (options?.enabled ?? true),
+    enabled: !!user?.id && !!customerId && (options?.enabled ?? true),
   });
 
   const uploadMutation = useMutation({
