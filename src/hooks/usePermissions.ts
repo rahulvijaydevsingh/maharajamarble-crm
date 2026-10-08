@@ -15,6 +15,7 @@ type Permission =
   | "customers.edit"
   | "customers.delete"
   | "customers.bulk_actions"
+  | "customers.manage_attachments"
   | "professionals.bulk_actions"
   | "tasks.create"
   | "tasks.edit"
@@ -41,7 +42,7 @@ type Permission =
 const systemRolePermissions: Record<string, Permission[]> = {
   super_admin: [
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
-    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
+    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions", "customers.manage_attachments",
     "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
     "professionals.create", "professionals.edit", "professionals.delete", "professionals.bulk_actions",
     "quotations.create", "quotations.edit", "quotations.delete",
@@ -52,7 +53,7 @@ const systemRolePermissions: Record<string, Permission[]> = {
   ],
   admin: [
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
-    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
+    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions", "customers.manage_attachments",
     "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
     "professionals.create", "professionals.edit", "professionals.delete", "professionals.bulk_actions",
     "quotations.create", "quotations.edit", "quotations.delete",
