@@ -59,7 +59,7 @@ type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewe
 
 type Permission = 
   | "leads.create" | "leads.edit" | "leads.delete" | "leads.bulk_actions" | "leads.export" | "leads.convert"
-  | "customers.create" | "customers.edit" | "customers.delete" | "customers.bulk_actions"
+  | "customers.create" | "customers.edit" | "customers.delete" | "customers.bulk_actions" | "customers.manage_attachments"
   | "tasks.create" | "tasks.edit" | "tasks.delete" | "tasks.bulk_actions" | "tasks.assign" | "tasks.status_override"
   | "professionals.create" | "professionals.edit" | "professionals.delete"
   | "quotations.create" | "quotations.edit" | "quotations.delete"
@@ -87,6 +87,7 @@ const availablePermissions: PermissionInfo[] = [
   { id: "customers.edit", name: "Edit Customers", description: "Modify customer details", module: "Customers" },
   { id: "customers.delete", name: "Delete Customers", description: "Remove customers", module: "Customers" },
   { id: "customers.bulk_actions", name: "Bulk Actions", description: "Bulk customer operations", module: "Customers" },
+  { id: "customers.manage_attachments", name: "Manage Customer Attachments", description: "View, download, rename and delete secured customer attachments", module: "Customers" },
   // Tasks
   { id: "tasks.create", name: "Create Tasks", description: "Create new tasks", module: "Tasks" },
   { id: "tasks.edit", name: "Edit Tasks", description: "Modify tasks", module: "Tasks" },

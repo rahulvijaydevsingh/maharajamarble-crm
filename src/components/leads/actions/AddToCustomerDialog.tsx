@@ -36,6 +36,7 @@ import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractReferredBy } from "@/lib/referredBy";
+import { importLeadFiles } from "@/lib/customerAttachmentsApi";
 
 interface AddToCustomerDialogProps {
   open: boolean;
@@ -410,28 +411,25 @@ export function AddToCustomerDialog({ open, onOpenChange, leadData }: AddToCusto
         // Non-blocking: conversion itself succeeds even if routing fails
       }
 
-      // Copy lead attachments to customer so photos/import files remain visible
       try {
-        const { data: leadAtt, error: leadAttErr } = await supabase
-          .from('entity_attachments')
-          .select('file_name,file_path,mime_type,file_size')
-          .eq('entity_type', 'lead')
-          .eq('entity_id', leadData.id);
-
-        if (leadAttErr) throw leadAttErr;
-
-        if (leadAtt && leadAtt.length > 0) {
-          const { error: insErr } = await supabase.from('entity_attachments').insert(
-            leadAtt.map((a) => ({
-              entity_type: 'customer',
-              entity_id: resolvedCustomerId,
-              file_name: a.file_name,
-              file_path: a.file_path,
-              mime_type: a.mime_type,
-              file_size: a.file_size,
-            }))
-          );
-          if (insErr) throw insErr;
+        const importResult = await importLeadFiles(leadData.id, resolvedCustomerId);
+        if (importResult.failed) {
+          toast({
+            title: "Lead files not copied",
+            description:
+              "The customer was saved, but the lead's files could not be copied to the customer's secure storage. They are still on the lead.",
+            variant: "destructive",
+          });
+        } else if (importResult.imported > 0 && importResult.skipped.length === 0) {
+          toast({
+            title: "Files Copied",
+            description: `${importResult.imported} file(s) from the lead were added securely to the customer.`,
+          });
+        } else if (importResult.skipped.length > 0) {
+          toast({
+            title: "Files Partially Copied",
+            description: `${importResult.imported} file(s) were copied securely; ${importResult.skipped.length} could not be copied (too large or unsupported type). They remain on the lead.`,
+          });
         }
       } catch (e) {
         console.error('Failed to copy lead attachments to customer:', e);

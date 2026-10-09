@@ -250,10 +250,11 @@ export function CustomerDetailView({
           "Converted from customer: " +
           customer.name +
           (customer.notes ? "\n\nOriginal notes: " + customer.notes : "") +
-          previousPurchaseBlock,
+          previousPurchaseBlock +
+          "\n\nSecured customer attachments (if any) remain on the customer record and were not copied.",
         created_from_customer_id: customer.id,
       });
-      // Copy history: activities, tasks, reminders, attachments
+      // Copy history: activities, tasks, reminders
       if (newLead?.id) {
         // 1) Copy activity log
         try {
@@ -327,30 +328,6 @@ export function CustomerDetailView({
           }
         } catch (e) {
           console.error('Failed copying reminders to new lead:', e);
-        }
-
-        // 4) Copy attachments
-        try {
-          const { data: attachments } = await supabase
-            .from('entity_attachments')
-            .select('file_name,file_path,mime_type,file_size')
-            .eq('entity_type', 'customer')
-            .eq('entity_id', customer.id);
-
-          if (attachments && attachments.length > 0) {
-            await supabase.from('entity_attachments').insert(
-              attachments.map((a: any) => ({
-                entity_type: 'lead',
-                entity_id: newLead.id,
-                file_name: a.file_name,
-                file_path: a.file_path,
-                mime_type: a.mime_type,
-                file_size: a.file_size,
-              }))
-            );
-          }
-        } catch (e) {
-          console.error('Failed copying attachments to new lead:', e);
         }
       }
       

@@ -3757,6 +3757,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_manage_customer_attachments: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       claim_backup_table: {
         Args: { p_job_id: string; p_table_name: string }
         Returns: number

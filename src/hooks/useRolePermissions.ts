@@ -6,7 +6,7 @@ type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewe
 
 type Permission = 
   | "leads.create" | "leads.edit" | "leads.delete" | "leads.bulk_actions" | "leads.export" | "leads.convert"
-  | "customers.create" | "customers.edit" | "customers.delete" | "customers.bulk_actions"
+  | "customers.create" | "customers.edit" | "customers.delete" | "customers.bulk_actions" | "customers.manage_attachments"
   | "tasks.create" | "tasks.edit" | "tasks.delete" | "tasks.bulk_actions" | "tasks.assign" | "tasks.status_override"
   | "professionals.create" | "professionals.edit" | "professionals.delete"
   | "quotations.create" | "quotations.edit" | "quotations.delete"
@@ -17,7 +17,7 @@ type Permission =
 const systemRolePermissions: Record<string, Permission[]> = {
   super_admin: [
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
-    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
+    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions", "customers.manage_attachments",
     "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
     "professionals.create", "professionals.edit", "professionals.delete",
     "quotations.create", "quotations.edit", "quotations.delete",
@@ -28,7 +28,7 @@ const systemRolePermissions: Record<string, Permission[]> = {
   ],
   admin: [
     "leads.create", "leads.edit", "leads.delete", "leads.bulk_actions", "leads.export", "leads.convert",
-    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions",
+    "customers.create", "customers.edit", "customers.delete", "customers.bulk_actions", "customers.manage_attachments",
     "tasks.create", "tasks.edit", "tasks.delete", "tasks.bulk_actions", "tasks.assign", "tasks.status_override",
     "professionals.create", "professionals.edit", "professionals.delete",
     "quotations.create", "quotations.edit", "quotations.delete",
