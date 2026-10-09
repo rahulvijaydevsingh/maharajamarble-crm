@@ -971,9 +971,11 @@ export type Database = {
       }
       customers: {
         Row: {
+          additional_contacts: Json
           address: string | null
           alternate_phone: string | null
           assigned_to: string
+          bill_number: string | null
           city: string | null
           company_name: string | null
           created_at: string
@@ -989,22 +991,20 @@ export type Database = {
           last_follow_up: string | null
           last_purchase: string | null
           lead_id: string | null
+          materials_purchased: string[]
           name: string
           next_follow_up: string | null
           notes: string | null
           original_lead_id: string | null
+          pending_followups: string[]
           phone: string
           priority: number
-          site_plus_code: string | null
-          additional_contacts: Json
-          referred_by: string | null
-          referred_by_professional_id: string | null
           profession: string | null
-          materials_purchased: string[]
           quantity_purchased: number | null
           quantity_unit: string
-          bill_number: string | null
-          pending_followups: string[]
+          referred_by: string | null
+          referred_by_professional_id: string | null
+          site_plus_code: string | null
           source: string | null
           status: string
           total_orders: number | null
@@ -1013,9 +1013,11 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          additional_contacts?: Json
           address?: string | null
           alternate_phone?: string | null
           assigned_to: string
+          bill_number?: string | null
           city?: string | null
           company_name?: string | null
           created_at?: string
@@ -1031,22 +1033,20 @@ export type Database = {
           last_follow_up?: string | null
           last_purchase?: string | null
           lead_id?: string | null
+          materials_purchased?: string[]
           name: string
           next_follow_up?: string | null
           notes?: string | null
           original_lead_id?: string | null
+          pending_followups?: string[]
           phone: string
           priority?: number
-          site_plus_code?: string | null
-          additional_contacts?: Json
-          referred_by?: string | null
-          referred_by_professional_id?: string | null
           profession?: string | null
-          materials_purchased?: string[]
           quantity_purchased?: number | null
           quantity_unit?: string
-          bill_number?: string | null
-          pending_followups?: string[]
+          referred_by?: string | null
+          referred_by_professional_id?: string | null
+          site_plus_code?: string | null
           source?: string | null
           status?: string
           total_orders?: number | null
@@ -1055,9 +1055,11 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          additional_contacts?: Json
           address?: string | null
           alternate_phone?: string | null
           assigned_to?: string
+          bill_number?: string | null
           city?: string | null
           company_name?: string | null
           created_at?: string
@@ -1073,22 +1075,20 @@ export type Database = {
           last_follow_up?: string | null
           last_purchase?: string | null
           lead_id?: string | null
+          materials_purchased?: string[]
           name?: string
           next_follow_up?: string | null
           notes?: string | null
           original_lead_id?: string | null
+          pending_followups?: string[]
           phone?: string
           priority?: number
-          site_plus_code?: string | null
-          additional_contacts?: Json
-          referred_by?: string | null
-          referred_by_professional_id?: string | null
           profession?: string | null
-          materials_purchased?: string[]
           quantity_purchased?: number | null
           quantity_unit?: string
-          bill_number?: string | null
-          pending_followups?: string[]
+          referred_by?: string | null
+          referred_by_professional_id?: string | null
+          site_plus_code?: string | null
           source?: string | null
           status?: string
           total_orders?: number | null
@@ -1116,6 +1116,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_referred_by_professional_id_fkey"
+            columns: ["referred_by_professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
             referencedColumns: ["id"]
           },
         ]
