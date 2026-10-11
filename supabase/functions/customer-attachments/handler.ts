@@ -502,7 +502,14 @@ async function importLeadFiles(ctx: Ctx, json: Row): Promise<Response> {
     .eq("storage_missing", false);
   if (error) throw serverError();
 
-  const ordered = ((data ?? []) as Row[]).slice().sort((a, b) =>
+  // Only files that belong to this lead are ever copied: the ones in the lead's own folder and the lead's photos.
+  // Rows pointing anywhere else are ignored (not copied and not reported). That covers the bulk-import source
+  // sheets (imports/...), which hold the data of many leads, and any row that was pointed at another record's file.
+  const ownFolder = `lead/${leadId}/`;
+  const eligible = ((data ?? []) as Row[]).filter((row) =>
+    typeof row.file_path === "string" && (row.file_path.startsWith(ownFolder) || row.file_path.startsWith("lead-photos/"))
+  );
+  const ordered = eligible.slice().sort((a, b) =>
     String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))
   );
   const slice = ordered.slice(offset, offset + IMPORT_BATCH);
@@ -602,7 +609,8 @@ async function secureLegacyFiles(ctx: Ctx, customerId: string): Promise<void> {
 }
 
 async function secureOneLegacyFile(ctx: Ctx, customerId: string, legacy: Row): Promise<void> {
-  if (!legacy.file_path) return;
+  // Only a file inside this customer's own folder is ever touched.
+  if (typeof legacy.file_path !== "string" || !legacy.file_path.startsWith(`customer/${customerId}/`)) return;
   const legacyBucket = ctx.admin.storage.from(LEGACY_BUCKET);
 
   const { data: blob, error: downloadError } = await legacyBucket.download(legacy.file_path);

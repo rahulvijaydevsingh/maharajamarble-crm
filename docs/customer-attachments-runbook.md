@@ -10,7 +10,7 @@ Files attached to a customer (identity documents, payment proof, site photos) ar
 - **Administrators**, and any role an administrator has given the permission "Manage Customer Attachments", can view, download, rename and delete the files.
 - When a **lead is converted to a customer**, the lead's files are copied into the customer's secured files automatically. The originals stay on the lead.
 - When a **customer is converted to a lead**, secured customer files are never copied to the lead.
-- The same release also repairs file access for leads, tasks and professionals: staff can again upload and see files on records they have access to.
+- The same release also repairs file access for leads, tasks and professionals: staff can again upload and see files on records they have access to. A file can only be reached through its own record, and the spreadsheets used for bulk imports (which contain many leads) stay visible to administrators and the person who uploaded them only.
 
 ## 2. Before you start
 
@@ -72,7 +72,7 @@ Settings, Role Management, choose the role, Customers, tick **Manage Customer At
 
 ## 7. Lead files copied at conversion
 
-When a lead is converted to a customer, the app asks the function to copy the lead's files into the customer's secured files. The lead's own files are never changed or deleted.
+When a lead is converted to a customer, the app asks the function to copy the lead's files into the customer's secured files. Only files in the lead's own folder and the lead's photos are copied; the spreadsheet of a bulk import is never copied. The lead's own files are never changed or deleted.
 
 A file is skipped (and stays on the lead) if it is larger than 10 MB, is not a PDF/JPG/PNG/WebP picture, cannot be found in storage, or cannot be read. The app shows a message saying how many files were copied and how many were not.
 

@@ -89,8 +89,8 @@ Options B, C and D are cheaper but none keeps files unreadable once someone has 
 - Deleting a customer removes its metadata; the unreadable ciphertext objects can remain until swept.
 - A compromised admin session, or leaked Edge Function secrets together with bucket access, still exposes files. This design does not defend against that.
 - Files are processed in memory, so uploads are capped at 10 MB.
-- Lead files copied at conversion exist twice: encrypted on the customer and, unchanged, on the lead. Anyone who can open that lead can still open the original. If the owner wants the originals removed after copying, a "move" option can be added later.
-- The shared attachment access rules for leads, tasks and professionals were corrected in the same release (migration `20261007100500`). Attachments are now accessible when the caller is an admin or can see the parent record; before this, uploads to lead, customer and professional folders were rejected for everyone and non-admin staff could not see attachments on their own records.
+- Only a lead's own files and photos are copied at conversion (never the bulk-import sheet, never a row pointing at another record's file). They exist twice: encrypted on the customer and, unchanged, on the lead. Anyone who can open that lead can still open the original. If the owner wants the originals removed after copying, a "move" option can be added later.
+- The shared attachment access rules for leads, tasks and professionals were corrected in the same release (migration `20261007100500`). Files now belong to their own record's folder and are readable by admins and by anyone who can see that record. An attachment row can only point at a file in its own record's folder (or at an import file the same person uploaded), so nobody can link their own record to someone else's file. Bulk-import source sheets (`imports/`) hold the data of many leads and stay readable only by the uploader and admins. Before this, uploads to lead, customer and professional folders were rejected for everyone and non-admin staff could not see attachments on their own records.
 
 ## Action Items
 

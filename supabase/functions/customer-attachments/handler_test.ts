@@ -560,6 +560,30 @@ Deno.test("import: copies usable files, reports skipped ones, never touches the 
   assertEquals([third.imported, third.already_imported], [1, 2]);
 });
 
+Deno.test("import: only the lead's own files and photos are copied; import sheets and links to other records are ignored silently", async () => {
+  const t = convertedWorld();
+  const OTHER_LEAD = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const row = (n: string, path: string | null, bytes: Uint8Array | null) => {
+    t.be.tables.entity_attachments.push({
+      id: `22222222-0000-4000-8000-${n.padStart(12, "0")}`, entity_type: "lead", entity_id: LEAD, file_name: `file-${n}`,
+      file_path: path, storage_missing: false, created_at: `2026-09-0${n}T00:00:00Z`,
+    });
+    if (path && bytes) t.be.bucket("crm-attachments").set(path, bytes);
+  };
+  row("1", `lead/${LEAD}/mine.pdf`, pdf("MINE"));                       // copied
+  row("2", "lead-photos/photo-1.png", png());                           // copied (the lead's photo)
+  row("3", "imports/batch-sheet.pdf", pdf("ALL-LEADS-OF-THE-BATCH"));   // ignored: import sheet
+  row("4", `lead/${OTHER_LEAD}/secret.pdf`, pdf("SOMEBODY-ELSES"));     // ignored: another record's file
+  row("5", `customer/${CUSTOMER}/legacy.pdf`, pdf("A-CUSTOMER-FILE")); // ignored: not a lead file
+  row("6", "somewhere/else.pdf", pdf("ELSEWHERE"));                     // ignored: unknown place
+  const res = await (await importCall(t, "converter")).json();
+  assertEquals(res.imported, 2);
+  assertEquals(res.skipped, [], "ignored rows must not even be reported (no oracle for other records' files)");
+  assertEquals(res.next_offset, null);
+  const copied = t.be.tables.customer_secure_attachments.map((r) => r.source_lead_attachment_id).sort();
+  assertEquals(copied, ["22222222-0000-4000-8000-000000000001", "22222222-0000-4000-8000-000000000002"], "exactly the lead's own file and photo");
+});
+
 Deno.test("import: works in batches of 8 using next_offset", async () => {
   const t = convertedWorld();
   for (let i = 1; i <= 10; i++) addLeadFile(t, `11111111-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`, `f${i}.pdf`, pdf(`file ${i}`));
@@ -644,6 +668,18 @@ Deno.test("legacy: an admin opening the list secures the old file; it is verifie
   assertEquals(asString(new Uint8Array(await dl.arrayBuffer())), asString(pdf("LEGACY-CONTENT")));
   // a second list changes nothing
   assertEquals((await (await listAs(t, "admin")).json()).attachments.length, 1);
+});
+
+Deno.test("legacy: an old row pointing outside this customer's own folder is never touched", async () => {
+  const { t } = legacyWorld(null);
+  const elsewhere = `customer/${OTHER_CUSTOMER}/someone-elses.pdf`;
+  t.be.tables.entity_attachments[0].file_path = elsewhere;
+  t.be.bucket("crm-attachments").set(elsewhere, pdf("SOMEONE ELSES FILE"));
+  const body = await (await listAs(t, "admin")).json();
+  assertEquals(body.attachments.length, 0);
+  assertEquals(t.be.bucket("crm-attachments").has(elsewhere), true, "the other file must stay where it is");
+  assertEquals(t.be.tables.entity_attachments.length, 1);
+  assertEquals(t.be.tables.customer_secure_attachments.length, 0);
 });
 
 Deno.test("legacy: a manager who is not an admin does NOT trigger it", async () => {
