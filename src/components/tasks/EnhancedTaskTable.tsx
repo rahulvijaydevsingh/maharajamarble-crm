@@ -86,6 +86,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useTasks, Task } from "@/hooks/useTasks";
 import { calculateTaskStatus } from "@/lib/taskStatusService";
+import { TASK_STATUSES } from "@/constants/taskConstants";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
 import { useProfessionals, Professional } from "@/hooks/useProfessionals";
@@ -554,7 +555,10 @@ export function EnhancedTaskTable({
     const extra = transformedTasks.map(t => t.priority).filter(priority => priority && !canonicalValues.includes(priority));
     return [...canonicalValues, ...new Set(extra)];
   }, [transformedTasks, getFieldOptions]);
-  const uniqueStatuses = useMemo(() => [...new Set(transformedTasks.map(task => task.computedStatus))], [transformedTasks]);
+  const uniqueStatuses = useMemo(() => {
+    const observedStatuses = transformedTasks.map((task) => task.computedStatus);
+    return [...TASK_STATUSES, ...new Set(observedStatuses.filter((status) => !TASK_STATUSES.includes(status)))];
+  }, [transformedTasks]);
   const uniqueLeadStatuses = useMemo(
     () => [...new Set(
       transformedTasks
