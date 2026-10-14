@@ -146,6 +146,7 @@ const STATUS_OPTIONS = [
   { value: "In Progress", label: "In Progress" },
   { value: "Completed", label: "Completed" },
   { value: "Overdue", label: "Overdue" },
+  { value: "Cancelled", label: "Cancelled" },
 ];
 
 const PRIORITY_OPTIONS = [

@@ -34,7 +34,8 @@ export const TASK_STATUSES = [
   "Pending",
   "In Progress", 
   "Completed",
-  "Overdue"
+  "Overdue",
+  "Cancelled"
 ];
 
 export const TEAM_MEMBERS = [
