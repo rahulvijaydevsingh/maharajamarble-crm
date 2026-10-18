@@ -49,6 +49,7 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
   const [previewAttachment, setPreviewAttachment] = useState<SecureAttachment | null>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewImageFailed, setPreviewImageFailed] = useState(false);
 
   // Rename dialog state
   const [renameAttachment, setRenameAttachment] = useState<SecureAttachment | null>(null);
@@ -73,6 +74,7 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
     const requestId = previewRequestRef.current + 1;
     previewRequestRef.current = requestId;
     setPreviewObjectUrl(null);
+    setPreviewImageFailed(false);
     setPreviewAttachment(item);
     setIsLoadingPreview(true);
     try {
@@ -96,6 +98,7 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
   const handleClosePreview = () => {
     previewRequestRef.current += 1;
     setPreviewObjectUrl(null);
+    setPreviewImageFailed(false);
     setPreviewAttachment(null);
     setIsLoadingPreview(false);
   };
@@ -265,7 +268,8 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
 
       {/* Preview Dialog */}
       <Dialog open={!!previewAttachment} onOpenChange={(open) => !open && handleClosePreview()}>
-        <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-4">
+        {/* z-[150] / z-[149]: the customer window sits at 80-105, so these dialogs must sit above it */}
+        <DialogContent className="z-[150] max-w-4xl h-[85vh] flex flex-col p-4" overlayClassName="z-[149]">
           <DialogHeader className="shrink-0">
             <DialogTitle className="truncate">
               {previewAttachment?.file_name}
@@ -277,11 +281,18 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             ) : previewObjectUrl ? (
               previewAttachment?.mime_type.startsWith("image/") ? (
-                <img
-                  src={previewObjectUrl}
-                  alt={previewAttachment.file_name}
-                  className="max-h-full max-w-full object-contain"
-                />
+                previewImageFailed ? (
+                  <p className="text-sm text-muted-foreground">
+                    The image could not be displayed. Use Download instead.
+                  </p>
+                ) : (
+                  <img
+                    src={previewObjectUrl}
+                    alt={previewAttachment.file_name}
+                    className="max-h-full max-w-full object-contain"
+                    onError={() => setPreviewImageFailed(true)}
+                  />
+                )
               ) : previewAttachment?.mime_type === "application/pdf" ? (
                 <iframe
                   src={previewObjectUrl}
@@ -295,6 +306,18 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
               )
             ) : null}
           </div>
+          {previewObjectUrl && previewAttachment?.mime_type === "application/pdf" && (
+            <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span>If the preview does not appear:</span>
+              <a href={previewObjectUrl} target="_blank" rel="noopener noreferrer" className="underline text-primary">
+                Open in new tab
+              </a>
+              <span>or</span>
+              <a href={previewObjectUrl} download={previewAttachment.file_name} className="underline text-primary">
+                Download
+              </a>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -303,7 +326,7 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
         open={!!renameAttachment}
         onOpenChange={(open) => !open && setRenameAttachment(null)}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="z-[150] sm:max-w-md" overlayClassName="z-[149]">
           <DialogHeader>
             <DialogTitle>Rename file</DialogTitle>
           </DialogHeader>
@@ -345,7 +368,7 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
         open={!!deleteAttachmentItem}
         onOpenChange={(open) => !open && setDeleteAttachmentItem(null)}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="z-[150] sm:max-w-md" overlayClassName="z-[149]">
           <DialogHeader>
             <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>

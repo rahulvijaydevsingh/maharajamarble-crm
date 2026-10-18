@@ -190,6 +190,7 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
                 src={previewUrl}
                 alt="Preview"
                 className="h-16 w-16 object-cover rounded border"
+                onError={() => setPreviewUrl(null)}
               />
             ) : (
               <div className="h-12 w-12 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
