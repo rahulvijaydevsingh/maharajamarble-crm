@@ -31,6 +31,8 @@ import { CustomerPurchaseSection } from "./CustomerPurchaseSection";
 import { CustomerFollowUpSection } from "./CustomerFollowUpSection";
 import { isValidReminderMinutes } from "./CustomerTaskScheduleFields";
 import { serializeCustomerAdditionalContacts } from "@/lib/customerContacts";
+import { SecureAttachmentUploader } from "./SecureAttachmentUploader";
+import { uploadCustomerAttachment } from "@/lib/customerAttachmentsApi";
 
 interface SmartCustomerFormProps {
   open: boolean;
@@ -98,6 +100,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
   const [materialReminderTime, setMaterialReminderTime] = useState("60");
   const [today, setToday] = useState(getTodayString);
   const [formResetSignal, setFormResetSignal] = useState(0);
+  const [stagedAttachments, setStagedAttachments] = useState<File[]>([]);
 
   const resetForm = useCallback(() => {
     setContacts([
@@ -136,6 +139,7 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
     setMaterialReminderTime("60");
     setValidationErrors({});
     setDuplicateResults({});
+    setStagedAttachments([]);
     setFormResetSignal((value) => value + 1);
   }, []);
 
@@ -361,6 +365,27 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         "customer",
       );
 
+      if (stagedAttachments.length > 0) {
+        const failedFileNames: string[] = [];
+        for (const file of stagedAttachments) {
+          try {
+            await uploadCustomerAttachment(newCustomer.id, file);
+          } catch {
+            failedFileNames.push(file.name);
+          }
+        }
+
+        if (failedFileNames.length > 0) {
+          toast({
+            title: "Some files were not uploaded",
+            description:
+              failedFileNames.join(", ") +
+              ". The customer was saved. You can add these files again from the customer's Attachments tab.",
+            variant: "destructive",
+          });
+        }
+      }
+
       if (failedTasks.length > 0) {
         toast({
           title: "Customer created, but a follow-up task failed",
@@ -486,6 +511,19 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
                 minDate={today}
                 validationErrors={validationErrors}
               />
+              <Separator />
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold">Attachments (optional)</h3>
+                <p className="text-xs text-muted-foreground">
+                  Files are encrypted when saved. Only administrators can open them afterwards.
+                </p>
+                <SecureAttachmentUploader
+                  mode="stage"
+                  files={stagedAttachments}
+                  onFilesChange={setStagedAttachments}
+                  disabled={isSubmitting}
+                />
+              </div>
             </div>
           </div>
 
