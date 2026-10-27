@@ -955,29 +955,46 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
 
         const linkedLeadIds = (linkRows || []).map((r) => r.lead_id).filter(Boolean);
 
-        // 2. Build targeted server-side OR filters so we never fetch the entire leads table
-        const orFilters: string[] = [
+        // 2. Build scalar server-side OR filters (no raw JSON brackets inside .or())
+        const scalarOrFilters: string[] = [
           `referred_by->>id.eq.${professional.id}`,
-          `additional_contacts.cs.[{"professional_id":"${professional.id}"}]`,
         ];
 
         if (linkedLeadIds.length > 0) {
-          orFilters.push(`id.in.(${linkedLeadIds.join(',')})`);
+          scalarOrFilters.push(`id.in.(${linkedLeadIds.join(',')})`);
         }
 
         if (profPhone && profPhone.length === 10) {
-          orFilters.push(`phone.ilike.%${profPhone}%`);
-          orFilters.push(`referred_by->>phone.ilike.%${profPhone}%`);
-          orFilters.push(`additional_contacts.cs.[{"phone":"${profPhone}"}]`);
+          scalarOrFilters.push(`phone.ilike.%${profPhone}%`);
+          scalarOrFilters.push(`referred_by->>phone.ilike.%${profPhone}%`);
         }
 
-        const { data: leadsData, error: leadsError } = await supabase
-          .from('leads')
-          .select('id, name, phone, designation, status, site_location, address, created_at, referred_by, additional_contacts')
-          .or(orFilters.join(','));
+        const selectCols = 'id, name, phone, designation, status, site_location, address, created_at, referred_by, additional_contacts';
 
-        if (leadsError) throw leadsError;
+        const queries = [
+          supabase.from('leads').select(selectCols).or(scalarOrFilters.join(',')),
+          supabase.from('leads').select(selectCols).contains('additional_contacts', [{ professional_id: professional.id }]),
+        ];
+
+        if (profPhone && profPhone.length === 10) {
+          queries.push(
+            supabase.from('leads').select(selectCols).contains('additional_contacts', [{ phone: profPhone }])
+          );
+        }
+
+        const queryResults = await Promise.all(queries);
         if (cancelled) return;
+
+        // Merge and deduplicate candidate leads
+        const candidateMap = new Map<string, any>();
+        for (const res of queryResults) {
+          if (res.data) {
+            for (const row of res.data) {
+              candidateMap.set(row.id, row);
+            }
+          }
+        }
+        const leadsData = Array.from(candidateMap.values());
 
         const matchedMap = new Map<string, { lead: any; roleBadge: string }>();
 

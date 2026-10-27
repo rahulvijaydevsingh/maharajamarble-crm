@@ -299,6 +299,12 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
     }
   };
 
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open]);
+
   const resetForm = () => {
     setContacts([
       {
@@ -309,6 +315,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
         phone: "",
         alternatePhone: "",
         firmName: "",
+        professional_id: null,
       },
     ]);
     setSiteLocation("");

@@ -110,6 +110,14 @@ export function ContactDetailsSection({
     });
   }, [duplicateResults, contacts, onDuplicateFound]);
 
+  // Clear combobox open/search state when the form resets to a single blank contact
+  useEffect(() => {
+    if (contacts.length === 1 && !contacts[0].name && !contacts[0].phone && !contacts[0].professional_id) {
+      setOpenComboboxes({});
+      setSearchQueries({});
+    }
+  }, [contacts]);
+
   const formatPhone = (value: string): string => {
     return value.replace(/\D/g, '').slice(0, 10);
   };
@@ -158,23 +166,24 @@ export function ContactDetailsSection({
 
   const handlePhoneChange = (index: number, field: 'phone' | 'alternatePhone', value: string) => {
     const formattedPhone = formatPhone(value);
-    updateContact(index, field, formattedPhone);
+    const updated = [...contacts];
+    const current = { ...updated[index], [field]: formattedPhone };
 
     // Auto-link professional if 10 digits entered and contact is professional-designated
-    if (formattedPhone.length === 10 && checkIsProfessional(contacts[index].designation)) {
+    if (formattedPhone.length === 10 && checkIsProfessional(current.designation)) {
       const matchedProf = professionals.find(p =>
         normalizePhone(p.phone) === formattedPhone || normalizePhone(p.alternate_phone) === formattedPhone
       );
       if (matchedProf) {
-        updateContact(index, "professional_id", matchedProf.id);
-        if (!contacts[index].firmName && matchedProf.firm_name) {
-          updateContact(index, "firmName", matchedProf.firm_name);
-        }
-        if (!contacts[index].email && matchedProf.email) {
-          updateContact(index, "email", matchedProf.email);
-        }
+        current.professional_id = matchedProf.id;
+        if (!current.name && matchedProf.name) current.name = matchedProf.name;
+        if (!current.firmName && matchedProf.firm_name) current.firmName = matchedProf.firm_name;
+        if (!current.email && matchedProf.email) current.email = matchedProf.email;
       }
     }
+
+    updated[index] = current;
+    onContactsChange(updated);
   };
 
   const handlePhoneBlur = (index: number, field: 'phone' | 'alternatePhone', phone: string) => {
@@ -288,10 +297,10 @@ export function ContactDetailsSection({
           <p className="text-sm text-destructive">{validationErrors[errorKey]}</p>
         )}
 
-        {/* Professional Contact Non-blocking Badge */}
-        {isProfContact && (contact.name || contact.professional_id) && (
+        {/* Professional Contact Non-blocking Badge (render only under Primary Contact Number, never under Alternate Contact) */}
+        {field === 'phone' && isProfContact && phoneValue.length === 10 && (contact.name || contact.professional_id) && (
           <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-xs text-blue-800 dark:text-blue-200 mt-1">
-            <Briefcase className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+            <Briefcase className="h-3.5 w-3.5 text-blue-600 shrink-0"/>
             <span>Associated Site Professional: <strong>{contact.name || "Professional"}</strong> ({contact.designation})</span>
           </div>
         )}

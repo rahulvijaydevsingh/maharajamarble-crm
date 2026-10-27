@@ -93,11 +93,7 @@ export function DuplicateLeadModal({
   } : null;
 
   const handleViewExistingClick = () => {
-    if (duplicateResult.type === "lead" && recordAsLead) {
-      setDetailViewOpen(true);
-    } else {
-      onViewExisting();
-    }
+    onViewExisting();
   };
 
   const handleAddToExistingClick = () => {

@@ -144,6 +144,28 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
     }
   }, [staffMembers.length]);
 
+  // Hydrate primary contact professional_id from lead_professionals if not already set
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("lead_professionals")
+      .select("professional_id, is_primary_contact")
+      .eq("lead_id", lead.id)
+      .then(({ data }) => {
+        if (cancelled || !data || data.length === 0) return;
+        const primaryLink = data.find((r) => r.is_primary_contact);
+        if (primaryLink?.professional_id) {
+          setContacts((prev) => {
+            if (!prev.length || prev[0].professional_id === primaryLink.professional_id) return prev;
+            const next = [...prev];
+            next[0] = { ...next[0], professional_id: primaryLink.professional_id };
+            return next;
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [lead.id]);
+
   // Seed Next Action Date/Time/Reminder from pending task
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +254,87 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         ? manualPriority 
         : (followUpPriority === "urgent" ? 1 : followUpPriority === "normal" ? 3 : 5);
 
+      // 1. Loop over EVERY professional-designated contact (primary + additional) FIRST
+      const primaryPhoneNorm = normalizePhone(primaryContact.phone);
+      let primaryProfessionalId: string | null = primaryContact.professional_id || null;
+      const createdPhones = new Set<string>();
+      const linkedProfessionalIds = new Set<string>();
+      const failedPhones = new Set<string>();
+
+      for (const c of contacts) {
+        if (!isProfessionalDesignation(c.designation) && !c.professional_id) continue;
+        const phone = normalizePhone(c.phone);
+        const isPrimaryContact = c === primaryContact || (phone.length === 10 && phone === primaryPhoneNorm);
+
+        try {
+          let professionalId: string | null = c.professional_id || null;
+
+          if (!professionalId) {
+            if (phone.length !== 10) continue;
+            if (createdPhones.has(phone)) continue;
+            createdPhones.add(phone);
+
+            const { data: existing } = await supabase
+              .from("professionals")
+              .select("id, name")
+              .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
+              .limit(1);
+
+            if (existing && existing.length > 0) {
+              professionalId = existing[0].id;
+            } else {
+              // Create new professional
+              const { data: insertedProfessional, error: insertError } = await supabase
+                .from("professionals")
+                .insert([{
+                  name: c.name,
+                  phone,
+                  alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+                  email: c.email || null,
+                  firm_name: c.firmName || null,
+                  address: siteLocation || null,
+                  professional_type: mapDesignationToProfessionalType(c.designation),
+                  status: "active",
+                  priority: 3,
+                  assigned_to: assignedToName,
+                  created_by: staffFullName,
+                  site_plus_code: sitePlusCode || null,
+                  added_via_lead_id: lead.id,
+                }])
+                .select("id")
+                .single();
+
+              if (insertError) throw insertError;
+
+              if (insertedProfessional?.id) {
+                professionalId = insertedProfessional.id;
+              }
+            }
+          }
+
+          if (professionalId) {
+            c.professional_id = professionalId;
+            if (isPrimaryContact) primaryProfessionalId = professionalId;
+            linkedProfessionalIds.add(professionalId);
+            await supabase
+              .from("lead_professionals")
+              .upsert(
+                {
+                  lead_id: lead.id,
+                  professional_id: professionalId,
+                  is_primary_contact: isPrimaryContact,
+                  contact_designation: c.designation,
+                },
+                { onConflict: "lead_id,professional_id" }
+              );
+          }
+        } catch (err: any) {
+          console.error("Failed to link professional contact:", err);
+          if (phone.length === 10) failedPhones.add(phone);
+        }
+      }
+
+      // 2. Construct updatedData AFTER professional IDs are resolved on contacts
       const updatedData: Partial<Lead> = {
         name: primaryContact.name,
         phone: primaryContact.phone,
@@ -266,87 +369,6 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
           isProfessional: isProfessionalDesignation(c.designation),
         })),
       };
-
-      // Loop over EVERY professional-designated contact (primary + additional)
-      const primaryPhoneNorm = normalizePhone(primaryContact.phone);
-      let primaryProfessionalId: string | null = null;
-      const createdPhones = new Set<string>();
-      const linkedProfessionalIds = new Set<string>();
-      const failedPhones = new Set<string>();
-
-      for (const c of contacts) {
-        if (!isProfessionalDesignation(c.designation) && !c.professional_id) continue;
-        const phone = normalizePhone(c.phone);
-        if (phone.length !== 10) continue;
-        if (createdPhones.has(phone)) continue;
-        createdPhones.add(phone);
-        const isPrimaryContact = phone === primaryPhoneNorm;
-
-        try {
-          let professionalId: string | null = c.professional_id || null;
-
-          if (!professionalId) {
-            const { data: existing } = await supabase
-              .from("professionals")
-              .select("id, name")
-              .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
-              .limit(1);
-
-            if (existing && existing.length > 0) {
-              professionalId = existing[0].id;
-              if (isPrimaryContact) primaryProfessionalId = existing[0].id;
-            } else {
-              // Create new professional
-              const { data: insertedProfessional, error: insertError } = await supabase
-                .from("professionals")
-                .insert([{
-                  name: c.name,
-                  phone,
-                  alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-                  email: c.email || null,
-                  firm_name: c.firmName || null,
-                  address: siteLocation || null,
-                  professional_type: mapDesignationToProfessionalType(c.designation),
-                  status: "active",
-                  priority: 3,
-                  assigned_to: assignedToName,
-                  created_by: staffFullName,
-                  site_plus_code: sitePlusCode || null,
-                  added_via_lead_id: lead.id,
-                }])
-                .select("id")
-                .single();
-
-              if (insertError) throw insertError;
-
-              if (insertedProfessional?.id) {
-                professionalId = insertedProfessional.id;
-                if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
-              }
-            }
-          } else {
-            if (isPrimaryContact) primaryProfessionalId = professionalId;
-          }
-
-          if (professionalId) {
-            linkedProfessionalIds.add(professionalId);
-            await supabase
-              .from("lead_professionals")
-              .upsert(
-                {
-                  lead_id: lead.id,
-                  professional_id: professionalId,
-                  is_primary_contact: isPrimaryContact,
-                  contact_designation: c.designation,
-                },
-                { onConflict: "lead_id,professional_id" }
-              );
-          }
-        } catch (err: any) {
-          console.error("Failed to link professional contact:", err);
-          failedPhones.add(phone);
-        }
-      }
 
       // Cleanup stale links
       let failedProfessionalIds: string[] = [];

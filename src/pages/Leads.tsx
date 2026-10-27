@@ -115,17 +115,19 @@ const Leads = () => {
         const professionalContacts = formData.contacts.filter(
           (c: any) => c?.isProfessional || isProfessionalDesignation(c?.designation) || c?.professional_id
         );
+        let additionalContactsUpdated = false;
 
         for (const c of professionalContacts) {
           const phone = normalizePhone(c.phone);
-          if (phone.length !== 10) continue;
-          if (createdPhones.has(phone)) continue;
-          createdPhones.add(phone);
-          const isPrimaryContact = phone === primaryPhone;
+          const isPrimaryContact = c === formData.contacts[0] || (phone.length === 10 && phone === primaryPhone);
 
           let professionalId: string | null = c.professional_id || null;
 
           if (!professionalId) {
+            if (phone.length !== 10) continue;
+            if (createdPhones.has(phone)) continue;
+            createdPhones.add(phone);
+
             const { data: existing } = await supabase
               .from("professionals")
               .select("id")
@@ -134,7 +136,6 @@ const Leads = () => {
 
             if (existing && existing.length > 0) {
               professionalId = existing[0].id;
-              if (isPrimaryContact) primaryProfessionalId = existing[0].id;
             } else {
               const { data: insertedProfessional } = await supabase
                 .from("professionals")
@@ -160,10 +161,17 @@ const Leads = () => {
 
               if (insertedProfessional) {
                 professionalId = insertedProfessional.id;
-                if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
               }
             }
-          } else {
+
+            if (professionalId && !isPrimaryContact) {
+              c.professional_id = professionalId;
+              additionalContactsUpdated = true;
+            }
+          }
+
+          if (professionalId) {
+            c.professional_id = professionalId;
             if (isPrimaryContact) primaryProfessionalId = professionalId;
           }
 
@@ -180,6 +188,25 @@ const Leads = () => {
                 { onConflict: "lead_id,professional_id" }
               );
           }
+        }
+
+        if (additionalContactsUpdated && newLead?.id && Array.isArray(formData?.contacts)) {
+          await supabase
+            .from("leads")
+            .update({
+              additional_contacts: formData.contacts.slice(1).map((c: any) => ({
+                designation: c.designation,
+                name: c.name,
+                email: c.email,
+                phone: c.phone,
+                alternatePhone: c.alternatePhone,
+                firmName: c.firmName,
+                firm_name: c.firmName,
+                professional_id: c.professional_id || null,
+                isProfessional: !!c.isProfessional || isProfessionalDesignation(c.designation),
+              })),
+            })
+            .eq("id", newLead.id);
         }
       }
 
