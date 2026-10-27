@@ -25,6 +25,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
+import { isProfessionalDesignation, mapDesignationToProfessionalType, normalizePhone } from "@/lib/professionalResolver";
 
 const Leads = () => {
   const [addLeadDialogOpen, setAddLeadDialogOpen] = useState(false);
@@ -39,12 +40,10 @@ const Leads = () => {
   const { role, isAdmin, user, profile } = useAuth();
   const canSeeRecycleBin = isAdmin() || role === "manager";
   const canSeeArchive = isAdmin() || role === "manager";
+
   const handleAddLead = async (formData: any, generatedTask: any) => {
     try {
-      const normalizePhone = (phone: string): string => {
-        const digits = String(phone || "").replace(/\D/g, "");
-        return digits.slice(-10);
-      };
+      const staffFullName = profile?.full_name || user?.email || "unknown";
 
       // Create lead in database
       const leadData: LeadInsert = {
@@ -55,7 +54,7 @@ const Leads = () => {
           : null,
         email: formData.email || null,
         designation: formData?.contacts?.[0]?.designation || (formData.leadCategory === "professional" ? "architect" : "owner"),
-        firm_name: formData.firmName || null,
+        firm_name: formData.firmName || formData?.contacts?.[0]?.firmName || null,
         site_location: formData.siteLocation,
         address: formData.siteLocation,
         site_plus_code: formData.sitePlusCode || null,
@@ -69,6 +68,7 @@ const Leads = () => {
         status: "new",
         priority: formData.followUpPriority === "urgent" ? 1 : formData.followUpPriority === "normal" ? 3 : 5,
         notes: formData.initialNote || null,
+        created_by: staffFullName,
         additional_contacts: Array.isArray(formData?.contacts)
           ? formData.contacts.slice(1).map((c: any) => ({
               designation: c.designation,
@@ -77,7 +77,9 @@ const Leads = () => {
               phone: c.phone,
               alternatePhone: c.alternatePhone,
               firmName: c.firmName,
-              isProfessional: !!c.isProfessional,
+              firm_name: c.firmName,
+              professional_id: c.professional_id || null,
+              isProfessional: !!c.isProfessional || isProfessionalDesignation(c.designation),
             }))
           : [],
       };
@@ -86,9 +88,6 @@ const Leads = () => {
       if (newLead) {
         logStaffAction('create_lead', `Created lead: ${formData.fullName}`, 'leads', newLead.id);
 
-        // Notify the assigned staff member if the lead was assigned to
-        // someone other than the person creating it. Replaces a dead
-        // console.log stub in SmartLeadForm.tsx.
         const assignedStaff = staffMembers.find(m => m.id === formData.assignedTo);
         if (assignedStaff?.email && user?.id && formData.assignedTo !== user.id) {
           try {
@@ -107,68 +106,73 @@ const Leads = () => {
       }
 
       // Auto-create Professionals for professional-designation contacts.
-      // Track the professional whose phone matches the lead's primary phone,
-      // so we can link the initial follow-up task to that professional's
-      // profile too (in addition to the lead).
       let primaryProfessionalId: string | null = null;
       if (Array.isArray(formData?.contacts) && formData.contacts.length > 0) {
         const assignedToName = staffMembers.find(m => m.id === formData.assignedTo)?.name || formData.assignedTo;
         const primaryPhone = normalizePhone(formData.primaryPhone || formData.contacts[0]?.phone || "");
 
         const createdPhones = new Set<string>();
-        // Include any contact whose designation is professional-category —
-        // don't rely on the `isProfessional` flag alone, since the primary
-        // contact often has a professional designation without that flag set,
-        // which previously meant the task never got linked to the professional.
-        const { isProfessionalDesignation } = await import("@/constants/leadConstants");
         const professionalContacts = formData.contacts.filter(
-          (c: any) => c?.isProfessional || isProfessionalDesignation(c?.designation)
+          (c: any) => c?.isProfessional || isProfessionalDesignation(c?.designation) || c?.professional_id
         );
+        let additionalContactsUpdated = false;
 
         for (const c of professionalContacts) {
           const phone = normalizePhone(c.phone);
-          if (phone.length !== 10) continue;
-          if (createdPhones.has(phone)) continue;
-          createdPhones.add(phone);
-          const isPrimaryContact = phone === primaryPhone;
+          const isPrimaryContact = c === formData.contacts[0] || (phone.length === 10 && phone === primaryPhone);
 
-          const { data: existing } = await supabase
-            .from("professionals")
-            .select("id")
-            .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
-            .limit(1);
+          let professionalId: string | null = c.professional_id || null;
 
-          let professionalId: string | null = null;
+          if (!professionalId) {
+            if (phone.length !== 10) continue;
+            if (createdPhones.has(phone)) continue;
+            createdPhones.add(phone);
 
-          if (existing && existing.length > 0) {
-            professionalId = existing[0].id;
-            if (isPrimaryContact) primaryProfessionalId = existing[0].id;
-          } else {
-            const { data: insertedProfessional } = await supabase
+            const { data: existing } = await supabase
               .from("professionals")
-              .insert([
-                {
-                  name: c.name,
-                  phone,
-                  alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-                  email: c.email || null,
-                  firm_name: c.firmName || null,
-                  address: formData.siteLocation || null,
-                  professional_type: c.designation,
-                  status: "active",
-                  priority: 3,
-                  assigned_to: assignedToName,
-                  site_plus_code: formData.sitePlusCode || null,
-                  added_via_lead_id: newLead?.id || null,
-                },
-              ])
               .select("id")
-              .single();
+              .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
+              .limit(1);
 
-            if (insertedProfessional) {
-              professionalId = insertedProfessional.id;
-              if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
+            if (existing && existing.length > 0) {
+              professionalId = existing[0].id;
+            } else {
+              const { data: insertedProfessional } = await supabase
+                .from("professionals")
+                .insert([
+                  {
+                    name: c.name,
+                    phone,
+                    alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+                    email: c.email || null,
+                    firm_name: c.firmName || c.firm_name || null,
+                    address: formData.siteLocation || null,
+                    professional_type: mapDesignationToProfessionalType(c.designation),
+                    status: "active",
+                    priority: 3,
+                    assigned_to: assignedToName,
+                    created_by: staffFullName,
+                    site_plus_code: formData.sitePlusCode || null,
+                    added_via_lead_id: newLead?.id || null,
+                  },
+                ])
+                .select("id")
+                .single();
+
+              if (insertedProfessional) {
+                professionalId = insertedProfessional.id;
+              }
             }
+
+            if (professionalId && !isPrimaryContact) {
+              c.professional_id = professionalId;
+              additionalContactsUpdated = true;
+            }
+          }
+
+          if (professionalId) {
+            c.professional_id = professionalId;
+            if (isPrimaryContact) primaryProfessionalId = professionalId;
           }
 
           if (professionalId && newLead?.id) {
@@ -185,12 +189,30 @@ const Leads = () => {
               );
           }
         }
+
+        if (additionalContactsUpdated && newLead?.id && Array.isArray(formData?.contacts)) {
+          await supabase
+            .from("leads")
+            .update({
+              additional_contacts: formData.contacts.slice(1).map((c: any) => ({
+                designation: c.designation,
+                name: c.name,
+                email: c.email,
+                phone: c.phone,
+                alternatePhone: c.alternatePhone,
+                firmName: c.firmName,
+                firm_name: c.firmName,
+                professional_id: c.professional_id || null,
+                isProfessional: !!c.isProfessional || isProfessionalDesignation(c.designation),
+              })),
+            })
+            .eq("id", newLead.id);
+        }
       }
 
       // Create associated task
       let createdTaskId: string | undefined;
       if (generatedTask && newLead) {
-        // Resolve generatedTask.assignedTo (could be name or ID) to email
         const matchedStaff = staffMembers.find(m =>
           m.id === generatedTask.assignedTo ||
           m.name === generatedTask.assignedTo ||
@@ -208,7 +230,7 @@ const Leads = () => {
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
-          created_by: profile?.full_name || user?.email || "unknown",
+          created_by: staffFullName,
           ...(primaryProfessionalId
             ? { related_entity_type: "professional", related_entity_id: primaryProfessionalId }
             : {}),
@@ -231,15 +253,12 @@ const Leads = () => {
             title: `Follow-up: ${formData.fullName || formData.primaryPhone}`,
             description: `Lead: ${formData.fullName || formData.primaryPhone}`,
             reminder_datetime: reminderDatetime.toISOString(),
-            // A reminder created with the initial follow-up belongs to that task.
-            // Fall back to the lead only if no task was generated.
             entity_type: createdTaskId ? "task" : "lead",
             entity_id: createdTaskId || newLead.id,
             assigned_to: assignedToName,
           });
         } catch (reminderErr) {
           console.error("Failed to create reminder for new lead:", reminderErr);
-          // Non-fatal — lead and task already saved
         }
       }
 

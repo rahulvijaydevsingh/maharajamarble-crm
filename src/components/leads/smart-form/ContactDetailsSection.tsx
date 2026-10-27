@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -12,11 +13,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { User, Phone, Plus, Trash2, Loader2, CheckCircle, AlertTriangle, Building2 } from "lucide-react";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  User,
+  Phone,
+  Plus,
+  Trash2,
+  Loader2,
+  CheckCircle,
+  AlertTriangle,
+  Building2,
+  Search,
+  X,
+  ExternalLink,
+  Briefcase,
+} from "lucide-react";
 import { DuplicateCheckResult } from "@/types/lead";
 import { DuplicateLeadModal } from "@/components/leads/DuplicateLeadModal";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
 import { useEntityPhoneDuplicateCheck } from "@/hooks/useEntityPhoneDuplicateCheck";
+import { useProfessionals } from "@/hooks/useProfessionals";
+import { isProfessionalDesignation, normalizePhone } from "@/lib/professionalResolver";
 
 export interface ContactPerson {
   id: string;
@@ -26,6 +55,7 @@ export interface ContactPerson {
   phone: string;
   alternatePhone: string;
   firmName: string;
+  professional_id?: string | null;
 }
 
 interface ContactDetailsSectionProps {
@@ -45,25 +75,48 @@ export function ContactDetailsSection({
 }: ContactDetailsSectionProps) {
   const { getFieldOptions } = useControlPanelSettings();
   const { checking: checkingPhones, results: duplicateResults, checkDuplicate } = useEntityPhoneDuplicateCheck();
+  const { professionals, loading: profLoading } = useProfessionals();
+
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDuplicateKey, setSelectedDuplicateKey] = useState<string | null>(null);
+  const [openComboboxes, setOpenComboboxes] = useState<{ [index: number]: boolean }>({});
+  const [searchQueries, setSearchQueries] = useState<{ [index: number]: string }>({});
 
   const professionalTypes = getFieldOptions("professionals", "professional_type");
   const professionalTypeValues = new Set(professionalTypes.map(o => o.value));
 
   const leadDesignations = getFieldOptions("leads", "designation");
-  // Lead control panel should control only "Individual" section.
-  // We consider anything that is a professional_type as "Professional" and exclude it here.
+  // Individual designations exclude professional types
   const individualDesignations = leadDesignations.filter(o => !professionalTypeValues.has(o.value));
 
-  const isProfessionalDesignation = (designation: string) => professionalTypeValues.has(designation);
+  const checkIsProfessional = (designation: string) =>
+    isProfessionalDesignation(designation) || professionalTypeValues.has(designation);
 
-  // Sync internal duplicate results to parent
+  // Sync internal duplicate results to parent, suppressing blocking for professional contacts
   useEffect(() => {
     (Object.entries(duplicateResults) as Array<[string, DuplicateCheckResult]>).forEach(([key, result]) => {
-      onDuplicateFound(result, key);
+      // Find matching contact index from key (format: `${contact.id}_${field}`)
+      const matchingContact = contacts.find(c => key.startsWith(`${c.id}_`));
+      const isProfContact = matchingContact
+        ? checkIsProfessional(matchingContact.designation) || Boolean(matchingContact.professional_id)
+        : false;
+
+      if (isProfContact) {
+        // Pass a non-blocking result to parent
+        onDuplicateFound({ ...result, found: false }, key);
+      } else {
+        onDuplicateFound(result, key);
+      }
     });
-  }, [duplicateResults, onDuplicateFound]);
+  }, [duplicateResults, contacts, onDuplicateFound]);
+
+  // Clear combobox open/search state when the form resets to a single blank contact
+  useEffect(() => {
+    if (contacts.length === 1 && !contacts[0].name && !contacts[0].phone && !contacts[0].professional_id) {
+      setOpenComboboxes({});
+      setSearchQueries({});
+    }
+  }, [contacts]);
 
   const formatPhone = (value: string): string => {
     return value.replace(/\D/g, '').slice(0, 10);
@@ -73,28 +126,72 @@ export function ContactDetailsSection({
     return phone.length === 0 || phone.length === 10;
   };
 
-  const updateContact = (index: number, field: keyof ContactPerson, value: string) => {
+  const updateContact = (index: number, field: keyof ContactPerson, value: any) => {
     const updated = [...contacts];
     updated[index] = { ...updated[index], [field]: value };
     
-    // Clear firm name if switching from professional to individual
-    if (field === "designation" && !isProfessionalDesignation(value)) {
+    // Clear firm name & professional_id if switching from professional to individual
+    if (field === "designation" && !checkIsProfessional(value as string)) {
       updated[index].firmName = "";
+      updated[index].professional_id = null;
     }
     
     onContactsChange(updated);
   };
 
+  const handleSelectProfessional = (index: number, prof: any) => {
+    const updated = [...contacts];
+    updated[index] = {
+      ...updated[index],
+      name: prof.name || "",
+      phone: prof.phone ? normalizePhone(prof.phone) : updated[index].phone,
+      email: prof.email || "",
+      alternatePhone: prof.alternate_phone ? normalizePhone(prof.alternate_phone) : updated[index].alternatePhone,
+      firmName: prof.firm_name || updated[index].firmName || "",
+      professional_id: prof.id,
+      designation: prof.professional_type || updated[index].designation,
+    };
+    onContactsChange(updated);
+    setOpenComboboxes(prev => ({ ...prev, [index]: false }));
+  };
+
+  const handleUnlinkProfessional = (index: number) => {
+    const updated = [...contacts];
+    updated[index] = {
+      ...updated[index],
+      professional_id: null,
+    };
+    onContactsChange(updated);
+  };
+
   const handlePhoneChange = (index: number, field: 'phone' | 'alternatePhone', value: string) => {
     const formattedPhone = formatPhone(value);
-    updateContact(index, field, formattedPhone);
+    const updated = [...contacts];
+    const current = { ...updated[index], [field]: formattedPhone };
+
+    // Auto-link professional if 10 digits entered and contact is professional-designated
+    if (formattedPhone.length === 10 && checkIsProfessional(current.designation)) {
+      const matchedProf = professionals.find(p =>
+        normalizePhone(p.phone) === formattedPhone || normalizePhone(p.alternate_phone) === formattedPhone
+      );
+      if (matchedProf) {
+        current.professional_id = matchedProf.id;
+        if (!current.name && matchedProf.name) current.name = matchedProf.name;
+        if (!current.firmName && matchedProf.firm_name) current.firmName = matchedProf.firm_name;
+        if (!current.email && matchedProf.email) current.email = matchedProf.email;
+      }
+    }
+
+    updated[index] = current;
+    onContactsChange(updated);
   };
 
   const handlePhoneBlur = (index: number, field: 'phone' | 'alternatePhone', phone: string) => {
     if (phone.length === 10) {
       const checkKey = `${contacts[index].id}_${field}`;
-      // Always check against leads and customers; if this contact is professional, also check professionals.
-      const entities = isProfessionalDesignation(contacts[index].designation)
+      const isProf = checkIsProfessional(contacts[index].designation) || Boolean(contacts[index].professional_id);
+
+      const entities = isProf
         ? (["leads", "customers", "professionals"] as const)
         : (["leads", "customers"] as const);
 
@@ -121,6 +218,7 @@ export function ContactDetailsSection({
       phone: "",
       alternatePhone: "",
       firmName: "",
+      professional_id: null,
     };
     onContactsChange([...contacts, newContact]);
   };
@@ -165,8 +263,8 @@ export function ContactDetailsSection({
     const duplicateResult = duplicateResults[checkKey];
     const phoneValue = contact[field];
     const errorKey = `contacts.${index}.${field}`;
-    const isValidLength = validatePhoneLength(phoneValue);
     const showLengthError = phoneValue.length > 0 && phoneValue.length < 10;
+    const isProfContact = checkIsProfessional(contact.designation) || Boolean(contact.professional_id);
 
     return (
       <div className="space-y-2">
@@ -191,7 +289,6 @@ export function ContactDetailsSection({
           )}
         </div>
         
-        {/* Length validation error */}
         {showLengthError && (
           <p className="text-sm text-destructive">Phone number must be exactly 10 digits ({phoneValue.length}/10)</p>
         )}
@@ -199,15 +296,23 @@ export function ContactDetailsSection({
         {validationErrors[errorKey] && !showLengthError && (
           <p className="text-sm text-destructive">{validationErrors[errorKey]}</p>
         )}
+
+        {/* Professional Contact Non-blocking Badge (render only under Primary Contact Number, never under Alternate Contact) */}
+        {field === 'phone' && isProfContact && phoneValue.length === 10 && (contact.name || contact.professional_id) && (
+          <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-xs text-blue-800 dark:text-blue-200 mt-1">
+            <Briefcase className="h-3.5 w-3.5 text-blue-600 shrink-0"/>
+            <span>Associated Site Professional: <strong>{contact.name || "Professional"}</strong> ({contact.designation})</span>
+          </div>
+        )}
         
-        {/* Duplicate Warning */}
-        {duplicateResult?.found && duplicateResult.existingRecord && (() => {
+        {/* Duplicate Warning for NON-professional contacts */}
+        {!isProfContact && duplicateResult?.found && duplicateResult.existingRecord && (() => {
           const style = getDuplicateAlertStyle(duplicateResult.type);
           const isLost = duplicateResult.type === "lost_lead";
           const isDeleted = duplicateResult.type === "deleted_lead";
           const isNonBlocking = isLost || isDeleted;
           return (
-            <Alert variant="destructive" className={`${style.border} ${style.bg} py-2`}>
+            <Alert variant="destructive" className={`${style.border} ${style.bg} py-2 mt-1`}>
               <AlertTriangle className={`h-4 w-4 ${style.iconColor}`} />
               <AlertTitle className={`${style.titleColor} text-sm`}>
                 {isNonBlocking ? "" : "Duplicate "}{getTypeLabel(duplicateResult.type)} Found!
@@ -253,8 +358,23 @@ export function ContactDetailsSection({
       </CardHeader>
       <CardContent className="space-y-6">
         {contacts.map((contact, index) => {
-          const showFirmName = isProfessionalDesignation(contact.designation);
-          
+          const isProf = checkIsProfessional(contact.designation);
+          const linkedProf = contact.professional_id
+            ? professionals.find(p => p.id === contact.professional_id)
+            : null;
+          const query = searchQueries[index] || "";
+
+          const filteredProfList = professionals.filter(p => {
+            if (!query) return true;
+            const q = query.toLowerCase();
+            return (
+              p.name.toLowerCase().includes(q) ||
+              (p.firm_name && p.firm_name.toLowerCase().includes(q)) ||
+              (p.phone && p.phone.includes(q)) ||
+              (p.email && p.email.toLowerCase().includes(q))
+            );
+          });
+
           return (
             <div key={contact.id} className="space-y-4 p-4 border rounded-lg relative">
               {contacts.length > 1 && (
@@ -305,18 +425,124 @@ export function ContactDetailsSection({
                 )}
               </div>
 
-              {/* Firm Name - Only for Professional designations */}
-              {showFirmName && (
+              {/* Searchable Combobox for Professional Contacts */}
+              {isProf && (
+                <div className="space-y-2 bg-muted/20 p-3 rounded-lg border border-dashed">
+                  <Label className="text-xs font-medium flex items-center gap-1.5 text-primary">
+                    <Search className="h-3.5 w-3.5" />
+                    Search Existing Professional (Name, Phone, or Firm)
+                  </Label>
+
+                  {contact.professional_id ? (
+                    <div className="flex items-center justify-between p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-md">
+                      <div className="flex items-center gap-2 text-sm">
+                        <CheckCircle className="h-4 w-4 text-blue-600 shrink-0" />
+                        <div>
+                          <p className="font-medium text-blue-900 dark:text-blue-100">
+                            Linked Professional: {linkedProf?.name || contact.name}
+                          </p>
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            {linkedProf?.firm_name || contact.firmName || contact.designation}
+                            {linkedProf?.phone && ` · ${linkedProf.phone}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-blue-700 hover:text-blue-900"
+                          onClick={() => window.open(`/professionals?view=${contact.professional_id}`, '_blank')}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                          View Profile
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={() => handleUnlinkProfessional(index)}
+                        >
+                          <X className="h-3.5 w-3.5 mr-1" />
+                          Clear / Change
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Popover
+                      open={Boolean(openComboboxes[index])}
+                      onOpenChange={(open) => setOpenComboboxes(prev => ({ ...prev, [index]: open }))}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          type="button"
+                          className="w-full justify-start text-left font-normal bg-background"
+                        >
+                          <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+                          {profLoading ? "Loading professionals..." : "Search professional by name, phone, firm..."}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            placeholder="Type name, phone, or firm..."
+                            value={searchQueries[index] || ""}
+                            onValueChange={(q) => setSearchQueries(prev => ({ ...prev, [index]: q }))}
+                          />
+                          <CommandList>
+                            <CommandEmpty>
+                              <div className="p-3 text-sm text-center text-muted-foreground">
+                                No matching professional found.
+                                <p className="text-xs mt-1 text-primary font-medium">
+                                  You can fill in details below to auto-create this professional on save.
+                                </p>
+                              </div>
+                            </CommandEmpty>
+                            <CommandGroup heading="Existing Professionals">
+                              {filteredProfList.slice(0, 8).map((prof) => (
+                                <CommandItem
+                                  key={prof.id}
+                                  value={prof.id}
+                                  onSelect={() => handleSelectProfessional(index, prof)}
+                                  className="flex flex-col items-start gap-1 py-2 cursor-pointer"
+                                >
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="font-medium">{prof.name}</span>
+                                    <Badge variant="outline" className="text-xs capitalize">
+                                      {prof.professional_type?.replace(/_/g, ' ') || 'Professional'}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground flex items-center gap-3">
+                                    {prof.firm_name && <span>Firm: {prof.firm_name}</span>}
+                                    {prof.phone && <span>Ph: {prof.phone}</span>}
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              )}
+
+              {/* Firm Name - Visible and editable for Professional designations */}
+              {isProf && (
                 <div className="space-y-2">
                   <Label htmlFor={`firmName_${index}`} className="flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
-                    Firm Name <span className="text-muted-foreground text-xs">(Optional)</span>
+                    Firm / Company Name <span className="text-muted-foreground text-xs">(Optional)</span>
                   </Label>
                   <Input
                     id={`firmName_${index}`}
                     value={contact.firmName}
                     onChange={(e) => updateContact(index, "firmName", e.target.value)}
-                    placeholder="Enter firm/company name"
+                    placeholder="Enter firm / company name"
                   />
                 </div>
               )}

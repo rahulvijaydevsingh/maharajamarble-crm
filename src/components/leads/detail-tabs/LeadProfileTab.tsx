@@ -34,6 +34,7 @@ import { PhoneLink } from '@/components/shared/PhoneLink';
 import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { realtimeRegistry } from '@/lib/realtimeRegistry';
+import { isProfessionalDesignation } from '@/lib/professionalResolver';
 
 interface LeadProfileTabProps {
   lead: Lead;
@@ -91,7 +92,6 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
     };
     load();
 
-    // Realtime: refresh whenever any activity_log row for this lead changes
     const unsubscribe = realtimeRegistry.subscribe(
       `lead_activity_${lead.id}`,
       {
@@ -129,7 +129,6 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
   const priorityConfig = PRIORITY_LEVELS[lead.priority] || { label: 'Medium', color: 'text-yellow-700', bgColor: 'bg-yellow-50' };
   
   const handleStatusChange = async (newStatus: string) => {
-    // Lost / Pending Approval must go through the MarkAsLostDialog approval workflow
     if (newStatus === 'lost' || newStatus === 'pending_lost') {
       onMarkAsLost?.();
       return;
@@ -457,48 +456,58 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {(lead.additional_contacts as any[]).map((c, idx) => (
-              <div key={idx} className="p-3 border rounded-lg space-y-2">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="font-medium">{c.name || "—"}</div>
-                  {c.designation && (
-                    <Badge variant="outline" className="capitalize text-xs">
-                      {String(c.designation).replace(/_/g, " ")}
-                    </Badge>
-                  )}
-                </div>
-                {c.firmName && (
-                  <div className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Building2 className="h-3 w-3" /> {c.firmName}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-4 text-sm">
-                  {c.phone && (
-                    <div className="flex items-center gap-1">
-                      <Phone className="h-3 w-3 text-muted-foreground" />
-                      <PhoneLink
-                        phone={c.phone}
-                        log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
-                      />
-                      {c.alternatePhone && (
-                        <span className="text-muted-foreground">
-                          {' / '}
-                          <PhoneLink
-                            phone={c.alternatePhone}
-                            log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
-                          />
-                        </span>
+            {(lead.additional_contacts as any[]).map((c, idx) => {
+              const isProfContact = c.professional_id || isProfessionalDesignation(c.designation);
+              return (
+                <div key={idx} className="p-3 border rounded-lg space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="font-medium flex items-center gap-2">
+                      <span>{c.name || "—"}</span>
+                      {isProfContact && (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs">
+                          Linked Professional
+                        </Badge>
                       )}
                     </div>
+                    {c.designation && (
+                      <Badge variant="outline" className="capitalize text-xs">
+                        {String(c.designation).replace(/_/g, " ")}
+                      </Badge>
+                    )}
+                  </div>
+                  {(c.firmName || c.firm_name) && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Building2 className="h-3 w-3" /> {c.firmName || c.firm_name}
+                    </div>
                   )}
-                  {c.email && (
-                    <a href={`mailto:${c.email}`} className="text-primary hover:underline flex items-center gap-1">
-                      <Mail className="h-3 w-3" /> {c.email}
-                    </a>
-                  )}
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    {c.phone && (
+                      <div className="flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-muted-foreground" />
+                        <PhoneLink
+                          phone={c.phone}
+                          log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                        />
+                        {c.alternatePhone && (
+                          <span className="text-muted-foreground">
+                            {' / '}
+                            <PhoneLink
+                              phone={c.alternatePhone}
+                              log={{ leadId: lead.id, relatedEntityType: 'lead', relatedEntityId: lead.id }}
+                            />
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {c.email && (
+                      <a href={`mailto:${c.email}`} className="text-primary hover:underline flex items-center gap-1">
+                        <Mail className="h-3 w-3" /> {c.email}
+                      </a>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}

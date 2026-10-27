@@ -93,15 +93,10 @@ export function DuplicateLeadModal({
   } : null;
 
   const handleViewExistingClick = () => {
-    if (duplicateResult.type === "lead" && recordAsLead) {
-      setDetailViewOpen(true);
-    } else {
-      onViewExisting();
-    }
+    onViewExisting();
   };
 
   const handleAddToExistingClick = () => {
-    // Show a toast confirming the action, don't open a new tab
     toast({
       title: "Adding to Existing Record",
       description: `Additional information will be merged with ${record.name}'s existing record.`,
@@ -112,7 +107,7 @@ export function DuplicateLeadModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col z-[60]">
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2 text-amber-600">
               <AlertTriangle className="h-5 w-5" />

@@ -1,4 +1,3 @@
-
 export interface PhoneField {
   id: string;
   value: string;
@@ -37,7 +36,7 @@ export interface ProfessionalRef {
   id: string;
   name: string;
   firmName: string;
-  type: "architect" | "builder" | "contractor" | "interior_designer";
+  type: "architect" | "builder" | "contractor" | "interior_designer" | string;
   phone?: string;
   email?: string;
 }
@@ -51,6 +50,21 @@ export interface SmartLeadContact {
   phone: string;
   alternatePhone: string;
   firmName: string;
+  firm_name?: string | null;
+  professional_id?: string | null;
+}
+
+export interface AdditionalContact {
+  designation?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  alternate_contact?: string | null;
+  alternatePhone?: string | null;
+  firm_name?: string | null;
+  firmName?: string | null;
+  professional_id?: string | null;
+  isProfessional?: boolean;
 }
 
 // Smart Lead Form Data
