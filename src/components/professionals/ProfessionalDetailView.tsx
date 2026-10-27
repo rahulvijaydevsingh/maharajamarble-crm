@@ -108,6 +108,7 @@ import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDia
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
 import { useZLayer } from '@/contexts/ZLayerContext';
+import { isProfessionalDesignation, normalizePhone } from '@/lib/professionalResolver';
 
 interface ProfessionalDetailViewProps {
   professional: Professional | null;
@@ -514,7 +515,6 @@ const statusStyles: Record<string, { label: string; className: string }> = {
   'Completed': { label: 'Completed', className: 'bg-green-100 text-green-700' },
 };
 
-// Local shared helper to fetch linked lead IDs for the professional
 function useProfessionalLeadIds(professionalId: string) {
   const [linkedLeadIds, setLinkedLeadIds] = useState<string[]>([]);
   useEffect(() => {
@@ -781,7 +781,6 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
         recurrence_end_date: data.recurrence_end_date,
         entity_type: 'professional',
         entity_id: professional.id,
-        // created_by handled by DB default get_current_user_email()
         assigned_to: data.assigned_to,
       });
       await logActivity({
@@ -929,40 +928,129 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
 
 function ProfessionalLeadsTab({ professional }: { professional: Professional }) {
   const navigate = useNavigate();
-  const [links, setLinks] = useState<{ lead_id: string; is_primary_contact: boolean; contact_designation: string | null }[]>([]);
-  const [leadsById, setLeadsById] = useState<Record<string, any>>({});
+  const [associatedLeads, setAssociatedLeads] = useState<{
+    id: string;
+    name: string;
+    phone: string;
+    status: string;
+    site_location: string | null;
+    address: string | null;
+    created_at: string;
+    roleBadge: string;
+  }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data: linkRows } = await supabase
-        .from('lead_professionals')
-        .select('lead_id, is_primary_contact, contact_designation')
-        .eq('professional_id', professional.id);
-      if (cancelled) return;
-      setLinks(linkRows || []);
+      try {
+        const profPhone = normalizePhone(professional.phone);
 
-      const leadIds = (linkRows || []).map((r) => r.lead_id);
-      if (leadIds.length > 0) {
+        // Fetch junction links
+        const { data: linkRows } = await supabase
+          .from('lead_professionals')
+          .select('lead_id, is_primary_contact, contact_designation')
+          .eq('professional_id', professional.id);
+
+        // Fetch all active leads
         const { data: leadsData } = await supabase
           .from('leads')
-          .select('id, name, phone, status, site_location, address, created_at')
-          .in('id', leadIds);
-        if (!cancelled) {
-          const byId: Record<string, any> = {};
-          (leadsData || []).forEach((l) => { byId[l.id] = l; });
-          setLeadsById(byId);
-        }
+          .select('id, name, phone, designation, status, site_location, address, created_at, referred_by, additional_contacts');
+
+        if (cancelled) return;
+
+        const matchedMap = new Map<string, { lead: any; roleBadge: string }>();
+
+        // Process linkRows first
+        (linkRows || []).forEach(r => {
+          const l = (leadsData || []).find(lead => lead.id === r.lead_id);
+          if (l) {
+            const desig = r.contact_designation
+              ? r.contact_designation.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              : 'Site Professional';
+            matchedMap.set(l.id, {
+              lead: l,
+              roleBadge: r.is_primary_contact ? `Site ${desig}` : desig,
+            });
+          }
+        });
+
+        // Evaluate predicate across all leads
+        (leadsData || []).forEach(lead => {
+          if (matchedMap.has(lead.id)) return;
+
+          const leadPhone = normalizePhone(lead.phone);
+          const referredBy = typeof lead.referred_by === 'object' && lead.referred_by && !Array.isArray(lead.referred_by)
+            ? (lead.referred_by as Record<string, any>)
+            : null;
+          const referredByPhone = referredBy?.phone ? normalizePhone(referredBy.phone) : null;
+
+          // Check 1: Referred By
+          if (
+            (referredBy?.id && referredBy.id === professional.id) ||
+            (profPhone && referredByPhone && profPhone === referredByPhone)
+          ) {
+            matchedMap.set(lead.id, { lead, roleBadge: "Referrer" });
+            return;
+          }
+
+          // Check 2: Primary Contact
+          if (
+            isProfessionalDesignation(lead.designation) &&
+            ((lead as any).professional_id === professional.id || (profPhone && leadPhone && profPhone === leadPhone))
+          ) {
+            const desig = lead.designation
+              ? lead.designation.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+              : 'Architect';
+            matchedMap.set(lead.id, { lead, roleBadge: `Site ${desig}` });
+            return;
+          }
+
+          // Check 3: Additional Contacts
+          if (Array.isArray(lead.additional_contacts)) {
+            const matchedContact = (lead.additional_contacts as any[]).find(c => {
+              const cPhone = c?.phone ? normalizePhone(c.phone) : null;
+              return (
+                c?.professional_id === professional.id ||
+                (isProfessionalDesignation(c?.designation) && profPhone && cPhone && profPhone === cPhone)
+              );
+            });
+
+            if (matchedContact) {
+              const desig = matchedContact.designation
+                ? matchedContact.designation.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+                : 'Site Professional';
+              matchedMap.set(lead.id, { lead, roleBadge: `Site ${desig}` });
+              return;
+            }
+          }
+        });
+
+        const results = Array.from(matchedMap.values()).map(({ lead, roleBadge }) => ({
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          status: lead.status,
+          site_location: lead.site_location,
+          address: lead.address,
+          created_at: lead.created_at,
+          roleBadge,
+        }));
+
+        setAssociatedLeads(results);
+      } catch (err) {
+        console.error("Failed to load associated leads for professional:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
+
     return () => { cancelled = true; };
-  }, [professional.id]);
+  }, [professional.id, professional.phone]);
 
   if (loading) return <div className="text-sm text-muted-foreground p-4">Loading leads…</div>;
-  if (links.length === 0) return <div className="text-sm text-muted-foreground p-4">No leads linked to this professional yet.</div>;
+  if (associatedLeads.length === 0) return <div className="text-sm text-muted-foreground p-4">No leads linked to this professional yet.</div>;
 
   return (
     <Table>
@@ -977,20 +1065,20 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
         </TableRow>
       </TableHeader>
       <TableBody>
-        {links.map((link) => {
-          const lead = leadsById[link.lead_id];
-          if (!lead) return null;
-          return (
-            <TableRow key={link.lead_id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/leads?view=${lead.id}`)}>
-              <TableCell className="font-medium">{lead.name}</TableCell>
-              <TableCell>{lead.phone}</TableCell>
-              <TableCell><Badge variant="outline">{lead.status}</Badge></TableCell>
-              <TableCell>{lead.site_location || lead.address || '—'}</TableCell>
-              <TableCell>{link.is_primary_contact ? 'Primary contact' : (link.contact_designation || 'Contact')}</TableCell>
-              <TableCell>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}</TableCell>
-            </TableRow>
-          );
-        })}
+        {associatedLeads.map((lead) => (
+          <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => window.open(`/leads?view=${lead.id}`, '_blank')}>
+            <TableCell className="font-medium">{lead.name}</TableCell>
+            <TableCell>{lead.phone}</TableCell>
+            <TableCell><Badge variant="outline">{lead.status}</Badge></TableCell>
+            <TableCell>{lead.site_location || lead.address || '—'}</TableCell>
+            <TableCell>
+              <Badge variant="secondary" className="bg-blue-50 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+                {lead.roleBadge}
+              </Badge>
+            </TableCell>
+            <TableCell>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}</TableCell>
+          </TableRow>
+        ))}
       </TableBody>
     </Table>
   );

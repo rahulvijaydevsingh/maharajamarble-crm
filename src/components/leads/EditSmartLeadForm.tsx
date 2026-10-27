@@ -29,8 +29,9 @@ import {
   FollowUpPriority,
   ProfessionalRef,
 } from "@/types/lead";
-import { isProfessionalDesignation } from "@/constants/leadConstants";
+import { isProfessionalDesignation, mapDesignationToProfessionalType, normalizePhone } from "@/lib/professionalResolver";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { useAuth } from "@/contexts/AuthContext";
 import { Lead } from "@/hooks/useLeads";
 
 // Priority levels for manual override
@@ -51,6 +52,7 @@ interface EditSmartLeadFormProps {
 export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormProps) {
   const { toast } = useToast();
   const { staffMembers } = useActiveStaff();
+  const { profile, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Derive initial priority mode from lead data
@@ -78,10 +80,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
     return null;
   })();
 
-  // Form state - initialized directly from lead prop (component is keyed by lead.id)
-  // Group 1: Contacts. Load primary + any additional_contacts persisted on the lead
-  // so editing a lead with 2+ contacts shows all of them (previously only the
-  // primary was loaded and secondary contacts were silently dropped on save).
+  // Form state - Group 1: Contacts. Load primary + any additional_contacts persisted on the lead
   const initialContacts: ContactPerson[] = (() => {
     const primary: ContactPerson = {
       id: `contact_${Date.now()}_0`,
@@ -91,6 +90,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       phone: lead.phone,
       alternatePhone: lead.alternate_phone || "",
       firmName: lead.firm_name || "",
+      professional_id: (lead as any).professional_id || null,
     };
     const extras: ContactPerson[] = Array.isArray(lead.additional_contacts)
       ? (lead.additional_contacts as any[]).map((c, i) => ({
@@ -99,8 +99,9 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
           name: c?.name || "",
           email: c?.email || "",
           phone: c?.phone || "",
-          alternatePhone: c?.alternatePhone || "",
-          firmName: c?.firmName || "",
+          alternatePhone: c?.alternatePhone || c?.alternate_contact || "",
+          firmName: c?.firmName || c?.firm_name || "",
+          professional_id: c?.professional_id || null,
         }))
       : [];
     return [primary, ...extras];
@@ -141,10 +142,9 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       const match = staffMembers.find(m => m.name === lead.assigned_to || m.email === lead.assigned_to);
       setAssignedTo(match?.id || lead.assigned_to || "");
     }
-  }, [staffMembers.length]); // Only run when staff list first loads
+  }, [staffMembers.length]);
 
-  // Seed Next Action Date/Time/Reminder from the lead's actual pending
-  // task, not the separate next_follow_up field which can drift out of sync.
+  // Seed Next Action Date/Time/Reminder from pending task
   useEffect(() => {
     let cancelled = false;
     supabase
@@ -174,7 +174,6 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
   const validateForm = (): boolean => {
     const errors: { [key: string]: string } = {};
 
-    // Validate contacts
     contacts.forEach((contact, index) => {
       if (!contact.name.trim()) {
         errors[`contacts.${index}.name`] = "Name is required";
@@ -190,7 +189,6 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       }
     });
 
-    // Validate site details
     if (!siteLocation.trim()) {
       errors.siteLocation = "Site location is required";
     }
@@ -227,14 +225,12 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       const primaryContact = contacts[0];
       const assignedMember = staffMembers.find(m => m.id === assignedTo);
       const assignedToName = assignedMember?.name || assignedTo;
+      const staffFullName = profile?.full_name || user?.email || assignedToName;
 
-      // Calculate priority - use manual if enabled, otherwise use follow-up priority
+      // Calculate priority
       const finalPriority = useManualPriority 
         ? manualPriority 
         : (followUpPriority === "urgent" ? 1 : followUpPriority === "normal" ? 3 : 5);
-
-      const normalizePhone = (phone: string): string =>
-        String(phone || "").replace(/\D/g, "").slice(-10);
 
       const updatedData: Partial<Lead> = {
         name: primaryContact.name,
@@ -244,8 +240,6 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         designation: primaryContact.designation,
         firm_name: primaryContact.firmName || null,
         site_location: siteLocation,
-        // Keep legacy `address` column in sync — Lead Profile reads
-        // `address || site_location`, so drift here shows stale data.
         address: siteLocation,
         site_photo_url: sitePhotoUrl,
         site_plus_code: sitePlusCode,
@@ -260,8 +254,6 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         priority: finalPriority,
         notes: initialNote || null,
         next_follow_up: format(nextActionDate, "yyyy-MM-dd"),
-        // Persist every non-primary contact so subsequent edits load them
-        // and the detail view can render them (mirrors Add Lead flow).
         additional_contacts: contacts.slice(1).map((c) => ({
           designation: c.designation,
           name: c.name,
@@ -269,14 +261,13 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
           phone: c.phone,
           alternatePhone: c.alternatePhone,
           firmName: c.firmName,
+          firm_name: c.firmName,
+          professional_id: c.professional_id || null,
           isProfessional: isProfessionalDesignation(c.designation),
         })),
       };
 
       // Loop over EVERY professional-designated contact (primary + additional)
-      // and ensure a linked Professional record exists — mirroring
-      // Leads.tsx handleAddLead. Previously only contacts[0] was checked,
-      // so secondary professional contacts were never surfaced.
       const primaryPhoneNorm = normalizePhone(primaryContact.phone);
       let primaryProfessionalId: string | null = null;
       const createdPhones = new Set<string>();
@@ -284,7 +275,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       const failedPhones = new Set<string>();
 
       for (const c of contacts) {
-        if (!isProfessionalDesignation(c.designation)) continue;
+        if (!isProfessionalDesignation(c.designation) && !c.professional_id) continue;
         const phone = normalizePhone(c.phone);
         if (phone.length !== 10) continue;
         if (createdPhones.has(phone)) continue;
@@ -292,58 +283,54 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         const isPrimaryContact = phone === primaryPhoneNorm;
 
         try {
-          const { data: existing, error: findError } = await supabase
-            .from("professionals")
-            .select("id, name")
-            .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
-            .limit(1);
+          let professionalId: string | null = c.professional_id || null;
 
-          if (findError) throw findError;
-
-          let professionalId: string | null = null;
-
-          if (existing && existing.length > 0) {
-            professionalId = existing[0].id;
-            if (isPrimaryContact) primaryProfessionalId = existing[0].id;
-            toast({
-              title: "Linked to existing professional",
-              description: `${c.name || existing[0].name} matches an existing Professional (${existing[0].name}).`,
-            });
-          } else {
-            const { data: insertedProfessional, error: insertError } = await supabase
+          if (!professionalId) {
+            const { data: existing } = await supabase
               .from("professionals")
-              .insert([{
-                name: c.name,
-                phone,
-                alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
-                email: c.email || null,
-                firm_name: c.firmName || null,
-                address: siteLocation || null,
-                professional_type: c.designation,
-                status: "active",
-                priority: 3,
-                assigned_to: assignedToName,
-                site_plus_code: sitePlusCode || null,
-                added_via_lead_id: lead.id,
-              }])
-              .select("id")
-              .single();
+              .select("id, name")
+              .or(`phone.eq.${phone},alternate_phone.eq.${phone}`)
+              .limit(1);
 
-            if (insertError) throw insertError;
+            if (existing && existing.length > 0) {
+              professionalId = existing[0].id;
+              if (isPrimaryContact) primaryProfessionalId = existing[0].id;
+            } else {
+              // Create new professional
+              const { data: insertedProfessional, error: insertError } = await supabase
+                .from("professionals")
+                .insert([{
+                  name: c.name,
+                  phone,
+                  alternate_phone: c.alternatePhone ? normalizePhone(c.alternatePhone) : null,
+                  email: c.email || null,
+                  firm_name: c.firmName || null,
+                  address: siteLocation || null,
+                  professional_type: mapDesignationToProfessionalType(c.designation),
+                  status: "active",
+                  priority: 3,
+                  assigned_to: assignedToName,
+                  created_by: staffFullName,
+                  site_plus_code: sitePlusCode || null,
+                  added_via_lead_id: lead.id,
+                }])
+                .select("id")
+                .single();
 
-            if (insertedProfessional?.id) {
-              professionalId = insertedProfessional.id;
-              if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
-              toast({
-                title: "Professional record created",
-                description: `${c.name} has been added to your Professionals database.`,
-              });
+              if (insertError) throw insertError;
+
+              if (insertedProfessional?.id) {
+                professionalId = insertedProfessional.id;
+                if (isPrimaryContact) primaryProfessionalId = insertedProfessional.id;
+              }
             }
+          } else {
+            if (isPrimaryContact) primaryProfessionalId = professionalId;
           }
 
           if (professionalId) {
             linkedProfessionalIds.add(professionalId);
-            const { error: upsertError } = await supabase
+            await supabase
               .from("lead_professionals")
               .upsert(
                 {
@@ -354,24 +341,14 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
                 },
                 { onConflict: "lead_id,professional_id" }
               );
-
-            if (upsertError) throw upsertError;
           }
         } catch (err: any) {
           console.error("Failed to link professional contact:", err);
           failedPhones.add(phone);
-          toast({
-            title: "Failed to link professional",
-            description: `An error occurred while linking professional contact (${c.name}).`,
-            variant: "destructive",
-          });
         }
       }
 
-      // Drop links for professionals no longer represented among this
-      // lead's current contacts (designation changed away, or contact removed).
-      // If any contact failed to process above, retrieve their professional record ID
-      // and exclude it from the stale cleanup list to prevent premature deletion.
+      // Cleanup stale links
       let failedProfessionalIds: string[] = [];
       if (failedPhones.size > 0) {
         const failedPhonesArray = Array.from(failedPhones);
@@ -400,8 +377,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
           .in("professional_id", staleProfessionalIds);
       }
 
-      // Link the lead's still-unlinked task to the primary professional
-      // (matches the Add Lead behavior).
+      // Link pending task
       if (primaryProfessionalId) {
         await supabase
           .from("tasks")
@@ -500,7 +476,6 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
               onFollowUpPriorityChange={(priority) => {
                 setFollowUpPriority(priority);
                 if (!useManualPriority) {
-                  // Sync manual priority when not in manual mode
                   setManualPriority(priority === "urgent" ? 1 : priority === "normal" ? 3 : 5);
                 }
               }}
