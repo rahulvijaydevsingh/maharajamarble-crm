@@ -947,17 +947,36 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
       try {
         const profPhone = normalizePhone(professional.phone);
 
-        // Fetch junction links
+        // 1. Fetch junction links for this professional
         const { data: linkRows } = await supabase
           .from('lead_professionals')
           .select('lead_id, is_primary_contact, contact_designation')
           .eq('professional_id', professional.id);
 
-        // Fetch all active leads
-        const { data: leadsData } = await supabase
-          .from('leads')
-          .select('id, name, phone, designation, status, site_location, address, created_at, referred_by, additional_contacts');
+        const linkedLeadIds = (linkRows || []).map((r) => r.lead_id).filter(Boolean);
 
+        // 2. Build targeted server-side OR filters so we never fetch the entire leads table
+        const orFilters: string[] = [
+          `referred_by->>id.eq.${professional.id}`,
+          `additional_contacts.cs.[{"professional_id":"${professional.id}"}]`,
+        ];
+
+        if (linkedLeadIds.length > 0) {
+          orFilters.push(`id.in.(${linkedLeadIds.join(',')})`);
+        }
+
+        if (profPhone && profPhone.length === 10) {
+          orFilters.push(`phone.ilike.%${profPhone}%`);
+          orFilters.push(`referred_by->>phone.ilike.%${profPhone}%`);
+          orFilters.push(`additional_contacts.cs.[{"phone":"${profPhone}"}]`);
+        }
+
+        const { data: leadsData, error: leadsError } = await supabase
+          .from('leads')
+          .select('id, name, phone, designation, status, site_location, address, created_at, referred_by, additional_contacts')
+          .or(orFilters.join(','));
+
+        if (leadsError) throw leadsError;
         if (cancelled) return;
 
         const matchedMap = new Map<string, { lead: any; roleBadge: string }>();
@@ -976,7 +995,7 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
           }
         });
 
-        // Evaluate predicate across all leads
+        // Evaluate predicate across returned candidate leads
         (leadsData || []).forEach(lead => {
           if (matchedMap.has(lead.id)) return;
 
