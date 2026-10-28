@@ -969,6 +969,101 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_attachment_access_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_name: string | null
+          attachment_id: string | null
+          created_at: string
+          customer_id: string | null
+          detail: Json | null
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_name?: string | null
+          attachment_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          detail?: Json | null
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_name?: string | null
+          attachment_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          detail?: Json | null
+          id?: string
+        }
+        Relationships: []
+      }
+      customer_secure_attachments: {
+        Row: {
+          created_at: string
+          customer_id: string
+          file_iv: string
+          file_name: string
+          file_size: number
+          id: string
+          key_version: number
+          mime_type: string
+          source_lead_attachment_id: string | null
+          source_lead_id: string | null
+          storage_path: string
+          updated_at: string
+          uploaded_by: string | null
+          uploaded_by_name: string | null
+          wrapped_dek: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          file_iv: string
+          file_name: string
+          file_size: number
+          id?: string
+          key_version: number
+          mime_type: string
+          source_lead_attachment_id?: string | null
+          source_lead_id?: string | null
+          storage_path: string
+          updated_at?: string
+          uploaded_by?: string | null
+          uploaded_by_name?: string | null
+          wrapped_dek: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          file_iv?: string
+          file_name?: string
+          file_size?: number
+          id?: string
+          key_version?: number
+          mime_type?: string
+          source_lead_attachment_id?: string | null
+          source_lead_id?: string | null
+          storage_path?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          uploaded_by_name?: string | null
+          wrapped_dek?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_secure_attachments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           additional_contacts: Json
@@ -3764,10 +3859,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_manage_customer_attachments: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      can_manage_customer_attachments: { Args: never; Returns: boolean }
       claim_backup_table: {
         Args: { p_job_id: string; p_table_name: string }
         Returns: number
