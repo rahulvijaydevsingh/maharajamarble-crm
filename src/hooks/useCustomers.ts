@@ -92,6 +92,18 @@ interface CustomersContextType {
 
 const CustomersContext = createContext<CustomersContextType | undefined>(undefined);
 
+export function mergeCustomerById(customers: Customer[], customer: Customer): Customer[] {
+  const existingIndex = customers.findIndex((existing) => existing.id === customer.id);
+
+  if (existingIndex === -1) {
+    return [customer, ...customers];
+  }
+
+  const nextCustomers = [...customers];
+  nextCustomers[existingIndex] = customer;
+  return nextCustomers;
+}
+
 async function getSessionUser() {
   const { data } = await supabase.auth.getSession();
   return data.session?.user ?? null;
@@ -135,7 +147,7 @@ function useCustomersStore() {
 
       if (error) throw error;
 
-      setCustomers((prev) => [data, ...prev]);
+      setCustomers((prev) => mergeCustomerById(prev, data));
       toast({ title: "Customer added successfully" });
 
       // Log to staff activity
@@ -252,7 +264,7 @@ function useCustomersStore() {
         { event: "*", schema: "public", table: "customers" },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            setCustomers((prev) => [payload.new as Customer, ...prev]);
+            setCustomers((prev) => mergeCustomerById(prev, payload.new as Customer));
           } else if (payload.eventType === "UPDATE") {
             setCustomers((prev) =>
               prev.map((c) =>
