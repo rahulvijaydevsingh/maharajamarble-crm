@@ -384,6 +384,7 @@ Deno.test("list: only managers; an ordinary employee gets 403 and a 'denied' log
   assertEquals(Object.keys(body.attachments[0]).sort(), ["created_at", "file_name", "file_size", "from_lead", "id", "mime_type", "uploaded_by_name"]);
   assertEquals(body.attachments[0].from_lead, false);
   assertEquals(body.attachments[0].uploaded_by_name, "Name of employee");
+  assertEquals(body.legacy, { secured: 0, pending: 0, failed: 0 });
 });
 
 Deno.test("list: newest first", async () => {
@@ -732,6 +733,110 @@ Deno.test("legacy: a half-finished earlier run is completed without duplicates, 
   assertEquals(t.be.tables.entity_attachments.length, 1, "mismatch: old row must stay");
   assertEquals(t.be.bucket("crm-attachments").has(path), true, "mismatch: old file must stay");
   assertEquals(t.be.tables.customer_secure_attachments.length, 1, "the existing encrypted copy must not be touched");
+});
+
+
+function leadCopyWorld() {
+  const t = convertedWorld();
+  const leadPdfPath = `lead/${LEAD}/legacy.pdf`;
+  const leadPhotoPath = "lead-photos/legacy-photo.png";
+  const leadPdfId = "88888888-0000-4000-8000-000000000001";
+  const leadPhotoId = "88888888-0000-4000-8000-000000000002";
+  const customerPdfId = "99999999-0000-4000-8000-000000000101";
+  const customerPhotoId = "99999999-0000-4000-8000-000000000102";
+  const pdfBytes = pdf("LEAD-COPY-PDF");
+  const photoBytes = png();
+  t.be.tables.entity_attachments.push(
+    { id: leadPdfId, entity_type: "lead", entity_id: LEAD, file_name: "legacy.pdf", file_path: leadPdfPath, storage_missing: false, created_at: "2026-09-01T00:00:00Z" },
+    { id: leadPhotoId, entity_type: "lead", entity_id: LEAD, file_name: "legacy-photo.png", file_path: leadPhotoPath, storage_missing: false, created_at: "2026-09-02T00:00:00Z" },
+    { id: customerPdfId, entity_type: "customer", entity_id: CUSTOMER, file_name: "legacy.pdf", file_path: leadPdfPath, storage_missing: false, created_at: "2026-09-03T00:00:00Z" },
+    { id: customerPhotoId, entity_type: "customer", entity_id: CUSTOMER, file_name: "legacy-photo.png", file_path: leadPhotoPath, storage_missing: false, created_at: "2026-09-04T00:00:00Z" },
+  );
+  t.be.bucket("crm-attachments").set(leadPdfPath, pdfBytes);
+  t.be.bucket("crm-attachments").set(leadPhotoPath, photoBytes);
+  return { t, leadPdfPath, leadPhotoPath, leadPdfId, leadPhotoId, customerPdfId, customerPhotoId, pdfBytes, photoBytes };
+}
+
+Deno.test("legacy lead copies: an admin secures verified copies without touching the lead", async () => {
+  const world = leadCopyWorld();
+  const { t } = world;
+  const beforeRows = JSON.stringify(t.be.tables.entity_attachments.filter((row) => row.entity_type === "lead"));
+  const beforePdf = Array.from(t.be.bucket("crm-attachments").get(world.leadPdfPath)!);
+  const beforePhoto = Array.from(t.be.bucket("crm-attachments").get(world.leadPhotoPath)!);
+  const body = await (await listAs(t, "admin")).json();
+  assertEquals(body.legacy, { secured: 2, pending: 0, failed: 0 });
+  assertEquals(body.attachments.length, 2);
+  assertEquals(body.attachments.every((attachment: Row) => attachment.from_lead), true);
+  assertEquals(t.be.tables.entity_attachments.filter((row) => row.entity_type === "customer").length, 0);
+  assertEquals(JSON.stringify(t.be.tables.entity_attachments.filter((row) => row.entity_type === "lead")), beforeRows);
+  assertEquals(Array.from(t.be.bucket("crm-attachments").get(world.leadPdfPath)!), beforePdf);
+  assertEquals(Array.from(t.be.bucket("crm-attachments").get(world.leadPhotoPath)!), beforePhoto);
+  const rows = t.be.tables.customer_secure_attachments;
+  assertEquals(rows.map((row) => row.source_lead_attachment_id).sort(), [world.leadPdfId, world.leadPhotoId].sort());
+  assertEquals(rows.every((row) => row.source_lead_id === LEAD && row.uploaded_by_name === "Legacy import"), true);
+  assert(!asString(t.be.bucket("customer-secure").get(rows[0].storage_path)!).includes("LEAD-COPY-PDF"), "ciphertext must not contain plaintext");
+  const downloaded = await handleRequest(jsonRequest("admin", { action: "download", attachment_id: rows.find((row) => row.source_lead_attachment_id === world.leadPdfId)?.id }), t.deps);
+  assertEquals(Array.from(new Uint8Array(await downloaded.arrayBuffer())), Array.from(world.pdfBytes));
+});
+
+Deno.test("legacy lead copies: unrelated and import paths remain untouched and unreported", async () => {
+  const t = convertedWorld();
+  const otherLead = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const paths = ["imports/sheet.pdf", `lead/${otherLead}/other.pdf`, "lead-photos/unowned.png", `customer/${OTHER_CUSTOMER}/private.pdf`];
+  paths.forEach((path, index) => {
+    t.be.tables.entity_attachments.push({ id: `99999999-0000-4000-8000-00000000020${index}`, entity_type: "customer", entity_id: CUSTOMER, file_name: `file-${index}.pdf`, file_path: path, storage_missing: false, created_at: `2026-09-0${index + 1}T00:00:00Z` });
+    t.be.bucket("crm-attachments").set(path, pdf(`PRIVATE-${index}`));
+  });
+  const body = await (await listAs(t, "admin")).json();
+  assertEquals(body.legacy, { secured: 0, pending: 0, failed: 0 });
+  assertEquals(t.be.tables.entity_attachments.length, paths.length);
+  assertEquals(paths.every((path) => t.be.bucket("crm-attachments").has(path)), true);
+  assertEquals(t.be.tables.customer_secure_attachments.length, 0);
+});
+
+Deno.test("legacy lead copies: batching and failures preserve retryable rows", async () => {
+  const t = convertedWorld();
+  for (let i = 1; i <= 7; i++) {
+    const id = `99999999-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    const leadId = `88888888-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    const path = `lead/${LEAD}/batch-${i}.pdf`;
+    t.be.tables.entity_attachments.push(
+      { id: leadId, entity_type: "lead", entity_id: LEAD, file_name: `batch-${i}.pdf`, file_path: path, storage_missing: false, created_at: `2026-09-${String(i).padStart(2, "0")}T00:00:00Z` },
+      { id, entity_type: "customer", entity_id: CUSTOMER, file_name: `batch-${i}.pdf`, file_path: path, storage_missing: false, created_at: `2026-10-${String(i).padStart(2, "0")}T00:00:00Z` },
+    );
+    t.be.bucket("crm-attachments").set(path, pdf(`BATCH-${i}`));
+  }
+  const first = await (await listAs(t, "admin")).json();
+  assertEquals(first.legacy, { secured: 5, pending: 2, failed: 0 });
+  const second = await (await listAs(t, "admin")).json();
+  assertEquals(second.legacy, { secured: 2, pending: 0, failed: 0 });
+  assertEquals(t.be.tables.customer_secure_attachments.length, 7);
+
+  const broken = leadCopyWorld();
+  for (let i = 0; i < 6; i++) {
+    const path = `lead/${LEAD}/missing-${i}.pdf`;
+    broken.t.be.tables.entity_attachments.push(
+      { id: `77777777-0000-4000-8000-00000000010${i}`, entity_type: "lead", entity_id: LEAD, file_name: `missing-${i}.pdf`, file_path: path, storage_missing: false, created_at: `2026-08-${String(i + 1).padStart(2, "0")}T00:00:00Z` },
+      { id: `77777777-0000-4000-8000-00000000020${i}`, entity_type: "customer", entity_id: CUSTOMER, file_name: `missing-${i}.pdf`, file_path: path, storage_missing: false, created_at: `2026-08-${String(i + 1).padStart(2, "0")}T00:00:00Z` },
+    );
+  }
+  const failed = await (await listAs(broken.t, "admin")).json();
+  assertEquals(failed.legacy, { secured: 2, pending: 0, failed: 6 });
+  assertEquals(broken.t.be.tables.entity_attachments.filter((row) => row.entity_type === "customer").length, 6);
+});
+
+Deno.test("legacy lead copies: managers do not secure them and logs never expose paths", async () => {
+  consoleErrors.length = 0;
+  const world = leadCopyWorld();
+  const manager = await (await listAs(world.t, "manager")).json();
+  assertEquals(manager.legacy, { secured: 0, pending: 0, failed: 0 });
+  assertEquals(world.t.be.tables.entity_attachments.filter((row) => row.entity_type === "customer").length, 2);
+  await listAs(world.t, "admin");
+  const legacyLogs = world.t.be.tables.customer_attachment_access_log.filter((row) => row.action === "legacy_secured" || row.action === "legacy_scan");
+  assertEquals(legacyLogs.some((row) => row.action === "legacy_secured" && row.detail?.kind === "lead_copy"), true);
+  assertEquals(legacyLogs.some((row) => row.action === "legacy_scan" && typeof row.detail?.secured === "number"), true);
+  const everything = JSON.stringify(legacyLogs) + consoleErrors.join(" ");
+  assert(!everything.includes(world.leadPdfPath) && !everything.includes("legacy.pdf") && !everything.includes("LEAD-COPY-PDF"), "logs must not expose lead file details");
 });
 
 // ---------------------------------------------------------------------------------------------

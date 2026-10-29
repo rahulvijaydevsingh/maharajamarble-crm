@@ -39,6 +39,8 @@ export interface Deps {
 const SECURE_BUCKET = "customer-secure";
 const LEGACY_BUCKET = "crm-attachments";
 const IMPORT_BATCH = 8;
+const LEGACY_BATCH = 5; // files secured per call
+const LEGACY_ATTEMPTS = 20; // rows tried per call
 const MAX_REQUEST_BYTES = MAX_FILE_BYTES + 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -303,6 +305,17 @@ async function loadSecureRow(ctx: Ctx, attachmentId: string): Promise<Row | null
   return data ?? null;
 }
 
+async function loadSecureRowBySource(ctx: Ctx, customerId: string, sourceLeadAttachmentId: string): Promise<Row | null> {
+  const { data, error } = await ctx.admin
+    .from("customer_secure_attachments")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("source_lead_attachment_id", sourceLeadAttachmentId)
+    .maybeSingle();
+  if (error) throw new Error("row_read_failed");
+  return data ?? null;
+}
+
 async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as BufferSource));
   return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -348,11 +361,13 @@ async function list(ctx: Ctx, json: Row): Promise<Response> {
   const customerId = requireUuid(json.customer_id);
   if (!(await canManage(ctx))) return await deny(ctx, "list", { customerId });
 
-  if (await isAdmin(ctx)) await secureLegacyFiles(ctx, customerId);
+  const legacy = (await isAdmin(ctx))
+    ? await secureLegacyFiles(ctx, customerId)
+    : { secured: 0, pending: 0, failed: 0 };
 
   const { data, error } = await ctx.admin
     .from("customer_secure_attachments")
-    .select("id,file_name,mime_type,file_size,uploaded_by_name,created_at,source_lead_attachment_id")
+    .select("id,file_name,mime_type,file_size,uploaded_by_name,created_at,source_lead_id,source_lead_attachment_id")
     .eq("customer_id", customerId);
   if (error) throw new Error("list_failed");
 
@@ -366,8 +381,9 @@ async function list(ctx: Ctx, json: Row): Promise<Response> {
       file_size: Number(row.file_size),
       uploaded_by_name: row.uploaded_by_name ?? null,
       created_at: row.created_at,
-      from_lead: row.source_lead_attachment_id !== null && row.source_lead_attachment_id !== undefined,
+      from_lead: Boolean(row.source_lead_id || row.source_lead_attachment_id),
     })),
+    legacy,
   });
 }
 
@@ -588,81 +604,168 @@ async function importLeadFiles(ctx: Ctx, json: Row): Promise<Response> {
 // has been downloaded, decrypted and compared byte for byte with the original. Any problem leaves the legacy
 // file untouched. Failures never reach the caller.
 
-async function secureLegacyFiles(ctx: Ctx, customerId: string): Promise<void> {
+// Classification is strict: own-folder rows are secured as before; lead copies require proof that the
+// path belongs to a lead converted into this customer; every other legacy path is ignored untouched.
+interface LegacyTask extends Row {
+  kind: "own_folder" | "lead_copy";
+  sourceLeadId?: string;
+  sourceLeadAttachmentId?: string;
+}
+
+async function secureLegacyFiles(ctx: Ctx, customerId: string): Promise<{ secured: number; pending: number; failed: number }> {
   try {
     const { data, error } = await ctx.admin
       .from("entity_attachments")
-      .select("id,file_name,file_path")
+      .select("id,file_name,file_path,created_at,storage_missing")
       .eq("entity_type", "customer")
       .eq("entity_id", customerId);
-    if (error || !data?.length) return;
-    for (const legacy of data as Row[]) {
-      try {
-        await secureOneLegacyFile(ctx, customerId, legacy);
-      } catch {
-        console.error("customer-attachments: legacy step failed");
+    if (error || !data?.length) return { secured: 0, pending: 0, failed: 0 };
+
+    let ignored = 0;
+    const ownPrefix = `customer/${customerId}/`;
+    const ownFolder: LegacyTask[] = [];
+    const candidates: Row[] = [];
+    for (const row of data as Row[]) {
+      if (row.storage_missing === true || typeof row.file_path !== "string" || !row.file_path) continue;
+      if (row.file_path.startsWith(ownPrefix)) ownFolder.push({ ...row, kind: "own_folder" });
+      else if (row.file_path.startsWith("lead/") || row.file_path.startsWith("lead-photos/")) candidates.push(row);
+      else ignored++;
+    }
+
+    const leadCopies: LegacyTask[] = [];
+    if (candidates.length) {
+      const { data: leads, error: leadsError } = await ctx.admin
+        .from("leads")
+        .select("id")
+        .eq("converted_to_customer_id", customerId);
+      if (leadsError) throw new Error("legacy_lead_lookup_failed");
+
+      const leadRows = new Map<string, Row[]>();
+      for (const lead of (leads ?? []) as Row[]) {
+        const leadId = String(lead.id ?? "");
+        if (!leadId) continue;
+        const { data: attachments, error: attachmentError } = await ctx.admin
+          .from("entity_attachments")
+          .select("id,file_path,created_at")
+          .eq("entity_type", "lead")
+          .eq("entity_id", leadId);
+        if (attachmentError) throw new Error("legacy_lead_attachments_failed");
+        leadRows.set(leadId, (attachments ?? []) as Row[]);
+      }
+
+      for (const candidate of candidates) {
+        let matchedLeadId: string | undefined;
+        let sourceLeadAttachmentId: string | undefined;
+        for (const [leadId, rows] of leadRows) {
+          const exactMatches = rows
+            .filter((row) => row.file_path === candidate.file_path)
+            .slice()
+            .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) || String(a.id ?? "").localeCompare(String(b.id ?? "")));
+          if (candidate.file_path.startsWith(`lead/${leadId}/`)) {
+            matchedLeadId = leadId;
+            sourceLeadAttachmentId = exactMatches[0]?.id;
+            break;
+          }
+          if (candidate.file_path.startsWith("lead-photos/") && exactMatches.length) {
+            matchedLeadId = leadId;
+            sourceLeadAttachmentId = exactMatches[0].id;
+            break;
+          }
+        }
+        if (matchedLeadId) {
+          leadCopies.push({ ...candidate, kind: "lead_copy", sourceLeadId: matchedLeadId, sourceLeadAttachmentId });
+        } else {
+          ignored++;
+        }
       }
     }
+
+    const tasks = [...ownFolder, ...leadCopies].sort((a, b) =>
+      String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) || String(a.id ?? "").localeCompare(String(b.id ?? ""))
+    );
+    let secured = 0;
+    let failed = 0;
+    let attempted = 0;
+    for (const task of tasks) {
+      if (secured >= LEGACY_BATCH || attempted >= LEGACY_ATTEMPTS) break;
+      attempted++;
+      const result = await secureOneLegacyFile(ctx, customerId, task);
+      if (result === "secured") secured++;
+      else failed++;
+    }
+    const pending = tasks.length - attempted;
+    if (secured + failed + pending > 0) {
+      await writeLog(ctx, { action: "legacy_scan", customerId, detail: { secured, pending, failed, ignored } });
+    }
+    return { secured, pending, failed };
   } catch {
     console.error("customer-attachments: legacy step failed");
+    return { secured: 0, pending: 0, failed: 0 };
   }
 }
 
-async function secureOneLegacyFile(ctx: Ctx, customerId: string, legacy: Row): Promise<void> {
-  // Only a file inside this customer's own folder is ever touched.
-  if (typeof legacy.file_path !== "string" || !legacy.file_path.startsWith(`customer/${customerId}/`)) return;
+async function secureOneLegacyFile(ctx: Ctx, customerId: string, task: LegacyTask): Promise<"secured" | "failed"> {
   const legacyBucket = ctx.admin.storage.from(LEGACY_BUCKET);
-
-  const { data: blob, error: downloadError } = await legacyBucket.download(legacy.file_path);
-  if (downloadError || !blob) return; // cannot read it: leave it alone
+  const { data: blob, error: downloadError } = await legacyBucket.download(task.file_path);
+  if (downloadError || !blob) return "failed";
   const plain = new Uint8Array(await blob.arrayBuffer());
 
-  let secureRow = await loadSecureRow(ctx, legacy.id);
-  let createdNow = false;
+  let secureRow = await loadSecureRow(ctx, task.id);
+  if (secureRow && secureRow.customer_id !== customerId) return "failed";
+  if (!secureRow && task.kind === "lead_copy" && task.sourceLeadAttachmentId) {
+    secureRow = await loadSecureRowBySource(ctx, customerId, task.sourceLeadAttachmentId);
+  }
 
+  let createdInThisCall = false;
   if (!secureRow) {
-    if (plain.length === 0 || plain.length > MAX_FILE_BYTES) return;
+    if (plain.length === 0 || plain.length > MAX_FILE_BYTES) return "failed";
     const mimeType = detectMimeType(plain);
-    if (!mimeType) return;
+    if (!mimeType) return "failed";
     const stored = await encryptAndStore(ctx, {
       customerId,
-      attachmentId: legacy.id,
+      attachmentId: task.id,
       plain,
-      fileName: sanitizeFileName(String(legacy.file_name ?? "")),
+      fileName: sanitizeFileName(String(task.file_name ?? "")),
       mimeType,
       uploadedBy: null,
       uploadedByName: "Legacy import",
       overwrite: true,
+      sourceLeadId: task.kind === "lead_copy" ? task.sourceLeadId : undefined,
+      sourceLeadAttachmentId: task.kind === "lead_copy" ? task.sourceLeadAttachmentId : undefined,
     });
-    if (!stored.ok) {
-      if (stored.reason !== "duplicate") return;
-    } else {
-      createdNow = true;
-    }
-    secureRow = await loadSecureRow(ctx, legacy.id);
-    if (!secureRow) return;
+    if (!stored.ok && stored.reason !== "duplicate") return "failed";
+    secureRow = await loadSecureRow(ctx, task.id);
+    if (!secureRow) return "failed";
+    createdInThisCall = stored.ok;
   }
 
-  // Verify before deleting anything.
-  let verified = false;
   try {
     const decrypted = await readSecureFile(ctx, secureRow);
-    verified = (await sha256(decrypted)) === (await sha256(plain));
+    if ((await sha256(decrypted)) !== (await sha256(plain))) throw new Error("verification_failed");
   } catch {
-    verified = false;
-  }
-
-  if (!verified) {
-    if (createdNow) {
-      // Our own new copy is bad: remove it and keep the legacy file.
+    if (createdInThisCall) {
       await ctx.admin.storage.from(SECURE_BUCKET).remove([secureRow.storage_path]);
-      await ctx.admin.from("customer_secure_attachments").delete().eq("id", legacy.id);
+      await ctx.admin.from("customer_secure_attachments").delete().eq("id", secureRow.id);
     }
-    return;
+    return "failed";
   }
 
-  const removed = await legacyBucket.remove([legacy.file_path]);
-  if (removed.error) return; // keep the legacy row so that a later run can finish
-  await ctx.admin.from("entity_attachments").delete().eq("id", legacy.id);
-  await writeLog(ctx, { action: "legacy_secured", customerId, attachmentId: legacy.id });
+  if (task.kind === "own_folder") {
+    const removed = await legacyBucket.remove([task.file_path]);
+    if (removed.error) return "failed";
+  }
+  const { error: deleteError } = await ctx.admin
+    .from("entity_attachments")
+    .delete()
+    .eq("id", task.id)
+    .eq("entity_type", "customer");
+  if (deleteError) return "failed";
+
+  await writeLog(ctx, {
+    action: "legacy_secured",
+    customerId,
+    attachmentId: secureRow.id,
+    detail: task.kind === "lead_copy" ? { kind: "lead_copy" } : undefined,
+  });
+  return "secured";
 }

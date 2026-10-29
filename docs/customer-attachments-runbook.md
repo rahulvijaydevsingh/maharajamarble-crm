@@ -78,6 +78,8 @@ A file is skipped (and stays on the lead) if it is larger than 10 MB, is not a P
 
 Copying is safe to repeat: files that were already copied are recognised and not copied twice. The conversion itself is never blocked or undone by a problem with files.
 
+Older customer rows that had copied a lead file are also secured as copies when an administrator opens the customer's Attachments tab. The lead's files and rows stay untouched. Import-sheet copies and rows that cannot be tied to a lead converted into that customer are left alone.
+
 ## 8. Rotating the key
 
 Do this if the key may have leaked, or on a regular schedule. It does not touch the files themselves, only their small per-file keys.
@@ -123,14 +125,14 @@ You can see who did what with a SQL query in the dashboard: `select created_at, 
 
 - The function is `supabase/functions/customer-attachments/`. All logic is in `handler.ts`; `index.ts` only connects the real services. `crypto.ts` and `validation.ts` have no imports.
 - Run the automated tests with `deno test supabase/functions/customer-attachments/` (48 tests, no network, no real key).
-- The request and response formats are below.
+- The request and response formats are below. The access log includes `legacy_scan` when the older-file securing step runs.
 
 The function is called with `POST {SUPABASE_URL}/functions/v1/customer-attachments` and the signed-in user's login token. JSON requests send `{"action": "<name>", ...}`; `upload` sends `multipart/form-data` with the parts `action`, `customer_id` and `file`. Errors are always `{"error": "<code>"}` with the status 400 `invalid_request`, 401 `unauthorized`, 403 `forbidden`, 413 `file_too_large`, 415 `unsupported_type` or 500 `server_error`. A refused request always gets the same 403 whether or not the record exists.
 
 | Action | Who may call it | Request | Success response |
 |---|---|---|---|
 | `upload` | anyone who can read the customer | form: `customer_id`, `file` (PDF, JPEG, PNG or WebP, up to 10 MB, checked by content) | `{id, file_name, file_size, mime_type}` |
-| `list` | administrators and permitted roles (for administrators it first secures old unencrypted files of that customer) | `{customer_id}` | `{attachments: [{id, file_name, mime_type, file_size, uploaded_by_name, created_at, from_lead}]}`, newest first |
+| `list` | administrators and permitted roles (for administrators it first secures old unencrypted files of that customer) | `{customer_id}` | `{attachments: [{id, file_name, mime_type, file_size, uploaded_by_name, created_at, from_lead}], legacy: {secured, pending, failed}}`, newest first |
 | `download` | administrators and permitted roles | `{attachment_id}` | the file's bytes, `Content-Type: application/octet-stream` |
 | `rename` | administrators and permitted roles | `{attachment_id, file_name}` | `{id, file_name}` |
 | `delete` | administrators and permitted roles | `{attachment_id}` | `{id}` |
