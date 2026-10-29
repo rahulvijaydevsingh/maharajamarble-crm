@@ -57,6 +57,17 @@ export interface SecureAttachment {
   from_lead: boolean;
 }
 
+export interface LegacyStatus {
+  secured: number;
+  pending: number;
+  failed: number;
+}
+
+export interface SecureAttachmentList {
+  attachments: SecureAttachment[];
+  legacy: LegacyStatus;
+}
+
 export interface LeadImportSummary {
   imported: number;
   alreadyImported: number;
@@ -122,17 +133,37 @@ export async function uploadCustomerAttachment(
 
 export async function listCustomerAttachments(
   customerId: string,
-): Promise<SecureAttachment[]> {
-  const { data, error } = await supabase.functions.invoke("customer-attachments", {
-    body: { action: "list", customer_id: customerId },
-  });
+): Promise<SecureAttachmentList> {
+  let calls = 0;
+  let secured = 0;
+  let latest: SecureAttachmentList = {
+    attachments: [],
+    legacy: { secured: 0, pending: 0, failed: 0 },
+  };
 
-  if (error) {
-    const code = await extractErrorCode(error);
-    throw new CustomerAttachmentError(code);
-  }
+  do {
+    calls++;
+    const { data, error } = await supabase.functions.invoke("customer-attachments", {
+      body: { action: "list", customer_id: customerId },
+    });
+    if (error) {
+      const code = await extractErrorCode(error);
+      throw new CustomerAttachmentError(code);
+    }
+    const response = data as Partial<SecureAttachmentList> | null;
+    const legacy = response?.legacy ?? { secured: 0, pending: 0, failed: 0 };
+    secured += legacy.secured ?? 0;
+    latest = {
+      attachments: response?.attachments ?? [],
+      legacy: {
+        secured: legacy.secured ?? 0,
+        pending: legacy.pending ?? 0,
+        failed: legacy.failed ?? 0,
+      },
+    };
+  } while (calls < 6 && latest.legacy.pending > 0 && latest.legacy.secured > 0);
 
-  return (data as { attachments: SecureAttachment[] })?.attachments ?? [];
+  return { ...latest, legacy: { ...latest.legacy, secured } };
 }
 
 export async function renameCustomerAttachment(

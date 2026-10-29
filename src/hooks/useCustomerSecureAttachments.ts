@@ -3,6 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CustomerAttachmentError,
+  type LegacyStatus,
   deleteCustomerAttachment,
   downloadCustomerAttachment,
   getCustomerAttachmentErrorMessage,
@@ -106,7 +107,8 @@ export function useCustomerSecureAttachments(
   };
 
   return {
-    attachments: listQuery.data ?? [],
+    attachments: listQuery.data?.attachments ?? [],
+    legacy: listQuery.data?.legacy ?? ({ secured: 0, pending: 0, failed: 0 } satisfies LegacyStatus),
     isLoading: listQuery.isLoading,
     isError: listQuery.isError,
     refetch: listQuery.refetch,

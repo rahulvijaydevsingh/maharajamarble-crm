@@ -38,6 +38,7 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
   const { canManage } = useCanManageCustomerAttachments();
   const {
     attachments,
+    legacy,
     isLoading,
     refetch,
     renameMutation,
@@ -173,6 +174,12 @@ export function CustomerAttachmentsTab({ customer }: CustomerAttachmentsTabProps
       {canManage && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold">Secured Files</h3>
+          {(legacy.pending > 0 || legacy.failed > 0) && (
+            <div className="text-xs text-muted-foreground space-y-1">
+              {legacy.pending > 0 && <p>Some older files are still being secured. Close and reopen this tab to continue.</p>}
+              {legacy.failed > 0 && <p>{legacy.failed} older file(s) could not be secured automatically. They have not been deleted.</p>}
+            </div>
+          )}
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
