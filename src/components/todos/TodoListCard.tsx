@@ -16,30 +16,35 @@ import {
   Archive,
   Trash2,
   Plus,
-  Star,
-  ArrowRight,
+  ChevronDown,
 } from "lucide-react";
 import { useTodoItems, TodoItem } from "@/hooks/useTodoItems";
 import { TodoItemRow } from "./TodoItemRow";
 import { ConvertToTaskDialog } from "./ConvertToTaskDialog";
 import { TodoList } from "@/hooks/useTodoLists";
+import { Progress } from "@/components/ui/progress";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface TodoListCardProps {
   list: TodoList;
   onDelete: () => void;
   onTogglePin: () => void;
   onArchive: () => void;
+  onOpenList: () => void;
 }
 
-export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoListCardProps) {
+export function TodoListCard({ list, onDelete, onTogglePin, onArchive, onOpenList }: TodoListCardProps) {
   const { items, addItem, updateItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);
-  const [showAllItems, setShowAllItems] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
+  const activeItems = items.filter((item) => !item.is_completed);
+  const completedItems = items.filter((item) => item.is_completed);
+  const progress = totalCount ? (completedCount / totalCount) * 100 : 0;
 
   const handleAddItem = async () => {
     if (newItemTitle.trim()) {
@@ -62,7 +67,7 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
 
   return (
     <>
-      <Card className="relative overflow-hidden">
+      <Card className="relative h-full overflow-hidden">
         <div
           className="absolute top-0 left-0 w-1 h-full"
           style={{ backgroundColor: list.color }}
@@ -71,7 +76,7 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               {list.is_pinned && <Pin className="h-4 w-4 text-primary" />}
-              <CardTitle className="text-lg">{list.name}</CardTitle>
+              <CardTitle><Button variant="link" className="h-auto max-w-full justify-start p-0 text-left text-lg text-foreground hover:no-underline" onClick={onOpenList}>{list.name}</Button></CardTitle>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -96,16 +101,11 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          {totalCount > 0 && (
-            <Badge variant="secondary" className="w-fit text-xs">
-              {completedCount}/{totalCount} completed
-            </Badge>
-          )}
+          {totalCount > 0 && <div className="flex items-center gap-2"><Badge variant="secondary" className="w-fit text-xs">{completedCount}/{totalCount} completed</Badge><Progress value={progress} className="h-1 flex-1" /></div>}
         </CardHeader>
-        <CardContent className="space-y-2">
-          {/* Items list */}
-          <div className="space-y-1 max-h-[200px] overflow-y-auto">
-            {(showAllItems ? items : items.slice(0, 5)).map((item) => (
+        <CardContent className="flex h-[286px] flex-col space-y-2">
+          <div className="space-y-1">
+            {activeItems.slice(0, 4).map((item) => (
               <TodoItemRow
                 key={item.id}
                 item={item}
@@ -113,24 +113,15 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive }: TodoLis
                 onToggleStar={() => toggleStar(item.id)}
                 onDelete={() => deleteItem(item.id)}
                 onConvertToTask={() => handleConvertToTask(item)}
-                compact
+                variant="compact"
               />
             ))}
-            {items.length > 5 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowAllItems((current) => !current)}
-                className="h-7 w-full text-xs text-muted-foreground"
-              >
-                {showAllItems ? "Show fewer items" : `+${items.length - 5} more items`}
-              </Button>
-            )}
+            {activeItems.length > 4 && <Button type="button" variant="link" size="sm" onClick={onOpenList} className="h-6 px-0 text-xs text-muted-foreground hover:text-foreground">View {activeItems.length - 4} more item{activeItems.length - 4 === 1 ? "" : "s"} ↗</Button>}
+            {completedItems.length > 0 && <Collapsible open={showCompleted} onOpenChange={setShowCompleted}><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-0 text-xs text-muted-foreground">✓ {completedCount} completed <ChevronDown className="ml-1 h-3 w-3" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-1">{completedItems.map((item) => <TodoItemRow key={item.id} item={item} onToggleComplete={() => toggleComplete(item.id)} onToggleStar={() => toggleStar(item.id)} onDelete={() => deleteItem(item.id)} onConvertToTask={() => handleConvertToTask(item)} variant="compact" />)}</CollapsibleContent></Collapsible>}
           </div>
 
           {/* Quick add */}
-          <div className="flex gap-2 pt-2 border-t">
+          <div className="mt-auto flex gap-2 border-t pt-2">
             <Input
               placeholder="Add item..."
               value={newItemTitle}

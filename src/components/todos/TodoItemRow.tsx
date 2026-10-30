@@ -2,6 +2,7 @@ import React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +20,7 @@ interface TodoItemRowProps {
   onToggleStar: () => void;
   onDelete: () => void;
   onConvertToTask: () => void;
-  compact?: boolean;
+  variant?: "compact" | "full";
 }
 
 export function TodoItemRow({
@@ -28,15 +29,29 @@ export function TodoItemRow({
   onToggleStar,
   onDelete,
   onConvertToTask,
-  compact = false,
+  variant = "full",
 }: TodoItemRowProps) {
   const isConverted = !!item.converted_to_task_id;
+  const isCompact = variant === "compact";
+
+  const title = (
+    <span
+      className={cn(
+        "block text-sm break-words",
+        isCompact && "line-clamp-2",
+        item.is_completed && "line-through text-muted-foreground"
+      )}
+    >
+      {item.title}
+    </span>
+  );
 
   return (
     <div
       className={cn(
         "flex items-center gap-2 group rounded-md transition-colors",
-        compact ? "py-1" : "p-2 hover:bg-muted/50"
+        "group",
+        isCompact ? "py-1.5" : "py-1.5 px-2 hover:bg-muted/50"
       )}
     >
       <Checkbox
@@ -46,15 +61,16 @@ export function TodoItemRow({
       />
 
       <div className="flex-1 min-w-0">
-        <span
-          className={cn(
-            "text-sm truncate block",
-            item.is_completed && "line-through text-muted-foreground"
-          )}
-        >
-          {item.title}
-        </span>
-        {!compact && item.due_date && (
+        {isCompact ? (
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>{title}</TooltipTrigger>
+            <TooltipContent className="max-w-sm break-words">{item.title}</TooltipContent>
+          </Tooltip>
+        ) : title}
+        {!isCompact && item.notes && (
+          <span className="mt-0.5 block text-xs text-muted-foreground break-words">{item.notes}</span>
+        )}
+        {!isCompact && item.due_date && (
           <span className="text-xs text-muted-foreground">
             Due: {format(new Date(item.due_date), "MMM d")}
           </span>
@@ -68,11 +84,7 @@ export function TodoItemRow({
         </Badge>
       )}
 
-      {item.is_starred && (
-        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-      )}
-
-      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
         <Button
           variant="ghost"
           size="sm"
