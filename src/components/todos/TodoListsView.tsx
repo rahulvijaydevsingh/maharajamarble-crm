@@ -3,6 +3,7 @@ import { useTodoLists } from "@/hooks/useTodoLists";
 import { useTodoItems } from "@/hooks/useTodoItems";
 import { TodoListCard } from "./TodoListCard";
 import { TodoListRow } from "./TodoListRow";
+import { TodoListSheet } from "./TodoListSheet";
 import { Loader2 } from "lucide-react";
 
 interface TodoListsViewProps {
@@ -12,6 +13,14 @@ interface TodoListsViewProps {
 export function TodoListsView({ viewMode }: TodoListsViewProps) {
   const { lists, loading, deleteList, togglePin, archiveList } = useTodoLists();
   const [expandedListId, setExpandedListId] = useState<string | null>(null);
+  const [sheetListId, setSheetListId] = useState<string | null>(null);
+  const sheetList = lists.find((list) => list.id === sheetListId) ?? null;
+
+  const sheetHandlers = sheetList ? {
+    onDelete: () => { deleteList(sheetList.id); setSheetListId(null); },
+    onTogglePin: () => togglePin(sheetList.id),
+    onArchive: () => { archiveList(sheetList.id); setSheetListId(null); },
+  } : null;
 
   if (loading) {
     return (
@@ -30,7 +39,7 @@ export function TodoListsView({ viewMode }: TodoListsViewProps) {
   }
 
   if (viewMode === "cards") {
-    return (
+    return (<>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {lists.map((list) => (
           <TodoListCard
@@ -39,13 +48,15 @@ export function TodoListsView({ viewMode }: TodoListsViewProps) {
             onDelete={() => deleteList(list.id)}
             onTogglePin={() => togglePin(list.id)}
             onArchive={() => archiveList(list.id)}
+            onOpenList={() => setSheetListId(list.id)}
           />
         ))}
       </div>
-    );
+      <TodoListSheet list={sheetList} open={!!sheetList} onOpenChange={(open) => !open && setSheetListId(null)} {...(sheetHandlers ?? { onDelete: () => undefined, onTogglePin: () => undefined, onArchive: () => undefined })} />
+    </>);
   }
 
-  return (
+  return (<>
     <div className="space-y-2">
       {lists.map((list) => (
         <TodoListRow
@@ -56,8 +67,10 @@ export function TodoListsView({ viewMode }: TodoListsViewProps) {
           onDelete={() => deleteList(list.id)}
           onTogglePin={() => togglePin(list.id)}
           onArchive={() => archiveList(list.id)}
+          onOpenList={() => setSheetListId(list.id)}
         />
       ))}
     </div>
-  );
+    <TodoListSheet list={sheetList} open={!!sheetList} onOpenChange={(open) => !open && setSheetListId(null)} {...(sheetHandlers ?? { onDelete: () => undefined, onTogglePin: () => undefined, onArchive: () => undefined })} />
+  </>);
 }

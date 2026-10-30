@@ -22,6 +22,7 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
 } from "lucide-react";
 import { useTodoItems, TodoItem } from "@/hooks/useTodoItems";
 import { TodoItemRow } from "./TodoItemRow";
@@ -35,6 +36,7 @@ interface TodoListRowProps {
   onDelete: () => void;
   onTogglePin: () => void;
   onArchive: () => void;
+  onOpenList: () => void;
 }
 
 export function TodoListRow({
@@ -44,6 +46,7 @@ export function TodoListRow({
   onDelete,
   onTogglePin,
   onArchive,
+  onOpenList,
 }: TodoListRowProps) {
   const { items, addItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id);
   const [newItemTitle, setNewItemTitle] = useState("");
@@ -96,6 +99,7 @@ export function TodoListRow({
               {completedCount}/{totalCount}
             </Badge>
           )}
+          <Button variant="ghost" size="sm" onClick={onOpenList} className="hidden sm:flex"><ExternalLink className="mr-1 h-3.5 w-3.5" />Open</Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -122,6 +126,7 @@ export function TodoListRow({
         </div>
 
         <CollapsibleContent className="pl-12 pr-4 py-2 space-y-2">
+          <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-2">
           {items.map((item) => (
             <TodoItemRow
               key={item.id}
@@ -130,8 +135,10 @@ export function TodoListRow({
               onToggleStar={() => toggleStar(item.id)}
               onDelete={() => deleteItem(item.id)}
               onConvertToTask={() => handleConvertToTask(item)}
+              variant="compact"
             />
           ))}
+          </div>
 
           <div className="flex gap-2">
             <Input
