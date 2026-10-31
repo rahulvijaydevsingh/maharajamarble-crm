@@ -567,6 +567,11 @@ function useTasksStore() {
       };
 
       const resolveStaffFullName = async (value: string, fallback: string, field: string): Promise<string> => {
+        if (!value.trim()) {
+          console.warn(`[useTasks] No staff identifier supplied for ${field}; using a safe fallback.`);
+          return fallback;
+        }
+
         let resolved = "";
         try {
           resolved = (await resolveToFullName(value)).trim();

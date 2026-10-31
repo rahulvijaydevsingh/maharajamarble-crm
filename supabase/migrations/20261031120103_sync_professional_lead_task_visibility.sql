@@ -17,8 +17,11 @@ WHERE t.related_entity_type = 'professional'
     'vendor', 'partner'
   )
   AND (
-    right(regexp_replace(coalesce(l.phone, ''), '\\D', '', 'g'), 10) =
-    right(regexp_replace(coalesce(p.phone, ''), '\\D', '', 'g'), 10)
+    (
+      right(regexp_replace(coalesce(l.phone, ''), '\D', '', 'g'), 10) <> ''
+      AND right(regexp_replace(coalesce(l.phone, ''), '\D', '', 'g'), 10) =
+          right(regexp_replace(coalesce(p.phone, ''), '\D', '', 'g'), 10)
+    )
     OR EXISTS (
       SELECT 1
       FROM public.lead_professionals AS lp
