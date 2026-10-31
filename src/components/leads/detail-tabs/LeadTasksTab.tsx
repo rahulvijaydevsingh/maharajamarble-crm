@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -44,6 +44,8 @@ import { TaskDetailView } from '@/components/tasks/TaskDetailView';
 import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
 import { calculateTaskStatus } from "@/lib/taskStatusService";
+import { supabase } from "@/integrations/supabase/client";
+import { isProfessionalDesignation, normalizePhone } from "@/lib/professionalResolver";
 
 interface LeadTasksTabProps {
   lead: Lead;
@@ -77,6 +79,79 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
   const [taskToComplete, setTaskToComplete] = useState<any>(null);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [primaryProfessionalId, setPrimaryProfessionalId] = useState<string | null>(null);
+  const linkedProfessionalId = (lead as Lead & { professional_id?: string | null }).professional_id || null;
+
+  // A lead may share professional tasks only when the lead itself represents that professional.
+  // added_via_lead_id is an explicit origin link. A primary junction link is accepted only
+  // for leads whose own designation is professional, preventing homeowner task leakage.
+  useEffect(() => {
+    let cancelled = false;
+    setPrimaryProfessionalId(null);
+
+    const resolvePrimaryProfessional = async () => {
+      // A lead with no explicit professional_id must itself be a professional lead.
+      // added_via_lead_id alone is not sufficient: homeowner leads can introduce
+      // multiple additional site professionals.
+      if (!linkedProfessionalId && !isProfessionalDesignation(lead.designation)) {
+        if (!cancelled) setPrimaryProfessionalId(null);
+        return;
+      }
+
+      // Priority 1: explicit lead.professional_id.
+      if (linkedProfessionalId) {
+        if (!cancelled) setPrimaryProfessionalId(linkedProfessionalId);
+        return;
+      }
+
+      // Priority 2: the primary junction relationship.
+      const { data: primaryLink, error: linkError } = await supabase
+        .from("lead_professionals")
+        .select("professional_id")
+        .eq("lead_id", lead.id)
+        .eq("is_primary_contact", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (linkError) {
+        console.warn("[lead tasks] failed to resolve primary lead_professionals link", linkError);
+      } else if (primaryLink?.professional_id) {
+        if (!cancelled) setPrimaryProfessionalId(primaryLink.professional_id);
+        return;
+      }
+
+      // Priority 3: professionals created from this lead. There may be multiple
+      // additional contacts, so match the lead's own normalized phone first.
+      const { data: sourceProfessionals, error: sourceError } = await supabase
+        .from("professionals")
+        .select("id, phone")
+        .eq("added_via_lead_id", lead.id);
+
+      if (sourceError) throw sourceError;
+
+      const leadPhone = normalizePhone(lead.phone);
+      const matchingProfessional = leadPhone
+        ? (sourceProfessionals || []).find((professional) => {
+            const professionalPhone = normalizePhone(professional.phone);
+            return professionalPhone !== "" && professionalPhone === leadPhone;
+          })
+        : undefined;
+      const resolvedProfessionalId =
+        matchingProfessional?.id ||
+        ((sourceProfessionals || []).length === 1 ? sourceProfessionals![0].id : null);
+
+      if (!cancelled) setPrimaryProfessionalId(resolvedProfessionalId);
+    };
+
+    void resolvePrimaryProfessional().catch((error) => {
+      console.warn("[lead tasks] failed to resolve linked professional", error);
+      if (!cancelled) setPrimaryProfessionalId(null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lead.id, lead.designation, linkedProfessionalId]);
 
   // Auto-open edit dialog when highlightTaskId is provided
   React.useEffect(() => {
@@ -89,12 +164,20 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
     }
   }, [highlightTaskId, tasks]);
 
-  // Filter tasks for this lead (including KIT tasks via related_entity)
+  // Include lead-scoped tasks and, only for a lead that represents a professional,
+  // tasks directly linked to that professional. Map by task ID to guarantee no duplicates.
   const leadTasks = useMemo(() => {
-    let filtered = tasks.filter(t => 
-      t.lead_id === lead.id || 
-      (t.related_entity_type === 'lead' && t.related_entity_id === lead.id)
+    const matchingTasks = tasks.filter((task) =>
+      task.lead_id === lead.id ||
+      (task.related_entity_type === "lead" && task.related_entity_id === lead.id) ||
+      (!!primaryProfessionalId &&
+        task.related_entity_type === "professional" &&
+        task.related_entity_id === primaryProfessionalId)
     );
+
+    const tasksById = new Map<string, (typeof tasks)[number]>();
+    matchingTasks.forEach((task) => tasksById.set(task.id, task));
+    let filtered = Array.from(tasksById.values());
 
     switch (filter) {
       case 'open':
@@ -111,7 +194,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
     }
 
     return filtered.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-  }, [tasks, lead.id, filter]);
+  }, [tasks, lead.id, filter, primaryProfessionalId]);
 
   const handleComplete = async (taskId: string, isCompleted: boolean) => {
     if (isCompleted) {

@@ -7,6 +7,7 @@ import { useLogActivity } from "@/hooks/useActivityLog";
 import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { TablesInsert } from "@/integrations/supabase/types";
+import { isProfessionalDesignation, normalizePhone } from "@/lib/professionalResolver";
 
 interface TaskCompletionUpdates {
   completion_outcome?: string;
@@ -474,11 +475,150 @@ function useTasksStore() {
 
   const addTask = async (task: TaskInsert) => {
     try {
+      // A professional task may inherit lead_id only when the originating lead
+      // itself represents that professional. added_via_lead_id can also point to
+      // a homeowner lead that merely introduced an additional site contact.
+      let linkedLeadId = task.lead_id ?? null;
+      if (!linkedLeadId && task.related_entity_type === "professional" && task.related_entity_id) {
+        try {
+          const { data: linkedProfessional, error: professionalError } = await supabase
+            .from("professionals")
+            .select("added_via_lead_id, phone")
+            .eq("id", task.related_entity_id)
+            .maybeSingle();
+
+          if (professionalError) throw professionalError;
+
+          if (linkedProfessional?.added_via_lead_id) {
+            const { data: originatingLead, error: leadError } = await supabase
+              .from("leads")
+              .select("id, designation, phone")
+              .eq("id", linkedProfessional.added_via_lead_id)
+              .maybeSingle();
+
+            if (leadError) throw leadError;
+
+            if (originatingLead && isProfessionalDesignation(originatingLead.designation)) {
+              const leadPhone = normalizePhone(originatingLead.phone);
+              const professionalPhone = normalizePhone(linkedProfessional.phone);
+              let identityConfirmed =
+                leadPhone !== "" &&
+                professionalPhone !== "" &&
+                leadPhone === professionalPhone;
+
+              if (!identityConfirmed) {
+                const { data: primaryLink, error: linkError } = await supabase
+                  .from("lead_professionals")
+                  .select("professional_id")
+                  .eq("lead_id", originatingLead.id)
+                  .eq("professional_id", task.related_entity_id)
+                  .eq("is_primary_contact", true)
+                  .limit(1)
+                  .maybeSingle();
+
+                if (linkError) throw linkError;
+                identityConfirmed = !!primaryLink;
+              }
+
+              if (identityConfirmed) linkedLeadId = originatingLead.id;
+            }
+          }
+        } catch (linkResolutionError) {
+          // The professional-to-lead lookup is supplemental; it must not block
+          // creating the task when the relationship cannot be verified.
+          console.warn("[useTasks] Unable to verify professional origin lead; keeping lead_id unchanged.", linkResolutionError);
+        }
+      }
+
+      // INVARIANT-04: staff tracking columns store full_name strings, never emails or UUIDs.
+      const isIdentifier = (value: string) =>
+        value.includes("@") ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+      const lookupProfileFullName = async (value: string): Promise<string | null> => {
+        const candidate = value.trim();
+        if (!candidate) return null;
+
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate);
+        const escapedCandidate = candidate.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const filter = isUuid
+          ? `id.eq.${candidate}`
+          : candidate.includes("@")
+            ? `email.eq."${escapedCandidate}"`
+            : `full_name.eq."${escapedCandidate}"`;
+
+        try {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .or(filter)
+            .limit(1)
+            .maybeSingle();
+
+          if (error) {
+            console.warn("[useTasks] Direct staff profile name lookup failed.", error);
+            return null;
+          }
+          return data?.full_name?.trim() || null;
+        } catch (lookupError) {
+          console.warn("[useTasks] Direct staff profile name lookup failed.", lookupError);
+          return null;
+        }
+      };
+
+      const resolveStaffFullName = async (value: string, fallback: string, field: string): Promise<string> => {
+        if (!value.trim()) {
+          console.warn(`[useTasks] No staff identifier supplied for ${field}; using a safe fallback.`);
+          return fallback;
+        }
+
+        let resolved = "";
+        try {
+          resolved = (await resolveToFullName(value)).trim();
+        } catch (resolveError) {
+          console.warn(`[useTasks] Staff name resolver failed for ${field}.`, resolveError);
+        }
+
+        if (!resolved || isIdentifier(resolved)) {
+          const profileFullName = await lookupProfileFullName(value);
+          if (profileFullName && !isIdentifier(profileFullName)) resolved = profileFullName;
+        }
+
+        if (!resolved || isIdentifier(resolved)) {
+          console.warn(`[useTasks] Could not resolve ${field} to a staff full name; using a safe fallback.`);
+          return fallback;
+        }
+
+        return resolved;
+      };
+
+      const actorFullName = profile?.full_name?.trim() || "";
+      const rawCreatedBy =
+        task.created_by && task.created_by !== "Current User"
+          ? task.created_by
+          : actorFullName;
+      const canonicalCreatedBy = await resolveStaffFullName(
+        rawCreatedBy,
+        actorFullName || "Staff",
+        "created_by"
+      );
+
+      const requestedAssignee = task.assigned_to?.trim() || "";
+      const safeAssigneeFallback =
+        requestedAssignee && !isIdentifier(requestedAssignee)
+          ? requestedAssignee
+          : actorFullName || "Unassigned";
+      const canonicalAssignee = await resolveStaffFullName(
+        requestedAssignee,
+        safeAssigneeFallback,
+        "assigned_to"
+      );
+
       const taskData = {
         ...task,
-        // Identity rule: assigned_to MUST be a canonical full_name, never an email/UUID.
-        assigned_to: await resolveToFullName(task.assigned_to),
-        created_by: (task.created_by && task.created_by !== "Current User") ? task.created_by : (profile?.full_name || user?.email || "unknown"),
+        lead_id: linkedLeadId,
+        assigned_to: canonicalAssignee,
+        created_by: canonicalCreatedBy,
         original_due_date: task.original_due_date || task.due_date,
       };
 
