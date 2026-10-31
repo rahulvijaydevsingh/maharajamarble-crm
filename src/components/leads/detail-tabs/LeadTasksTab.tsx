@@ -45,7 +45,7 @@ import { useActiveStaff } from '@/hooks/useActiveStaff';
 import { getStaffDisplayName } from '@/lib/kitHelpers';
 import { calculateTaskStatus } from "@/lib/taskStatusService";
 import { supabase } from "@/integrations/supabase/client";
-import { isProfessionalDesignation } from "@/lib/professionalResolver";
+import { isProfessionalDesignation, normalizePhone } from "@/lib/professionalResolver";
 
 interface LeadTasksTabProps {
   lead: Lead;
@@ -90,26 +90,21 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
     setPrimaryProfessionalId(null);
 
     const resolvePrimaryProfessional = async () => {
+      // A lead with no explicit professional_id must itself be a professional lead.
+      // added_via_lead_id alone is not sufficient: homeowner leads can introduce
+      // multiple additional site professionals.
+      if (!linkedProfessionalId && !isProfessionalDesignation(lead.designation)) {
+        if (!cancelled) setPrimaryProfessionalId(null);
+        return;
+      }
+
+      // Priority 1: explicit lead.professional_id.
       if (linkedProfessionalId) {
         if (!cancelled) setPrimaryProfessionalId(linkedProfessionalId);
         return;
       }
 
-      const { data: sourceProfessional, error: sourceError } = await supabase
-        .from("professionals")
-        .select("id")
-        .eq("added_via_lead_id", lead.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (sourceError) throw sourceError;
-      if (sourceProfessional?.id) {
-        if (!cancelled) setPrimaryProfessionalId(sourceProfessional.id);
-        return;
-      }
-
-      if (!isProfessionalDesignation(lead.designation)) return;
-
+      // Priority 2: the primary junction relationship.
       const { data: primaryLink, error: linkError } = await supabase
         .from("lead_professionals")
         .select("professional_id")
@@ -118,8 +113,34 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
         .limit(1)
         .maybeSingle();
 
-      if (linkError) throw linkError;
-      if (!cancelled) setPrimaryProfessionalId(primaryLink?.professional_id || null);
+      if (linkError) {
+        console.warn("[lead tasks] failed to resolve primary lead_professionals link", linkError);
+      } else if (primaryLink?.professional_id) {
+        if (!cancelled) setPrimaryProfessionalId(primaryLink.professional_id);
+        return;
+      }
+
+      // Priority 3: professionals created from this lead. There may be multiple
+      // additional contacts, so match the lead's own normalized phone first.
+      const { data: sourceProfessionals, error: sourceError } = await supabase
+        .from("professionals")
+        .select("id, phone")
+        .eq("added_via_lead_id", lead.id);
+
+      if (sourceError) throw sourceError;
+
+      const leadPhone = normalizePhone(lead.phone);
+      const matchingProfessional = leadPhone
+        ? (sourceProfessionals || []).find((professional) => {
+            const professionalPhone = normalizePhone(professional.phone);
+            return professionalPhone !== "" && professionalPhone === leadPhone;
+          })
+        : undefined;
+      const resolvedProfessionalId =
+        matchingProfessional?.id ||
+        ((sourceProfessionals || []).length === 1 ? sourceProfessionals![0].id : null);
+
+      if (!cancelled) setPrimaryProfessionalId(resolvedProfessionalId);
     };
 
     void resolvePrimaryProfessional().catch((error) => {
