@@ -474,11 +474,49 @@ function useTasksStore() {
 
   const addTask = async (task: TaskInsert) => {
     try {
+      // Professional tasks retain an audit link to the lead that originated the professional.
+      // Never overwrite an explicitly supplied lead_id; fill it only when it is missing.
+      let linkedLeadId = task.lead_id ?? null;
+      if (!linkedLeadId && task.related_entity_type === "professional" && task.related_entity_id) {
+        const { data: linkedProfessional, error: professionalError } = await supabase
+          .from("professionals")
+          .select("added_via_lead_id")
+          .eq("id", task.related_entity_id)
+          .maybeSingle();
+
+        if (professionalError) throw professionalError;
+        linkedLeadId = linkedProfessional?.added_via_lead_id ?? null;
+      }
+
+      // INVARIANT-04: task.created_by and assigned_to must be staff full_name strings.
+      const isIdentifier = (value: string) =>
+        value.includes("@") ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+      const actorFullName = profile?.full_name?.trim() || null;
+      const rawCreatedBy =
+        task.created_by && task.created_by !== "Current User"
+          ? task.created_by
+          : actorFullName || "";
+      const resolvedCreatedBy = await resolveToFullName(rawCreatedBy);
+      const canonicalCreatedBy = isIdentifier(resolvedCreatedBy)
+        ? actorFullName
+        : resolvedCreatedBy.trim();
+
+      if (!canonicalCreatedBy || isIdentifier(canonicalCreatedBy)) {
+        throw new Error("Unable to resolve the task creator to a staff full name. Refresh your profile and try again.");
+      }
+
+      const canonicalAssignee = (await resolveToFullName(task.assigned_to)).trim();
+      if (!canonicalAssignee || isIdentifier(canonicalAssignee)) {
+        throw new Error("The task assignee must resolve to a staff full name. Select an active staff member and try again.");
+      }
+
       const taskData = {
         ...task,
-        // Identity rule: assigned_to MUST be a canonical full_name, never an email/UUID.
-        assigned_to: await resolveToFullName(task.assigned_to),
-        created_by: (task.created_by && task.created_by !== "Current User") ? task.created_by : (profile?.full_name || user?.email || "unknown"),
+        lead_id: linkedLeadId,
+        assigned_to: canonicalAssignee,
+        created_by: canonicalCreatedBy,
         original_due_date: task.original_due_date || task.due_date,
       };
 
