@@ -136,9 +136,7 @@ export function LeadTasksTab({ lead, highlightTaskId }: LeadTasksTabProps) {
             return professionalPhone !== "" && professionalPhone === leadPhone;
           })
         : undefined;
-      const resolvedProfessionalId =
-        matchingProfessional?.id ||
-        ((sourceProfessionals || []).length === 1 ? sourceProfessionals![0].id : null);
+      const resolvedProfessionalId = matchingProfessional?.id || null;
 
       if (!cancelled) setPrimaryProfessionalId(resolvedProfessionalId);
     };
