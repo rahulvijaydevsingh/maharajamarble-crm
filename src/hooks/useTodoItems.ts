@@ -31,7 +31,7 @@ export interface TodoItemInsert {
   created_by?: string;
 }
 
-export function useTodoItems(listId?: string) {
+export function useTodoItems(listId?: string, refreshToken?: number) {
   const [items, setItems] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -196,7 +196,7 @@ export function useTodoItems(listId?: string) {
     if (listId) {
       fetchItems();
     }
-  }, [listId]);
+  }, [listId, refreshToken]);
 
   const completedCount = items.filter(i => i.is_completed).length;
   const totalCount = items.length;
