@@ -64,6 +64,7 @@ Production, in this exact order:
 7. As an **administrator**, open the customer who has the old file and click the **Attachments** tab. The old file is secured automatically (it is copied, checked byte for byte, and only then removed from the old unprotected place).
 8. The architect confirms that no old customer files remain.
 9. Apply migration `20261007100500_fix_attachment_access_and_close_customer_paths.sql` (repairs lead, task and professional file access and closes the old customer file paths).
+10. Apply migration `20261101100000_customer_activity_attachments_follow_standard_rules.sql` straight after step 9 (keeps files attached to a customer's activity log working like those of leads, tasks and professionals; everything else about customer files stays closed).
 10. Verify, then run the clean-up checklist in section 11.
 
 ## 6. Giving a role permission to see files
@@ -79,6 +80,8 @@ A file is skipped (and stays on the lead) if it is larger than 10 MB, is not a P
 Copying is safe to repeat: files that were already copied are recognised and not copied twice. The conversion itself is never blocked or undone by a problem with files.
 
 Older customer rows that had copied a lead file are also secured as copies when an administrator opens the customer's Attachments tab. The lead's files and rows stay untouched. Import-sheet copies and rows that cannot be tied to a lead converted into that customer are left alone.
+
+Files attached to a customer's activity-log entry (rows with `source_type = 'activity'`) are ordinary, unencrypted files in `crm-attachments/customer/<customer id>/`. They follow the standard attachment rules (administrators and anyone who can see that customer) and the securing step never touches them.
 
 ## 8. Rotating the key
 
