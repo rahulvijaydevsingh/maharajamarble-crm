@@ -37,6 +37,7 @@ interface TodoListRowProps {
   onTogglePin: () => void;
   onArchive: () => void;
   onOpenList: () => void;
+  refreshToken: number;
 }
 
 export function TodoListRow({
@@ -47,8 +48,9 @@ export function TodoListRow({
   onTogglePin,
   onArchive,
   onOpenList,
+  refreshToken,
 }: TodoListRowProps) {
-  const { items, addItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id);
+  const { items, addItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id, refreshToken);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);

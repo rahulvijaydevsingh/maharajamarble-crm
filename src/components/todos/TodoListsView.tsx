@@ -14,7 +14,9 @@ export function TodoListsView({ viewMode }: TodoListsViewProps) {
   const { lists, loading, deleteList, togglePin, archiveList } = useTodoLists();
   const [expandedListId, setExpandedListId] = useState<string | null>(null);
   const [sheetListId, setSheetListId] = useState<string | null>(null);
+  const [itemsRefreshToken, setItemsRefreshToken] = useState(0);
   const sheetList = lists.find((list) => list.id === sheetListId) ?? null;
+  const refreshListItems = () => setItemsRefreshToken((token) => token + 1);
 
   const sheetHandlers = sheetList ? {
     onDelete: () => { deleteList(sheetList.id); setSheetListId(null); },
@@ -49,10 +51,11 @@ export function TodoListsView({ viewMode }: TodoListsViewProps) {
             onTogglePin={() => togglePin(list.id)}
             onArchive={() => archiveList(list.id)}
             onOpenList={() => setSheetListId(list.id)}
+            refreshToken={itemsRefreshToken}
           />
         ))}
       </div>
-      <TodoListSheet list={sheetList} open={!!sheetList} onOpenChange={(open) => !open && setSheetListId(null)} {...(sheetHandlers ?? { onDelete: () => undefined, onTogglePin: () => undefined, onArchive: () => undefined })} />
+      <TodoListSheet list={sheetList} open={!!sheetList} onOpenChange={(open) => !open && setSheetListId(null)} onItemsChanged={refreshListItems} {...(sheetHandlers ?? { onDelete: () => undefined, onTogglePin: () => undefined, onArchive: () => undefined })} />
     </>);
   }
 
@@ -68,9 +71,10 @@ export function TodoListsView({ viewMode }: TodoListsViewProps) {
           onTogglePin={() => togglePin(list.id)}
           onArchive={() => archiveList(list.id)}
           onOpenList={() => setSheetListId(list.id)}
+          refreshToken={itemsRefreshToken}
         />
       ))}
     </div>
-    <TodoListSheet list={sheetList} open={!!sheetList} onOpenChange={(open) => !open && setSheetListId(null)} {...(sheetHandlers ?? { onDelete: () => undefined, onTogglePin: () => undefined, onArchive: () => undefined })} />
+    <TodoListSheet list={sheetList} open={!!sheetList} onOpenChange={(open) => !open && setSheetListId(null)} onItemsChanged={refreshListItems} {...(sheetHandlers ?? { onDelete: () => undefined, onTogglePin: () => undefined, onArchive: () => undefined })} />
   </>);
 }

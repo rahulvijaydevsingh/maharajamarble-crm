@@ -31,10 +31,11 @@ interface TodoListCardProps {
   onTogglePin: () => void;
   onArchive: () => void;
   onOpenList: () => void;
+  refreshToken: number;
 }
 
-export function TodoListCard({ list, onDelete, onTogglePin, onArchive, onOpenList }: TodoListCardProps) {
-  const { items, addItem, updateItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id);
+export function TodoListCard({ list, onDelete, onTogglePin, onArchive, onOpenList, refreshToken }: TodoListCardProps) {
+  const { items, addItem, updateItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id, refreshToken);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);
