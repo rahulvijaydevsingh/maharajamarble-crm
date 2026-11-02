@@ -606,6 +606,8 @@ async function importLeadFiles(ctx: Ctx, json: Row): Promise<Response> {
 
 // Classification is strict: own-folder rows are secured as before; lead copies require proof that the
 // path belongs to a lead converted into this customer; every other legacy path is ignored untouched.
+// Rows created from an activity (source_type = 'activity') are never legacy files and are always skipped.
+// Each row is handled on its own: an error on one row counts that row as failed and the others still run.
 interface LegacyTask extends Row {
   kind: "own_folder" | "lead_copy";
   sourceLeadId?: string;
@@ -616,7 +618,7 @@ async function secureLegacyFiles(ctx: Ctx, customerId: string): Promise<{ secure
   try {
     const { data, error } = await ctx.admin
       .from("entity_attachments")
-      .select("id,file_name,file_path,created_at,storage_missing")
+      .select("id,file_name,file_path,created_at,storage_missing,source_type")
       .eq("entity_type", "customer")
       .eq("entity_id", customerId);
     if (error || !data?.length) return { secured: 0, pending: 0, failed: 0 };
@@ -626,6 +628,10 @@ async function secureLegacyFiles(ctx: Ctx, customerId: string): Promise<{ secure
     const ownFolder: LegacyTask[] = [];
     const candidates: Row[] = [];
     for (const row of data as Row[]) {
+      if (row.source_type === "activity") {
+        ignored++; // belongs to the activity log and follows the ordinary attachment rules: never touched here
+        continue;
+      }
       if (row.storage_missing === true || typeof row.file_path !== "string" || !row.file_path) continue;
       if (row.file_path.startsWith(ownPrefix)) ownFolder.push({ ...row, kind: "own_folder" });
       else if (row.file_path.startsWith("lead/") || row.file_path.startsWith("lead-photos/")) candidates.push(row);
@@ -689,7 +695,13 @@ async function secureLegacyFiles(ctx: Ctx, customerId: string): Promise<{ secure
     for (const task of tasks) {
       if (secured >= LEGACY_BATCH || attempted >= LEGACY_ATTEMPTS) break;
       attempted++;
-      const result = await secureOneLegacyFile(ctx, customerId, task);
+      let result: "secured" | "failed";
+      try {
+        result = await secureOneLegacyFile(ctx, customerId, task);
+      } catch {
+        console.error("customer-attachments: legacy file step failed"); // fixed text: no names, paths or keys
+        result = "failed";
+      }
       if (result === "secured") secured++;
       else failed++;
     }

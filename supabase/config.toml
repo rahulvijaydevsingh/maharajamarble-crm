@@ -1,1 +1,4 @@
 project_id = "jmohlloabmddaiyjvahp"
+
+[functions.customer-attachments]
+verify_jwt = true

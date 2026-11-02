@@ -861,3 +861,150 @@ Deno.test("access log rows and console output never contain file names, contents
     assert(actions.has(expected), `expected a '${expected}' log entry`);
   }
 });
+
+// ---------------------------------------------------------------------------------------------
+// Legacy securing: lead copies that the old conversion code left on customers (hardening round)
+// ---------------------------------------------------------------------------------------------
+const copyLeadRowId = (n: number) => `88888888-1111-4000-8000-${String(n).padStart(12, "0")}`;
+const copyCustomerRowId = (n: number) => `99999999-1111-4000-8000-${String(n).padStart(12, "0")}`;
+const customerRows = (t: ReturnType<typeof setup>) => t.be.tables.entity_attachments.filter((r) => r.entity_type === "customer");
+
+Deno.test("legacy: a lead that is not converted to this customer leaves its copies untouched", async () => {
+  for (const converted of [null, OTHER_CUSTOMER]) {
+    const t = standardWorld();
+    t.be.tables.leads.push({ id: LEAD, converted_to_customer_id: converted });
+    const path = `lead/${LEAD}/x.pdf`;
+    t.be.tables.entity_attachments.push(
+      { id: copyLeadRowId(1), entity_type: "lead", entity_id: LEAD, file_name: "x.pdf", file_path: path, storage_missing: false, created_at: "2026-09-01T00:00:00Z" },
+      { id: copyCustomerRowId(1), entity_type: "customer", entity_id: CUSTOMER, file_name: "x.pdf", file_path: path, storage_missing: false, created_at: "2026-09-02T00:00:00Z" },
+    );
+    t.be.bucket("crm-attachments").set(path, pdf("X-CONTENT"));
+    const body = await (await listAs(t, "admin")).json();
+    assertEquals(body.legacy, { secured: 0, pending: 0, failed: 0 });
+    assertEquals(customerRows(t).length, 1);
+    assertEquals(t.be.tables.customer_secure_attachments.length, 0);
+    assertEquals(t.be.bucket("crm-attachments").has(path), true);
+  }
+});
+
+Deno.test("legacy: a lead copy left behind after a finished run is retired without a duplicate", async () => {
+  const w = leadCopyWorld();
+  const { t } = w;
+  await listAs(t, "admin");
+  assertEquals(t.be.tables.customer_secure_attachments.length, 2);
+  t.be.tables.entity_attachments.push({ id: w.customerPdfId, entity_type: "customer", entity_id: CUSTOMER, file_name: "legacy.pdf", file_path: w.leadPdfPath, storage_missing: false, created_at: "2026-09-03T00:00:00Z" });
+  const body = await (await listAs(t, "admin")).json();
+  assertEquals(body.legacy, { secured: 1, pending: 0, failed: 0 });
+  assertEquals(t.be.tables.customer_secure_attachments.length, 2);
+  assertEquals(customerRows(t).length, 0);
+  assertEquals(t.be.bucket("crm-attachments").has(w.leadPdfPath), true);
+});
+
+Deno.test("legacy: a lead copy already imported from the lead is retired only when the bytes match", async () => {
+  const t = convertedWorld();
+  addLeadFile(t, "11111111-0000-4000-8000-000000000001", "site.pdf", pdf("LEAD-FILE-ONE"));
+  assertEquals((await importCall(t, "converter")).status, 200);
+  assertEquals(t.be.tables.customer_secure_attachments.length, 1);
+  const path = `lead/${LEAD}/site.pdf`;
+  const copyRow = (id: string) => ({ id, entity_type: "customer", entity_id: CUSTOMER, file_name: "site.pdf", file_path: path, storage_missing: false, created_at: "2026-09-09T00:00:00Z" });
+  t.be.tables.entity_attachments.push(copyRow("99999999-0000-4000-8000-000000000501"));
+  const ok = await (await listAs(t, "admin")).json();
+  assertEquals(ok.legacy, { secured: 1, pending: 0, failed: 0 });
+  assertEquals(t.be.tables.customer_secure_attachments.length, 1, "no second secure copy");
+  assertEquals(customerRows(t).length, 0);
+  assertEquals(t.be.bucket("crm-attachments").has(path), true);
+  // the lead's object changed after the import: the old row must stay
+  t.be.bucket("crm-attachments").set(path, pdf("CHANGED AFTER IMPORT"));
+  t.be.tables.entity_attachments.push(copyRow("99999999-0000-4000-8000-000000000502"));
+  const bad = await (await listAs(t, "admin")).json();
+  assertEquals(bad.legacy, { secured: 0, pending: 0, failed: 1 });
+  assertEquals(customerRows(t).length, 1);
+  assertEquals(t.be.tables.customer_secure_attachments.length, 1);
+  assertEquals(asString(t.be.bucket("crm-attachments").get(path)!), asString(pdf("CHANGED AFTER IMPORT")));
+});
+
+Deno.test("legacy: lead copies that cannot be secured keep every row and object (invalid type, failed verification)", async () => {
+  const a = leadCopyWorld();
+  a.t.be.bucket("crm-attachments").set(a.leadPdfPath, exe());
+  const r1 = await (await listAs(a.t, "admin")).json();
+  assertEquals(r1.legacy, { secured: 1, pending: 0, failed: 1 });
+  assertEquals(customerRows(a.t).length, 1);
+  assertEquals(a.t.be.bucket("crm-attachments").has(a.leadPdfPath), true);
+
+  const b = leadCopyWorld();
+  b.t.be.corruptDownloadsInBucket = "customer-secure";
+  const res = await listAs(b.t, "admin");
+  assertEquals(res.status, 200);
+  const r2 = await res.json();
+  assertEquals(r2.legacy, { secured: 0, pending: 0, failed: 2 });
+  assertEquals(customerRows(b.t).length, 2);
+  assertEquals(b.t.be.tables.customer_secure_attachments.length, 0);
+  assertEquals(b.t.be.bucket("customer-secure").size, 0);
+  assertEquals(b.t.be.bucket("crm-attachments").has(b.leadPdfPath), true);
+  assertEquals(b.t.be.bucket("crm-attachments").has(b.leadPhotoPath), true);
+});
+
+Deno.test("legacy: lead copies never touch the lead's objects, even when removal would fail; own-folder rows keep their row", async () => {
+  const w = leadCopyWorld();
+  w.t.be.failRemoveInBucket = "crm-attachments";
+  const body = await (await listAs(w.t, "admin")).json();
+  assertEquals(body.legacy, { secured: 2, pending: 0, failed: 0 });
+  assertEquals(customerRows(w.t).length, 0);
+  assertEquals(w.t.be.bucket("crm-attachments").has(w.leadPdfPath), true);
+  assertEquals(w.t.be.bucket("crm-attachments").has(w.leadPhotoPath), true);
+  const own = legacyWorld();
+  own.t.be.failRemoveInBucket = "crm-attachments";
+  const r = await (await listAs(own.t, "admin")).json();
+  assertEquals(r.legacy.failed, 1);
+  assertEquals(customerRows(own.t).length, 1);
+});
+
+Deno.test("legacy: one old row that raises an error does not stop the others", async () => {
+  const w = leadCopyWorld(); // the pdf copy sorts first, the photo copy second
+  const POISON = w.customerPdfId;
+  // deno-lint-ignore no-explicit-any
+  const deps = w.t.deps as any;
+  const original = deps.createAdminClient;
+  deps.createAdminClient = (...args: unknown[]) => {
+    const client = original(...args);
+    const originalFrom = client.from;
+    client.from = (table: string) => {
+      const q = originalFrom(table);
+      if (table === "customer_secure_attachments") {
+        let poisoned = false;
+        const originalEq = q.eq.bind(q);
+        q.eq = (column: string, value: unknown) => {
+          if (column === "id" && value === POISON) poisoned = true;
+          return originalEq(column, value);
+        };
+        const originalMaybeSingle = q.maybeSingle.bind(q);
+        q.maybeSingle = () => (poisoned ? Promise.resolve({ data: null, error: { message: "boom" } }) : originalMaybeSingle());
+      }
+      return q;
+    };
+    return client;
+  };
+  const res = await listAs(w.t, "admin");
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.legacy, { secured: 1, pending: 0, failed: 1 }, "the photo is still secured and the broken row counted as failed");
+  assertEquals(customerRows(w.t).length, 1, "only the broken row is left behind");
+});
+
+Deno.test("legacy: attachments created from an activity are left alone; ordinary old files are still secured", async () => {
+  const { t, path } = legacyWorld();
+  const activityPath = `customer/${CUSTOMER}/aaaaaaaa-1111-4000-8000-000000000001-visit.png`;
+  const activityRowId = "99999999-1111-4000-8000-0000000000a1";
+  t.be.tables.entity_attachments.push({
+    id: activityRowId, entity_type: "customer", entity_id: CUSTOMER, file_name: "visit.png", file_path: activityPath,
+    storage_missing: false, source_type: "activity", source_id: "bbbbbbbb-1111-4000-8000-000000000001",
+    source_label: "Via activity: Call", created_at: "2026-01-01T00:00:00Z",
+  });
+  t.be.bucket("crm-attachments").set(activityPath, png());
+  const body = await (await listAs(t, "admin")).json();
+  assertEquals(body.legacy, { secured: 1, pending: 0, failed: 0 });
+  assertEquals(t.be.tables.customer_secure_attachments.length, 1);
+  assertEquals(customerRows(t).map((r) => r.id), [activityRowId]);
+  assertEquals(t.be.bucket("crm-attachments").has(activityPath), true);
+  assertEquals(t.be.bucket("crm-attachments").has(path), false);
+});
