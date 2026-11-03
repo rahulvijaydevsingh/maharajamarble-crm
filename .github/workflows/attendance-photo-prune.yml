@@ -1,9 +1,20 @@
 name: Nightly HR Attendance Retention
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/attendance-photo-prune.yml"
   schedule:
     - cron: "35 2 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run a read-only retention preview before pruning"
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   prune-attendance-retention:
@@ -14,18 +25,23 @@ jobs:
           PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run && 'true' || 'false') || (github.event_name == 'schedule' && 'false' || (contains(github.event.head_commit.message, '[execute-production-attendance-prune]') && 'false' || 'true')) }}
         run: |
           set -euo pipefail
           if [ -z "$PROJECT_ID" ] || [ -z "$SERVICE_ROLE_KEY" ] || [ -z "$CRON_SECRET" ]; then
             echo "Missing SUPABASE_PROJECT_ID, SUPABASE_SERVICE_ROLE_KEY, or CRON_SECRET secret."
             exit 1
           fi
-
+          if [ "$DRY_RUN" = "true" ]; then
+            DRY_RUN_JSON=true
+          else
+            DRY_RUN_JSON=false
+          fi
+          BODY=$(jq -cn --argjson dry_run "$DRY_RUN_JSON" '{dry_run:$dry_run}')
           RESPONSE=$(curl -sS --fail-with-body -X POST "https://$PROJECT_ID.supabase.co/functions/v1/attendance-photo-prune" \
             -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
             -H "x-cron-secret: $CRON_SECRET" \
             -H "Content-Type: application/json" \
-            -d '{"dry_run":false}')
-
+            -d "$BODY")
           echo "$RESPONSE" | jq .
           echo "$RESPONSE" | jq -e '.success == true and .error == null' >/dev/null
