@@ -70,7 +70,7 @@ jobs:
           }
 
           if [ "$DRY_RUN" = "true" ]; then
-            # Dry-run all completed jobs in one bounded invocation (maximum 20).
+            # Dry-run all completed jobs after the sequential CRC verification hotfix (maximum 20).
             RESPONSE=$(call_cleanup true "$JOB_LIMIT")
             echo "$RESPONSE" | jq .
             echo "$RESPONSE" | jq -e '.success == true and .error == null' >/dev/null
