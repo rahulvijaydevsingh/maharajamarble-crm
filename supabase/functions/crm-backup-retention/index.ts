@@ -92,23 +92,39 @@ serve(async (req) => {
     const { data: staleJobs, error: staleError } = await admin.from("backup_jobs")
       .select("id, storage_prefix").eq("status", "processing").lt("updated_at", staleCutoff);
     if (staleError) throw new Error(`Could not read stale backup jobs: ${staleError.message}`);
+    const staleCleanupErrors: Array<{ id: string; error: string }> = [];
     for (const stale of staleJobs || []) {
-      const prefix = stale.storage_prefix || `backups/${stale.id}/`;
-      if (!isDryRun) {
-        const deleted = await deletePrefixStorageFiles(admin, prefix);
-        const { error: updateError } = await admin.from("backup_jobs").update({
-          status: "failed",
-          error_message: "Auto-failed after 4-hour timeout; incomplete storage prefix removed and verified.",
-          updated_at: new Date().toISOString(),
-        }).eq("id", stale.id);
-        if (updateError) throw new Error(`Could not mark stale job ${stale.id} failed: ${updateError.message}`);
-        if (deleted.length > 0) {
-          const { error: logError } = await admin.from("backup_deletion_log").insert({
-            backup_job_id: stale.id, deleted_by: deletedBy, deletion_reason: "stale_processing_cleanup",
-            files_deleted: deleted,
-          });
-          if (logError) throw new Error(`Could not log stale backup cleanup ${stale.id}: ${logError.message}`);
+      try {
+        const prefix = stale.storage_prefix || `backups/${stale.id}/`;
+        if (!isDryRun) {
+          const deleted = await deletePrefixStorageFiles(admin, prefix);
+          const { error: updateError } = await admin.from("backup_jobs").update({
+            status: "failed",
+            error_message: "Auto-failed after 4-hour timeout; incomplete storage prefix removed and verified.",
+            updated_at: new Date().toISOString(),
+          }).eq("id", stale.id);
+          if (updateError) throw new Error(`Could not mark stale job ${stale.id} failed: ${updateError.message}`);
+
+          if (deleted.length > 0) {
+            const { error: logError } = await admin.from("backup_deletion_log").insert({
+              backup_job_id: stale.id,
+              deleted_by: deletedBy,
+              deletion_reason: "stale_processing_cleanup",
+              files_deleted: deleted,
+            });
+            if (logError) throw new Error(`Could not log stale backup cleanup ${stale.id}: ${logError.message}`);
+          }
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Stale backup cleanup failed for ${stale.id}; continuing with remaining jobs and GFS retention:`, error);
+        staleCleanupErrors.push({ id: stale.id, error: message });
+        // Persist the error without changing updated_at, so an unsuccessful stale
+        // cleanup remains eligible for another attempt on the next retention run.
+        const { error: recordError } = await admin.from("backup_jobs").update({
+          error_message: `Stale cleanup attempt failed: ${message}`,
+        }).eq("id", stale.id).eq("status", "processing");
+        if (recordError) console.error(`Could not record stale cleanup error for ${stale.id}:`, recordError);
       }
     }
 
@@ -205,7 +221,7 @@ serve(async (req) => {
       pruned.push({ id: candidate.id, tier: candidate.tier, files_deleted: deleted.length });
     }
 
-    return jsonResponse({ status: "success", pruned_count: pruned.length, pruned });
+    return jsonResponse({ status: "success", pruned_count: pruned.length, pruned, stale_cleanup_errors: staleCleanupErrors });
   } catch (error) {
     console.error("Error in crm-backup-retention:", error);
     return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
