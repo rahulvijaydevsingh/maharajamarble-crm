@@ -280,9 +280,12 @@ serve(async (req) => {
       { contentType: "application/json", upsert: true },
     );
     if (jsonUploadError) throw new Error(`JSON export upload failed for ${nextTable}: ${jsonUploadError.message}`);
+    const csvContent = toCsv(rows);
+    // Keep CSV members non-empty for empty tables; JSON [] remains authoritative.
+    const csvBytes = new TextEncoder().encode(csvContent.length > 0 ? csvContent : "\n");
     const { error: csvUploadError } = await storage.upload(
       `${prefix}tables/${nextTable}.csv`,
-      new TextEncoder().encode(toCsv(rows)),
+      csvBytes,
       { contentType: "text/csv", upsert: true },
     );
     if (csvUploadError) throw new Error(`CSV export upload failed for ${nextTable}: ${csvUploadError.message}`);

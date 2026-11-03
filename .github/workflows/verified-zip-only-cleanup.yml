@@ -1,11 +1,6 @@
 name: Verified ZIP-Only Backup Cleanup
 
 on:
-  push:
-    branches:
-      - fix/zip-only-backups-attendance-retention
-    paths:
-      - ".github/workflows/verified-zip-only-cleanup.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -20,6 +15,11 @@ on:
         required: true
         type: boolean
         default: true
+      limit:
+        description: "Maximum number of completed jobs in one invocation (1–20)"
+        required: false
+        type: number
+        default: 5
 
 jobs:
   verify-and-clean-raw-backup-files:
@@ -27,8 +27,9 @@ jobs:
     steps:
       - name: Verify ZIPs and optionally remove only redundant table JSON/CSV
         env:
-          TARGET: ${{ inputs.target || 'preview' }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == false && 'false' || 'true' }}
+          TARGET: ${{ inputs.target }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          JOB_LIMIT: ${{ inputs.limit || 5 }}
           PROD_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           PROD_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PROD_CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -52,10 +53,11 @@ jobs:
           fi
 
           if [ "$DRY_RUN" = "true" ]; then
-            BODY='{"dry_run":true}'
+            DRY_RUN_JSON=true
           else
-            BODY='{"dry_run":false}'
+            DRY_RUN_JSON=false
           fi
+          BODY=$(jq -cn --argjson dry_run "$DRY_RUN_JSON" --argjson limit "$JOB_LIMIT" '{dry_run:$dry_run,limit:$limit}')
 
           RESPONSE=$(curl -sS --fail-with-body -X POST "https://$PROJECT_ID.supabase.co/functions/v1/crm-backup-zip-cleanup" \
             -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
