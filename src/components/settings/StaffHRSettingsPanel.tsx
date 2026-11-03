@@ -110,7 +110,7 @@ const DEFAULT_SETTINGS: HRSettings = {
   camera_required: true,
   store_photos: true,
   store_location: true,
-  photo_retention_days: 90,
+  photo_retention_days: 60,
   location_retention_days: 30,
 };
 
@@ -162,6 +162,9 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
 
   const fetchData = async () => {
     setLoading(true);
+    setRetentionCandidates([]);
+    setRetentionLoaded(false);
+    setPurgeReport(null);
     try {
       // Fetch HR settings
       const { data: hrData } = await (supabase
@@ -172,7 +175,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
 
       if (hrData) {
         setIsNew(false);
-        const photoRetentionDays = hrData.photo_retention_days || 90;
+        const photoRetentionDays = hrData.photo_retention_days ?? 60;
         const locationRetentionDays = hrData.location_retention_days || 30;
         setSettings({
           base_salary: hrData.base_salary || 0,
@@ -200,6 +203,14 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
         if (arraysEqual(wd, WORK_DAY_PRESETS["mon-fri"])) setWorkDayPreset("mon-fri");
         else if (arraysEqual(wd, WORK_DAY_PRESETS["mon-sat"])) setWorkDayPreset("mon-sat");
         else setWorkDayPreset("custom");
+      } else {
+        // No persisted HR settings row: render the policy defaults without
+        // depending on a manually-created row to make retention eligible.
+        setIsNew(true);
+        setSettings(DEFAULT_SETTINGS);
+        setPhotoRetentionDaysInput(String(DEFAULT_SETTINGS.photo_retention_days));
+        setLocationRetentionDaysInput(String(DEFAULT_SETTINGS.location_retention_days));
+        setWorkDayPreset("mon-sat");
       }
 
       // Fetch leave balances
@@ -220,7 +231,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
   const fetchRetentionCandidates = async () => {
     setLoadingRetention(true);
     try {
-      const { data, error } = await supabase.rpc("get_attendance_retention_candidates", {
+      const { data, error } = await supabase.rpc("get_attendance_retention_candidates_v2", {
         p_staff_id: staffId,
       });
       if (error) throw error;
@@ -252,61 +263,37 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
 
     setPurging(true);
     try {
-      const pendingRecords: RetentionPurgeReport["pendingRecords"] = [];
-      let recordIdsReadyToClear = records.map((record) => record.record_id);
-
-      if (purgeTarget === "photos") {
-        recordIdsReadyToClear = [];
-
-        // Keep each database reference until every associated file has been removed.
-        // This intentionally works record-by-record so a failed deletion can be retried safely.
-        for (const record of records) {
-          const paths = record.photo_file_paths.filter(Boolean);
-          if (paths.length === 0) {
-            pendingRecords.push({
-              attendanceDate: record.attendance_date,
-              reason: "No storage path was available, so the record was left unchanged.",
-            });
-            continue;
-          }
-
-          const { error: storageError } = await supabase.storage
-            .from("attendance-photos")
-            .remove(paths);
-
-          if (storageError) {
-            pendingRecords.push({
-              attendanceDate: record.attendance_date,
-              reason: storageError.message || "The photo file could not be removed from storage.",
-            });
-            continue;
-          }
-
-          recordIdsReadyToClear.push(record.record_id);
-        }
+      // Manual HR cleanup and the nightly scheduler share the same privileged,
+      // idempotent Edge Function. Storage paths never leave the browser.
+      const { data, error } = await supabase.functions.invoke("attendance-photo-prune", {
+        body: { staff_id: staffId, data_type: purgeTarget, dry_run: false },
+      });
+      if (error || data?.error) {
+        throw new Error(error?.message || data?.error || "Attendance cleanup failed.");
       }
 
-      let clearedCount = 0;
-      if (recordIdsReadyToClear.length > 0) {
-        const { data: cleared, error } = await supabase.rpc("clear_attendance_retention_data", {
-          p_record_ids: recordIdsReadyToClear,
-          p_data_type: purgeTarget,
-        });
-        if (error) throw error;
-        clearedCount = cleared?.length || 0;
-      }
+      const clearedCount = purgeTarget === "photos"
+        ? Number(data?.photos_cleared || 0)
+        : Number(data?.locations_cleared || 0);
+      const pendingRecords = Array.isArray(data?.pending)
+        ? data.pending
+            .filter((item: any) => item.data_type === purgeTarget)
+            .map((item: any) => ({
+              attendanceDate: item.attendance_date || "Unknown date",
+              reason: item.reason || "Cleanup is pending and will be retried on the next run.",
+            }))
+        : [];
 
-      const report: RetentionPurgeReport = {
+      setPurgeReport({
         dataType: purgeTarget,
         completedCount: clearedCount,
         pendingRecords,
-      };
-      setPurgeReport(report);
+      });
 
       if (clearedCount === 0 && pendingRecords.length === 0) {
         toast({
           title: "Nothing removed",
-          description: "The selected data is no longer eligible under the current retention settings.",
+          description: "No data remains eligible under the current retention settings.",
         });
       } else {
         toast({
@@ -708,7 +695,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
           </div>
 
           <p className="text-xs text-muted-foreground">
-            A minimum of 30 days is enforced. Data is never removed automatically.
+            A minimum of 30 days is enforced. Eligible photos and GPS coordinates are automatically pruned nightly; administrators can also review and remove them here.
           </p>
 
           <div className="border-t pt-4 space-y-3">

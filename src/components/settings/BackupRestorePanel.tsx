@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,7 +27,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,7 +39,6 @@ import {
   FileUp,
   Loader2,
   Package,
-  ChevronDown,
   ShieldAlert,
   AlertCircle,
   Pin,
@@ -356,12 +354,9 @@ function JobRow({
   const total = job.progress?.tables_total ?? job.tables_to_export?.length ?? 0;
   const done = job.progress?.tables_done ?? job.tables_completed?.length ?? 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const [openFiles, setOpenFiles] = React.useState(false);
   const [pinning, setPinning] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-
-  const prefix = job.storage_prefix || `backups/${job.id}/`;
 
   const isInactiveStatus = job.status === "pruned" || job.status === "manually_deleted";
 
@@ -526,50 +521,20 @@ function JobRow({
 
       {job.status === "completed" && (
         <div className="space-y-2">
-          {job.zip_path ? (
+          {job.zip_path && job.integrity_status === "valid" && job.checksum_sha256 ? (
             <Button onClick={() => openSignedUrl(job.zip_path!)} className="gap-2">
               <Package className="h-4 w-4" />
-              Download Full Backup (.zip)
+              Download Verified Backup (.zip)
             </Button>
           ) : (
-            <div className="text-xs text-muted-foreground">Zip not available — use per-table files below.</div>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Verified ZIP unavailable</AlertTitle>
+              <AlertDescription>
+                This backup is not eligible for download or restore until its ZIP, manifest, and checksum have been verified.
+              </AlertDescription>
+            </Alert>
           )}
-
-          <Collapsible open={openFiles} onOpenChange={setOpenFiles}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1 h-7 px-2">
-                <ChevronDown className={`h-3 w-3 transition-transform ${openFiles ? "rotate-180" : ""}`} />
-                Individual table files
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-1 mt-2 max-h-64 overflow-y-auto text-sm">
-                {(job.tables_to_export || job.tables_completed || []).map((t) => (
-                  <div key={t} className="flex items-center justify-between gap-2 px-2 py-1 border rounded">
-                    <span className="font-mono text-xs truncate">{t}</span>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => openSignedUrl(`${prefix}tables/${t}.json`)}
-                      >
-                        JSON
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => openSignedUrl(`${prefix}tables/${t}.csv`)}
-                      >
-                        CSV
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
         </div>
       )}
 
@@ -615,7 +580,7 @@ export function BackupRestorePanel() {
   const { jobs, loading: jobsLoading, createBackupJob, refetch: refetchJobs } = useBackupJobs();
 
   const latestValidBackup = useMemo(
-    () => jobs.find((j) => j.status === "completed" && j.integrity_status === "valid"),
+    () => jobs.find((j) => j.status === "completed" && j.integrity_status === "valid" && Boolean(j.zip_path && j.checksum_sha256)),
     [jobs],
   );
   const daysSinceLastBackup = latestValidBackup
@@ -645,7 +610,7 @@ export function BackupRestorePanel() {
   const [retentionCandidateCount, setRetentionCandidateCount] = useState<number | null>(null);
 
   const completedJobs = useMemo(
-    () => jobs.filter((j) => j.status === "completed" && j.manifest_path),
+    () => jobs.filter((j) => j.status === "completed" && j.integrity_status === "valid" && Boolean(j.zip_path && j.checksum_sha256)),
     [jobs],
   );
 
@@ -772,8 +737,8 @@ export function BackupRestorePanel() {
         result = await restoreBackup(uploadedFile, setRestoreProgress);
       } else if (restoreJobId) {
         const job = completedJobs.find((j) => j.id === restoreJobId);
-        if (!job?.manifest_path) throw new Error("Selected job has no manifest");
-        result = await restoreBackup({ manifestPath: job.manifest_path }, setRestoreProgress);
+        if (!job?.zip_path || !job.checksum_sha256 || job.integrity_status !== "valid") throw new Error("Selected backup is not a verified ZIP archive.");
+        result = await restoreBackup({ zipPath: job.zip_path, checksumSha256: job.checksum_sha256 }, setRestoreProgress);
       } else {
         toast({ title: "Select a backup", description: "Pick a completed backup or upload a .zip.", variant: "destructive" });
         return;
@@ -1010,7 +975,7 @@ export function BackupRestorePanel() {
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={jobsLoading ? "Loading…" : "Select a completed backup"} />
+                  <SelectValue placeholder={jobsLoading ? "Loading…" : "Select a verified ZIP backup"} />
                 </SelectTrigger>
                 <SelectContent>
                   {completedJobs.map((j) => (
