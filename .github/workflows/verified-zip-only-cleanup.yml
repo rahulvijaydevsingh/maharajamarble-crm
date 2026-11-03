@@ -39,7 +39,7 @@ jobs:
           node-version: 22
 
       - name: Install pinned ZIP verifier dependency
-        run: npm install --no-save --package-lock=false jszip@3.10.1
+        run: npm install --no-save --package-lock=false --legacy-peer-deps jszip@3.10.1
 
       - name: Verify ZIPs on runner and optionally remove raw exports
         env:
