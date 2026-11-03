@@ -142,12 +142,14 @@ async function verifyJob(job) {
     if (jsonSize === null || jsonSize <= 0) {
       throw new Error("Table JSON has no non-zero uncompressed size: " + table);
     }
-    if (csvSize === null || (csvSize <= 0 && jsonSize !== 2)) {
-      throw new Error("Table CSV has an invalid uncompressed size: " + table);
-    }
-    if (csvSize === 0 && jsonSize === 2) {
-      const emptyJson = (await jsonEntry.async("string")).trim();
-      if (emptyJson !== "[]") throw new Error("Zero-byte CSV is only accepted for JSON []: " + table);
+    if (csvSize === null || csvSize <= 0) {
+      const csvBytes = await csvEntry.async("uint8array");
+      if (csvBytes.byteLength === 0) {
+        const rows = JSON.parse(await jsonEntry.async("string"));
+        if (!Array.isArray(rows) || rows.length !== 0) {
+          throw new Error("Zero-byte CSV is only accepted when companion JSON is an empty array: " + table);
+        }
+      }
     }
   }
   return {

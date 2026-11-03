@@ -147,10 +147,18 @@ async function verifyBackup(admin: any, job: any, externalCrcVerifiedSha256?: st
     if (jsonSize === null || jsonSize <= 0) {
       throw new Error(`ZIP table JSON for ${table} has no measurable non-zero uncompressed size.`);
     }
-    // The existing exporter emits a legitimate zero-byte CSV for an empty table.
-    // In that specific case the companion JSON is the 2-byte literal [].
-    if (csvSize === null || (csvSize <= 0 && jsonSize !== 2)) {
-      throw new Error(`ZIP table CSV for ${table} has an invalid uncompressed size.`);
+    if (csvSize === null || csvSize <= 0) {
+      // Legacy exports can represent an empty table with a zero-byte CSV.
+      // Accept only after confirming the actual CSV is empty and its JSON is [].
+      const csvBytes = await csvEntry.async("uint8array");
+      if (csvBytes.byteLength === 0) {
+        let rows: unknown;
+        try { rows = JSON.parse(await jsonEntry.async("string")); }
+        catch { throw new Error(`ZIP table JSON for ${table} is not valid JSON.`); }
+        if (!Array.isArray(rows) || rows.length !== 0) {
+          throw new Error(`Zero-byte CSV for ${table} is only valid when companion JSON is an empty array.`);
+        }
+      }
     }
   }
 
