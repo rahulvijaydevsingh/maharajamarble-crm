@@ -68,7 +68,7 @@ async function listTableObjects(admin: any, prefix: string) {
   return files;
 }
 
-async function verifyBackup(admin: any, job: any, externalCrcVerified = false) {
+async function verifyBackup(admin: any, job: any, externalCrcVerifiedSha256?: string) {
   const zipPath = job.zip_path || `backups/${job.id}/backup.zip`;
   const prefix = job.storage_prefix || zipPath.replace(/backup\.zip$/i, "");
   if (!zipPath.startsWith(`backups/${job.id}/`) || !prefix.startsWith(`backups/${job.id}/`)) {
@@ -88,6 +88,9 @@ async function verifyBackup(admin: any, job: any, externalCrcVerified = false) {
   if (job.checksum_sha256 && job.checksum_sha256.toLowerCase() !== checksum) {
     throw new Error("Stored backup checksum does not match the downloaded ZIP.");
   }
+  if (externalCrcVerifiedSha256 && externalCrcVerifiedSha256.toLowerCase() !== checksum) {
+    throw new Error("The downloaded ZIP SHA-256 differs from the CRC-verified archive digest.");
+  }
   if (job.total_size_bytes != null && Number(job.total_size_bytes) !== zipBytes.byteLength) {
     throw new Error("Stored backup size does not match the downloaded ZIP.");
   }
@@ -99,14 +102,9 @@ async function verifyBackup(admin: any, job: any, externalCrcVerified = false) {
     throw new Error("External manifest.json is not valid JSON.");
   }
 
-  // JSZip's eager checkCRC32 option inflates every entry concurrently. On the
-  // production Edge Runtime that exceeded the worker resource limit (HTTP 546).
-  // Load the directory once, then decompress one member at a time and compare
-  // its CRC with the value recorded in the ZIP central directory.
-  // Normally JSZip verifies every entry CRC here. The trusted GitHub cleanup
-  // workflow can verify CRCs on its larger runner and pass exact job IDs;
-  // this Edge Function still independently checks SHA-256, manifests and members.
-  const zip = externalCrcVerified
+  // The GitHub runner performs full JSZip CRC validation before passing this
+  // exact ZIP digest. A digest mismatch blocks the CRC bypass.
+  const zip = externalCrcVerifiedSha256
     ? await JSZip.loadAsync(zipBlob)
     : await JSZip.loadAsync(zipBlob, { checkCRC32: true });
   const internalManifestEntry = zip.file("manifest.json");
@@ -187,12 +185,13 @@ serve(async (req) => {
   if (!authorized) authorized = (await requireAdmin(req)).ok;
   if (!authorized) return jsonResponse({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await readJson<{ dry_run?: boolean; limit?: number; crc32_verified_job_ids?: string[] }>(req);
-  const crcVerifiedJobIds = Array.isArray(body.crc32_verified_job_ids)
-    ? new Set(body.crc32_verified_job_ids.filter((id) => typeof id === "string"))
+  const body = await readJson<{ dry_run?: boolean; limit?: number; crc32_verified_checksums?: Record<string, string> }>(req);
+  const crcVerifiedChecksums = body.crc32_verified_checksums && typeof body.crc32_verified_checksums === "object"
+    ? new Map(Object.entries(body.crc32_verified_checksums).filter(([id, checksum]) =>
+        typeof id === "string" && typeof checksum === "string" && /^[a-f0-9]{64}$/i.test(checksum)))
     : null;
-  if (crcVerifiedJobIds && crcVerifiedJobIds.size > 0 && !cronAuthorized) {
-    return jsonResponse({ error: "Externally verified CRC job IDs require the configured cron secret." }, { status: 403 });
+  if (crcVerifiedChecksums && crcVerifiedChecksums.size > 0 && !cronAuthorized) {
+    return jsonResponse({ error: "Externally CRC-verified ZIP checksums require the configured cron secret." }, { status: 403 });
   }
   const dryRun = body.dry_run !== false;
   const requestedLimit = Number.isInteger(body.limit) ? Number(body.limit) : DEFAULT_JOBS_PER_RUN;
@@ -207,7 +206,7 @@ serve(async (req) => {
     const eligible: Array<{ job: any; rawFiles: Array<{ path: string; size: number }> }> = [];
     const skipped: Array<{ id: string; reason: string }> = [];
     for (const job of jobs || []) {
-      if (crcVerifiedJobIds && crcVerifiedJobIds.size > 0 && !crcVerifiedJobIds.has(job.id)) continue;
+      if (crcVerifiedChecksums && crcVerifiedChecksums.size > 0 && !crcVerifiedChecksums.has(job.id)) continue;
       const prefix = job.storage_prefix || `backups/${job.id}/`;
       const rawFiles = await listTableObjects(admin, prefix);
       if (rawFiles.length === 0) {
@@ -235,7 +234,7 @@ serve(async (req) => {
     for (const { job, rawFiles } of jobsToProcess) {
       const prefix = job.storage_prefix || `backups/${job.id}/`;
       try {
-        const verified = await verifyBackup(admin, job, Boolean(crcVerifiedJobIds?.has(job.id)));
+        const verified = await verifyBackup(admin, job, crcVerifiedChecksums?.get(job.id));
         const rawBytes = rawFiles.reduce((sum, file) => sum + file.size, 0);
         if (!dryRun) {
           const { data: updated, error: validError } = await admin.from("backup_jobs").update({

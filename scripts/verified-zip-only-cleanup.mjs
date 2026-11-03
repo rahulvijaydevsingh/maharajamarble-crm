@@ -160,7 +160,7 @@ async function verifyJob(job) {
   };
 }
 
-async function invokeCleanup(verifiedIds) {
+async function invokeCleanup(verifiedChecksums) {
   const response = await fetchChecked(baseUrl + "/functions/v1/crm-backup-zip-cleanup", {
     method: "POST",
     headers: {
@@ -170,8 +170,8 @@ async function invokeCleanup(verifiedIds) {
     },
     body: JSON.stringify({
       dry_run: false,
-      limit: verifiedIds.length,
-      crc32_verified_job_ids: verifiedIds,
+      limit: Object.keys(verifiedChecksums).length,
+      crc32_verified_checksums: verifiedChecksums,
     }),
   });
   const result = await response.json();
@@ -237,11 +237,11 @@ console.log(JSON.stringify({
 const results = [];
 for (let index = 0; index < candidates.length; index += jobLimit) {
   const batch = candidates.slice(index, index + jobLimit);
-  const verifiedIds = [];
+  const verifiedChecksums = {};
   for (const candidate of batch) {
     try {
       const verified = await verifyJob(candidate.job);
-      verifiedIds.push(candidate.job.id);
+      verifiedChecksums[candidate.job.id] = verified.checksum_sha256;
       results.push({
         ...verified,
         raw_table_files: candidate.raw.length,
@@ -260,17 +260,17 @@ for (let index = 0; index < candidates.length; index += jobLimit) {
   }
 
   console.log("Verified batch " + (Math.floor(index / jobLimit) + 1) + ": " +
-    verifiedIds.length + "/" + batch.length + " ZIP(s) passed CRC/SHA/manifest checks.");
+    Object.keys(verifiedChecksums).length + "/" + batch.length + " ZIP(s) passed CRC/SHA/manifest checks.");
 
-  if (verifiedIds.length !== batch.length) {
+  if (Object.keys(verifiedChecksums).length !== batch.length) {
     console.log(JSON.stringify(results, null, 2));
     throw new Error("At least one completed backup failed verification. No deletions were started.");
   }
 
   if (!dryRun) {
-    const cleanup = await invokeCleanup(verifiedIds);
+    const cleanup = await invokeCleanup(verifiedChecksums);
     for (const result of results) {
-      if (verifiedIds.includes(result.id)) result.deleted = true;
+      if (Object.prototype.hasOwnProperty.call(verifiedChecksums, result.id)) result.deleted = true;
     }
     console.log(JSON.stringify({
       cleanup_batch: Math.floor(index / jobLimit) + 1,
