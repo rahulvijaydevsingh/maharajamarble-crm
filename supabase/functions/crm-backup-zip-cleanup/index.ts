@@ -195,9 +195,23 @@ serve(async (req) => {
     for (const job of jobs || []) {
       const prefix = job.storage_prefix || `backups/${job.id}/`;
       const rawFiles = await listTableObjects(admin, prefix);
-      const cleanupIncomplete = job.progress?.raw_files_cleanup !== "completed";
-      if (rawFiles.length > 0 || cleanupIncomplete) eligible.push({ job, rawFiles });
-      else skipped.push({ id: job.id, reason: "raw_files_cleanup already completed and no table exports remain" });
+      if (rawFiles.length === 0) {
+        // A ZIP-only/legacy completed job with no raw exports needs no destructive work.
+        // Mark the no-op complete in execute mode so it does not consume every later batch.
+        if (!dryRun && job.progress?.raw_files_cleanup !== "completed") {
+          const { error: progressError } = await admin.from("backup_jobs").update({
+            progress: { ...(job.progress || {}), raw_files_cleanup: "completed" },
+            updated_at: new Date().toISOString(),
+          }).eq("id", job.id).eq("status", "completed");
+          if (progressError) {
+            skipped.push({ id: job.id, reason: `no raw files remain, but cleanup status could not be recorded: ${progressError.message}` });
+            continue;
+          }
+        }
+        skipped.push({ id: job.id, reason: "no raw table exports remain; ZIP-only/no-op" });
+        continue;
+      }
+      eligible.push({ job, rawFiles });
     }
 
     const jobsToProcess = eligible.slice(0, jobLimit);
