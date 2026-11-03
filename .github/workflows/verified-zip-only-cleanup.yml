@@ -41,6 +41,7 @@ jobs:
       - name: Install pinned ZIP verifier dependency
         run: npm install --no-save --package-lock=false --legacy-peer-deps jszip@3.10.1
 
+# Run full CRC validation on the runner before any deletion.
       - name: Verify ZIPs on runner and optionally remove raw exports
         env:
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'production' }}
