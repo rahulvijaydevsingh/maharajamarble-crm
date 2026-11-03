@@ -68,6 +68,41 @@ async function listTableObjects(admin: any, prefix: string) {
   return files;
 }
 
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let value = n;
+    for (let bit = 0; bit < 8; bit++) {
+      value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+    }
+    table[n] = value >>> 0;
+  }
+  return table;
+})();
+
+function calculateCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let index = 0; index < bytes.length; index++) {
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[index]) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function verifyZipCrcSequentially(zip: any): Promise<void> {
+  const entries = Object.values(zip.files).filter((entry: any) => !entry.dir) as any[];
+  for (const entry of entries) {
+    const expected = entry?._data?.crc32;
+    if (typeof expected !== "number" || !Number.isFinite(expected)) {
+      throw new Error(`ZIP entry ${entry.name} has no readable CRC32 metadata.`);
+    }
+    // Await each member before starting the next to bound peak decompression memory.
+    const uncompressed = await entry.async("uint8array");
+    const actual = calculateCrc32(uncompressed);
+    if (actual !== (expected >>> 0)) {
+      throw new Error(`ZIP CRC32 mismatch for ${entry.name}.`);
+    }
+  }
+}
 async function verifyBackup(admin: any, job: any) {
   const zipPath = job.zip_path || `backups/${job.id}/backup.zip`;
   const prefix = job.storage_prefix || zipPath.replace(/backup\.zip$/i, "");
@@ -99,9 +134,12 @@ async function verifyBackup(admin: any, job: any) {
     throw new Error("External manifest.json is not valid JSON.");
   }
 
-  // JSZip CRC checking is retained as required. Do not call async()/JSON.parse()
-  // for the table payloads: that needlessly materializes all large table exports.
-  const zip = await JSZip.loadAsync(zipBlob, { checkCRC32: true });
+  // JSZip's eager checkCRC32 option inflates every entry concurrently. On the
+  // production Edge Runtime that exceeded the worker resource limit (HTTP 546).
+  // Load the directory once, then decompress one member at a time and compare
+  // its CRC with the value recorded in the ZIP central directory.
+  const zip = await JSZip.loadAsync(zipBlob, { checkCRC32: false });
+  await verifyZipCrcSequentially(zip);
   const internalManifestEntry = zip.file("manifest.json");
   if (!internalManifestEntry) throw new Error("ZIP is missing its own manifest.json.");
   let internalManifest: any;
