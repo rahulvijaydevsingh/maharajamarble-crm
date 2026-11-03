@@ -30,11 +30,22 @@ jobs:
   verify-and-clean-raw-backup-files:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify ZIPs and optionally remove only redundant table JSON/CSV
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned ZIP verifier dependency
+        run: npm install --no-save --package-lock=false jszip@3.10.1
+
+      - name: Verify ZIPs on runner and optionally remove raw exports
         env:
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'production' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run && 'true' || 'false') || (contains(github.event.head_commit.message, '[execute-production-backup-cleanup]') && 'false' || 'true') }}
-          JOB_LIMIT: ${{ github.event_name == 'workflow_dispatch' && (inputs.limit || 5) || 20 }}
+          JOB_LIMIT: ${{ github.event_name == 'workflow_dispatch' && (inputs.limit || 5) || 5 }}
           PROD_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           PROD_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PROD_CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -52,41 +63,5 @@ jobs:
             SERVICE_ROLE_KEY="$PREVIEW_SERVICE_ROLE_KEY"
             CRON_SECRET="$PREVIEW_CRON_SECRET"
           fi
-          if [ -z "$PROJECT_ID" ] || [ -z "$SERVICE_ROLE_KEY" ] || [ -z "$CRON_SECRET" ]; then
-            echo "Missing secrets for target=$TARGET."
-            exit 1
-          fi
-
-          call_cleanup() {
-            local DRY_RUN_JSON="$1"
-            local JOB_LIMIT="$2"
-            local BODY
-            BODY=$(jq -cn --argjson dry_run "$DRY_RUN_JSON" --argjson limit "$JOB_LIMIT" '{dry_run:$dry_run,limit:$limit}')
-            curl -sS --fail-with-body -X POST "https://$PROJECT_ID.supabase.co/functions/v1/crm-backup-zip-cleanup" \
-              -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
-              -H "x-cron-secret: $CRON_SECRET" \
-              -H "Content-Type: application/json" \
-              -d "$BODY"
-          }
-
-          if [ "$DRY_RUN" = "true" ]; then
-            # Dry-run all completed jobs after the sequential CRC verification hotfix (maximum 20).
-            RESPONSE=$(call_cleanup true "$JOB_LIMIT")
-            echo "$RESPONSE" | jq .
-            echo "$RESPONSE" | jq -e '.success == true and .error == null' >/dev/null
-          else
-            # Execute in batches of five; already-clean prefixes are skipped.
-            for PASS in $(seq 1 10); do
-              echo "Production cleanup batch $PASS (limit 5)"
-              RESPONSE=$(call_cleanup false 5)
-              echo "$RESPONSE" | jq .
-              echo "$RESPONSE" | jq -e '.success == true and .error == null' >/dev/null
-              REMAINING=$(echo "$RESPONSE" | jq -r '.completed_jobs_remaining // 0')
-              if [ "$REMAINING" -eq 0 ]; then break; fi
-            done
-
-            # Final read-only verification: no completed job may retain raw tables/.
-            VERIFY=$(call_cleanup true 20)
-            echo "$VERIFY" | jq .
-            echo "$VERIFY" | jq -e '.success == true and .error == null and .completed_jobs_eligible == 0' >/dev/null
-          fi
+          export PROJECT_ID SERVICE_ROLE_KEY CRON_SECRET DRY_RUN JOB_LIMIT
+          node scripts/verified-zip-only-cleanup.mjs
