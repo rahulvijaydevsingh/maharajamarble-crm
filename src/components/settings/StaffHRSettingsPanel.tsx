@@ -231,7 +231,7 @@ export function StaffHRSettingsPanel({ staffId, staffRole, staffName }: StaffHRS
   const fetchRetentionCandidates = async () => {
     setLoadingRetention(true);
     try {
-      const { data, error } = await supabase.rpc("get_attendance_retention_candidates", {
+      const { data, error } = await supabase.rpc("get_attendance_retention_candidates_v2", {
         p_staff_id: staffId,
       });
       if (error) throw error;
