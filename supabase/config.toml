@@ -2,3 +2,15 @@ project_id = "jmohlloabmddaiyjvahp"
 
 [functions.customer-attachments]
 verify_jwt = true
+
+[functions.crm-backup-worker]
+verify_jwt = true
+
+[functions.crm-backup-retention]
+verify_jwt = true
+
+[functions.attendance-photo-prune]
+verify_jwt = true
+
+[functions.crm-backup-zip-cleanup]
+verify_jwt = true

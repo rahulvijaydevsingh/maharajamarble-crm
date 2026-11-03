@@ -1,0 +1,31 @@
+name: Nightly HR Attendance Retention
+
+on:
+  schedule:
+    - cron: "35 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  prune-attendance-retention:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune eligible attendance photos and GPS coordinates
+        env:
+          PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PROJECT_ID" ] || [ -z "$SERVICE_ROLE_KEY" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Missing SUPABASE_PROJECT_ID, SUPABASE_SERVICE_ROLE_KEY, or CRON_SECRET secret."
+            exit 1
+          fi
+
+          RESPONSE=$(curl -sS --fail-with-body -X POST "https://$PROJECT_ID.supabase.co/functions/v1/attendance-photo-prune" \
+            -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"dry_run":false}')
+
+          echo "$RESPONSE" | jq .
+          echo "$RESPONSE" | jq -e '.success == true and .error == null' >/dev/null
