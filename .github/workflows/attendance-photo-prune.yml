@@ -20,7 +20,7 @@ jobs:
   prune-attendance-retention:
     runs-on: ubuntu-latest
     steps:
-      # Production attendance workflow: comment/path trigger runs a fresh dry-run.
+      # Production attendance execute: batch photo removals and attendance/GPS updates.
       - name: Prune eligible attendance photos and GPS coordinates
         env:
           PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
