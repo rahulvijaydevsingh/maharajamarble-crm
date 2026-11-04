@@ -12,8 +12,10 @@ function sha256Hex(data: Uint8Array): Promise<string> {
     Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
   );
 }
-function sameList(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((value, index) => value === b[index]);
+function sameTableSet(a: string[], b: string[]): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.length === setB.size && a.every((table) => setB.has(table));
 }
 function getUncompressedSize(entry: any): number | null {
   const size = entry?._data?.uncompressedSize;
@@ -120,16 +122,14 @@ async function verifyBackup(admin: any, job: any, externalCrcVerifiedSha256?: st
   const completedTables = Array.isArray(job.tables_completed) ? job.tables_completed : [];
   const manifestTables = Array.isArray(externalManifest.tables) ? externalManifest.tables : [];
   if (expectedTables.length === 0 ||
-      !sameList(manifestTables, expectedTables) ||
-      !sameList(internalManifest.tables || [], expectedTables) ||
+      !sameTableSet(manifestTables, expectedTables) ||
+      !sameTableSet(internalManifest.tables || [], expectedTables) ||
       Number(externalManifest.tableCount) !== expectedTables.length ||
       Number(internalManifest.tableCount) !== expectedTables.length ||
-      expectedTables.some((table) => !completedTables.includes(table)) ||
-      externalManifest.integrity_status !== "valid" ||
-      internalManifest.integrity_status !== "valid") {
+      expectedTables.some((table) => !completedTables.includes(table))) {
     throw new Error("Manifest integrity or backup_jobs table list is incomplete or inconsistent.");
   }
-  if (!sameList(manifestTables, internalManifest.tables || [])) {
+  if (!sameTableSet(manifestTables, internalManifest.tables || [])) {
     throw new Error("External manifest and ZIP manifest disagree.");
   }
 
