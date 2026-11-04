@@ -184,6 +184,10 @@ async function invokeCleanup(verifiedChecksums) {
   if (notDeleted.length > 0) {
     throw new Error("Edge cleanup did not delete every externally verified job: " + JSON.stringify(notDeleted));
   }
+  const failedCleanupErrors = (result.failed_results || []).filter((item) => item.deleted !== true);
+  if (failedCleanupErrors.length > 0) {
+    throw new Error("Failed-job prefix cleanup or audit failed: " + JSON.stringify(failedCleanupErrors));
+  }
   return result;
 }
 
@@ -294,11 +298,16 @@ if (!dryRun) {
       residuals.push({ id: candidate.job.id, remaining: remaining.length });
     }
   }
-  const septPrefix = await listStorageFiles("backups/649ea45a-917e-4c4b-85d7-19d88366e05a");
-  if (residuals.length > 0 || septPrefix.length > 0) {
+  const failedPrefixResiduals = [];
+  for (const failed of failedJobs || []) {
+    const prefix = failed.storage_prefix || ("backups/" + failed.id + "/");
+    const remaining = await listStorageFiles(prefix);
+    if (remaining.length > 0) failedPrefixResiduals.push({ id: failed.id, remaining: remaining.length });
+  }
+  if (residuals.length > 0 || failedPrefixResiduals.length > 0) {
     throw new Error("Post-cleanup verification failed: " + JSON.stringify({
       completed_prefixes_with_raw_files: residuals,
-      september_01_remaining_objects: septPrefix.length,
+      failed_prefixes_with_remaining_objects: failedPrefixResiduals,
     }));
   }
 }

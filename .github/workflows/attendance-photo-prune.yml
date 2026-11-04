@@ -44,4 +44,4 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$BODY")
           echo "$RESPONSE" | jq .
-          echo "$RESPONSE" | jq -e '.success == true and .error == null' >/dev/null
+          echo "$RESPONSE" | jq -e '.success == true and .error == null and ((.pending // []) | length == 0) and (.dry_run == false) and (.photos_cleared == .eligible_photos) and (.locations_cleared == .eligible_locations)' >/dev/null

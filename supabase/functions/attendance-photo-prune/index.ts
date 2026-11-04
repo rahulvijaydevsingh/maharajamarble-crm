@@ -82,7 +82,7 @@ serve(async (req) => {
   try {
     const { data: settingsRows, error: settingsError } = await admin.from("staff_hr_settings")
       .select("staff_id,photo_retention_days,location_retention_days");
-    if (settingsError) throw new Error(`Could not read HR retention settings: ${settingsError.message}`);
+    if (settingsError) throw new Error("Could not read HR retention settings: " + settingsError.message);
     const settingsByStaff = new Map<string, { photos: number; location: number }>();
     for (const row of settingsRows || []) {
       settingsByStaff.set(row.staff_id, {
@@ -97,7 +97,10 @@ serve(async (req) => {
     let eligiblePhotos = 0;
     let eligibleLocations = 0;
     const pending: Array<{ record_id: string; staff_id: string; attendance_date: string; data_type: DataType; reason: string }> = [];
+    const photoCandidates: Array<{ record: Candidate; paths: string[] }> = [];
+    const locationCandidates: Candidate[] = [];
 
+    // Select eligible records and validate staff-scoped storage paths first.
     for (const record of attendanceRows) {
       const policy = settingsByStaff.get(record.staff_id) || { photos: 60, location: 30 };
       const photoCutoff = dateBefore(policy.photos, today);
@@ -110,52 +113,132 @@ serve(async (req) => {
       const locationEligible = Boolean(
         body.data_type !== "photos" &&
         record.date < locationCutoff &&
-        (
-          record.clock_in_latitude !== null || record.clock_in_longitude !== null ||
-          record.clock_out_latitude !== null || record.clock_out_longitude !== null
-        )
+        (record.clock_in_latitude !== null || record.clock_in_longitude !== null ||
+         record.clock_out_latitude !== null || record.clock_out_longitude !== null)
       );
 
       if (photoEligible) {
         eligiblePhotos++;
         if (!dryRun) {
-        const originalIn = record.clock_in_photo_url;
-        const originalOut = record.clock_out_photo_url;
-        const rawPaths = [originalIn, originalOut].filter((value): value is string => Boolean(value));
-        const paths = rawPaths.map((path) => safeAttendancePath(path, record.staff_id));
-        if (paths.some((path) => !path)) {
-          pending.push({ record_id: record.id, staff_id: record.staff_id, attendance_date: record.date, data_type: "photos", reason: "A stored photo path is not a safe staff-scoped Storage path; references were preserved." });
-        } else {
-          const { error: removeError } = await admin.storage.from("attendance-photos").remove(paths as string[]);
-          if (removeError) {
-            pending.push({ record_id: record.id, staff_id: record.staff_id, attendance_date: record.date, data_type: "photos", reason: removeError.message || "Storage API could not remove the photo." });
-          } else {
-            let update = admin.from("attendance_records").update({
-              clock_in_photo_url: null, clock_out_photo_url: null,
-            }).eq("id", record.id);
-            update = originalIn ? update.eq("clock_in_photo_url", originalIn) : update.is("clock_in_photo_url", null);
-            update = originalOut ? update.eq("clock_out_photo_url", originalOut) : update.is("clock_out_photo_url", null);
-            const { data: updated, error: updateError } = await update.select("id").maybeSingle();
-            if (updateError || !updated) {
-              pending.push({ record_id: record.id, staff_id: record.staff_id, attendance_date: record.date, data_type: "photos", reason: updateError?.message || "The attendance record changed during cleanup; database references were not cleared." });
-            } else photosCleared++;
+          const rawPaths = [record.clock_in_photo_url, record.clock_out_photo_url]
+            .filter((value): value is string => Boolean(value));
+          const paths = rawPaths.map((path) => safeAttendancePath(path, record.staff_id));
+          if (paths.some((path) => !path)) {
+            pending.push({
+              record_id: record.id, staff_id: record.staff_id, attendance_date: record.date,
+              data_type: "photos",
+              reason: "A stored photo path is not a safe staff-scoped Storage path; references were preserved.",
+            });
+          } else if (paths.length > 0) {
+            photoCandidates.push({ record, paths: [...new Set(paths as string[])] });
           }
-        }
         }
       }
 
       if (locationEligible) {
         eligibleLocations++;
-        if (!dryRun) {
-        const { error: updateError } = await admin.from("attendance_records").update({
-          clock_in_latitude: null,
-          clock_in_longitude: null,
-          clock_out_latitude: null,
-          clock_out_longitude: null,
-        }).eq("id", record.id);
+        if (!dryRun) locationCandidates.push(record);
+      }
+    }
+
+    if (!dryRun) {
+      // Remove storage objects in chunks; do not clear a record unless every
+      // one of its referenced objects was successfully removed.
+      const allPhotoPaths = [...new Set(photoCandidates.flatMap((candidate) => candidate.paths))];
+      const removedPhotoPaths = new Set<string>();
+      const failedPhotoPaths = new Map<string, string>();
+      const storageChunkSize = 100;
+      for (let offset = 0; offset < allPhotoPaths.length; offset += storageChunkSize) {
+        const chunk = allPhotoPaths.slice(offset, offset + storageChunkSize);
+        const { error: removeError } = await admin.storage.from("attendance-photos").remove(chunk);
+        if (removeError) {
+          for (const path of chunk) failedPhotoPaths.set(path, removeError.message || "Storage API could not remove the photo.");
+        } else {
+          for (const path of chunk) removedPhotoPaths.add(path);
+        }
+      }
+
+      const photoRecordsToClear: Candidate[] = [];
+      for (const candidate of photoCandidates) {
+        const failedPath = candidate.paths.find((path) => !removedPhotoPaths.has(path));
+        if (failedPath) {
+          pending.push({
+            record_id: candidate.record.id, staff_id: candidate.record.staff_id,
+            attendance_date: candidate.record.date, data_type: "photos",
+            reason: failedPhotoPaths.get(failedPath) || "One or more photo objects were not confirmed removed; references were preserved.",
+          });
+        } else {
+          photoRecordsToClear.push(candidate.record);
+        }
+      }
+
+      // Clear photo URL columns in bounded batches after storage removal.
+      const recordById = new Map(photoRecordsToClear.map((record) => [record.id, record]));
+      const photoRecordIds = photoRecordsToClear.map((record) => record.id);
+      const dbChunkSize = 100;
+      for (let offset = 0; offset < photoRecordIds.length; offset += dbChunkSize) {
+        const chunk = photoRecordIds.slice(offset, offset + dbChunkSize);
+        const { data: updated, error: updateError } = await admin.from("attendance_records")
+          .update({ clock_in_photo_url: null, clock_out_photo_url: null })
+          .in("id", chunk)
+          .select("id");
         if (updateError) {
-          pending.push({ record_id: record.id, staff_id: record.staff_id, attendance_date: record.date, data_type: "location", reason: updateError.message });
-        } else locationsCleared++;
+          for (const id of chunk) {
+            const record = recordById.get(id)!;
+            pending.push({
+              record_id: id, staff_id: record.staff_id, attendance_date: record.date, data_type: "photos",
+              reason: "Photo objects were removed but database references could not be cleared: " + updateError.message,
+            });
+          }
+          continue;
+        }
+        const updatedIds = new Set((updated || []).map((row: { id: string }) => row.id));
+        photosCleared += updatedIds.size;
+        for (const id of chunk) {
+          if (!updatedIds.has(id)) {
+            const record = recordById.get(id)!;
+            pending.push({
+              record_id: id, staff_id: record.staff_id, attendance_date: record.date, data_type: "photos",
+              reason: "Photo objects were removed but the attendance row was not updated (it may have changed during cleanup).",
+            });
+          }
+        }
+      }
+
+      // Clear expired GPS columns in bounded batches; attendance rows remain.
+      const locationById = new Map(locationCandidates.map((record) => [record.id, record]));
+      const locationRecordIds = locationCandidates.map((record) => record.id);
+      for (let offset = 0; offset < locationRecordIds.length; offset += dbChunkSize) {
+        const chunk = locationRecordIds.slice(offset, offset + dbChunkSize);
+        const { data: updated, error: updateError } = await admin.from("attendance_records")
+          .update({
+            clock_in_latitude: null,
+            clock_in_longitude: null,
+            clock_out_latitude: null,
+            clock_out_longitude: null,
+          })
+          .in("id", chunk)
+          .select("id");
+        if (updateError) {
+          for (const id of chunk) {
+            const record = locationById.get(id)!;
+            pending.push({
+              record_id: id, staff_id: record.staff_id, attendance_date: record.date, data_type: "location",
+              reason: updateError.message,
+            });
+          }
+          continue;
+        }
+        const updatedIds = new Set((updated || []).map((row: { id: string }) => row.id));
+        locationsCleared += updatedIds.size;
+        for (const id of chunk) {
+          if (!updatedIds.has(id)) {
+            const record = locationById.get(id)!;
+            pending.push({
+              record_id: id, staff_id: record.staff_id, attendance_date: record.date, data_type: "location",
+              reason: "Attendance row was not updated (it may have changed during cleanup).",
+            });
+          }
         }
       }
     }
@@ -170,6 +253,7 @@ serve(async (req) => {
       locations_cleared: locationsCleared,
       pending,
       defaults: { photo_retention_days: 60, location_retention_days: 30 },
+      batch_sizes: { storage_remove: 100, attendance_update: 100 },
     });
   } catch (error) {
     console.error("attendance-photo-prune failed:", error);
