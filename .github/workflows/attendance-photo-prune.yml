@@ -20,6 +20,7 @@ jobs:
   prune-attendance-retention:
     runs-on: ubuntu-latest
     steps:
+      # Production attendance workflow: comment/path trigger runs a fresh dry-run.
       - name: Prune eligible attendance photos and GPS coordinates
         env:
           PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -44,4 +45,4 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$BODY")
           echo "$RESPONSE" | jq .
-          echo "$RESPONSE" | jq -e '.success == true and .error == null and ((.pending // []) | length == 0) and (.dry_run == false) and (.photos_cleared == .eligible_photos) and (.locations_cleared == .eligible_locations)' >/dev/null
+          echo "$RESPONSE" | jq -e '.success == true and .error == null and ((.pending // []) | length == 0) and (if .dry_run then (.photos_cleared == 0 and .locations_cleared == 0) else (.photos_cleared == .eligible_photos and .locations_cleared == .eligible_locations) end)' >/dev/null

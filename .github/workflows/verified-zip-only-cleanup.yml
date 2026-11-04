@@ -41,7 +41,7 @@ jobs:
       - name: Install pinned ZIP verifier dependency
         run: npm install --no-save --package-lock=false --legacy-peer-deps jszip@3.10.1
 
-# Execute approved Production ZIP cleanup in bounded five-job batches after full dry-run verification.
+# Production cleanup workflow: this comment-only path trigger runs a fresh dry-run.
       - name: Verify ZIPs on runner and optionally remove raw exports
         env:
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'production' }}
