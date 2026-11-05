@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, MapPin, Camera, CheckCircle2, XCircle, AlertTriangle, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { compressImageFile } from "@/lib/imageCompression";
 
 // Detect environment once at module level
 const ENV = {
@@ -260,7 +261,8 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
       const canvas = canvasRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Camera capture is unavailable. Please try again.");
       ctx.drawImage(video, 0, 0);
 
       stopCamera();
@@ -273,8 +275,13 @@ export function ClockInOutModal({ open, onOpenChange, mode, onSuccess }: ClockIn
         );
       });
 
+      const compressedPhoto = await compressImageFile(blob, {
+        maxDimension: 1024,
+        maxSizeBytes: 200 * 1024,
+      });
+
       const formData = new FormData();
-      formData.append("photo", blob, "capture.jpg");
+      formData.append("photo", compressedPhoto, "capture.jpg");
       formData.append("latitude", String(gpsPosition.lat));
       formData.append("longitude", String(gpsPosition.lng));
 
