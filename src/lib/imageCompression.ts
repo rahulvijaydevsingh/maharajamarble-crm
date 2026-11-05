@@ -53,20 +53,28 @@ export async function compressImageFile(
 
     const longestEdge = Math.max(image.naturalWidth, image.naturalHeight);
     const scale = longestEdge > maxDimension ? maxDimension / longestEdge : 1;
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    let width = Math.max(1, Math.round(image.naturalWidth * scale));
+    let height = Math.max(1, Math.round(image.naturalHeight * scale));
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Canvas is unavailable");
-    context.drawImage(image, 0, 0, width, height);
 
-    let quality = initialQuality;
-    let compressed = await canvasToBlob(canvas, quality);
-    while (compressed.size > maxSizeBytes && quality > MIN_JPEG_QUALITY) {
-      quality = Math.max(MIN_JPEG_QUALITY, quality - 0.1);
+    let compressed: Blob | null = null;
+    while (!compressed || compressed.size > maxSizeBytes) {
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(image, 0, 0, width, height);
+
+      let quality = initialQuality;
       compressed = await canvasToBlob(canvas, quality);
+      while (compressed.size > maxSizeBytes && quality > MIN_JPEG_QUALITY) {
+        quality = Math.max(MIN_JPEG_QUALITY, quality - 0.1);
+        compressed = await canvasToBlob(canvas, quality);
+      }
+
+      if (compressed.size <= maxSizeBytes || (width === 1 && height === 1)) break;
+      width = Math.max(1, Math.round(width * 0.8));
+      height = Math.max(1, Math.round(height * 0.8));
     }
 
     return new File([compressed], original.name.replace(/\.[^.]+$/, "") + ".jpg", {

@@ -31,11 +31,17 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension === "jpg" || extension === "jpeg" || extension === "png" || extension === "webp";
+}
+
 function LocalImageThumbnail({ file }: { file: File }) {
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!file.type.startsWith("image/")) {
+    if (!isImageFile(file)) {
       setPreviewDataUrl(null);
       return;
     }
@@ -254,7 +260,7 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
                 className="flex items-center justify-between p-2.5 text-sm"
               >
                 <div className="flex items-center gap-2 truncate pr-2">
-                  {file.type.startsWith("image/") ? (
+                  {isImageFile(file) ? (
                     <LocalImageThumbnail file={file} />
                   ) : (
                     <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
