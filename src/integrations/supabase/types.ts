@@ -3872,6 +3872,7 @@ export type Database = {
           record_id: string
         }[]
       }
+      crm_object_uploaded_by_me: { Args: { p_path: string }; Returns: boolean }
       get_all_staff_roles: {
         Args: never
         Returns: {
@@ -3880,6 +3881,18 @@ export type Database = {
         }[]
       }
       get_attendance_retention_candidates: {
+        Args: { p_staff_id?: string }
+        Returns: {
+          attendance_date: string
+          data_type: string
+          photo_file_paths: string[]
+          record_id: string
+          retention_days: number
+          staff_id: string
+          staff_name: string
+        }[]
+      }
+      get_attendance_retention_candidates_v2: {
         Args: { p_staff_id?: string }
         Returns: {
           attendance_date: string

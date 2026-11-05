@@ -31,35 +31,72 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension === "jpg" || extension === "jpeg" || extension === "png" || extension === "webp";
+}
+
+function LocalImageThumbnail({ file }: { file: File }) {
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isImageFile(file)) {
+      setPreviewDataUrl(null);
+      return;
+    }
+
+    let isCurrent = true;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (isCurrent && typeof reader.result === "string") {
+        setPreviewDataUrl(reader.result);
+      }
+    };
+    reader.onerror = () => {
+      if (isCurrent) setPreviewDataUrl(null);
+    };
+    reader.readAsDataURL(file);
+
+    return () => {
+      isCurrent = false;
+      reader.abort();
+    };
+  }, [file]);
+
+  if (!previewDataUrl) {
+    return (
+      <div className="h-12 w-12 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <FileText className="h-6 w-6" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={previewDataUrl}
+      alt={`Preview of ${file.name}`}
+      className="h-16 w-16 object-cover rounded border shrink-0"
+    />
+  );
+}
+
 export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Local state for file selected in picker (before confirmation)
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const clearSelection = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
     setSelectedFile(null);
-    setPreviewUrl(null);
     setValidationError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSuccessMessage(null);
@@ -69,7 +106,6 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
     if (file.size > CUSTOMER_ATTACHMENT_MAX_BYTES) {
       setValidationError("This file is larger than 10 MB.");
       setSelectedFile(null);
-      setPreviewUrl(null);
       return;
     }
 
@@ -84,19 +120,11 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
     if (!typeIsAllowed) {
       setValidationError("Only PDF, JPG, PNG and WebP files are allowed.");
       setSelectedFile(null);
-      setPreviewUrl(null);
       return;
     }
 
     setValidationError(null);
     setSelectedFile(file);
-
-    if (file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
-    } else {
-      setPreviewUrl(null);
-    }
   };
 
   const handleConfirmUpload = async () => {
@@ -185,18 +213,7 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
       {selectedFile && (
         <div className="p-3 border rounded-lg bg-muted/30 space-y-3">
           <div className="flex items-center gap-3">
-            {previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="Preview"
-                className="h-16 w-16 object-cover rounded border"
-                onError={() => setPreviewUrl(null)}
-              />
-            ) : (
-              <div className="h-12 w-12 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <FileText className="h-6 w-6" />
-              </div>
-            )}
+            <LocalImageThumbnail file={selectedFile} />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{selectedFile.name}</p>
               <p className="text-xs text-muted-foreground">
@@ -243,7 +260,11 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
                 className="flex items-center justify-between p-2.5 text-sm"
               >
                 <div className="flex items-center gap-2 truncate pr-2">
-                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  {isImageFile(file) ? (
+                    <LocalImageThumbnail file={file} />
+                  ) : (
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
                   <span className="truncate font-medium">{file.name}</span>
                   <span className="text-xs text-muted-foreground shrink-0">
                     ({formatFileSize(file.size)})
