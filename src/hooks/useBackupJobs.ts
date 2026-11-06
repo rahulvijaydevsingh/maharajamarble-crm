@@ -56,8 +56,8 @@ export function useBackupJobs() {
 
   const createBackupJob = useCallback(
     async (params: { includeModules: BackupModuleKey[]; includeFiles: boolean }) => {
-      const { data, error } = await supabase
-        .from('backup_jobs' as any)
+      const backupJobs = supabase.from('backup_jobs') as any;
+      const { data, error } = await backupJobs
         .insert({
           include_modules: params.includeModules,
           include_files: params.includeFiles,
@@ -69,21 +69,22 @@ export function useBackupJobs() {
         .select()
         .single();
       if (error) throw new Error(error.message);
+      const job = data as BackupJobRow;
 
       // The database insert trigger uses a legacy anon request. Start the worker
       // explicitly with the signed-in administrator session instead.
       const { data: workerData, error: workerError } = await supabase.functions.invoke("crm-backup-worker", {
-        body: { job_id: data.id },
+        body: { job_id: job.id },
       });
       if (workerError || workerData?.error) {
         const message = workerError?.message || workerData?.error || "Worker invocation failed.";
-        await supabase.from("backup_jobs" as any).update({
+        await backupJobs.update({
           status: "failed",
           error_message: `Worker could not start: ${message}`,
-        }).eq("id", data.id);
+        }).eq("id", job.id);
         throw new Error(`Backup job was created but the worker could not start: ${message}`);
       }
-      return data as unknown as BackupJobRow;
+      return job;
     },
     [profile?.full_name]
   );
