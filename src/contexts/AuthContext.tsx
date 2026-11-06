@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { keepSameProfile, keepSameSession, keepSameUser } from "@/lib/stableAuthState";
 
 type AppRole = "super_admin" | "admin" | "manager" | "sales_user" | "sales_viewer" | "field_agent";
 
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single() as any);
 
       if (profileData) {
-        setProfile(profileData as Profile);
+        setProfile((previous) => keepSameProfile(previous, profileData as Profile));
       }
 
       // Fetch role - try RPC first, fallback to direct query
@@ -102,8 +103,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+        setSession((previous) => keepSameSession(previous, session));
+        // Opening the tab again re-announces the same person: keep the same object so nothing reloads.
+        setUser((previous) => keepSameUser(previous, session?.user ?? null, event));
 
         // Defer Supabase calls with setTimeout to prevent deadlock
         if (session?.user) {
@@ -128,8 +130,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      setSession((previous) => keepSameSession(previous, session));
+      setUser((previous) => keepSameUser(previous, session?.user ?? null));
       
       if (session?.user) {
         fetchUserData(session.user.id);
