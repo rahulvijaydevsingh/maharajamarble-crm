@@ -365,11 +365,13 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         "customer",
       );
 
+      let uploadedFileCount = 0;
       if (stagedAttachments.length > 0) {
         const failedFileNames: string[] = [];
         for (const file of stagedAttachments) {
           try {
             await uploadCustomerAttachment(newCustomer.id, file);
+            uploadedFileCount++;
           } catch {
             failedFileNames.push(file.name);
           }
@@ -401,7 +403,10 @@ export function SmartCustomerForm({ open, onOpenChange }: SmartCustomerFormProps
         toast({
           title: "Customer Created Successfully",
           description:
-            "Customer " + primaryContact.name.trim() + " has been created.",
+            "Customer " + primaryContact.name.trim() + " has been created." +
+            (uploadedFileCount > 0
+              ? " " + uploadedFileCount + (uploadedFileCount === 1 ? " file was" : " files were") + " encrypted and saved."
+              : ""),
         });
       }
 

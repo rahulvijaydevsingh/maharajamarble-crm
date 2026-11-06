@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -114,10 +114,18 @@ function useCustomersStore() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
+  const userId = user?.id ?? null;
+  // Which person the list on screen was loaded for.
+  const loadedForUserRef = useRef<string | null>(null);
 
   const fetchCustomers = async () => {
     try {
-      setLoading(true);
+      // Only the first load for a person shows the loading screen. Later refreshes run quietly in the background,
+      // otherwise an open customer window would be closed and reset every time the list refreshes.
+      if (loadedForUserRef.current !== userId) {
+        setCustomers([]);
+        setLoading(true);
+      }
       const { data, error } = await supabase
         .from("customers")
         .select("*")
@@ -125,6 +133,7 @@ function useCustomersStore() {
 
       if (error) throw error;
       setCustomers(data || []);
+      loadedForUserRef.current = userId;
     } catch (error: any) {
       console.error("Error fetching customers:", error);
       toast({
@@ -253,7 +262,7 @@ function useCustomersStore() {
 
   useEffect(() => {
     // Wait for the initial auth check before querying (avoids pre-login errors).
-    if (authLoading || !user) return;
+    if (authLoading || !userId) return;
 
     fetchCustomers();
 
@@ -285,7 +294,7 @@ function useCustomersStore() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [authLoading, user]);
+  }, [authLoading, userId]);
 
   return {
     customers,

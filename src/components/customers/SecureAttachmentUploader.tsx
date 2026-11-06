@@ -10,6 +10,7 @@ import {
   getCustomerAttachmentErrorMessage,
   uploadCustomerAttachment,
 } from "@/lib/customerAttachmentsApi";
+import { addStagedFile, getPreviewKind } from "@/lib/customerAttachmentFiles";
 
 type SecureAttachmentUploaderProps =
   | {
@@ -31,72 +32,111 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
-function isImageFile(file: File): boolean {
-  if (file.type.startsWith("image/")) return true;
-  const extension = file.name.split(".").pop()?.toLowerCase();
-  return extension === "jpg" || extension === "jpeg" || extension === "png" || extension === "webp";
-}
-
-function LocalImageThumbnail({ file }: { file: File }) {
-  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+/** One file in the new-customer form's list. A picture can be tapped to see it larger. */
+function StagedFileRow({
+  file,
+  disabled,
+  onRemove,
+}: {
+  file: File;
+  disabled?: boolean;
+  onRemove: () => void;
+}) {
+  const kind = getPreviewKind(file);
+  const [url, setUrl] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    if (!isImageFile(file)) {
-      setPreviewDataUrl(null);
+    if (kind !== "image") {
+      setUrl(null);
       return;
     }
-
-    let isCurrent = true;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (isCurrent && typeof reader.result === "string") {
-        setPreviewDataUrl(reader.result);
-      }
-    };
-    reader.onerror = () => {
-      if (isCurrent) setPreviewDataUrl(null);
-    };
-    reader.readAsDataURL(file);
-
-    return () => {
-      isCurrent = false;
-      reader.abort();
-    };
-  }, [file]);
-
-  if (!previewDataUrl) {
-    return (
-      <div className="h-12 w-12 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
-        <FileText className="h-6 w-6" />
-      </div>
-    );
-  }
+    const created = URL.createObjectURL(file);
+    setUrl(created);
+    return () => URL.revokeObjectURL(created);
+  }, [file, kind]);
 
   return (
-    <img
-      src={previewDataUrl}
-      alt={`Preview of ${file.name}`}
-      className="h-16 w-16 object-cover rounded border shrink-0"
-    />
+    <div className="space-y-2 p-2.5 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-3">
+          {url ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              className="shrink-0 overflow-hidden rounded border"
+              title={expanded ? "Hide the larger preview" : "Show a larger preview"}
+            >
+              <img
+                src={url}
+                alt=""
+                className="h-14 w-14 object-cover"
+                onError={() => setUrl(null)}
+              />
+            </button>
+          ) : (
+            <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+          )}
+          <div className="min-w-0">
+            <p className="truncate font-medium">{file.name}</p>
+            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+          disabled={disabled}
+          onClick={onRemove}
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Remove</span>
+        </Button>
+      </div>
+      {expanded && url && (
+        <img
+          src={url}
+          alt={"Preview of " + file.name}
+          className="mx-auto max-h-[50vh] w-full rounded-md border bg-muted/40 object-contain"
+        />
+      )}
+    </div>
   );
 }
 
 export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Local state for file selected in picker (before confirmation)
+  // Only used when the file is uploaded straight away (the customer's Attachments tab): the file picked
+  // but not yet confirmed.
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const previewKind = selectedFile ? getPreviewKind(selectedFile) : "none";
+
   const clearSelection = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setSelectedFile(null);
+    setPreviewUrl(null);
     setValidationError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSuccessMessage(null);
@@ -106,6 +146,8 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
     if (file.size > CUSTOMER_ATTACHMENT_MAX_BYTES) {
       setValidationError("This file is larger than 10 MB.");
       setSelectedFile(null);
+      setPreviewUrl(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -120,48 +162,51 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
     if (!typeIsAllowed) {
       setValidationError("Only PDF, JPG, PNG and WebP files are allowed.");
       setSelectedFile(null);
+      setPreviewUrl(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (props.mode === "stage") {
+      // New-customer form: the file goes straight into the list that is uploaded when the customer is saved.
+      // Pressing Save is the confirmation, so there is nothing to forget to confirm.
+      const result = addStagedFile(props.files, file);
+      setValidationError(result.error);
+      if (!result.error) {
+        props.onFilesChange(result.files);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     setValidationError(null);
     setSelectedFile(file);
+
+    const kind = getPreviewKind(file);
+    setPreviewUrl(kind === "none" ? null : URL.createObjectURL(file));
   };
 
   const handleConfirmUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || props.mode !== "immediate") return;
 
-    if (props.mode === "immediate") {
-      setIsUploading(true);
-      setValidationError(null);
-      try {
-        await uploadCustomerAttachment(props.customerId, selectedFile);
-        const fileName = selectedFile.name;
-        clearSelection();
-        setSuccessMessage("Uploaded securely: " + fileName);
-        if (props.onUploaded) {
-          props.onUploaded();
-        }
-      } catch (error: unknown) {
-        const code =
-          error instanceof CustomerAttachmentError
-            ? error.code
-            : "server_error";
-        setValidationError(getCustomerAttachmentErrorMessage(code));
-      } finally {
-        setIsUploading(false);
-      }
-    } else {
-      // mode === "stage"
-      const existing = props.files;
-      const isDuplicate = existing.some(
-        (f) => f.name === selectedFile.name && f.size === selectedFile.size,
-      );
-
-      if (!isDuplicate && existing.length < 10) {
-        props.onFilesChange([...existing, selectedFile]);
-      }
-
+    setIsUploading(true);
+    setValidationError(null);
+    try {
+      await uploadCustomerAttachment(props.customerId, selectedFile);
+      const fileName = selectedFile.name;
       clearSelection();
+      setSuccessMessage("Uploaded securely: " + fileName);
+      if (props.onUploaded) {
+        props.onUploaded();
+      }
+    } catch (error: unknown) {
+      const code =
+        error instanceof CustomerAttachmentError
+          ? error.code
+          : "server_error";
+      setValidationError(getCustomerAttachmentErrorMessage(code));
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -205,21 +250,45 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="h-4 w-4 mr-2" />
-            Choose file
+            {props.mode === "stage" ? "Add file" : "Choose file"}
           </Button>
         </div>
       )}
 
       {selectedFile && (
-        <div className="p-3 border rounded-lg bg-muted/30 space-y-3">
-          <div className="flex items-center gap-3">
-            <LocalImageThumbnail file={selectedFile} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatFileSize(selectedFile.size)}
-              </p>
-            </div>
+        <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+          <div className="overflow-hidden rounded-md border bg-background">
+            {previewUrl && previewKind === "image" ? (
+              <img
+                src={previewUrl}
+                alt={"Preview of " + selectedFile.name}
+                className="mx-auto max-h-[50vh] w-full object-contain"
+                onError={() => setPreviewUrl(null)}
+              />
+            ) : previewUrl && previewKind === "pdf" ? (
+              <object
+                data={previewUrl}
+                type="application/pdf"
+                aria-label={"Preview of " + selectedFile.name}
+                className="block h-[50vh] w-full"
+              >
+                <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+                  <FileText className="h-6 w-6" />
+                  A preview is not available here. You can still upload the file.
+                </div>
+              </object>
+            ) : (
+              <div className="flex items-center justify-center p-8 text-primary">
+                <FileText className="h-10 w-10" />
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{selectedFile.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {formatFileSize(selectedFile.size)}
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -253,39 +322,18 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
 
       {props.mode === "stage" && props.files.length > 0 && (
         <div className="space-y-2">
-          <div className="divide-y border rounded-md">
+          <div className="divide-y rounded-md border">
             {props.files.map((file, index) => (
-              <div
+              <StagedFileRow
                 key={file.name + "-" + file.size + "-" + index}
-                className="flex items-center justify-between p-2.5 text-sm"
-              >
-                <div className="flex items-center gap-2 truncate pr-2">
-                  {isImageFile(file) ? (
-                    <LocalImageThumbnail file={file} />
-                  ) : (
-                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                  )}
-                  <span className="truncate font-medium">{file.name}</span>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    ({formatFileSize(file.size)})
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                  disabled={props.disabled}
-                  onClick={() => handleRemoveStaged(index)}
-                >
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">Remove</span>
-                </Button>
-              </div>
+                file={file}
+                disabled={props.disabled}
+                onRemove={() => handleRemoveStaged(index)}
+              />
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            These files are uploaded when you save.
+            These files are encrypted and saved when you save the customer. Tap a picture to see it larger.
           </p>
         </div>
       )}
