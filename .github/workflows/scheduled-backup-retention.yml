@@ -4,15 +4,38 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      recovery_job_id:
+        description: 'Optional existing backup_jobs.id to recover instead of creating a new backup'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-backup-retention
+  cancel-in-progress: false
 
 jobs:
   backup-and-prune:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate runner finalizer
+        run: |
+          python3 -m py_compile scripts/finalize_nightly_backup.py
+          python3 -m unittest discover -s scripts/tests -v
+
       - name: Create pending backup job
         id: create_job
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.recovery_job_id == '' }}
         run: |
-          RESPONSE=$(curl -sS -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs" \
+          RESPONSE=$(curl -sS --fail-with-body -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs" \
             -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/json" \
@@ -32,30 +55,54 @@ jobs:
           echo "Created backup job: $JOB_ID"
 
       - name: Trigger backup worker
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.recovery_job_id == '' }}
         run: |
-          curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
+          curl -sS --fail-with-body -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             -d "{\"job_id\": \"${{ steps.create_job.outputs.job_id }}\"}"
 
-      - name: Poll until completion (10-minute ceiling, with stall recovery)
+      - name: Poll, recover 546 finalization, and verify ZIP
+        env:
+          RECOVERY_JOB_ID: ${{ inputs.recovery_job_id }}
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          JOB_ID="${{ steps.create_job.outputs.job_id }}"
+          JOB_ID="$RECOVERY_JOB_ID"
+          if [ -z "$JOB_ID" ]; then
+            JOB_ID="${{ steps.create_job.outputs.job_id }}"
+          fi
+          if [ -z "$JOB_ID" ]; then
+            echo "No backup job id was provided or created."
+            exit 1
+          fi
+
           LAST_DONE=-1
           STALL_CHECKS=0
+          STATUS=""
+          INTEGRITY=""
+          DONE="-1"
+          TOTAL="-1"
+
           for i in {1..30}; do
-            RESP=$(curl -sS "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs?id=eq.$JOB_ID&select=status,integrity_status,error_message,progress" \
+            RESP=$(curl -sS --fail-with-body "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/backup_jobs?id=eq.$JOB_ID&select=status,integrity_status,error_message,progress,tables_to_export,tables_completed,zip_path,checksum_sha256" \
               -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
               -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}")
 
             STATUS=$(echo "$RESP" | jq -r '.[0].status // empty')
             INTEGRITY=$(echo "$RESP" | jq -r '.[0].integrity_status // empty')
             DONE=$(echo "$RESP" | jq -r '.[0].progress.tables_done // -1')
-            echo "Check $i/30: status=$STATUS integrity=$INTEGRITY tables_done=$DONE"
+            TOTAL=$(echo "$RESP" | jq -r '.[0].progress.tables_total // (.[0].tables_to_export | length) // -1')
+            echo "Check $i/30: status=$STATUS integrity=$INTEGRITY tables_done=$DONE/$TOTAL"
 
             if [ "$STATUS" = "completed" ]; then
-              echo "Backup completed. Integrity: $INTEGRITY"
+              if [ "$INTEGRITY" != "valid" ]; then
+                echo "Backup reports completed with invalid integrity: $INTEGRITY"
+                exit 1
+              fi
+              python3 scripts/finalize_nightly_backup.py --job-id "$JOB_ID"
+              echo "Backup completed and runner verification passed."
               exit 0
             elif [ "$STATUS" = "failed" ]; then
               ERR=$(echo "$RESP" | jq -r '.[0].error_message // "unknown error"')
@@ -70,27 +117,42 @@ jobs:
               LAST_DONE="$DONE"
             fi
 
-            # 9 checks x 20s = 180s (3 minutes). Shorter thresholds risk double-claiming
-            # a job that's still legitimately processing a large table, since claim logic
-            # doesn't distinguish genuinely stuck from still working.
+            # Allow Edge finalization three minutes. A 546 nudge at tables_done=total
+            # transfers ZIP creation, verification, upload, and cleanup to this runner.
             if [ "$STALL_CHECKS" -ge 9 ]; then
-              echo "No progress for ~3 minutes -- nudging the worker to resume from job_id=$JOB_ID."
-              curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
+              echo "No progress for ~3 minutes -- nudging worker for job_id=$JOB_ID."
+              NUDGE_RC=0
+              NUDGE_HTTP=$(curl -sS -o /tmp/backup-worker-nudge-response.json -w "%{http_code}" \
+                -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-worker" \
                 -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
                 -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
                 -H "Content-Type: application/json" \
-                -d "{\"job_id\": \"$JOB_ID\"}" || echo "Nudge call itself failed, will retry on next stall check"
+                -d "{\"job_id\": \"$JOB_ID\"}") || NUDGE_RC=$?
+              echo "Worker nudge: HTTP=$NUDGE_HTTP curl_exit=$NUDGE_RC"
+
+              if [ "$DONE" = "$TOTAL" ] && [ "$NUDGE_HTTP" = "546" ]; then
+                echo "Edge Runtime returned HTTP 546 after all tables completed; finalizing on GitHub runner."
+                python3 scripts/finalize_nightly_backup.py --job-id "$JOB_ID"
+              elif [ "$NUDGE_RC" -ne 0 ]; then
+                echo "Worker nudge transport failed; polling will continue."
+              fi
               STALL_CHECKS=0
             fi
-
             sleep 20
           done
-          echo "Backup did not reach a terminal state within 10 minutes (last status: $STATUS)."
-          exit 1
+
+          echo "Polling window ended: status=$STATUS integrity=$INTEGRITY tables_done=$DONE/$TOTAL"
+          if [ "$STATUS" = "processing" ] && [ "$DONE" = "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+            echo "All tables are exported; using GitHub runner finalization fallback."
+            python3 scripts/finalize_nightly_backup.py --job-id "$JOB_ID"
+          else
+            echo "Backup did not reach a recoverable finalization state."
+            exit 1
+          fi
 
       - name: Run GFS retention pruning
         run: |
-          curl -sS -f -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-retention" \
+          curl -sS --fail-with-body -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/crm-backup-retention" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
