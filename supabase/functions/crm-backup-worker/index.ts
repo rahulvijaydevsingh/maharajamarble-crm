@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { ZipWriter, BlobWriter, Uint8ArrayReader } from "https://deno.land/x/zipjs@v2.7.45/index.js";
-import JSZip from "https://esm.sh/jszip@3.10.1";
 
 import { corsHeaders, jsonResponse, readJson } from "../_shared/http.ts";
 import { createAdminClient, requireAdmin } from "../_shared/authz.ts";
@@ -48,6 +47,41 @@ async function deleteIntermediateTableFiles(admin: any, prefix: string): Promise
   return { deleted: paths.length, remaining: remainingPaths.length };
 }
 
+async function verifyStoredZipMatches(zipPath: string, expectedBytes: Uint8Array): Promise<void> {
+  const baseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!baseUrl || !serviceRoleKey) throw new Error("Missing Supabase credentials for ZIP verification.");
+  const encodedPath = zipPath.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(
+    `${baseUrl}/storage/v1/object/authenticated/crm-backups/${encodedPath}`,
+    { headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` } },
+  );
+  if (!response.ok || !response.body) {
+    throw new Error(`Persisted backup.zip cannot be streamed for verification (HTTP ${response.status}).`);
+  }
+
+  const reader = response.body.getReader();
+  let offset = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (offset + value.length > expectedBytes.length) {
+      await reader.cancel();
+      throw new Error("Persisted backup.zip is larger than the generated archive.");
+    }
+    for (let index = 0; index < value.length; index++) {
+      if (value[index] !== expectedBytes[offset + index]) {
+        await reader.cancel();
+        throw new Error(`Persisted backup.zip differs from the generated archive at byte ${offset + index}.`);
+      }
+    }
+    offset += value.length;
+  }
+  if (offset !== expectedBytes.length) {
+    throw new Error(`Persisted backup.zip size mismatch (expected ${expectedBytes.length}, received ${offset}).`);
+  }
+}
+
 async function runZipFinalization(
   admin: any,
   job: any,
@@ -59,76 +93,46 @@ async function runZipFinalization(
   const filePaths = ["manifest.json"];
   for (const table of tables) filePaths.push(`tables/${table}.json`, `tables/${table}.csv`);
 
-  const zipWriter = new ZipWriter(new BlobWriter("application/zip"));
+  const zipWriter = new ZipWriter(new BlobWriter("application/zip"), { level: 1 });
   for (const relativePath of filePaths) {
     const { data: blob, error } = await storage.download(`${prefix}${relativePath}`);
     if (error || !blob) {
       throw new Error(`Cannot finalize ZIP: required source file ${relativePath} is missing (${error?.message || "no blob"}).`);
     }
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (relativePath.endsWith(".json")) {
-      try {
-        JSON.parse(new TextDecoder().decode(bytes));
-      } catch {
-        throw new Error(`Cannot finalize ZIP: ${relativePath} contains invalid JSON.`);
-      }
+    if (bytes.byteLength === 0) {
+      throw new Error(`Cannot finalize ZIP: required source file ${relativePath} is empty.`);
     }
     await zipWriter.add(relativePath, new Uint8ArrayReader(bytes));
   }
 
-  const zipBlob = await zipWriter.close();
+  // Hash the completed ZIP buffer, then release the Blob before upload so only one
+  // full-size archive representation remains live during the network transfer.
+  let zipBlob: Blob | null = await zipWriter.close();
   const zipBytes = new Uint8Array(await zipBlob.arrayBuffer());
+  zipBlob = null;
+  const totalSizeBytes = zipBytes.byteLength;
   const checksumSha256 = await sha256Hex(zipBytes);
   const zipPath = `${prefix}backup.zip`;
 
-  const { error: uploadError } = await storage.upload(zipPath, zipBlob, {
+  const { error: uploadError } = await storage.upload(zipPath, zipBytes, {
     contentType: "application/zip",
     upsert: true,
   });
   if (uploadError) throw new Error(`Could not upload backup.zip: ${uploadError.message}`);
+  await verifyStoredZipMatches(zipPath, zipBytes);
 
-  // Verify the persisted object, not just the in-memory ZIP.
-  const { data: storedZip, error: downloadError } = await storage.download(zipPath);
-  if (downloadError || !storedZip) throw new Error(`Uploaded backup.zip cannot be downloaded: ${downloadError?.message || "missing"}`);
-  const storedBytes = new Uint8Array(await storedZip.arrayBuffer());
-  const storedChecksum = await sha256Hex(storedBytes);
-  if (storedBytes.byteLength !== zipBytes.byteLength || storedChecksum !== checksumSha256) {
-    throw new Error("Persisted backup.zip size or SHA-256 does not match the uploaded archive.");
-  }
-
-  const verifiedZip = await JSZip.loadAsync(storedZip, { checkCRC32: true });
-  const storedManifestEntry = verifiedZip.file("manifest.json");
-  if (!storedManifestEntry) throw new Error("Persisted backup.zip has no manifest.json.");
-  let parsedManifest: any;
-  try {
-    parsedManifest = JSON.parse(await storedManifestEntry.async("string"));
-  } catch {
-    throw new Error("Persisted backup.zip has an invalid manifest.json.");
-  }
-  if (parsedManifest.integrity_status !== "valid" ||
-      parsedManifest.tableCount !== tables.length ||
-      !Array.isArray(parsedManifest.tables) ||
-      parsedManifest.tables.length !== tables.length ||
-      parsedManifest.tables.some((table: string, index: number) => table !== tables[index])) {
-    throw new Error("Persisted ZIP manifest does not match the expected export table set.");
-  }
-
-  const actualFiles = Object.values(verifiedZip.files).filter((entry: any) => !entry.dir);
-  const expectedFileCount = 1 + tables.length * 2;
-  if (actualFiles.length !== expectedFileCount) {
-    throw new Error(`ZIP contains ${actualFiles.length} files; expected exactly ${expectedFileCount}.`);
-  }
-  for (const table of tables) {
-    const jsonEntry = verifiedZip.file(`tables/${table}.json`);
-    const csvEntry = verifiedZip.file(`tables/${table}.csv`);
-    if (!jsonEntry || !csvEntry) throw new Error(`ZIP is missing table files for ${table}.`);
-    let rows: unknown;
-    try {
-      rows = JSON.parse(await jsonEntry.async("string"));
-    } catch {
-      throw new Error(`ZIP table JSON is invalid for ${table}.`);
-    }
-    if (!Array.isArray(rows)) throw new Error(`ZIP table JSON is not an array for ${table}.`);
+  // Verify Storage metadata without downloading a second full copy or inflating
+  // all ZIP members inside the Edge Runtime.
+  const { data: storedObjects, error: listZipError } = await storage.list(
+    prefix.replace(/\/$/, ""),
+    { limit: 100, sortBy: { column: "name", order: "asc" } },
+  );
+  if (listZipError) throw new Error(`Could not verify stored backup.zip metadata: ${listZipError.message}`);
+  const storedZip = (storedObjects || []).find((entry: any) => entry.name === "backup.zip");
+  const storedSize = Number(storedZip?.metadata?.size ?? -1);
+  if (!storedZip || storedSize !== totalSizeBytes) {
+    throw new Error(`Persisted backup.zip size mismatch (expected ${totalSizeBytes}, found ${storedSize}).`);
   }
 
   // The raw exports are redundant only after the stored ZIP and its full contents pass verification.
@@ -157,7 +161,7 @@ async function runZipFinalization(
     completed_at: now,
     zip_path: zipPath,
     checksum_sha256: checksumSha256,
-    total_size_bytes: zipBytes.byteLength,
+    total_size_bytes: totalSizeBytes,
     duration_ms: durationMs,
     table_count: tables.length,
     integrity_status: "valid",
@@ -174,7 +178,7 @@ async function runZipFinalization(
   }).eq("id", job.id);
   if (updateError) throw new Error(`Backup verified, but job completion update failed: ${updateError.message}`);
 
-  return { checksumSha256, totalSizeBytes: zipBytes.byteLength, rawFilesDeleted: cleanup.deleted };
+  return { checksumSha256, totalSizeBytes, rawFilesDeleted: cleanup.deleted };
 }
 
 serve(async (req) => {
@@ -189,7 +193,7 @@ serve(async (req) => {
   }
 
   const admin = createAdminClient();
-  const body = await readJson<{ job_id?: string }>(req);
+  const body = await readJson<{ job_id?: string; phase?: "export" | "finalize" }>(req);
   let jobId = body.job_id;
   if (!jobId) {
     const { data, error } = await admin.from("backup_jobs").select("id")
@@ -228,6 +232,9 @@ serve(async (req) => {
 
     const prefix = job.storage_prefix || `backups/${job.id}/`;
     const completed = job.tables_completed || [];
+    if (body.phase === "finalize" && completed.length !== tablesToExport.length) {
+      throw new Error(`Finalization was requested before all tables completed (${completed.length}/${tablesToExport.length}).`);
+    }
     const nextTable = tablesToExport.find((table) => !completed.includes(table));
 
     if (!nextTable) {
@@ -298,6 +305,8 @@ serve(async (req) => {
 
     // Always enqueue a final pass, including after the last table, so ZIP finalization cannot be skipped.
     const selfUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/crm-backup-worker`;
+    const allTablesExported = Number(doneCount) >= tablesToExport.length;
+    const nextPhase = allTablesExported ? "finalize" : "export";
     const selfCall = fetch(selfUrl, {
       method: "POST",
       headers: {
@@ -305,14 +314,14 @@ serve(async (req) => {
         Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
         "x-cron-secret": Deno.env.get("CRON_SECRET") || "",
       },
-      body: JSON.stringify({ job_id: job.id }),
+      body: JSON.stringify({ job_id: job.id, phase: nextPhase }),
     }).then(async (response) => {
       if (!response.ok) throw new Error(`Worker self-chain returned HTTP ${response.status}`);
     }).catch((error) => console.error("Backup worker self-chain failed; scheduled workflow can nudge the job:", error));
     // @ts-ignore Supabase EdgeRuntime is provided by the hosted Deno runtime.
     if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(selfCall);
 
-    return jsonResponse({ status: "processing", table: nextTable, done: doneCount, total: tablesToExport.length });
+    return jsonResponse({ status: "processing", table: nextTable, done: doneCount, total: tablesToExport.length, next_phase: nextPhase });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const { error: failedUpdateError } = await admin.from("backup_jobs").update({
