@@ -119,11 +119,7 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
   const previewKind = selectedFile ? getPreviewKind(selectedFile) : "none";
 
   const clearSelection = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
     setSelectedFile(null);
-    setPreviewUrl(null);
     setValidationError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -131,12 +127,15 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
   };
 
   useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
+    if (!selectedFile || previewKind === "none") {
+      setPreviewUrl(null);
+      return;
+    }
+
+    const created = URL.createObjectURL(selectedFile);
+    setPreviewUrl(created);
+    return () => URL.revokeObjectURL(created);
+  }, [selectedFile, previewKind]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSuccessMessage(null);
@@ -181,9 +180,6 @@ export function SecureAttachmentUploader(props: SecureAttachmentUploaderProps) {
 
     setValidationError(null);
     setSelectedFile(file);
-
-    const kind = getPreviewKind(file);
-    setPreviewUrl(kind === "none" ? null : URL.createObjectURL(file));
   };
 
   const handleConfirmUpload = async () => {
