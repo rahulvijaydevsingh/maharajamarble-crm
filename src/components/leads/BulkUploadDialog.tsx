@@ -77,12 +77,13 @@ import { PhotoLeadForm } from "./bulk-upload/PhotoLeadForm";
 import { ColumnMappingStep } from "./bulk-upload/ColumnMappingStep";
 import {
   detectBulkLeadColumns,
+  mappedInitialNote,
   mappedValue,
   mappingScore,
   type BulkLeadField,
   type ColumnMapping,
 } from "@/lib/bulkUploadColumnDetector";
-import { normalizeEmail, normalizeIdentityText, normalizePhone, normalizeSource, resolvePriority } from "@/lib/bulkUploadResolvers";
+import { normalizeDropdownValue, normalizeEmail, normalizeIdentityText, normalizePhone, normalizePriorityValue, toSnakeCase } from "@/lib/bulkUploadResolvers";
 
 interface BulkUploadDialogProps {
   open: boolean;
@@ -555,35 +556,36 @@ export function BulkUploadDialog({
         const stageLabel = mappedValue(row, mapping, "construction_stage");
         const designationLabel = mappedValue(row, mapping, "designation");
 
-        // Resolve source label -> canonical value (edit dropdown binds to canonical values)
-        const cpSourceOptsResolved = getFieldOptions("leads", "source");
-        const sourceMaster = cpSourceOptsResolved.length > 0 ? cpSourceOptsResolved : LEAD_SOURCES;
-        const sourceMatch = sourceMaster.find((o: any) =>
-          String(o.label).toLowerCase() === sourceLabel.toLowerCase() ||
-          String(o.value).toLowerCase() === sourceLabel.toLowerCase()
-        );
-        const source = sourceMatch?.value || normalizeSource(sourceLabel);
+        const cpSourceOptions = getFieldOptions("leads", "source");
+        const sourceMaster = cpSourceOptions.length > 0 ? cpSourceOptions : LEAD_SOURCES;
+        const source = normalizeDropdownValue(sourceLabel, sourceMaster);
         if (sourceLabel && !source) warnings.push(`Unrecognized source "${sourceLabel}" — defaulted to Other`);
 
-        // Resolve construction_stage label -> canonical value
-        const cpStageOptsResolved = getFieldOptions("leads", "construction_stage");
-        const stageMaster = cpStageOptsResolved.length > 0 ? cpStageOptsResolved : CONSTRUCTION_STAGES;
-        const stageMatch = stageMaster.find((o: any) =>
-          String(o.label).toLowerCase() === stageLabel.toLowerCase() ||
-          String(o.value).toLowerCase() === stageLabel.toLowerCase()
-        );
-        const construction_stage = stageMatch?.value || stageLabel;
+        const cpStageOptions = getFieldOptions("leads", "construction_stage");
+        const stageMaster = cpStageOptions.length > 0 ? cpStageOptions : CONSTRUCTION_STAGES;
+        const construction_stage = normalizeDropdownValue(stageLabel, stageMaster);
+        if (stageLabel && !construction_stage) warnings.push(`Unrecognized construction stage "${stageLabel}" — saved as ${toSnakeCase(stageLabel)}`);
 
-        // Resolve designation label -> canonical snake_case value. Default
-        // to "owner" only when the column is genuinely blank for this row.
-        const designationMatch = DESIGNATIONS.find(d =>
-          d.value.toLowerCase() === designationLabel.toLowerCase() ||
-          d.label.toLowerCase() === designationLabel.toLowerCase()
-        );
-        const designation = designationMatch?.value || "owner";
-        if (designationLabel && !designationMatch) {
-          warnings.push(`Unrecognized designation "${designationLabel}" — defaulted to Owner`);
-        }
+        const cpStatusOptions = getFieldOptions("leads", "status");
+        const status = normalizeDropdownValue(mappedValue(row, mapping, "status"), cpStatusOptions) || "new";
+        const cpPriorityOptions = getFieldOptions("leads", "priority");
+        const priorityInput = mappedValue(row, mapping, "priority");
+        const priorityValue = normalizeDropdownValue(priorityInput, cpPriorityOptions);
+        const priority = priorityValue && /^\d+$/.test(priorityValue)
+          ? Number(priorityValue)
+          : normalizePriorityValue(priorityInput, construction_stage || stageLabel);
+
+        const cpDesignationOptions = getFieldOptions("leads", "designation");
+        const designationMaster = cpDesignationOptions.length > 0 ? cpDesignationOptions : DESIGNATIONS;
+        const designation = normalizeDropdownValue(designationLabel, designationMaster) || "owner";
+        if (designationLabel && !designation) warnings.push(`Unrecognized designation "${designationLabel}" — defaulted to Owner`);
+
+        const cpMaterialOptions = getFieldOptions("materials", "materials");
+        const materialMaster = cpMaterialOptions.length > 0 ? cpMaterialOptions : MATERIAL_INTERESTS;
+        const materialsRaw = mappedValue(row, mapping, "materials");
+        const materials = materialsRaw
+          ? materialsRaw.split(",").map((material) => normalizeDropdownValue(material, materialMaster) || toSnakeCase(material)).filter(Boolean)
+          : [];
 
         // Check required fields
         if (!name) {
@@ -613,16 +615,7 @@ export function BulkUploadDialog({
           warnings.push("Invalid email format");
         }
 
-        // Parse priority
-        const priority = resolvePriority(mappedValue(row, mapping, "priority"), stageLabel);
-
-        // Parse materials
-        const materialsRaw = mappedValue(row, mapping, "materials");
-        const materials = materialsRaw
-          ? materialsRaw.split(",").map((m: string) => m.trim()).filter(Boolean)
-          : [];
-
-        // Resolve assigned staff to email
+        // Resolve assigned staff name/email input to a stored full name
         const assignedToRaw = mappedValue(row, mapping, "assigned_to");
         const matchedStaff = staffMembers.find(m =>
           m.name?.toLowerCase() === assignedToRaw?.toLowerCase() ||
@@ -630,8 +623,7 @@ export function BulkUploadDialog({
         );
         const assignedToName = matchedStaff?.name || assignedToRaw || staffMembers[0]?.name || "Unassigned";
 
-        // Notes: prefer "Initial Note" (matches manual form), fall back to legacy "Notes" column
-        const notes = mappedValue(row, mapping, "notes");
+        const notes = mappedInitialNote(row, mapping);
 
         // Calculate actual row number in Excel (header is row 1, data starts row 2)
         const actualRowNumber = i + 2; // +2 because we skip example row "John Doe" if present
@@ -657,12 +649,12 @@ export function BulkUploadDialog({
           email,
           source: source || "other",
           address: mappedValue(row, mapping, "address"),
-          status: mappedValue(row, mapping, "status").toLowerCase() || "new",
+          status,
           priority,
           assigned_to: assignedToName,
           materials,
           notes,
-          construction_stage,
+          construction_stage: construction_stage || null,
           estimated_quantity: mappedValue(row, mapping, "estimated_quantity"),
           referred_by: mappedValue(row, mapping, "referred_by"),
           next_action_date: mappedValue(row, mapping, "next_action_date"),

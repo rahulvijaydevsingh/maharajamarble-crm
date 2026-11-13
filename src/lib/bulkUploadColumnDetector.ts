@@ -49,7 +49,7 @@ const aliases: Record<BulkLeadField, string[]> = {
   referred_by: ["referred_by", "referral", "referrer"],
   next_action_date: ["next_action_date", "follow_up_date", "next_follow_up", "next_action"],
   next_action_time: ["next_action_time", "follow_up_time"],
-  notes: ["notes", "remarks", "comments", "additional_info", "extra_info", "initial_note"],
+  notes: ["initial_note", "notes", "remarks", "comments", "additional_info", "extra_info"],
   site_plus_code: ["site_plus_code", "plus_code", "sitepluscode"],
 };
 
@@ -132,4 +132,18 @@ export const mappedValue = (
   const header = Object.entries(mapping).find(([, mappedField]) => mappedField === field)?.[0];
   const value = header ? row[header] : undefined;
   return value === null || value === undefined ? "" : String(value).trim();
+};
+
+export const mappedInitialNote = (
+  row: Record<string, unknown>,
+  mapping: ColumnMapping,
+): string => {
+  const initialNoteHeader = Object.keys(mapping).find(
+    (header) => normalizeBulkHeader(header) === "initial_note",
+  );
+  const initialNote = initialNoteHeader ? row[initialNoteHeader] : undefined;
+  if (initialNote !== null && initialNote !== undefined && String(initialNote).trim()) {
+    return String(initialNote).trim();
+  }
+  return mappedValue(row, mapping, "notes");
 };

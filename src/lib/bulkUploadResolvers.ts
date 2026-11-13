@@ -1,5 +1,8 @@
-export const normalizePhone = (value: string): string =>
-  String(value || "").replace(/\D/g, "").slice(-10);
+export const normalizePhone = (value: string): string => {
+  const digits = String(value || "").replace(/\D/g, "");
+  const withoutCountryCode = digits.startsWith("91") && digits.length > 10 ? digits.slice(2) : digits;
+  return withoutCountryCode.replace(/^0+/, "").slice(-10);
+};
 
 export const normalizeEmail = (value: string): string => String(value || "").trim().toLowerCase();
 
@@ -52,4 +55,46 @@ export const resolvePriority = (value: string, constructionStage: string): numbe
   if (aliases[normalized]) return aliases[normalized];
   const stage = normalizeIdentityText(constructionStage).replace(/ /g, "_");
   return stage === "flooring_ready" || stage === "renovation" ? 1 : stage === "excavation" ? 5 : 3;
+};
+
+export interface DropdownOption {
+  label: string;
+  value: string;
+}
+
+export const toSnakeCase = (value: string): string =>
+  normalizeIdentityText(value).replace(/ /g, "_");
+
+export const normalizeDropdownValue = (
+  value: string,
+  options: DropdownOption[],
+): string | null => {
+  const input = String(value || "").trim();
+  if (!input) return null;
+
+  const normalizedInput = normalizeIdentityText(input);
+  const matchedOption = options.find((option) =>
+    normalizeIdentityText(option.label) === normalizedInput ||
+    normalizeIdentityText(option.value) === normalizedInput,
+  );
+
+  return matchedOption?.value || toSnakeCase(input) || null;
+};
+
+export const normalizePriorityValue = (value: string, constructionStage: string): number => {
+  const normalized = normalizeDropdownValue(value, [
+    { label: "1 - Very High", value: "1" },
+    { label: "Very High", value: "1" },
+    { label: "2 - High", value: "2" },
+    { label: "High", value: "2" },
+    { label: "3 - Medium", value: "3" },
+    { label: "Medium", value: "3" },
+    { label: "4 - Low", value: "4" },
+    { label: "Low", value: "4" },
+    { label: "5 - Very Low", value: "5" },
+    { label: "Very Low", value: "5" },
+  ]);
+  return normalized && /^[1-5]$/.test(normalized)
+    ? Number(normalized)
+    : resolvePriority(value, constructionStage);
 };
