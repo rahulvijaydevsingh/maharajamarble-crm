@@ -31,7 +31,7 @@ BEGIN
   END IF;
 END $$;
 
--- Drop dependent views if re-running in test transactions
+-- Drop dependent views before replacing tables
 DROP VIEW IF EXISTS public.whatsapp_campaign_progress;
 DROP VIEW IF EXISTS public.whatsapp_settings_public;
 
@@ -40,14 +40,22 @@ ALTER TABLE IF EXISTS public.whatsapp_settings
   DROP CONSTRAINT IF EXISTS whatsapp_settings_main_session_id_fkey,
   DROP CONSTRAINT IF EXISTS whatsapp_settings_bulk_session_id_fkey;
 
--- Drop empty legacy tables to replace with v2 definitions
-DROP TABLE IF EXISTS public.whatsapp_messages CASCADE;
-DROP TABLE IF EXISTS public.whatsapp_queue CASCADE;
-DROP TABLE IF EXISTS public.whatsapp_campaigns CASCADE;
-DROP TABLE IF EXISTS public.whatsapp_sessions CASCADE;
+-- Drop dependent foreign keys if re-running on Preview
+ALTER TABLE IF EXISTS public.whatsapp_suppressions
+  DROP CONSTRAINT IF EXISTS whatsapp_suppressions_source_message_id_fkey;
+ALTER TABLE IF EXISTS public.whatsapp_inbound_pool
+  DROP CONSTRAINT IF EXISTS whatsapp_inbound_pool_session_id_fkey;
+ALTER TABLE IF EXISTS public.whatsapp_events
+  DROP CONSTRAINT IF EXISTS whatsapp_events_session_id_fkey;
+
+-- Plain drops (no CASCADE) in dependency order
+DROP TABLE IF EXISTS public.whatsapp_messages;
+DROP TABLE IF EXISTS public.whatsapp_queue;
+DROP TABLE IF EXISTS public.whatsapp_campaigns;
+DROP TABLE IF EXISTS public.whatsapp_sessions;
 
 -- ----------------------------------------------------------------------------
--- 1. Core Helper Functions: Phone Normalization & Attribution (Sec 7.2 & App B)
+-- 1. Core Helper Functions: Phone Normalization, Attribution & Media Validation
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.normalize_phone_10(p_raw text)
 RETURNS text
@@ -94,6 +102,19 @@ AS $$
     AND btrim(p_name) <> ''
     AND btrim(p_name) !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     AND position('@' IN p_name) = 0;
+$$;
+
+CREATE OR REPLACE FUNCTION public.wa_is_valid_media_ref(p_media jsonb)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT
+    p_media IS NULL
+    OR jsonb_typeof(p_media) = 'null'
+    OR (p_media->>'path') IS NULL
+    OR (p_media->>'path') LIKE 'whatsapp-staging/%'
+    OR (p_media->>'path') LIKE 'whatsapp-library/%';
 $$;
 
 CREATE OR REPLACE FUNCTION public.wa_current_user_name()
@@ -189,12 +210,10 @@ CREATE UNIQUE INDEX whatsapp_sessions_personal_owner_uidx
   ON public.whatsapp_sessions (owner_user_id)
   WHERE slot = 'personal';
 
--- 2.2 Extend whatsapp_settings (Keeping singleton row, dropping Evolution columns)
+-- 2.2 Extend whatsapp_settings (Keep legacy evolution_api_url & bulk_instance_name until Slice 1A UI update)
 ALTER TABLE public.whatsapp_settings
-  DROP COLUMN IF EXISTS evolution_api_url,
-  DROP COLUMN IF EXISTS bulk_instance_name;
-
-ALTER TABLE public.whatsapp_settings
+  ADD COLUMN IF NOT EXISTS evolution_api_url text NULL,
+  ADD COLUMN IF NOT EXISTS bulk_instance_name text NULL,
   ADD COLUMN IF NOT EXISTS kill_switch boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS main_session_id uuid NULL REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS bulk_session_id uuid NULL REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL,
@@ -252,7 +271,6 @@ ALTER TABLE public.whatsapp_settings
     public.wa_is_valid_attribution_name(updated_by)
   );
 
--- Ensure singleton row exists and set approved v2 defaults (Sec 12 & 17)
 INSERT INTO public.whatsapp_settings (id, module_enabled, daily_limit_main, daily_limit_bulk, updated_by)
 SELECT gen_random_uuid(), false, 60, 100, 'system'
 WHERE NOT EXISTS (SELECT 1 FROM public.whatsapp_settings);
@@ -282,7 +300,7 @@ CREATE TABLE public.whatsapp_campaigns (
   session_id uuid NULL REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL,
   title text NULL,
   template_body text NULL,
-  media_ref jsonb NULL,
+  media_ref jsonb NULL CHECK (public.wa_is_valid_media_ref(media_ref)),
   location jsonb NULL,
   source text NOT NULL DEFAULT 'manual' CHECK (
     source IN ('manual', 'quotation', 'automation', 'auto_reply', 'opt_out_confirm')
@@ -322,7 +340,7 @@ CREATE TABLE public.whatsapp_queue (
   ),
   rendered_body text NULL,
   placeholder_values jsonb NOT NULL DEFAULT '{}'::jsonb,
-  media_ref jsonb NULL,
+  media_ref jsonb NULL CHECK (public.wa_is_valid_media_ref(media_ref)),
   location jsonb NULL,
   source text NOT NULL DEFAULT 'manual' CHECK (
     source IN ('manual', 'quotation', 'automation', 'auto_reply', 'opt_out_confirm')
@@ -396,6 +414,7 @@ CREATE TABLE public.whatsapp_messages (
       'text',
       'image',
       'document',
+      'catalogue',
       'location',
       'audio',
       'video',
@@ -406,7 +425,7 @@ CREATE TABLE public.whatsapp_messages (
     )
   ),
   body text NULL CHECK (body IS NULL OR char_length(body) <= 4096),
-  media jsonb NULL,
+  media jsonb NULL CHECK (public.wa_is_valid_media_ref(media)),
   location jsonb NULL,
   related_entity_type text NULL,
   related_entity_id uuid NULL,
@@ -432,7 +451,7 @@ CREATE TABLE public.whatsapp_messages (
 CREATE TABLE IF NOT EXISTS public.whatsapp_suppressions (
   phone10 text PRIMARY KEY CHECK (phone10 ~ '^[6-9][0-9]{9}$'),
   reason text NOT NULL CHECK (reason IN ('keyword', 'manual', 'complaint', 'invalid_number')),
-  source_message_id uuid NULL REFERENCES public.whatsapp_messages(id) ON DELETE SET NULL,
+  source_message_id uuid NULL,
   matched_entities jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by text NOT NULL CHECK (public.wa_is_valid_attribution_name(created_by)),
@@ -442,6 +461,10 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_suppressions (
   lifted_by_user_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   lift_reason text NULL
 );
+
+ALTER TABLE public.whatsapp_suppressions
+  ADD CONSTRAINT whatsapp_suppressions_source_message_id_fkey
+  FOREIGN KEY (source_message_id) REFERENCES public.whatsapp_messages(id) ON DELETE SET NULL;
 
 -- Mirror flags on leads, customers, and professionals (Sec 7.3)
 ALTER TABLE public.leads
@@ -469,7 +492,7 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_inbound_pool (
   last_message_text text NULL CHECK (last_message_text IS NULL OR char_length(last_message_text) <= 1000),
   message_count integer NOT NULL DEFAULT 1 CHECK (message_count >= 1),
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'converted_to_lead', 'ignored')),
-  session_id uuid NULL REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL,
+  session_id uuid NULL,
   received_at timestamptz NOT NULL DEFAULT now(),
   last_received_at timestamptz NOT NULL DEFAULT now(),
   converted_lead_id uuid NULL REFERENCES public.leads(id) ON DELETE SET NULL,
@@ -479,6 +502,10 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_inbound_pool (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.whatsapp_inbound_pool
+  ADD CONSTRAINT whatsapp_inbound_pool_session_id_fkey
+  FOREIGN KEY (session_id) REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL;
 
 -- 2.9 whatsapp_library_items
 CREATE TABLE IF NOT EXISTS public.whatsapp_library_items (
@@ -554,11 +581,15 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_events (
   id bigserial PRIMARY KEY,
   at timestamptz NOT NULL DEFAULT now(),
   level text NOT NULL CHECK (level IN ('info', 'warn', 'error')),
-  session_id uuid NULL REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL,
+  session_id uuid NULL,
   worker_id text NULL,
   code text NOT NULL,
   detail jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+ALTER TABLE public.whatsapp_events
+  ADD CONSTRAINT whatsapp_events_session_id_fkey
+  FOREIGN KEY (session_id) REFERENCES public.whatsapp_sessions(id) ON DELETE SET NULL;
 
 -- ----------------------------------------------------------------------------
 -- 3. Views (Sec 7.3 & 7.5)
@@ -731,6 +762,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_phone10 text := public.normalize_phone_10(p_phone10);
 BEGIN
@@ -739,81 +771,83 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  -- 1. Customers (primary priority)
   SELECT
-    'customer'::text AS entity_type,
-    c.id AS entity_id,
-    c.name::text AS name,
-    c.assigned_to::text AS assigned_to,
-    COALESCE(c.updated_at, c.created_at, now()) AS updated_at
-  FROM public.customers c
-  WHERE COALESCE((to_jsonb(c)->>'is_deleted')::boolean, false) = false
-    AND (
-      public.normalize_phone_10(c.phone) = v_phone10
-      OR public.normalize_phone_10(c.alternate_phone) = v_phone10
-      OR EXISTS (
-        SELECT 1
-          FROM jsonb_array_elements(
-                 CASE
-                   WHEN jsonb_typeof(to_jsonb(c)->'additional_contacts') = 'array'
-                   THEN to_jsonb(c)->'additional_contacts'
-                   ELSE '[]'::jsonb
-                 END
-               ) AS ac
-         WHERE public.normalize_phone_10(ac->>'phone') = v_phone10
-            OR public.normalize_phone_10(ac->>'alternatePhone') = v_phone10
-            OR public.normalize_phone_10(ac->>'alternate_phone') = v_phone10
+    sub.entity_type,
+    sub.entity_id,
+    sub.name,
+    sub.assigned_to,
+    sub.updated_at
+  FROM (
+    -- 1. Customers (primary priority)
+    SELECT
+      'customer'::text AS entity_type,
+      c.id AS entity_id,
+      c.name::text AS name,
+      c.assigned_to::text AS assigned_to,
+      COALESCE(c.updated_at, c.created_at, now()) AS updated_at
+    FROM public.customers c
+    WHERE public.normalize_phone_10(c.phone) = v_phone10
+       OR public.normalize_phone_10(c.alternate_phone) = v_phone10
+       OR EXISTS (
+         SELECT 1
+           FROM jsonb_array_elements(
+                  CASE
+                    WHEN jsonb_typeof(to_jsonb(c)->'additional_contacts') = 'array'
+                    THEN to_jsonb(c)->'additional_contacts'
+                    ELSE '[]'::jsonb
+                  END
+                ) AS ac
+          WHERE public.normalize_phone_10(ac->>'phone') = v_phone10
+             OR public.normalize_phone_10(ac->>'alternatePhone') = v_phone10
+             OR public.normalize_phone_10(ac->>'alternate_phone') = v_phone10
+       )
+    UNION ALL
+    -- 2. Leads (excluding soft-deleted rows via deleted_at IS NULL)
+    SELECT
+      'lead'::text AS entity_type,
+      l.id AS entity_id,
+      l.name::text AS name,
+      l.assigned_to::text AS assigned_to,
+      COALESCE(l.updated_at, l.created_at, now()) AS updated_at
+    FROM public.leads l
+    WHERE l.deleted_at IS NULL
+      AND (
+        public.normalize_phone_10(l.phone) = v_phone10
+        OR public.normalize_phone_10(l.alternate_phone) = v_phone10
+        OR EXISTS (
+          SELECT 1
+            FROM jsonb_array_elements(
+                   CASE
+                     WHEN jsonb_typeof(to_jsonb(l)->'additional_contacts') = 'array'
+                     THEN to_jsonb(l)->'additional_contacts'
+                     ELSE '[]'::jsonb
+                   END
+                 ) AS ac
+           WHERE public.normalize_phone_10(ac->>'phone') = v_phone10
+              OR public.normalize_phone_10(ac->>'alternatePhone') = v_phone10
+              OR public.normalize_phone_10(ac->>'alternate_phone') = v_phone10
+        )
       )
-    )
-  UNION ALL
-  -- 2. Leads
-  SELECT
-    'lead'::text AS entity_type,
-    l.id AS entity_id,
-    l.name::text AS name,
-    l.assigned_to::text AS assigned_to,
-    COALESCE(l.updated_at, l.created_at, now()) AS updated_at
-  FROM public.leads l
-  WHERE COALESCE((to_jsonb(l)->>'is_deleted')::boolean, false) = false
-    AND (
-      public.normalize_phone_10(l.phone) = v_phone10
-      OR public.normalize_phone_10(l.alternate_phone) = v_phone10
-      OR EXISTS (
-        SELECT 1
-          FROM jsonb_array_elements(
-                 CASE
-                   WHEN jsonb_typeof(to_jsonb(l)->'additional_contacts') = 'array'
-                   THEN to_jsonb(l)->'additional_contacts'
-                   ELSE '[]'::jsonb
-                 END
-               ) AS ac
-         WHERE public.normalize_phone_10(ac->>'phone') = v_phone10
-            OR public.normalize_phone_10(ac->>'alternatePhone') = v_phone10
-            OR public.normalize_phone_10(ac->>'alternate_phone') = v_phone10
-      )
-    )
-  UNION ALL
-  -- 3. Professionals
-  SELECT
-    'professional'::text AS entity_type,
-    p.id AS entity_id,
-    p.name::text AS name,
-    p.assigned_to::text AS assigned_to,
-    COALESCE(p.updated_at, p.created_at, now()) AS updated_at
-  FROM public.professionals p
-  WHERE COALESCE((to_jsonb(p)->>'is_deleted')::boolean, false) = false
-    AND (
-      public.normalize_phone_10(p.phone) = v_phone10
-      OR public.normalize_phone_10(p.alternate_phone) = v_phone10
-    )
+    UNION ALL
+    -- 3. Professionals
+    SELECT
+      'professional'::text AS entity_type,
+      p.id AS entity_id,
+      p.name::text AS name,
+      p.assigned_to::text AS assigned_to,
+      COALESCE(p.updated_at, p.created_at, now()) AS updated_at
+    FROM public.professionals p
+    WHERE public.normalize_phone_10(p.phone) = v_phone10
+       OR public.normalize_phone_10(p.alternate_phone) = v_phone10
+  ) AS sub
   ORDER BY
-    CASE entity_type
+    CASE sub.entity_type
       WHEN 'customer' THEN 1
       WHEN 'lead' THEN 2
       WHEN 'professional' THEN 3
       ELSE 4
     END,
-    updated_at DESC;
+    sub.updated_at DESC;
 END;
 $$;
 
@@ -1322,15 +1356,17 @@ BEGIN
           )
      );
 
-  -- Check 6: Iterate queued candidates with FOR UPDATE SKIP LOCKED
+  -- Check 6: Iterate queued candidates with active campaigns using FOR UPDATE OF q SKIP LOCKED
   FOR v_candidate IN
-    SELECT *
+    SELECT q.*
       FROM public.whatsapp_queue q
+      JOIN public.whatsapp_campaigns c ON c.id = q.campaign_id
      WHERE q.session_id = v_session.id
        AND q.status = 'queued'
        AND q.scheduled_for <= now()
+       AND c.status IN ('scheduled', 'running')
      ORDER BY q.priority ASC, q.scheduled_for ASC, q.created_at ASC
-     FOR UPDATE SKIP LOCKED
+     FOR UPDATE OF q SKIP LOCKED
   LOOP
     -- Expired check
     IF v_candidate.expires_at IS NOT NULL AND v_candidate.expires_at < now() THEN
@@ -1368,7 +1404,6 @@ BEGIN
       CONTINUE;
     END IF;
 
-    -- Determine whether recipient is "new" to this session
     v_is_new_recipient := NOT EXISTS (
       SELECT 1
         FROM public.whatsapp_messages hist
@@ -1521,7 +1556,11 @@ BEGIN
       v_row.customer_id,
       v_row.professional_id,
       CASE
-        WHEN v_row.message_type = 'media' THEN COALESCE(v_row.media_ref->>'kind', 'document')
+        WHEN v_row.message_type = 'media' THEN
+          CASE
+            WHEN (v_row.media_ref->>'kind') IN ('image', 'document', 'catalogue') THEN v_row.media_ref->>'kind'
+            ELSE 'document'
+          END
         ELSE v_row.message_type
       END,
       left(v_row.rendered_body, 4096),
@@ -1536,40 +1575,52 @@ BEGIN
     )
     RETURNING id INTO v_msg_id;
 
-    -- Write activity_log row (Sec 10.6)
+    -- Isolated activity_log write so any failure never rolls back 'sent' status
     IF v_row.lead_id IS NOT NULL OR v_row.customer_id IS NOT NULL OR v_row.professional_id IS NOT NULL THEN
-      INSERT INTO public.activity_log (
-        lead_id,
-        customer_id,
-        activity_type,
-        activity_category,
-        user_id,
-        user_name,
-        title,
-        description,
-        related_entity_type,
-        related_entity_id,
-        metadata,
-        is_manual
-      ) VALUES (
-        v_row.lead_id,
-        v_row.customer_id,
-        'whatsapp_sent',
-        'communication',
-        COALESCE(v_row.requested_by_user_id::text, 'system'),
-        v_row.requested_by,
-        left(COALESCE(v_row.rendered_body, '[WhatsApp Attachment/Location]'), 60),
-        left(COALESCE(v_row.rendered_body, '[WhatsApp Attachment/Location]'), 500),
-        CASE WHEN v_row.professional_id IS NOT NULL THEN 'professional' ELSE NULL END,
-        v_row.professional_id,
-        jsonb_build_object(
-          'campaign_id', v_row.campaign_id,
-          'queue_id', v_row.id,
-          'message_id', v_msg_id,
-          'slot', v_row.slot
-        ),
-        false
-      );
+      BEGIN
+        INSERT INTO public.activity_log (
+          lead_id,
+          customer_id,
+          activity_type,
+          activity_category,
+          user_id,
+          user_name,
+          title,
+          description,
+          related_entity_type,
+          related_entity_id,
+          metadata,
+          is_manual
+        ) VALUES (
+          v_row.lead_id,
+          v_row.customer_id,
+          'whatsapp_sent',
+          'communication',
+          COALESCE(v_row.requested_by_user_id::text, 'system'),
+          v_row.requested_by,
+          left(COALESCE(v_row.rendered_body, '[WhatsApp Attachment/Location]'), 60),
+          left(COALESCE(v_row.rendered_body, '[WhatsApp Attachment/Location]'), 500),
+          CASE WHEN v_row.professional_id IS NOT NULL THEN 'professional' ELSE NULL END,
+          v_row.professional_id,
+          jsonb_build_object(
+            'campaign_id', v_row.campaign_id,
+            'queue_id', v_row.id,
+            'message_id', v_msg_id,
+            'slot', v_row.slot
+          ),
+          false
+        );
+      EXCEPTION
+        WHEN OTHERS THEN
+          INSERT INTO public.whatsapp_events (level, session_id, worker_id, code, detail)
+          VALUES (
+            'warn',
+            v_row.session_id,
+            v_row.claimed_by,
+            'ACTIVITY_LOG_WRITE_FAILED',
+            jsonb_build_object('queue_id', v_row.id, 'sqlstate', SQLSTATE)
+          );
+      END;
     END IF;
 
     UPDATE public.whatsapp_sessions
@@ -1617,11 +1668,19 @@ BEGIN
            updated_at = now()
      WHERE id = v_row.id;
 
+    -- Count consecutive session/transport failures (excluding recipient-level errors like EXPIRED or NOT_ON_WHATSAPP)
     SELECT count(*)::integer
       INTO v_recent_failures
       FROM public.whatsapp_queue q
      WHERE q.session_id = v_row.session_id
        AND q.status = 'failed'
+       AND COALESCE(q.error_code, 'SEND_FAILED') NOT IN (
+         'EXPIRED',
+         'NOT_ON_WHATSAPP',
+         'PHONE_INVALID',
+         'SUPPRESSED',
+         'MEDIA_INVALID'
+       )
        AND q.failed_at > COALESCE(
          (SELECT max(s.sent_at) FROM public.whatsapp_queue s WHERE s.session_id = v_row.session_id AND s.status = 'sent'),
          now() - interval '24 hours'
@@ -1651,21 +1710,33 @@ BEGIN
         jsonb_build_object('consecutive_failures', v_recent_failures, 'queue_id', v_row.id)
       );
 
-      FOR v_admin IN
-        SELECT DISTINCT ur.user_id::text AS uid
-          FROM public.user_roles ur
-         WHERE ur.role IN ('admin', 'super_admin')
-      LOOP
-        INSERT INTO public.notifications (user_id, title, message, type, priority, is_read)
-        VALUES (
-          v_admin.uid,
-          'WhatsApp Safety Pause Triggered',
-          'Session paused automatically after ' || v_recent_failures::text || ' consecutive failures.',
-          'whatsapp_alert',
-          'high',
-          false
-        );
-      END LOOP;
+      BEGIN
+        FOR v_admin IN
+          SELECT DISTINCT ur.user_id::text AS uid
+            FROM public.user_roles ur
+           WHERE ur.role IN ('admin', 'super_admin')
+        LOOP
+          INSERT INTO public.notifications (user_id, title, message, type, priority, is_read)
+          VALUES (
+            v_admin.uid,
+            'WhatsApp Safety Pause Triggered',
+            'Session paused automatically after ' || v_recent_failures::text || ' consecutive transport failures.',
+            'error',
+            'urgent',
+            false
+          );
+        END LOOP;
+      EXCEPTION
+        WHEN OTHERS THEN
+          INSERT INTO public.whatsapp_events (level, session_id, worker_id, code, detail)
+          VALUES (
+            'warn',
+            v_row.session_id,
+            v_row.claimed_by,
+            'NOTIFICATION_WRITE_FAILED',
+            jsonb_build_object('queue_id', v_row.id, 'sqlstate', SQLSTATE)
+          );
+      END;
     END IF;
 
   ELSE
@@ -1729,6 +1800,7 @@ BEGIN
     INTO v_matches
     FROM public.wa_match_entities(v_phone10) m;
 
+  -- Authority lives in whatsapp_suppressions (avoids firing automation_trigger on leads/customers/professionals)
   INSERT INTO public.whatsapp_suppressions (
     phone10,
     reason,
@@ -1760,33 +1832,6 @@ BEGIN
         lifted_by = NULL,
         lifted_by_user_id = NULL,
         lift_reason = NULL;
-
-  UPDATE public.leads
-     SET whatsapp_opt_out = true,
-         whatsapp_opt_out_at = now()
-   WHERE id IN (
-     SELECT (e->>'entity_id')::uuid
-       FROM jsonb_array_elements(v_matches) e
-      WHERE e->>'entity_type' = 'lead'
-   );
-
-  UPDATE public.customers
-     SET whatsapp_opt_out = true,
-         whatsapp_opt_out_at = now()
-   WHERE id IN (
-     SELECT (e->>'entity_id')::uuid
-       FROM jsonb_array_elements(v_matches) e
-      WHERE e->>'entity_type' = 'customer'
-   );
-
-  UPDATE public.professionals
-     SET whatsapp_opt_out = true,
-         whatsapp_opt_out_at = now()
-   WHERE id IN (
-     SELECT (e->>'entity_id')::uuid
-       FROM jsonb_array_elements(v_matches) e
-      WHERE e->>'entity_type' = 'professional'
-   );
 
   WITH skipped AS (
     UPDATE public.whatsapp_queue
@@ -1826,7 +1871,7 @@ BEGIN
     RETURN false;
   END IF;
 
-  IF NOT public.is_admin() AND v_row.requested_by_user_id IS DISTINCT FROM v_uid THEN
+  IF v_uid IS NOT NULL AND NOT public.is_admin() AND v_row.requested_by_user_id IS DISTINCT FROM v_uid THEN
     RAISE EXCEPTION 'FORBIDDEN: Only the requester or an admin can cancel this item' USING ERRCODE = '42501';
   END IF;
 
@@ -1852,7 +1897,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_uid uuid := auth.uid();
-  v_actor_name text := public.wa_current_user_name();
+  v_actor_name text := CASE WHEN auth.uid() IS NOT NULL THEN public.wa_current_user_name() ELSE 'system' END;
   v_campaign public.whatsapp_campaigns%ROWTYPE;
   v_cancelled integer := 0;
 BEGIN
@@ -1861,8 +1906,12 @@ BEGIN
     RETURN 0;
   END IF;
 
-  IF NOT public.is_admin() AND v_campaign.requested_by_user_id IS DISTINCT FROM v_uid THEN
+  IF v_uid IS NOT NULL AND NOT public.is_admin() AND v_campaign.requested_by_user_id IS DISTINCT FROM v_uid THEN
     RAISE EXCEPTION 'FORBIDDEN: Only the requester or an admin can cancel this campaign' USING ERRCODE = '42501';
+  END IF;
+
+  IF v_campaign.status IN ('completed', 'cancelled') THEN
+    RETURN 0;
   END IF;
 
   WITH c AS (
@@ -1882,7 +1931,8 @@ BEGIN
          cancel_reason = p_reason,
          finished_at = now(),
          updated_at = now()
-   WHERE id = p_id;
+   WHERE id = p_id
+     AND status NOT IN ('completed', 'cancelled');
 
   RETURN v_cancelled;
 END;
@@ -1976,41 +2026,18 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_leads_set integer := 0;
-  v_customers_set integer := 0;
-  v_professionals_set integer := 0;
+  v_active_suppressions integer := 0;
 BEGIN
-  WITH l AS (
-    UPDATE public.leads
-       SET whatsapp_opt_out = public.wa_phone_suppressed(phone),
-           whatsapp_opt_out_at = CASE WHEN public.wa_phone_suppressed(phone) THEN COALESCE(whatsapp_opt_out_at, now()) ELSE NULL END
-     WHERE whatsapp_opt_out IS DISTINCT FROM public.wa_phone_suppressed(phone)
-    RETURNING id
-  )
-  SELECT count(*)::integer INTO v_leads_set FROM l;
-
-  WITH c AS (
-    UPDATE public.customers
-       SET whatsapp_opt_out = public.wa_phone_suppressed(phone),
-           whatsapp_opt_out_at = CASE WHEN public.wa_phone_suppressed(phone) THEN COALESCE(whatsapp_opt_out_at, now()) ELSE NULL END
-     WHERE whatsapp_opt_out IS DISTINCT FROM public.wa_phone_suppressed(phone)
-    RETURNING id
-  )
-  SELECT count(*)::integer INTO v_customers_set FROM c;
-
-  WITH p AS (
-    UPDATE public.professionals
-       SET whatsapp_opt_out = public.wa_phone_suppressed(phone),
-           whatsapp_opt_out_at = CASE WHEN public.wa_phone_suppressed(phone) THEN COALESCE(whatsapp_opt_out_at, now()) ELSE NULL END
-     WHERE whatsapp_opt_out IS DISTINCT FROM public.wa_phone_suppressed(phone)
-    RETURNING id
-  )
-  SELECT count(*)::integer INTO v_professionals_set FROM p;
+  -- whatsapp_suppressions is the sole authority; we do not mutate leads/customers/professionals
+  -- so automation_trigger and updated_at on CRM records are never disturbed.
+  SELECT count(*)::integer
+    INTO v_active_suppressions
+    FROM public.whatsapp_suppressions
+   WHERE lifted_at IS NULL;
 
   RETURN jsonb_build_object(
-    'leads_updated', v_leads_set,
-    'customers_updated', v_customers_set,
-    'professionals_updated', v_professionals_set
+    'active_suppressions', v_active_suppressions,
+    'authority', 'whatsapp_suppressions'
   );
 END;
 $$;
@@ -2024,11 +2051,12 @@ SET search_path = public
 AS $$
 DECLARE
   v_phone10 text := public.normalize_phone_10(p_phone10);
-  v_admin_name text := public.wa_current_user_name();
+  v_admin_name text := CASE WHEN auth.uid() IS NOT NULL THEN public.wa_current_user_name() ELSE 'system' END;
   v_redacted integer := 0;
+  v_activity_redacted integer := 0;
   v_pool_deleted integer := 0;
 BEGIN
-  IF NOT public.is_admin() THEN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
     RAISE EXCEPTION 'FORBIDDEN: Admin required for contact erasure' USING ERRCODE = '42501';
   END IF;
 
@@ -2045,8 +2073,24 @@ BEGIN
      WHERE phone10 = v_phone10
        AND redacted_at IS NULL
     RETURNING id
+  ),
+  act AS (
+    UPDATE public.activity_log a
+       SET title = '[WhatsApp Message Redacted]',
+           description = '[Redacted per contact erasure request]'
+     WHERE a.activity_type IN ('whatsapp_sent', 'whatsapp_received')
+       AND EXISTS (
+         SELECT 1
+           FROM public.whatsapp_messages m
+          WHERE m.phone10 = v_phone10
+            AND (a.metadata->>'message_id') = m.id::text
+       )
+    RETURNING a.id
   )
-  SELECT count(*)::integer INTO v_redacted FROM r;
+  SELECT
+    (SELECT count(*)::integer FROM r),
+    (SELECT count(*)::integer FROM act)
+    INTO v_redacted, v_activity_redacted;
 
   WITH d AS (
     DELETE FROM public.whatsapp_inbound_pool
@@ -2061,11 +2105,17 @@ BEGIN
   VALUES (
     'info',
     'CONTACT_ERASED',
-    jsonb_build_object('erased_by', v_admin_name, 'messages_redacted', v_redacted, 'pool_rows_deleted', v_pool_deleted)
+    jsonb_build_object(
+      'erased_by', v_admin_name,
+      'messages_redacted', v_redacted,
+      'activity_logs_redacted', v_activity_redacted,
+      'pool_rows_deleted', v_pool_deleted
+    )
   );
 
   RETURN jsonb_build_object(
     'messages_redacted', v_redacted,
+    'activity_logs_redacted', v_activity_redacted,
     'pool_rows_deleted', v_pool_deleted
   );
 END;
@@ -2080,12 +2130,18 @@ DECLARE
   v_pol record;
 BEGIN
   FOR v_pol IN
-    SELECT policyname
+    SELECT policyname, tablename
       FROM pg_policies
      WHERE schemaname = 'public'
-       AND tablename = 'whatsapp_settings'
+       AND tablename IN (
+         'whatsapp_settings', 'whatsapp_sessions', 'whatsapp_user_permissions',
+         'whatsapp_campaigns', 'whatsapp_queue', 'whatsapp_messages',
+         'whatsapp_suppressions', 'whatsapp_inbound_pool', 'whatsapp_auto_replies',
+         'whatsapp_auto_reply_log', 'whatsapp_library_items',
+         'whatsapp_worker_instances', 'whatsapp_events'
+       )
   LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.whatsapp_settings', v_pol.policyname);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_pol.policyname, v_pol.tablename);
   END LOOP;
 END $$;
 
@@ -2270,10 +2326,11 @@ CREATE POLICY whatsapp_events_admin_select
   TO authenticated
   USING (public.is_admin());
 
--- 7.10 Function Execution Privileges Lockdown (Blocker 1 Fix)
+-- 7.10 Function Execution Privileges Lockdown
 REVOKE ALL ON FUNCTION
   public.normalize_phone_10(text),
   public.wa_is_valid_attribution_name(text),
+  public.wa_is_valid_media_ref(jsonb),
   public.wa_current_user_name(),
   public.wa_can(text),
   public.wa_phone_suppressed(text),
@@ -2295,6 +2352,7 @@ FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.normalize_phone_10(text),
   public.wa_is_valid_attribution_name(text),
+  public.wa_is_valid_media_ref(jsonb),
   public.wa_current_user_name(),
   public.wa_can(text),
   public.wa_slot_status(),

@@ -6,7 +6,7 @@ import type {
   MessageLog,
   SessionRegistry,
 } from "../../src/ports/index";
-import { formatPhoneToJid } from "./jid-utils";
+import { extractPhoneE164FromJid, formatPhoneToJid } from "./jid-utils";
 
 export interface SendTextInput {
   sessionKey: string;
@@ -85,8 +85,10 @@ export class WaChatService {
     const results = await sock.onWhatsApp(candidateJid);
     const first = results?.[0];
     if (first?.exists && first.jid) {
-      const phone10 = candidateJid.slice(2, 12);
-      this.contacts.setResolvedJid(phone10, first.jid);
+      const e164 = extractPhoneE164FromJid(candidateJid);
+      if (e164) {
+        this.contacts.setResolvedJid(e164.slice(2), first.jid);
+      }
       return { exists: true, jid: first.jid };
     }
 

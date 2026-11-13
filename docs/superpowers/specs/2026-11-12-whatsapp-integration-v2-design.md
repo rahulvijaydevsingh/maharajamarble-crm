@@ -110,7 +110,7 @@ Group chats, status and stories, calls, payments, the WhatsApp Business catalogu
 | 12 | Realtime plus fallback poll | Adaptive polling: 60 s with a healthy doorbell, 30 s without, 10 s while pairing or sending, 120 s when no session is connected or wanted | 500,000 invocations a month [V] B19 |
 | 13 | Dual slots main and bulk | Adopted. The main slot gets tighter caps and no bulk path; the Cloud API seam stays open | [V] B20 |
 | 14 | Quotation PDF from quotationPdf.ts | Add buildQuotationPdf returning a Blob; downloadQuotationPdf calls it | [V] B13 |
-| 15 | {{site_map_link}} from the Plus Code | Formats the stored full `site_plus_code` as `[https://www.google.com/maps/search/?api=1&query=](https://www.google.com/maps/search/?api=1&query=)<encodeURIComponent(site_plus_code)>`. `decodePlusCode` is added for native location pins | [V] B13 |
+| 15 | {{site_map_link}} from the Plus Code | Formats the stored full `site_plus_code` as `https://www.google.com/maps/search/?api=1&query=<encodeURIComponent(site_plus_code)>`. `decodePlusCode` is added for native location pins | [V] B13 |
 
 ## 5. Architecture
 
@@ -165,7 +165,7 @@ Group chats, status and stories, calls, payments, the WhatsApp Business catalogu
 
 ## 7. Data model & security rules
 
-Implemented verbatim in `supabase/migrations/20261112100000_whatsapp_v2_foundation_m0.sql`:
+Implemented verbatim in `supabase/migrations/20261112131313_whatsapp_v2_foundation_m0.sql`:
 - **Tables (13):** `whatsapp_settings`, `whatsapp_sessions`, `whatsapp_user_permissions`, `whatsapp_campaigns`, `whatsapp_queue`, `whatsapp_messages`, `whatsapp_suppressions`, `whatsapp_inbound_pool`, `whatsapp_auto_replies`, `whatsapp_auto_reply_log`, `whatsapp_library_items`, `whatsapp_worker_instances`, `whatsapp_events`.
 - **Views (2):** `whatsapp_settings_public`, `whatsapp_campaign_progress`.
 - **Functions & RPCs (17):** `normalize_phone_10`, `wa_is_valid_attribution_name`, `wa_current_user_name`, `wa_can`, `wa_phone_suppressed`, `wa_match_entities` (with `COALESCE(is_deleted, false) = false` filter), `wa_slot_status`, `wa_create_campaign`, `wa_expire_leases`, `wa_claim_next`, `wa_report_result`, `wa_apply_opt_out`, `wa_cancel_item`, `wa_cancel_campaign`, `wa_library_register`, `wa_reconcile_flags`, `wa_erase_contact`.
@@ -175,6 +175,6 @@ Implemented verbatim in `supabase/migrations/20261112100000_whatsapp_v2_foundati
 ## 8–18. Edge functions, Gateway Worker, CRM UI, Rails, Testing & Appendices
 
 - **Edge Functions (`supabase/functions/`):** `whatsapp-enqueue` (`verify_jwt = true`), `whatsapp-session` (`verify_jwt = true`), `whatsapp-worker` (`verify_jwt = false`, constant-time `X-Worker-Secret` + 5-min timestamp window), `whatsapp-inbound` (`verify_jwt = false`, constant-time `X-Worker-Secret`), `whatsapp-watchdog` (`verify_jwt = false`, `X-Watchdog-Secret`).
-- **Placeholders (Server-side single-pass `{{key|fallback}}`):** `name`, `firm_name`, `site_location`, `site_map_link` (`[https://www.google.com/maps/search/?api=1&query=](https://www.google.com/maps/search/?api=1&query=)<encodeURIComponent(site_plus_code)>`), `assigned_to`, `showroom_name`, `showroom_map_link`, `quotation_number`, `quotation_total`, `valid_until`.
+- **Placeholders (Server-side single-pass `{{key|fallback}}`):** `name`, `firm_name`, `site_location`, `site_map_link` (`https://www.google.com/maps/search/?api=1&query=<encodeURIComponent(site_plus_code)>`), `assigned_to`, `showroom_name`, `showroom_map_link`, `quotation_number`, `quotation_total`, `valid_until`.
 - **Sending Rails (Defaults):** Pace 15–35 s random + 60–180 s rest every 10–15 sends; business hours 09:30–18:30 IST (bulk only); daily total caps: main 60, bulk 100, personal 40; new-recipient daily caps: main 25, bulk 30, personal 15 (warm-up: days 1–3 = 10, days 4–7 = 20, days 8–14 = 30); auto safety pause after 3 consecutive failures.
 - **Appendix B Phone Vectors:** 14 canonical test vectors enforced identically in `public.normalize_phone_10(text)` and `src/lib/phone.ts`.
