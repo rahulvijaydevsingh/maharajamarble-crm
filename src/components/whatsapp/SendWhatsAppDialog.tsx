@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,9 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { MessageCircle, Send, Loader2, AlertTriangle } from "lucide-react";
-import { useWhatsAppMessages } from "@/hooks/useWhatsAppMessages";
-import { useWhatsAppSession } from "@/hooks/useWhatsAppSession";
+import { MessageCircle, Send, Loader2, AlertTriangle, Eye } from "lucide-react";
+import { useWhatsAppMessages, WhatsAppSendInput } from "@/hooks/useWhatsAppMessages";
 
 interface SendWhatsAppDialogProps {
   open: boolean;
@@ -17,163 +16,149 @@ interface SendWhatsAppDialogProps {
   recipientPhone: string;
   leadId?: string;
   customerId?: string;
+  professionalId?: string;
+  defaultMessage?: string;
+  sitePlusCode?: string;
+  siteLocation?: string;
+  firmName?: string;
+  assignedTo?: string;
 }
 
-const templates: Record<string, string> = {
-  custom: "",
-  followup: "Hi {name}, following up on your inquiry about our marble products. Would you like to discuss further?",
-  quotation_ready: "Hi {name}, your quotation is ready. Please review and let us know if you have any questions.",
-  meeting_reminder: "Hi {name}, this is a reminder about our scheduled meeting. Looking forward to connecting with you.",
-  site_visit: "Hi {name}, confirming your site visit as scheduled. Please let us know if you need to reschedule.",
-};
+const placeholders = ["{{name}}", "{{firm_name}}", "{{site_location}}", "{{site_map_link}}", "{{assigned_to}}", "{{showroom_name}}", "{{showroom_map_link}}"];
 
 export function SendWhatsAppDialog({
-  open,
-  onOpenChange,
-  recipientName,
-  recipientPhone,
-  leadId,
-  customerId,
+  open, onOpenChange, recipientName, recipientPhone, leadId, customerId, professionalId,
+  defaultMessage = "", sitePlusCode, siteLocation = "", firmName = "", assignedTo = "",
 }: SendWhatsAppDialogProps) {
-  const [template, setTemplate] = useState("custom");
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
+  const [slot, setSlot] = useState<"main" | "personal">("main");
+  const [message, setMessage] = useState(defaultMessage);
+  const [locationMode, setLocationMode] = useState("none");
+  const [customLat, setCustomLat] = useState("");
+  const [customLng, setCustomLng] = useState("");
+  const [customName, setCustomName] = useState("Pinned Location");
+  const [preview, setPreview] = useState<any>(null);
+  const [requestId, setRequestId] = useState("");
+  const [previewToken, setPreviewToken] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { sendMessage } = useWhatsAppMessages(leadId, customerId);
-  const { session } = useWhatsAppSession();
+  const [working, setWorking] = useState(false);
+  const { previewSend, commitSend } = useWhatsAppMessages(leadId, customerId);
 
-  const handleTemplateChange = (value: string) => {
-    setTemplate(value);
-    const tmpl = templates[value] || "";
-    setMessage(tmpl.replace(/\{name\}/g, recipientName));
+  const input = useMemo<WhatsAppSendInput>(() => ({
+    recipientPhone, recipientName, messageBody: message, slot,
+    leadId, customerId, professionalId,
+    ...(locationMode !== "none" ? {
+      location: locationMode === "custom"
+        ? { mode: "custom", lat: customLat, lng: customLng, name: customName }
+        : { mode: locationMode },
+    } : {}),
+  }), [recipientPhone, recipientName, message, slot, leadId, customerId, professionalId, locationMode, customLat, customLng, customName]);
+
+  const insertPlaceholder = (value: string) => {
+    setMessage((current) => current ? current + " " + value : value);
+    setPreview(null);
+    setPreviewToken("");
   };
 
-  const handleSend = async () => {
-    if (!message.trim()) return;
-    setSending(true);
+  const handlePreview = async () => {
+    setWorking(true);
     setError(null);
-
-    const result = await sendMessage({
-      recipientPhone,
-      recipientName,
-      messageBody: message,
-      messageType: "text",
-      templateName: template !== "custom" ? template : undefined,
-      leadId,
-      customerId,
-    });
-
-    setSending(false);
-    if (result.success) {
-      setMessage("");
-      setTemplate("custom");
-      onOpenChange(false);
+    setPreview(null);
+    setPreviewToken("");
+    const result = await previewSend(input);
+    if (!result.success) {
+      setError(result.error ?? "Preview failed.");
     } else {
-      setError(result.error || "Failed to send message");
+      setRequestId(result.requestId);
+      setPreview(result.data);
+      setPreviewToken(result.data?.preview_token ?? "");
+    }
+    setWorking(false);
+  };
+
+  const handleCommit = async () => {
+    if (!requestId || !previewToken) return;
+    setWorking(true);
+    setError(null);
+    const result = await commitSend(input, requestId, previewToken);
+    setWorking(false);
+    if (!result.success) {
+      setError(result.error ?? "Could not queue this message.");
+    } else {
+      setMessage("");
+      setPreview(null);
+      setPreviewToken("");
+      onOpenChange(false);
     }
   };
 
-  const isDisabled = !session || session.status !== "connected";
+  const previewRecipient = preview?.recipients?.[0];
+  const isBlocked = previewRecipient?.status === "blocked";
+  const canPreview = Boolean(message.trim() || locationMode !== "none");
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg z-[100]">
+    <Dialog open={open} onOpenChange={(value) => { onOpenChange(value); if (!value) { setPreview(null); setPreviewToken(""); setError(null); } }}>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-green-600" />
-            Send WhatsApp
-          </DialogTitle>
-          <DialogDescription>Send a message via WhatsApp</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-green-600" /> Send WhatsApp</DialogTitle>
+          <DialogDescription>Preview the server-rendered message before it enters the sending queue.</DialogDescription>
         </DialogHeader>
-
         <div className="space-y-4">
-          {isDisabled && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Your WhatsApp is not connected. Connect via Settings → Staff to send messages.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Recipient */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label className="text-xs text-muted-foreground">Recipient</Label>
-              <p className="font-medium">{recipientName}</p>
-              <p className="text-sm text-muted-foreground">{recipientPhone}</p>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Sending from</Label>
-              {session?.phone_number ? (
-                <p className="font-medium">{session.phone_number}</p>
-              ) : (
-                <Badge variant="secondary">Not connected</Badge>
-              )}
+          <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+            <div><Label className="text-xs text-muted-foreground">Recipient</Label><p className="font-medium">{recipientName}</p><p className="text-sm text-muted-foreground">{recipientPhone}</p></div>
+            <div><Label className="text-xs text-muted-foreground">Sending from</Label>
+              <Select value={slot} onValueChange={(value) => { setSlot(value as "main" | "personal"); setPreview(null); setPreviewToken(""); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="main">Official Main WhatsApp</SelectItem><SelectItem value="personal">My Personal WhatsApp</SelectItem></SelectContent>
+              </Select>
             </div>
           </div>
-
-          {/* Template */}
           <div className="space-y-2">
-            <Label>Template</Label>
-            <Select value={template} onValueChange={handleTemplateChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+            <Label>Message</Label>
+            <Textarea value={message} onChange={(event) => { setMessage(event.target.value.slice(0, 4000)); setPreview(null); setPreviewToken(""); }} rows={5} placeholder="Write your WhatsApp message…" />
+            <div className="flex flex-wrap gap-1.5">
+              {placeholders.map((value) => <Button key={value} type="button" size="sm" variant="outline" onClick={() => insertPlaceholder(value)}>{value}</Button>)}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Location pin (optional)</Label>
+            <Select value={locationMode} onValueChange={(value) => { setLocationMode(value); setPreview(null); setPreviewToken(""); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="custom">Custom message</SelectItem>
-                <SelectItem value="followup">Follow-up</SelectItem>
-                <SelectItem value="quotation_ready">Quotation Ready</SelectItem>
-                <SelectItem value="meeting_reminder">Meeting Reminder</SelectItem>
-                <SelectItem value="site_visit">Site Visit</SelectItem>
+                <SelectItem value="none">No location</SelectItem>
+                <SelectItem value="showroom">Showroom pin</SelectItem>
+                <SelectItem value="site">Site Plus Code pin</SelectItem>
+                <SelectItem value="custom">Custom coordinates</SelectItem>
               </SelectContent>
             </Select>
+            {locationMode === "site" && <p className="text-xs text-muted-foreground">Site Plus Code: {sitePlusCode || "Not provided"} {siteLocation ? "— " + siteLocation : ""}</p>}
+            {locationMode === "custom" && <div className="grid grid-cols-2 gap-2">
+              <div><Label>Latitude</Label><input className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm" value={customLat} onChange={(e) => setCustomLat(e.target.value)} /></div>
+              <div><Label>Longitude</Label><input className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm" value={customLng} onChange={(e) => setCustomLng(e.target.value)} /></div>
+              <div className="col-span-2"><Label>Location name</Label><input className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm" value={customName} onChange={(e) => setCustomName(e.target.value)} /></div>
+            </div>}
           </div>
-
-          {/* Message */}
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Message</Label>
-              <span className="text-xs text-muted-foreground">{message.length}/1000</span>
+          {preview && (
+            <div className="space-y-2 rounded-md border p-3">
+              <div className="flex items-center justify-between"><Label>Server preview</Label><Badge variant={isBlocked ? "destructive" : "secondary"}>{previewRecipient?.status ?? "checked"}</Badge></div>
+              <p className="text-xs text-muted-foreground">Recipient: {previewRecipient?.masked_phone ?? "—"}</p>
+              <p className="whitespace-pre-wrap text-sm">{previewRecipient?.rendered_text || (previewRecipient?.location ? "Location pin message" : "")}</p>
+              {previewRecipient?.blocked_reasons?.length > 0 && <p className="text-sm text-destructive">Blocked: {previewRecipient.blocked_reasons.join(", ")}</p>}
+              <p className="text-xs text-muted-foreground">Estimated send duration: {preview.summary?.estimated_duration_seconds ?? 0}s</p>
             </div>
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value.slice(0, 1000))}
-              placeholder="Type your message..."
-              rows={5}
-              disabled={isDisabled}
-            />
-          </div>
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
           )}
+          {error && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertDescription>{error}</AlertDescription></Alert>}
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSend}
-            disabled={sending || isDisabled || !message.trim()}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {sending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="mr-2 h-4 w-4" />
-                Send
-              </>
-            )}
-          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          {!previewToken || isBlocked ? (
+            <Button onClick={handlePreview} disabled={working || !canPreview}>
+              {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />} Preview Message
+            </Button>
+          ) : (
+            <Button onClick={handleCommit} disabled={working}>
+              {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Confirm & Send
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
