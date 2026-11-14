@@ -1,138 +1,107 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, CheckCircle, XCircle, Smartphone } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle2, XCircle, Smartphone } from "lucide-react";
 import { useWhatsAppSession } from "@/hooks/useWhatsAppSession";
 
 interface WhatsAppConnectModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  userId: string;
+  userId?: string;
+  slot?: "main" | "bulk" | "personal";
 }
 
-export function WhatsAppConnectModal({ open, onOpenChange, userId }: WhatsAppConnectModalProps) {
-  const { session, createSession, checkStatus, refetch } = useWhatsAppSession(userId);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrLoading, setQrLoading] = useState(false);
-  const [countdown, setCountdown] = useState(60);
+export function WhatsAppConnectModal({ open, onOpenChange, userId, slot = "personal" }: WhatsAppConnectModalProps) {
+  const { sessionsBySlot, triggerSessionAction, refetch } = useWhatsAppSession(userId);
+  const session = sessionsBySlot[slot];
   const [error, setError] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
-
-  const startPolling = () => {
-    pollingRef.current = setInterval(async () => {
-      const status = await checkStatus();
-      if (status === "connected" || status === "open") {
-        setConnected(true);
-        stopPolling();
-        setTimeout(() => onOpenChange(false), 1500);
-      }
-    }, 3000);
-  };
-
-  const stopPolling = () => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-  };
-
-  const generateQR = async () => {
-    setQrLoading(true);
-    setError(null);
-    setConnected(false);
-    setCountdown(60);
-
-    const result = await createSession();
-    if (result.error) {
-      setError(result.error);
-      setQrLoading(false);
-      return;
-    }
-
-    setQrCode(result.qrCode || null);
-    setQrLoading(false);
-
-    // Start countdown
-    countdownRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          stopPolling();
-          setQrCode(null);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    startPolling();
-  };
+  const [countdown, setCountdown] = useState(20);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (open && !session?.phone_number) {
-      generateQR();
+    if (!open) return;
+    setError(null);
+    if (!session || ["disconnected", "logged_out", "error"].includes(session.status)) {
+      setBusy(true);
+      void triggerSessionAction("connect", slot).then((result) => {
+        if (!result.success) setError(result.error ?? "Could not request a WhatsApp QR code.");
+      }).finally(() => setBusy(false));
     }
-    return () => stopPolling();
-  }, [open]);
+  }, [open, slot]);
+
+  useEffect(() => {
+    if (!open || !session?.qr_payload) return;
+    setCountdown(20);
+    const timer = window.setInterval(() => setCountdown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [open, session?.qr_payload]);
+
+  useEffect(() => {
+    if (!open || session?.status !== "connected") return;
+    const timer = window.setTimeout(() => onOpenChange(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [open, session?.status, onOpenChange]);
+
+  const refreshQr = async () => {
+    setBusy(true);
+    setError(null);
+    setCountdown(20);
+    const result = await triggerSessionAction("refresh_qr", slot);
+    if (!result.success) setError(result.error ?? "Could not refresh the QR code.");
+    await refetch();
+    setBusy(false);
+  };
+
+  const connected = session?.status === "connected";
+  const qr = session?.qr_payload ?? null;
+  const statusLabel = session?.status?.replaceAll("_", " ") ?? "disconnected";
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { stopPolling(); onOpenChange(v); }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Smartphone className="h-5 w-5" />
-            Connect WhatsApp
-          </DialogTitle>
-          <DialogDescription>
-            Scan the QR code with your phone to link WhatsApp
-          </DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><Smartphone className="h-5 w-5" /> Connect {slot === "main" ? "Official Main" : slot === "bulk" ? "Company Bulk" : "Personal"} WhatsApp</DialogTitle>
+          <DialogDescription>Scan this QR code using WhatsApp on the device you want to link.</DialogDescription>
         </DialogHeader>
-
         <div className="flex flex-col items-center gap-4 py-4">
           {connected ? (
             <div className="flex flex-col items-center gap-3">
-              <CheckCircle className="h-16 w-16 text-green-500" />
-              <p className="text-lg font-semibold text-green-700">Connected!</p>
+              <CheckCircle2 className="h-16 w-16 text-green-600" />
+              <p className="text-lg font-semibold text-green-700">Connected</p>
+              {session?.phone_number && <p className="text-sm text-muted-foreground">{session.phone_number}</p>}
             </div>
           ) : error ? (
             <div className="flex flex-col items-center gap-3">
-              <XCircle className="h-16 w-16 text-destructive" />
+              <XCircle className="h-12 w-12 text-destructive" />
               <p className="text-sm text-destructive text-center">{error}</p>
-              <Button onClick={generateQR} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Try Again
-              </Button>
             </div>
-          ) : qrLoading ? (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Generating QR code...</p>
-            </div>
-          ) : qrCode ? (
+          ) : qr?.startsWith("data:image/") ? (
             <>
-              <div className="border-4 border-primary/20 rounded-xl p-2 bg-white">
-                <img
-                  src={qrCode.startsWith("data:") ? qrCode : `data:image/png;base64,${qrCode}`}
-                  alt="WhatsApp QR Code"
-                  className="w-64 h-64 object-contain"
-                />
+              <div className="rounded-xl border bg-white p-2">
+                <img src={qr} alt="WhatsApp link-device QR code" className="h-64 w-64 object-contain" />
               </div>
-              <Badge variant={countdown > 15 ? "secondary" : "destructive"}>
-                QR expires in {countdown}s
-              </Badge>
-              <div className="text-sm text-muted-foreground text-center space-y-1">
-                <p>1. Open <strong>WhatsApp</strong> on your phone</p>
-                <p>2. Tap <strong>⋮ Menu → Linked Devices → Link a Device</strong></p>
-                <p>3. Point your phone camera at this QR code</p>
-              </div>
+              <Badge variant={countdown > 5 ? "secondary" : "destructive"}>Refresh reminder in {countdown}s</Badge>
             </>
           ) : (
-            <div className="flex flex-col items-center gap-3">
-              <p className="text-sm text-muted-foreground">QR code expired</p>
-              <Button onClick={generateQR} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh QR Code
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Waiting for the gateway QR code…</p>
+              <Badge variant="outline">Session: {statusLabel}</Badge>
+            </div>
+          )}
+          <div className="space-y-1 text-center text-sm text-muted-foreground">
+            <p>1. Open <strong>WhatsApp</strong> on your phone.</p>
+            <p>2. Go to <strong>Linked devices → Link a device</strong>.</p>
+            <p>3. Scan the QR shown above.</p>
+          </div>
+          {!connected && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => void refreshQr()} disabled={busy}>
+                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Refresh QR
               </Button>
+              <Button variant="ghost" onClick={() => void refetch()}>Check status</Button>
             </div>
           )}
         </div>
