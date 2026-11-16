@@ -3927,6 +3927,10 @@ export type Database = {
         Args: { lead_uuid: string }
         Returns: undefined
       }
+      resolve_primary_professional_for_lead: {
+        Args: { p_lead_id: string }
+        Returns: string
+      }
       snooze_task: {
         Args: {
           p_due_date: string
