@@ -30,8 +30,6 @@ export interface WhatsAppSettings {
   showroom_lat?: number | null;
   showroom_lng?: number | null;
   showroom_maps_url?: string | null;
-  evolution_api_url?: string | null;
-  bulk_instance_name?: string | null;
   [key: string]: unknown;
 }
 
@@ -52,21 +50,27 @@ export function useWhatsAppSettings() {
       let row: any = null;
       if (admin) {
         const result = await (supabase.from("whatsapp_settings" as any) as any)
-          .select("*").limit(1).maybeSingle();
+          .select("*")
+          .limit(1)
+          .maybeSingle();
         if (!result.error) row = result.data;
       }
       if (!row) {
         const result = await (supabase.from("whatsapp_settings_public" as any) as any)
-          .select("*").limit(1).maybeSingle();
+          .select("*")
+          .limit(1)
+          .maybeSingle();
         if (result.error) throw result.error;
         row = result.data;
       }
-      setSettings(row ? row as WhatsAppSettings : null);
+      setSettings(row ? (row as WhatsAppSettings) : null);
 
       const [slotResult, workerResult] = await Promise.all([
         (supabase.rpc as any)("wa_slot_status"),
         admin
-          ? (supabase.from("whatsapp_worker_instances" as any) as any).select("*").order("last_seen_at", { ascending: false })
+          ? (supabase.from("whatsapp_worker_instances" as any) as any)
+              .select("*")
+              .order("last_seen_at", { ascending: false })
           : Promise.resolve({ data: [], error: null }),
       ]);
       if (!slotResult.error) setSlotStatus(slotResult.data ?? null);
@@ -75,10 +79,12 @@ export function useWhatsAppSettings() {
         setWorkerInstances(workers);
         const threshold = Number(row?.gateway_offline_after_seconds ?? 180);
         const now = Date.now();
-        setIsGatewayOnline(workers.some((worker) => {
-          const lastSeen = new Date(worker.last_seen_at).getTime();
-          return Number.isFinite(lastSeen) && now - lastSeen <= threshold * 1000;
-        }));
+        setIsGatewayOnline(
+          workers.some((worker) => {
+            const lastSeen = new Date(worker.last_seen_at).getTime();
+            return Number.isFinite(lastSeen) && now - lastSeen <= threshold * 1000;
+          }),
+        );
       } else {
         setWorkerInstances([]);
         setIsGatewayOnline(false);
@@ -90,31 +96,56 @@ export function useWhatsAppSettings() {
     }
   }, [admin]);
 
-  useEffect(() => { void fetchSettings(); }, [fetchSettings]);
+  useEffect(() => {
+    void fetchSettings();
+  }, [fetchSettings]);
 
   const updateSettings = async (updates: Partial<WhatsAppSettings>): Promise<boolean> => {
     if (!settings || !admin) return false;
     const fullName = auth.profile?.full_name?.trim() ?? "";
     if (!fullName || fullName.includes("@") || /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(fullName)) {
-      toast({ title: "Profile name required", description: "Set a valid staff full name before updating WhatsApp settings.", variant: "destructive" });
+      toast({
+        title: "Profile name required",
+        description: "Set a valid staff full name before updating WhatsApp settings.",
+        variant: "destructive",
+      });
       return false;
     }
     setSaving(true);
     try {
       const { error } = await (supabase.from("whatsapp_settings" as any) as any)
-        .update({ ...updates, updated_by: fullName, updated_by_user_id: auth.user?.id ?? null, updated_at: new Date().toISOString() })
+        .update({
+          ...updates,
+          updated_by: fullName,
+          updated_by_user_id: auth.user?.id ?? null,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", settings.id);
       if (error) throw error;
-      setSettings({ ...settings, ...updates, updated_by: fullName });
+      setSettings((prev) => (prev ? ({ ...prev, ...updates, updated_by: fullName } as WhatsAppSettings) : prev));
       toast({ title: "Saved", description: "WhatsApp settings updated." });
       return true;
     } catch (error: any) {
-      toast({ title: "Save failed", description: error?.message ?? "Could not update WhatsApp settings.", variant: "destructive" });
+      toast({
+        title: "Save failed",
+        description: error?.message ?? "Could not update WhatsApp settings.",
+        variant: "destructive",
+      });
       return false;
     } finally {
       setSaving(false);
     }
   };
 
-  return { settings, slotStatus, workerInstances, isGatewayOnline, loading, saving, updateSettings, refetch: fetchSettings, isAdmin: admin };
+  return {
+    settings,
+    slotStatus,
+    workerInstances,
+    isGatewayOnline,
+    loading,
+    saving,
+    updateSettings,
+    refetch: fetchSettings,
+    isAdmin: admin,
+  };
 }

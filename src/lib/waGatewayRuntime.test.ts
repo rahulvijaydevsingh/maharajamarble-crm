@@ -12,24 +12,38 @@ import type { Logger } from "../../services/wa-gateway/src/ports/index";
 const noopLogger: Logger = { info: () => {}, warn: () => {}, error: () => {} };
 
 describe("Slice 1A Gateway Worker Runtime Unit Suite", () => {
-  it("encrypts, persists, and decrypts session credentials & keys atomically with AES-256-GCM", async () => {
+  it("encrypts, persists, and decrypts session credentials (including Buffer/Uint8Array keys) with AES-256-GCM", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wa-auth-test-"));
     try {
       const key32 = crypto.randomBytes(32);
       const store = new EncryptedFileAuthStore(tmpDir, key32, noopLogger);
 
       await store.acquireProcessLock(process.pid);
-      await store.saveSessionCredentials("main", { me: { id: "919876543210@s.whatsapp.net" } });
+      const rawNoiseKey = Buffer.from([1, 2, 3, 4, 250, 251, 252, 253]);
+      await store.saveSessionCredentials("main", {
+        me: { id: "919876543210@s.whatsapp.net" },
+        noiseKey: { private: rawNoiseKey },
+      });
       const loadedCreds = await store.loadSessionCredentials("main");
-      expect(loadedCreds).toEqual({ me: { id: "919876543210@s.whatsapp.net" } });
+      expect(loadedCreds?.me).toEqual({ id: "919876543210@s.whatsapp.net" });
+      const loadedNoisePriv = (loadedCreds?.noiseKey as { private: Buffer })?.private;
+      expect(Buffer.isBuffer(loadedNoisePriv)).toBe(true);
+      expect(Buffer.compare(loadedNoisePriv, rawNoiseKey)).toBe(0);
 
-      await store.saveKey("main", "pre-key", "1", { pub: "abc", priv: "def" });
-      expect(await store.loadKey("main", "pre-key", "1")).toEqual({ pub: "abc", priv: "def" });
+      await store.saveKey("main", "pre-key", "1", { pub: Buffer.from("abc"), priv: Buffer.from("def") });
+      const loadedKey = (await store.loadKey("main", "pre-key", "1")) as { pub: Buffer; priv: Buffer };
+      expect(Buffer.isBuffer(loadedKey.pub)).toBe(true);
+      expect(loadedKey.pub.toString("utf8")).toBe("abc");
 
       // Corrupted key file is treated as missing key, never crashing
       const badKeyPath = path.join(tmpDir, "auth", "main", "keys", "pre-key-corrupt.enc");
       await fs.writeFile(badKeyPath, Buffer.from("short"));
       expect(await store.loadKey("main", "pre-key", "corrupt")).toBeNull();
+
+      // Unreadable creds.enc is quarantined and throws CREDENTIALS_UNREADABLE
+      const credsPath = path.join(tmpDir, "auth", "main", "creds.enc");
+      await fs.writeFile(credsPath, Buffer.from("corrupted-creds"));
+      await expect(store.loadSessionCredentials("main")).rejects.toThrow("CREDENTIALS_UNREADABLE");
 
       await store.wipeSession("main");
       expect(await store.loadSessionCredentials("main")).toBeNull();

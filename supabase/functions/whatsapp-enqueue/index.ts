@@ -8,6 +8,7 @@ import {
 } from "../_shared/whatsappAuth.ts";
 import {
   buildSiteMapLinkFromPlusCode,
+  FULL_PLUS_CODE_REGEX,
   PlaceholderContext,
   renderTemplateForRecipient,
   sha256Hex,
@@ -27,6 +28,8 @@ interface RecipientInput {
   related_entity_id?: string;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function normalizePhone10(raw: string | null | undefined): string | null {
   if (typeof raw !== "string" || !raw) return null;
   const digits = raw.replace(/[^0-9]/g, "");
@@ -44,18 +47,33 @@ function maskPhone10(phone10: string | null, rawFallback: string): string {
   return `+91 ******${phone10.slice(-4)}`;
 }
 
+function parseCoordinate(value: unknown, min: number, max: number): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= min && value <= max ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^-?\d{1,3}(\.\d+)?$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null;
+  }
+  return null;
+}
+
 function decodePlusCodeCenter(fullCode: string): { lat: number; lng: number } | null {
+  if (typeof fullCode !== "string") return null;
+  const trimmed = fullCode.trim().toUpperCase();
+  if (!FULL_PLUS_CODE_REGEX.test(trimmed)) return null;
+
   const ALPHABET = "23456789CFGHJMPQRVWX";
-  const clean = fullCode.trim().toUpperCase().replace(/\+/g, "");
-  if (clean.length < 8) return null;
+  const clean = trimmed.replace("+", "");
 
   let lat = -90.0;
   let lng = -180.0;
   let latPlace = 400.0;
   let lngPlace = 400.0;
 
-  const pairLen = Math.min(clean.length, 10);
-  for (let i = 0; i < pairLen; i += 2) {
+  for (let i = 0; i < 10; i += 2) {
     latPlace /= 20.0;
     lngPlace /= 20.0;
     const latDigit = ALPHABET.indexOf(clean[i]);
@@ -63,6 +81,15 @@ function decodePlusCodeCenter(fullCode: string): { lat: number; lng: number } | 
     if (latDigit < 0 || lngDigit < 0) return null;
     lat += latDigit * latPlace;
     lng += lngDigit * lngPlace;
+  }
+
+  for (let i = 10; i < Math.min(clean.length, 15); i++) {
+    latPlace /= 5.0;
+    lngPlace /= 4.0;
+    const digit = ALPHABET.indexOf(clean[i]);
+    if (digit < 0) return null;
+    lat += Math.floor(digit / 4) * latPlace;
+    lng += (digit % 4) * lngPlace;
   }
 
   return {
@@ -80,6 +107,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
+    const previewSecret = (Deno.env.get("WA_PREVIEW_SECRET") ?? "").trim();
+    if (!previewSecret) {
+      return jsonErr("SERVER_MISCONFIGURED", "WA_PREVIEW_SECRET is not configured on the server.", 500);
+    }
+
     const adminClient = createServiceClient();
     const authResult = await authenticateStaffRequest(req, adminClient);
     if (!authResult.ok) {
@@ -89,9 +121,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const body = await req.json().catch(() => ({}));
     const requestId = String(body.request_id ?? "").trim();
-    const mode = (body.mode ?? "preview") as "preview" | "commit";
-    const kind = (body.kind ?? "single") as "single" | "bulk";
-    const slot = (body.slot ?? "main") as "main" | "bulk" | "personal";
+    const mode = body.mode ?? "preview";
+    const kind = body.kind ?? "single";
+    const slot = body.slot ?? "main";
     const recipients: RecipientInput[] = Array.isArray(body.recipients) ? body.recipients : [];
     const message = body.message ?? {};
     const templateText = typeof message.template_text === "string" ? message.template_text : "";
@@ -99,8 +131,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const locationInput = message.location ?? null;
     const scheduleStartAt = body.schedule?.start_at ?? new Date().toISOString();
 
-    if (!requestId) {
-      return jsonErr("INVALID_REQUEST", "request_id is required", 400);
+    if (!UUID_REGEX.test(requestId)) {
+      return jsonErr("INVALID_REQUEST", "request_id must be a valid UUID.", 400);
+    }
+    if (mode !== "preview" && mode !== "commit") {
+      return jsonErr("INVALID_REQUEST", "mode must be 'preview' or 'commit'.", 400);
+    }
+    if (kind !== "single" && kind !== "bulk") {
+      return jsonErr("INVALID_REQUEST", "kind must be 'single' or 'bulk'.", 400);
+    }
+    if (slot !== "main" && slot !== "bulk" && slot !== "personal") {
+      return jsonErr("INVALID_SLOT", "slot must be 'main', 'bulk', or 'personal'.", 400);
     }
 
     const { data: settings } = await adminClient
@@ -116,7 +157,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonErr("KILL_SWITCH", "WhatsApp Kill Switch is active. All outbound sends are halted.", 400);
     }
 
-    // Check caller permission for slot
     if (!caller.isAdmin) {
       const { data: perm } = await adminClient
         .from("whatsapp_user_permissions")
@@ -151,10 +191,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let resolvedMediaRef: Record<string, unknown> | null = null;
     if (attachmentInput) {
       if (attachmentInput.library_item_id) {
+        const libId = String(attachmentInput.library_item_id);
+        if (!UUID_REGEX.test(libId)) {
+          return jsonErr("MEDIA_INVALID", "library_item_id must be a valid UUID.", 400);
+        }
         const { data: libItem } = await adminClient
           .from("whatsapp_library_items")
           .select("*")
-          .eq("id", String(attachmentInput.library_item_id))
+          .eq("id", libId)
           .eq("active", true)
           .maybeSingle();
 
@@ -175,8 +219,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       } else if (typeof attachmentInput.staging_path === "string") {
         const stagingPath = attachmentInput.staging_path.trim();
         const expectedPrefix = `whatsapp-staging/${caller.userId}/`;
-        if (!stagingPath.startsWith(expectedPrefix)) {
-          return jsonErr("MEDIA_INVALID", "Staging attachment must belong to your user folder.", 400);
+        if (
+          !stagingPath.startsWith(expectedPrefix) ||
+          stagingPath.includes("..") ||
+          stagingPath.includes("//")
+        ) {
+          return jsonErr("MEDIA_INVALID", "Staging attachment path is invalid or outside your user folder.", 400);
         }
         resolvedMediaRef = {
           kind: attachmentInput.kind ?? "document",
@@ -186,46 +234,93 @@ Deno.serve(async (req: Request): Promise<Response> => {
           mime: attachmentInput.mime ?? "application/pdf",
           size_bytes: Number(attachmentInput.size_bytes ?? 0),
         };
+      } else {
+        return jsonErr("MEDIA_INVALID", "Attachment must specify library_item_id or staging_path.", 400);
       }
     }
 
-    // Resolve suppression set
-    const { data: suppressions } = await adminClient
-      .from("whatsapp_suppressions")
-      .select("phone10")
-      .is("lifted_at", null);
-    const suppressedSet = new Set<string>(
-      (suppressions ?? []).map((s: { phone10: string }) => s.phone10),
-    );
+    // Load entities through caller.userClient so RLS is enforced (I8)
+    const hydratedRecipients: Array<{
+      input: RecipientInput;
+      entityRow: Record<string, unknown> | null;
+      entityMissing: boolean;
+      rawPhone: string;
+      phone10: string | null;
+    }> = [];
+
+    const candidatePhones = new Set<string>();
+
+    for (const rec of recipients) {
+      let entityRow: Record<string, unknown> | null = null;
+      let entityMissing = false;
+
+      if (rec.entity_type || rec.entity_id) {
+        if (
+          !rec.entity_type ||
+          !["lead", "customer", "professional"].includes(rec.entity_type) ||
+          !rec.entity_id ||
+          !UUID_REGEX.test(rec.entity_id)
+        ) {
+          entityMissing = true;
+        } else {
+          const table =
+            rec.entity_type === "lead"
+              ? "leads"
+              : rec.entity_type === "customer"
+              ? "customers"
+              : "professionals";
+          const { data } = await caller.userClient
+            .from(table)
+            .select("*")
+            .eq("id", rec.entity_id)
+            .maybeSingle();
+          if (!data) {
+            entityMissing = true;
+          } else {
+            entityRow = data;
+          }
+        }
+      }
+
+      const rawPhone = String(rec.phone || entityRow?.phone || "").trim();
+      const phone10 = normalizePhone10(rawPhone);
+      if (phone10) {
+        candidatePhones.add(phone10);
+      }
+
+      hydratedRecipients.push({
+        input: rec,
+        entityRow,
+        entityMissing,
+        rawPhone,
+        phone10,
+      });
+    }
+
+    // Query suppressions bounded to candidate phones
+    const suppressedSet = new Set<string>();
+    if (candidatePhones.size > 0) {
+      const { data: suppressions } = await adminClient
+        .from("whatsapp_suppressions")
+        .select("phone10")
+        .in("phone10", Array.from(candidatePhones))
+        .is("lifted_at", null);
+
+      for (const s of suppressions ?? []) {
+        suppressedSet.add(String((s as { phone10: string }).phone10));
+      }
+    }
 
     const seenPhones = new Set<string>();
     const previewRecipients: Array<Record<string, unknown>> = [];
     const commitRows: Array<Record<string, unknown>> = [];
     const warnings: string[] = [];
 
-    for (const rec of recipients) {
-      let entityRow: Record<string, unknown> | null = null;
-      if (rec.entity_type && rec.entity_id) {
-        const table =
-          rec.entity_type === "lead"
-            ? "leads"
-            : rec.entity_type === "customer"
-            ? "customers"
-            : "professionals";
-        const { data } = await adminClient
-          .from(table)
-          .select("*")
-          .eq("id", rec.entity_id)
-          .maybeSingle();
-        entityRow = data;
-      }
+    for (const item of hydratedRecipients) {
+      const { input: rec, entityRow, entityMissing, rawPhone, phone10 } = item;
 
-      const rawPhone = String(rec.phone ?? entityRow?.phone ?? "");
-      const phone10 = normalizePhone10(rawPhone);
-      const recipientName = String(rec.name ?? entityRow?.name ?? "Customer").trim();
-      const firmName = String(
-        entityRow?.firm_name ?? entityRow?.company_name ?? "",
-      ).trim();
+      const recipientName = String(rec.name || entityRow?.name || "Customer").trim();
+      const firmName = String(entityRow?.firm_name ?? entityRow?.company_name ?? "").trim();
       const siteLocation = String(entityRow?.site_location ?? "").trim();
       const sitePlusCode = String(entityRow?.site_plus_code ?? "").trim();
       const assignedTo = String(entityRow?.assigned_to ?? caller.fullName).trim();
@@ -255,6 +350,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       const blockedReasons = [...renderRes.blockedReasons];
 
+      if (entityMissing) {
+        blockedReasons.push("ENTITY_NOT_ACCESSIBLE");
+      }
+
       if (!phone10) {
         blockedReasons.push("PHONE_INVALID");
       } else {
@@ -268,46 +367,53 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      // Resolve location payload per recipient if requested
       let resolvedLocation: Record<string, unknown> | null = null;
-      if (locationInput && typeof locationInput === "object") {
-        const locMode = locationInput.mode ?? "showroom";
-        if (locMode === "showroom") {
-          if (settings.showroom_lat != null && settings.showroom_lng != null) {
-            resolvedLocation = {
-              lat: Number(settings.showroom_lat),
-              lng: Number(settings.showroom_lng),
-              name: settings.showroom_name ?? "Maharaja Marble Showroom",
-              address: settings.showroom_address ?? "",
-            };
-          } else {
-            blockedReasons.push("SHOWROOM_LOCATION_MISSING");
-          }
-        } else if (locMode === "site") {
-          const decoded = sitePlusCode ? decodePlusCodeCenter(sitePlusCode) : null;
-          if (decoded) {
-            resolvedLocation = {
-              lat: decoded.lat,
-              lng: decoded.lng,
-              name: `${recipientName} Site`,
-              address: siteLocation || sitePlusCode,
-            };
-          } else {
-            blockedReasons.push("SITE_PLUS_CODE_INVALID");
-          }
-        } else if (locMode === "custom") {
-          const lat = Number(locationInput.lat);
-          const lng = Number(locationInput.lng);
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            resolvedLocation = {
-              lat,
-              lng,
-              name: String(locationInput.name ?? "Pinned Location"),
-              address: String(locationInput.address ?? ""),
-            };
+      if (locationInput !== null && locationInput !== undefined) {
+        if (typeof locationInput === "object" && !Array.isArray(locationInput)) {
+          const locMode = locationInput.mode;
+          if (locMode === "showroom") {
+            const lat = parseCoordinate(settings.showroom_lat, -90, 90);
+            const lng = parseCoordinate(settings.showroom_lng, -180, 180);
+            if (lat !== null && lng !== null) {
+              resolvedLocation = {
+                lat,
+                lng,
+                name: settings.showroom_name ?? "Maharaja Marble Showroom",
+                address: settings.showroom_address ?? "",
+              };
+            } else {
+              blockedReasons.push("SHOWROOM_LOCATION_MISSING");
+            }
+          } else if (locMode === "site") {
+            const decoded = sitePlusCode ? decodePlusCodeCenter(sitePlusCode) : null;
+            if (decoded) {
+              resolvedLocation = {
+                lat: decoded.lat,
+                lng: decoded.lng,
+                name: `${recipientName} Site`,
+                address: siteLocation || sitePlusCode,
+              };
+            } else {
+              blockedReasons.push("SITE_PLUS_CODE_INVALID");
+            }
+          } else if (locMode === "custom") {
+            const lat = parseCoordinate(locationInput.lat, -90, 90);
+            const lng = parseCoordinate(locationInput.lng, -180, 180);
+            if (lat !== null && lng !== null) {
+              resolvedLocation = {
+                lat,
+                lng,
+                name: String(locationInput.name ?? "Pinned Location"),
+                address: String(locationInput.address ?? ""),
+              };
+            } else {
+              blockedReasons.push("LOCATION_INVALID");
+            }
           } else {
             blockedReasons.push("LOCATION_INVALID");
           }
+        } else {
+          blockedReasons.push("LOCATION_INVALID");
         }
       }
 
@@ -344,7 +450,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           placeholder_values: {
             ...renderRes.resolvedValues,
             ...(rec.related_entity_type ? { related_entity_type: rec.related_entity_type } : {}),
-            ...(rec.related_entity_id ? { related_entity_id: rec.related_entity_id } : {}),
+            ...(rec.related_entity_id && UUID_REGEX.test(rec.related_entity_id)
+              ? { related_entity_id: rec.related_entity_id }
+              : {}),
             ...(buildSiteMapLinkFromPlusCode(sitePlusCode)
               ? { site_map_link: buildSiteMapLinkFromPlusCode(sitePlusCode) }
               : {}),
@@ -360,7 +468,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const previewHash = await sha256Hex(JSON.stringify(commitRows));
-    const previewSecret = Deno.env.get("WA_PREVIEW_SECRET") ?? (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "fallback-secret");
     const avgPaceSec = Math.round(((Number(settings.pace_min_seconds ?? 15)) + (Number(settings.pace_max_seconds ?? 35))) / 2);
     const estimatedDurationSeconds = commitRows.length * avgPaceSec;
 
@@ -387,7 +494,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    // Commit mode: verify preview_token (Sec 8.2)
     const tokenCheck = await verifyPreviewToken(
       previewSecret,
       String(body.preview_token ?? ""),
@@ -433,7 +539,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
 
     if (campaignErr) {
-      return jsonErr("ENQUEUE_FAILED", campaignErr.message, 400);
+      return jsonErr("ENQUEUE_FAILED", "Could not enqueue WhatsApp campaign.", 400);
     }
 
     await broadcastDoorbellWake(adminClient, "campaign_enqueued");
@@ -445,7 +551,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       replayed: Boolean(campaignRes?.replayed),
       estimated_finish_at: new Date(Date.now() + estimatedDurationSeconds * 1000).toISOString(),
     });
-  } catch (err) {
-    return jsonErr("INTERNAL_ERROR", err instanceof Error ? err.message : "Unexpected error", 500);
+  } catch {
+    return jsonErr("INTERNAL_ERROR", "Unexpected error processing enqueue request.", 500);
   }
 });

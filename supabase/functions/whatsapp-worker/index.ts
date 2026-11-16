@@ -56,6 +56,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const body = await req.json().catch(() => ({}));
     const action = body.action as "hello" | "sync" | "janitor";
+    const appEnv = Deno.env.get("WA_ENV") === "production" ? "production" : "preview";
 
     const { data: settings } = await adminClient
       .from("whatsapp_settings")
@@ -76,9 +77,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     };
 
     if (action === "hello") {
+      const probeSalt = (Deno.env.get("WA_PROBE_SALT") ?? "").trim();
+      if (!probeSalt) {
+        return jsonErr("SERVER_MISCONFIGURED", "WA_PROBE_SALT is not configured on the server.", 500);
+      }
+
       await adminClient.rpc("wa_expire_leases");
 
-      const appEnv = body.app_env === "production" ? "production" : "preview";
       await adminClient.from("whatsapp_worker_instances").upsert(
         {
           worker_id: workerId,
@@ -95,7 +100,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonOk({
         server_time_ms: Date.now(),
         flags,
-        probe_salt: Deno.env.get("WA_PROBE_SALT") ?? "wa-default-probe-salt",
+        probe_salt: probeSalt,
         doorbell_channel: `wa-gateway-${appEnv}`,
         poll_intervals_seconds: {
           healthy_doorbell: 60,
@@ -107,10 +112,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     if (action === "sync") {
-      // 1. Expire any stale sending leases first (Sec 7.6)
-      await adminClient.rpc("wa_expire_leases");
-
-      // 2. Process reported queue results first so acks and session states are fresh
+      // 1. Process reported queue results FIRST so late outcomes beat lease expiry
       const reportedResults: WorkerResultReport[] = Array.isArray(body.results) ? body.results : [];
       const acks: string[] = [];
 
@@ -126,7 +128,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      // 3. Apply session status/QR updates from worker
+      // 2. Expire any remaining stale sending leases
+      await adminClient.rpc("wa_expire_leases");
+
+      // 3. Apply session status/QR updates from worker ONLY when fields actually change (I13)
       const reportedSessions: WorkerSessionReport[] = Array.isArray(body.sessions) ? body.sessions : [];
       const readySessionKeys = new Set<string>();
 
@@ -138,60 +143,105 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         const { data: existing } = await adminClient
           .from("whatsapp_sessions")
-          .select("id, status, desired_state, warmup_started_at, paused")
+          .select("*")
           .eq("session_key", s.session_key)
           .maybeSingle();
 
         if (!existing) continue;
 
-        const updatePayload: Record<string, unknown> = {
-          worker_instance_id: workerId,
-          updated_at: new Date().toISOString(),
-        };
+        const updatePayload: Record<string, unknown> = {};
+        let hasChanges = false;
 
-        // Do not overwrite pairing_requested if the user just clicked Connect and worker hasn't started QR yet
-        if (
+        if (existing.worker_instance_id !== workerId) {
+          updatePayload.worker_instance_id = workerId;
+          hasChanges = true;
+        }
+
+        const preservePairingRequested =
           existing.status === "pairing_requested" &&
           s.status === "disconnected" &&
-          existing.desired_state === "connected"
-        ) {
-          // Keep pairing_requested so command 'connect' is issued below
-        } else {
-          updatePayload.status = s.status;
+          existing.desired_state === "connected";
+
+        let targetStatus = preservePairingRequested ? existing.status : s.status;
+        if (s.qr && s.status !== "connected") {
+          targetStatus = "awaiting_qr";
+        }
+
+        if (targetStatus !== existing.status) {
+          updatePayload.status = targetStatus;
+          hasChanges = true;
         }
 
         if (s.status === "connected") {
-          updatePayload.qr_payload = null;
-          updatePayload.qr_expires_at = null;
-          updatePayload.connected_at = new Date().toISOString();
+          if (existing.qr_payload !== null || existing.qr_expires_at !== null) {
+            updatePayload.qr_payload = null;
+            updatePayload.qr_expires_at = null;
+            hasChanges = true;
+          }
+          if (existing.status !== "connected" || !existing.connected_at) {
+            updatePayload.connected_at = new Date().toISOString();
+            hasChanges = true;
+          }
           if (!existing.warmup_started_at) {
             updatePayload.warmup_started_at = new Date().toISOString();
+            hasChanges = true;
           }
         } else if (s.qr) {
-          updatePayload.status = "awaiting_qr";
-          const qrSvg = s.qr.startsWith("data:image/") ? null : await QRCode.toString(s.qr, { type: "svg", width: 320, margin: 1 });
-          updatePayload.qr_payload = s.qr.startsWith("data:image/") ? s.qr : `data:image/svg+xml;base64,${btoa(qrSvg ?? "")}`;
-          updatePayload.qr_updated_at = new Date().toISOString();
-          updatePayload.qr_expires_at = s.qr_expires_at ?? new Date(Date.now() + 60_000).toISOString();
-        } else if (s.status === "disconnected" || s.status === "logged_out") {
+          const qrSvg = s.qr.startsWith("data:image/")
+            ? null
+            : await QRCode.toString(s.qr, { type: "svg", width: 320, margin: 1 });
+          const nextQrPayload = s.qr.startsWith("data:image/")
+            ? s.qr
+            : `data:image/svg+xml;base64,${btoa(qrSvg ?? "")}`;
+          if (existing.qr_payload !== nextQrPayload) {
+            updatePayload.qr_payload = nextQrPayload;
+            updatePayload.qr_updated_at = new Date().toISOString();
+            updatePayload.qr_expires_at = s.qr_expires_at ?? new Date(Date.now() + 60_000).toISOString();
+            hasChanges = true;
+          }
+        } else if (
+          (s.status === "disconnected" || s.status === "logged_out") &&
+          (existing.qr_payload !== null || existing.qr_expires_at !== null)
+        ) {
           updatePayload.qr_payload = null;
           updatePayload.qr_expires_at = null;
+          hasChanges = true;
         }
 
-        if (s.phone_number !== undefined) updatePayload.phone_number = s.phone_number;
-        if (s.wa_jid !== undefined) updatePayload.wa_jid = s.wa_jid;
-        if (s.push_name !== undefined) updatePayload.push_name = s.push_name;
+        if (s.phone_number !== undefined && s.phone_number !== existing.phone_number) {
+          updatePayload.phone_number = s.phone_number;
+          hasChanges = true;
+        }
+        if (s.wa_jid !== undefined && s.wa_jid !== existing.wa_jid) {
+          updatePayload.wa_jid = s.wa_jid;
+          hasChanges = true;
+        }
+        if (s.push_name !== undefined && s.push_name !== existing.push_name) {
+          updatePayload.push_name = s.push_name;
+          hasChanges = true;
+        }
 
         if (s.disconnect) {
-          updatePayload.last_disconnect_code = s.disconnect.code ?? null;
-          updatePayload.last_disconnect_reason = s.disconnect.reason ?? null;
-          updatePayload.last_disconnect_at = s.disconnect.at ?? new Date().toISOString();
+          const nextCode = s.disconnect.code ?? null;
+          const nextReason = s.disconnect.reason ?? null;
+          if (
+            nextCode !== existing.last_disconnect_code ||
+            nextReason !== existing.last_disconnect_reason
+          ) {
+            updatePayload.last_disconnect_code = nextCode;
+            updatePayload.last_disconnect_reason = nextReason;
+            updatePayload.last_disconnect_at = s.disconnect.at ?? new Date().toISOString();
+            hasChanges = true;
+          }
         }
 
-        await adminClient
-          .from("whatsapp_sessions")
-          .update(updatePayload)
-          .eq("id", existing.id);
+        if (hasChanges) {
+          updatePayload.updated_at = new Date().toISOString();
+          await adminClient
+            .from("whatsapp_sessions")
+            .update(updatePayload)
+            .eq("id", existing.id);
+        }
       }
 
       // 4. Update worker heartbeat stats
@@ -201,7 +251,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .upsert(
           {
             worker_id: workerId,
-            app_env: Deno.env.get("WA_ENV") === "production" ? "production" : "preview",
+            app_env: appEnv,
             last_seen_at: new Date().toISOString(),
             rss_mb: typeof stats.rss_mb === "number" ? Math.round(stats.rss_mb) : null,
             uptime_s: typeof stats.uptime_s === "number" ? Math.round(stats.uptime_s) : null,
@@ -215,11 +265,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
           { onConflict: "worker_id" },
         );
 
-      // 5. Compute session commands (connect, disconnect, logout, pause, resume)
-      // Also auto-logout personal sessions whose owner profile has is_active = false (Sec 8.4)
+      // 5. Compute session commands (and batch-check deactivated personal session owners — C1)
       const { data: allSessions } = await adminClient
         .from("whatsapp_sessions")
         .select("*");
+
+      const personalOwnerIds = Array.from(
+        new Set(
+          (allSessions ?? [])
+            .filter((s) => s.slot === "personal" && s.owner_user_id)
+            .map((s) => String(s.owner_user_id)),
+        ),
+      );
+      const inactiveOwnerIds = new Set<string>();
+      if (personalOwnerIds.length > 0) {
+        const { data: inactiveRows } = await adminClient
+          .from("profiles")
+          .select("id")
+          .in("id", personalOwnerIds)
+          .eq("is_active", false);
+        for (const row of inactiveRows ?? []) {
+          inactiveOwnerIds.add(String(row.id));
+        }
+      }
 
       const commands: Array<{ session_key: string; action: string }> = [];
       const workerStateByKey = new Map<string, WorkerSessionReport>(
@@ -230,26 +298,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const sKey = String(dbSess.session_key);
         const wSess = workerStateByKey.get(sKey);
 
-        if (dbSess.slot === "personal" && dbSess.owner_user_id) {
-          const { data: prof } = await adminClient
-            .from("profiles")
-            .select("is_active")
-            .or(`id.eq.${dbSess.owner_user_id},user_id.eq.${dbSess.owner_user_id}`)
-            .maybeSingle();
-
-          if (prof && prof.is_active === false && dbSess.desired_state !== "logged_out") {
-            await adminClient
-              .from("whatsapp_sessions")
-              .update({
-                desired_state: "logged_out",
-                status: "logged_out",
-                qr_payload: null,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", dbSess.id);
-            commands.push({ session_key: sKey, action: "logout" });
-            continue;
-          }
+        if (
+          dbSess.slot === "personal" &&
+          inactiveOwnerIds.has(String(dbSess.owner_user_id)) &&
+          dbSess.desired_state !== "logged_out"
+        ) {
+          await adminClient
+            .from("whatsapp_sessions")
+            .update({
+              desired_state: "logged_out",
+              status: "logged_out",
+              qr_payload: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", dbSess.id);
+          commands.push({ session_key: sKey, action: "logout" });
+          continue;
         }
 
         if (dbSess.desired_state === "logged_out") {
@@ -258,7 +322,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           } else if (dbSess.status === "logged_out") {
             await adminClient
               .from("whatsapp_sessions")
-              .update({ desired_state: "disconnected", status: "disconnected" })
+              .update({
+                desired_state: "disconnected",
+                status: "disconnected",
+                updated_at: new Date().toISOString(),
+              })
               .eq("id", dbSess.id);
           }
         } else if (dbSess.desired_state === "disconnected") {
@@ -295,7 +363,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
           if (!claimed || !claimed.queue_id) continue;
 
-          // If media_ref has a storage path, generate a 15-minute signed URL (ADR-0008)
           let mediaPayload: Record<string, unknown> | null = null;
           if (claimed.media_ref && typeof claimed.media_ref === "object") {
             const mediaRef = claimed.media_ref as Record<string, unknown>;
@@ -347,31 +414,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .not("qr_payload", "is", null)
         .lt("qr_updated_at", twoMinAgo);
 
-      // 2. Delete finalized or >24h staging PDFs via Storage API (ADR-0008 — NEVER raw SQL DELETE)
+      // 2. Delete finalized or >24h staging PDFs via Storage API using wa_staging_cleanup_candidates (I4)
       let stagingDeletedCount = 0;
-      const { data: stagingQueueRows } = await adminClient
-        .from("whatsapp_queue")
-        .select("id, status, created_at, media_ref")
-        .not("media_ref", "is", null)
-        .in("status", ["sent", "failed", "cancelled", "skipped_opt_out", "skipped_invalid"])
-        .limit(100);
+      const { data: staleRows, error: staleErr } = await adminClient.rpc(
+        "wa_staging_cleanup_candidates",
+        { p_limit: 200 },
+      );
 
-      const pathsToRemove = new Set<string>();
-      for (const row of stagingQueueRows ?? []) {
-        const ref = row.media_ref as Record<string, unknown> | null;
-        const path = typeof ref?.path === "string" ? ref.path : "";
-        if (path.startsWith("whatsapp-staging/")) {
-          pathsToRemove.add(path);
-        }
-      }
-
-      if (pathsToRemove.size > 0) {
-        const pathList = Array.from(pathsToRemove);
-        const { error: rmErr } = await adminClient.storage
-          .from("crm-attachments")
-          .remove(pathList);
-        if (!rmErr) {
-          stagingDeletedCount = pathList.length;
+      if (staleErr) {
+        await adminClient.from("whatsapp_events").insert({
+          level: "warn",
+          worker_id: workerId,
+          code: "STAGING_QUERY_FAILED",
+          detail: { message: staleErr.message },
+        });
+      } else {
+        const pathList = (staleRows ?? []).map((row: { name: string }) => row.name);
+        if (pathList.length > 0) {
+          const { error: rmErr } = await adminClient.storage
+            .from("crm-attachments")
+            .remove(pathList);
+          if (rmErr) {
+            await adminClient.from("whatsapp_events").insert({
+              level: "warn",
+              worker_id: workerId,
+              code: "STAGING_REMOVE_FAILED",
+              detail: { message: rmErr.message },
+            });
+          } else {
+            stagingDeletedCount = pathList.length;
+          }
         }
       }
 
@@ -403,7 +475,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     return jsonErr("INVALID_ACTION", `Unsupported worker action: ${String(action)}`, 400);
-  } catch (err) {
-    return jsonErr("INTERNAL_ERROR", err instanceof Error ? err.message : "Unexpected error", 500);
+  } catch {
+    return jsonErr("INTERNAL_ERROR", "Unexpected error processing worker request.", 500);
   }
 });

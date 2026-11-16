@@ -7,13 +7,15 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node dist/main.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:hosts": "node scripts/check-forbidden-hosts.mjs",
     "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.89.0",
     "@whiskeysockets/baileys": "7.0.0-rc14",
-    "jimp": "0.22.12",
     "pino": "9.5.0"
   },
   "devDependencies": {

@@ -1,20 +1,29 @@
 import fs from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import pino from "pino";
 import { loadGatewayConfig } from "./config";
 import { EncryptedFileAuthStore } from "./adapters/encryptedFileAuthStore";
 import { SupabaseControlPlane, SystemClock } from "./adapters/supabaseControlPlane";
 import { computeAdaptivePollIntervalMs, DoorbellClient } from "./runtime/doorbellClient";
 import { SessionRuntime, mapDisconnectCodeToDirective } from "./runtime/sessionRuntime";
-import { QueueRunner } from "./runtime/queueRunner";
+import { QueueRunner, TypingPresence } from "./runtime/queueRunner";
 import { InMemoryAntispamState } from "../vendor/wa-akg/antispam";
 import { WaChatService } from "../vendor/wa-akg/chat.service";
+import { formatPhoneToJid } from "../vendor/wa-akg/jid-utils";
 import type { ContactJidStore, Logger, MessageLog, WaSocketLike } from "./ports/index";
 
 async function writeHealthFile(dataDir: string, payload: Record<string, unknown>): Promise<void> {
   const healthPath = path.join(dataDir, "health.json");
   await fs.mkdir(dataDir, { recursive: true });
   await fs.writeFile(healthPath, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function isPairing(runtime: SessionRuntime): boolean {
+  return runtime
+    .getAllReports(() => false)
+    .some((s) => ["awaiting_qr", "connecting", "reconnecting"].includes(String(s.status)));
 }
 
 export async function startGatewayWorker(): Promise<void> {
@@ -29,7 +38,11 @@ export async function startGatewayWorker(): Promise<void> {
   const authStore = new EncryptedFileAuthStore(config.dataDir, config.authEncKey, logger);
   await authStore.acquireProcessLock();
   const controlPlane = new SupabaseControlPlane(
-    config.supabaseUrl, config.workerId, config.workerSecret, clock, logger,
+    config.supabaseUrl,
+    config.workerId,
+    config.workerSecret,
+    clock,
+    logger,
   );
 
   const resolvedJids = new Map<string, string>();
@@ -39,14 +52,20 @@ export async function startGatewayWorker(): Promise<void> {
   };
   const antispam = new InMemoryAntispamState({ minIntervalMs: 10_000, dailyCeiling: 200 });
   const messageLog: MessageLog = {
-    recordLocalSendAttempt: (entry) => logger.info("Outbound send recorded", {
-      sessionKey: entry.sessionKey, queueId: entry.queueId, attemptId: entry.attemptId,
-    }),
+    recordLocalSendAttempt: (entry) =>
+      logger.info("Outbound send recorded", {
+        sessionKey: entry.sessionKey,
+        queueId: entry.queueId,
+        attemptId: entry.attemptId,
+      }),
   };
 
   let triggerImmediateSync = () => {};
   const sessionRuntime = new SessionRuntime(
-    authStore, config.maxActiveSessions, logger, () => triggerImmediateSync(),
+    authStore,
+    config.maxActiveSessions,
+    logger,
+    () => triggerImmediateSync(),
   );
   let shuttingDown = false;
   const intentionalCloses = new Set<string>();
@@ -57,10 +76,12 @@ export async function startGatewayWorker(): Promise<void> {
     const keyStore = {
       get: async (category: string, ids: string[]) => {
         const values: Record<string, unknown> = {};
-        await Promise.all(ids.map(async (id) => {
-          const value = await authStore.loadKey(sessionKey, category, id);
-          if (value !== null) values[id] = value;
-        }));
+        await Promise.all(
+          ids.map(async (id) => {
+            const value = await authStore.loadKey(sessionKey, category, id);
+            if (value !== null) values[id] = value;
+          }),
+        );
         return values;
       },
       set: async (data: Record<string, Record<string, unknown | null>>) => {
@@ -89,7 +110,8 @@ export async function startGatewayWorker(): Promise<void> {
     socket.ev.on("creds.update", () => {
       void authStore.saveSessionCredentials(sessionKey, credentials).catch((err) => {
         logger.error("Encrypted WhatsApp credentials could not be persisted", {
-          sessionKey, error: err instanceof Error ? err.message : String(err),
+          sessionKey,
+          error: err instanceof Error ? err.message : String(err),
         });
       });
     });
@@ -115,30 +137,47 @@ export async function startGatewayWorker(): Promise<void> {
         const directive = mapDisconnectCodeToDirective(statusCode, sessionState.reconnectAttempts);
         sessionState.reconnectAttempts += 1;
         sessionState.lastReconnectAtMs = Date.now();
-        const reason = directive.action === "pause_safety" || directive.action === "quarantine_and_error"
-          ? directive.reason
-          : String(update.lastDisconnect?.error ?? "Connection closed");
+        const reason =
+          directive.action === "pause_safety" || directive.action === "quarantine_and_error"
+            ? directive.reason
+            : String(update.lastDisconnect?.error ?? "Connection closed");
         if (directive.action === "wipe_and_logged_out") {
           void authStore.wipeSession(sessionKey);
-          sessionRuntime.updateConnection(sessionKey, { status: "logged_out", disconnect: { code: statusCode, reason } });
+          sessionRuntime.updateConnection(sessionKey, {
+            status: "logged_out",
+            disconnect: { code: statusCode, reason },
+          });
           return;
         }
         if (directive.action === "pause_safety") {
-          sessionRuntime.updateConnection(sessionKey, { status: "paused_safety", disconnect: { code: statusCode, reason } });
+          sessionRuntime.updateConnection(sessionKey, {
+            status: "paused_safety",
+            disconnect: { code: statusCode, reason },
+          });
           return;
         }
         if (directive.action === "quarantine_and_error") {
           void authStore.quarantineSession(sessionKey);
-          sessionRuntime.updateConnection(sessionKey, { status: "error", disconnect: { code: statusCode, reason } });
+          sessionRuntime.updateConnection(sessionKey, {
+            status: "error",
+            disconnect: { code: statusCode, reason },
+          });
           return;
         }
-        sessionRuntime.updateConnection(sessionKey, { status: "disconnected", disconnect: { code: statusCode, reason } });
+        sessionRuntime.updateConnection(sessionKey, {
+          status: "disconnected",
+          disconnect: { code: statusCode, reason },
+        });
         const delayMs = directive.action === "recreate_immediately" ? 1_000 : directive.delayMs;
         setTimeout(() => {
-          void sessionRuntime.handleCommand({ session_key: sessionKey, action: "connect" }, createSocket)
-            .catch((err) => logger.warn("Automatic reconnect failed", {
-              sessionKey, error: err instanceof Error ? err.message : String(err),
-            }));
+          void sessionRuntime
+            .handleCommand({ session_key: sessionKey, action: "connect" }, createSocket)
+            .catch((err) =>
+              logger.warn("Automatic reconnect failed", {
+                sessionKey,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
         }, delayMs);
       }
     });
@@ -146,19 +185,51 @@ export async function startGatewayWorker(): Promise<void> {
   };
 
   const chatService = new WaChatService(
-    sessionRuntime, contactStore, antispam, messageLog, clock, logger,
+    sessionRuntime,
+    contactStore,
+    antispam,
+    messageLog,
+    clock,
+    logger,
   );
-  const queueRunner = new QueueRunner(chatService);
-  const pendingResults: Array<Record<string, unknown>> = [];
+
+  const typing: TypingPresence = async (sessionKey, recipient, durationMs) => {
+    const socket = sessionRuntime.getSocket(sessionKey);
+    if (!socket?.sendPresenceUpdate) return;
+    const jid = formatPhoneToJid(recipient, contactStore);
+    try {
+      await socket.sendPresenceUpdate("composing", jid);
+      await new Promise((resolve) => setTimeout(resolve, durationMs));
+      await socket.sendPresenceUpdate("paused", jid);
+    } catch (err) {
+      logger.warn("Typing presence failed", {
+        sessionKey,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const queueRunner = new QueueRunner(chatService, Math.random, typing);
+  const pendingResults: Array<{
+    queue_id: string;
+    attempt_id: string;
+    outcome: Record<string, unknown>;
+    _retries?: number;
+  }> = [];
   let syncInFlight = false;
   let syncRequested = false;
 
   const hello = await controlPlane.hello({
-    appEnv: config.appEnv, version: "2.0.0", hostLabel: config.hostLabel,
+    appEnv: config.appEnv,
+    version: "2.0.0",
+    hostLabel: config.hostLabel,
   });
   const doorbell = new DoorbellClient(
-    config.supabaseUrl, config.supabasePublishableKey, hello.doorbell_channel,
-    () => triggerImmediateSync(), logger,
+    config.supabaseUrl,
+    config.supabasePublishableKey,
+    hello.doorbell_channel,
+    () => triggerImmediateSync(),
+    logger,
   );
   doorbell.start();
 
@@ -173,7 +244,7 @@ export async function startGatewayWorker(): Promise<void> {
       const reports = sessionRuntime.getAllReports((sessionKey) =>
         queueRunner.isSessionReadyForClaim(sessionKey, clock.nowMs()),
       );
-      const resultsToSend = pendingResults.slice();
+      const resultsToSend = pendingResults.map(({ _retries, ...rest }) => rest);
       const response = await controlPlane.sync({
         sessions: reports,
         results: resultsToSend,
@@ -184,15 +255,45 @@ export async function startGatewayWorker(): Promise<void> {
           last_error: doorbell.isDownOverOneHour() ? "DOORBELL_DOWN" : null,
         },
       });
-      if (resultsToSend.length) pendingResults.splice(0, resultsToSend.length);
-      for (const command of response.commands) {
-        if (command.action === "disconnect" || command.action === "logout") {
-          intentionalCloses.add(command.session_key);
+
+      const ackSet = new Set(response.acks ?? []);
+      for (let i = pendingResults.length - 1; i >= 0; i--) {
+        const item = pendingResults[i];
+        if (ackSet.has(item.queue_id)) {
+          pendingResults.splice(i, 1);
+        } else {
+          item._retries = (item._retries ?? 0) + 1;
+          if (item._retries >= 5) {
+            pendingResults.splice(i, 1);
+          }
         }
-        await sessionRuntime.handleCommand(command, createSocket);
       }
+
+      for (const command of response.commands) {
+        try {
+          if (command.action === "disconnect" || command.action === "logout") {
+            intentionalCloses.add(command.session_key);
+          }
+          await sessionRuntime.handleCommand(command, createSocket);
+        } catch (cmdErr) {
+          logger.error("Command execution error", {
+            sessionKey: command.session_key,
+            action: command.action,
+            error: cmdErr instanceof Error ? cmdErr.message : String(cmdErr),
+          });
+        }
+      }
+
       for (const item of response.items) {
-        pendingResults.push(await queueRunner.executeClaimedItem(item, response.flags));
+        try {
+          const result = await queueRunner.executeClaimedItem(item, response.flags);
+          pendingResults.push(result);
+        } catch (itemErr) {
+          logger.error("Item execution error", {
+            queueId: item.queue_id,
+            error: itemErr instanceof Error ? itemErr.message : String(itemErr),
+          });
+        }
       }
     } catch (err) {
       logger.error("Sync loop error", { error: err instanceof Error ? err.message : String(err) });
@@ -205,29 +306,40 @@ export async function startGatewayWorker(): Promise<void> {
     }
   };
 
-  triggerImmediateSync = () => { void runSyncTick(); };
+  triggerImmediateSync = () => {
+    void runSyncTick();
+  };
   const healthInterval = setInterval(() => {
     void writeHealthFile(config.dataDir, {
-      worker_id: config.workerId, updated_at: new Date().toISOString(),
+      worker_id: config.workerId,
+      updated_at: new Date().toISOString(),
       rss_mb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
       uptime_s: Math.round(process.uptime()),
     });
   }, 15_000);
   const janitorInterval = setInterval(() => {
-    void controlPlane.janitor().catch((err) => logger.warn("Janitor tick error", {
-      error: err instanceof Error ? err.message : String(err),
-    }));
+    void controlPlane.janitor().catch((err) =>
+      logger.warn("Janitor tick error", {
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }, 10 * 60_000);
 
   const pollLoop = async () => {
     while (!shuttingDown) {
       await runSyncTick();
       const hasWantedSessions = sessionRuntime.getAllReports(() => false).length > 0;
-      await new Promise((resolve) => setTimeout(resolve, computeAdaptivePollIntervalMs({
-        doorbellHealthy: doorbell.isHealthy(),
-        isPairingOrSending: pendingResults.length > 0 || reportsAreActive(sessionRuntime),
-        hasActiveOrWantedSessions: hasWantedSessions,
-      })));
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          computeAdaptivePollIntervalMs({
+            doorbellHealthy: doorbell.isHealthy(),
+            isPairingOrSending:
+              pendingResults.length > 0 || queueRunner.isBusy(clock.nowMs()) || isPairing(sessionRuntime),
+            hasActiveOrWantedSessions: hasWantedSessions,
+          }),
+        ),
+      );
     }
   };
 
@@ -237,26 +349,25 @@ export async function startGatewayWorker(): Promise<void> {
     clearInterval(healthInterval);
     clearInterval(janitorInterval);
     doorbell.stop();
-    for (const sessionKey of ["main", "bulk"]) {
-      const socket = sessionRuntime.getSocket(sessionKey) as (WaSocketLike & { end?: () => void }) | null;
-      try { socket?.end?.(); } catch { /* ignore shutdown races */ }
+    for (const report of sessionRuntime.getAllReports(() => false)) {
+      const socket = sessionRuntime.getSocket(String(report.session_key));
+      try {
+        socket?.end?.(new Error("SHUTDOWN"));
+      } catch {
+        // Ignore shutdown races
+      }
     }
     await authStore.releaseProcessLock();
     logger.info("Gateway worker shut down cleanly");
+    process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown());
   process.on("SIGINT", () => void shutdown());
   void pollLoop();
 }
 
-function reportsAreActive(runtime: SessionRuntime): boolean {
-  return runtime.getAllReports(() => false).some((session) => {
-    const status = session.status;
-    return status === "awaiting_qr" || status === "connecting" || status === "connected" || status === "reconnecting";
-  });
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
+const entryPath = process.argv[1];
+if (entryPath && import.meta.url === pathToFileURL(realpathSync(entryPath)).href) {
   startGatewayWorker().catch((err) => {
     console.error("Fatal worker startup error:", err);
     process.exit(1);

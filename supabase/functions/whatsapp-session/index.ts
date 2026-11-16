@@ -16,6 +16,8 @@ type SessionAction =
   | "resume"
   | "status";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -46,23 +48,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       "status",
     ];
     if (!validActions.includes(action)) {
-      return jsonErr("INVALID_ACTION", `Unsupported action: ${action}`, 400);
+      return jsonErr("INVALID_ACTION", "Unsupported session action.", 400);
     }
 
     if (!["main", "bulk", "personal"].includes(slot)) {
-      return jsonErr("INVALID_SLOT", `Unsupported slot: ${slot}`, 400);
+      return jsonErr("INVALID_SLOT", "Unsupported WhatsApp slot.", 400);
     }
 
-    // Permission checks (Sec 8.3)
     if (slot === "main" || slot === "bulk") {
       if (action !== "status" && !caller.isAdmin) {
-        return jsonErr("FORBIDDEN", "Only admins can manage company WhatsApp sessions", 403);
+        return jsonErr("FORBIDDEN", "Only admins can manage company WhatsApp sessions.", 403);
       }
     } else {
-      // Personal session
       if (action === "pause" || action === "resume") {
         if (!caller.isAdmin) {
-          return jsonErr("FORBIDDEN", "Only admins can pause or resume sessions", 403);
+          return jsonErr("FORBIDDEN", "Only admins can pause or resume sessions.", 403);
         }
       } else if (!caller.isAdmin) {
         const { data: perm } = await adminClient
@@ -72,7 +72,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .maybeSingle();
 
         if (!perm?.can_connect_own_qr) {
-          return jsonErr("FORBIDDEN", "You do not have permission to connect a personal QR session", 403);
+          return jsonErr("FORBIDDEN", "You do not have permission to connect a personal QR session.", 403);
         }
       }
     }
@@ -83,7 +83,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .limit(1)
       .single();
 
-    // Resolve target session row (auto-seeding company slot if missing)
     let sessionRow: Record<string, unknown> | null = null;
 
     if (slot === "main" || slot === "bulk") {
@@ -120,12 +119,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .single();
 
         if (createErr || !created) {
-          return jsonErr("SLOT_NOT_MAPPED", "Could not initialize company session slot", 400);
+          return jsonErr("SLOT_NOT_MAPPED", "Could not initialize company session slot.", 400);
         }
         sessionRow = created;
       }
     } else {
-      const targetOwnerId = (caller.isAdmin && body.owner_user_id) ? String(body.owner_user_id) : caller.userId;
+      const targetOwnerId =
+        caller.isAdmin && typeof body.owner_user_id === "string" && UUID_REGEX.test(body.owner_user_id)
+          ? body.owner_user_id
+          : caller.userId;
+
+      let targetOwnerName = caller.fullName;
+      if (targetOwnerId !== caller.userId) {
+        const { data: ownerProf } = await adminClient
+          .from("profiles")
+          .select("full_name")
+          .eq("id", targetOwnerId)
+          .maybeSingle();
+        const resolvedOwnerName = (ownerProf?.full_name ?? "").trim();
+        if (!resolvedOwnerName || resolvedOwnerName.includes("@") || UUID_REGEX.test(resolvedOwnerName)) {
+          return jsonErr("PROFILE_NAME_MISSING", "Target staff member must have a valid Full Name.", 400);
+        }
+        targetOwnerName = resolvedOwnerName;
+      }
+
       const { data: existingPersonal } = await adminClient
         .from("whatsapp_sessions")
         .select("*")
@@ -143,8 +160,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
             slot: "personal",
             session_key: sessionKey,
             owner_user_id: targetOwnerId,
-            owner_name: caller.fullName,
-            label: `${caller.fullName} (Personal)`,
+            owner_name: targetOwnerName,
+            label: `${targetOwnerName} (Personal)`,
             status: "pairing_requested",
             desired_state: "connected",
             created_by: caller.fullName,
@@ -154,7 +171,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .single();
 
         if (createErr || !created) {
-          return jsonErr("SESSION_CREATE_FAILED", createErr?.message ?? "Failed to create personal session", 400);
+          return jsonErr("SESSION_CREATE_FAILED", "Could not create personal WhatsApp session.", 400);
         }
         sessionRow = created;
       }
@@ -217,15 +234,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (updateErr || !updated) {
-      return jsonErr("UPDATE_FAILED", updateErr?.message ?? "Failed to update session", 500);
+      return jsonErr("UPDATE_FAILED", "Could not update WhatsApp session state.", 500);
     }
 
     await broadcastDoorbellWake(adminClient, `session_${action}`);
 
-    // Omit qr_payload from HTTP response per Sec 8.3 (QR reaches browser via Realtime on whatsapp_sessions)
     const { qr_payload: _omitQr, ...safeUpdated } = updated as Record<string, unknown>;
     return jsonOk({ session: safeUpdated });
-  } catch (err) {
-    return jsonErr("INTERNAL_ERROR", err instanceof Error ? err.message : "Unexpected error", 500);
+  } catch {
+    return jsonErr("INTERNAL_ERROR", "Unexpected error processing session request.", 500);
   }
 });

@@ -55,6 +55,7 @@ export interface AuthenticatedCaller {
   userId: string;
   fullName: string;
   isAdmin: boolean;
+  userClient: SupabaseClient;
 }
 
 /**
@@ -84,13 +85,19 @@ export async function authenticateStaffRequest(
 
   const userId = authData.user.id;
 
-  const { data: profiles } = await adminClient
+  const { data: profile, error: profileErr } = await adminClient
     .from("profiles")
-    .select("id, user_id, full_name, is_active")
+    .select("id, full_name, is_active")
     .eq("id", userId)
-    .limit(1);
+    .maybeSingle();
 
-  const profile = profiles?.[0];
+  if (profileErr) {
+    return {
+      ok: false,
+      response: jsonErr("PROFILE_LOOKUP_FAILED", "Could not load your staff profile.", 500),
+    };
+  }
+
   if (profile && profile.is_active === false) {
     return { ok: false, response: jsonErr("FORBIDDEN", "Staff profile is deactivated", 403) };
   }
@@ -119,7 +126,7 @@ export async function authenticateStaffRequest(
 
   return {
     ok: true,
-    caller: { userId, fullName, isAdmin },
+    caller: { userId, fullName, isAdmin, userClient },
   };
 }
 
@@ -147,7 +154,6 @@ export async function authenticateWorkerRequest(
   const tsValid = Number.isFinite(parsedTs) && Math.abs(nowMs - parsedTs) <= 5 * 60 * 1000;
 
   if (!secretValid || !workerId || !tsValid) {
-    // Rate-limit AUTH_REJECTED events to at most 1 per minute
     try {
       const oneMinAgo = new Date(nowMs - 60_000).toISOString();
       const { count } = await adminClient
@@ -177,23 +183,33 @@ export async function authenticateWorkerRequest(
 }
 
 /**
- * Sends a lightweight untrusted wake broadcast on the Realtime doorbell channel (ADR-0005).
+ * Sends a lightweight untrusted wake broadcast on the Realtime doorbell channel (ADR-0005),
+ * bounded by a 1.5s timeout so user requests never stall on Realtime fallback latency.
  */
 export async function broadcastDoorbellWake(
   adminClient: SupabaseClient,
   reason: string,
 ): Promise<void> {
+  const envName = Deno.env.get("WA_ENV") === "production" ? "production" : "preview";
+  const channelName = `wa-gateway-${envName}`;
+  const channel = adminClient.channel(channelName);
+
   try {
-    const envName = Deno.env.get("WA_ENV") === "production" ? "production" : "preview";
-    const channelName = `wa-gateway-${envName}`;
-    const channel = adminClient.channel(channelName);
-    await channel.send({
-      type: "broadcast",
-      event: "wake",
-      payload: { reason, at: Date.now() },
-    });
-    await adminClient.removeChannel(channel);
+    await Promise.race([
+      channel.send({
+        type: "broadcast",
+        event: "wake",
+        payload: { reason, at: Date.now() },
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
+    ]);
   } catch {
     // Doorbell is best-effort; worker adaptive polling is the fallback
+  } finally {
+    try {
+      await adminClient.removeChannel(channel);
+    } catch {
+      // Ignore cleanup race
+    }
   }
 }

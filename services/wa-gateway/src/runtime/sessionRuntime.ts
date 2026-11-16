@@ -55,9 +55,19 @@ export class SessionRuntime implements SessionRegistry {
     let state = this.states.get(sessionKey);
     if (!state) {
       state = {
-        sessionKey, status: "disconnected", paused: false, qr: null, qrExpiresAt: null,
-        phoneNumber: null, waJid: null, pushName: null, connectedAtMs: null,
-        lastReconnectAtMs: null, reconnectAttempts: 0, lastDisconnect: null, socket: null,
+        sessionKey,
+        status: "disconnected",
+        paused: false,
+        qr: null,
+        qrExpiresAt: null,
+        phoneNumber: null,
+        waJid: null,
+        pushName: null,
+        connectedAtMs: null,
+        lastReconnectAtMs: null,
+        reconnectAttempts: 0,
+        lastDisconnect: null,
+        socket: null,
       };
       this.states.set(sessionKey, state);
     }
@@ -95,15 +105,18 @@ export class SessionRuntime implements SessionRegistry {
     this.onStateChange();
   }
 
-  updateConnection(sessionKey: string, update: {
-    status?: ManagedSessionState["status"];
-    qr?: string | null;
-    qrExpiresAt?: string | null;
-    phoneNumber?: string | null;
-    waJid?: string | null;
-    pushName?: string | null;
-    disconnect?: { code?: number; reason?: string; at?: string } | null;
-  }): void {
+  updateConnection(
+    sessionKey: string,
+    update: {
+      status?: ManagedSessionState["status"];
+      qr?: string | null;
+      qrExpiresAt?: string | null;
+      phoneNumber?: string | null;
+      waJid?: string | null;
+      pushName?: string | null;
+      disconnect?: { code?: number; reason?: string; at?: string } | null;
+    },
+  ): void {
     const state = this.getOrCreateState(sessionKey);
     if (update.status) state.status = update.status;
     if (update.qr !== undefined) {
@@ -114,7 +127,9 @@ export class SessionRuntime implements SessionRegistry {
     if (update.waJid !== undefined) state.waJid = update.waJid;
     if (update.pushName !== undefined) state.pushName = update.pushName;
     if (update.disconnect !== undefined) {
-      state.lastDisconnect = update.disconnect ? { ...update.disconnect, at: update.disconnect.at ?? new Date().toISOString() } : null;
+      state.lastDisconnect = update.disconnect
+        ? { ...update.disconnect, at: update.disconnect.at ?? new Date().toISOString() }
+        : null;
     }
     if (update.status === "connected") {
       state.connectedAtMs = Date.now();
@@ -130,7 +145,7 @@ export class SessionRuntime implements SessionRegistry {
 
   async handleCommand(
     command: { session_key: string; action: string },
-    connectSocket: (sessionKey: string) => Promise<WaSocketLike>,
+    connectSocket?: (sessionKey: string) => Promise<WaSocketLike>,
   ): Promise<void> {
     const state = this.getOrCreateState(command.session_key);
     if (command.action === "pause") {
@@ -144,38 +159,67 @@ export class SessionRuntime implements SessionRegistry {
       return;
     }
     if (command.action === "disconnect" || command.action === "logout") {
-      const existing = state.socket as (WaSocketLike & { end?: (error?: Error) => void }) | null;
-      try { existing?.end?.(new Error(command.action.toUpperCase())); } catch { /* socket may already have ended */ }
+      const existing = state.socket;
+      if (command.action === "logout" && existing?.logout) {
+        try {
+          await Promise.race([
+            existing.logout(),
+            new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+          ]);
+        } catch {
+          // Proceed with local wipe even if remote unlink times out
+        }
+      }
+      try {
+        existing?.end?.(new Error(command.action.toUpperCase()));
+      } catch {
+        // Socket may already have ended
+      }
       state.socket = null;
       state.qr = null;
       state.qrExpiresAt = null;
       state.status = command.action === "logout" ? "logged_out" : "disconnected";
-      if (command.action === "logout") await this.authStore.wipeSession(command.session_key);
+      if (command.action === "logout") {
+        await this.authStore.wipeSession(command.session_key);
+      }
       this.onStateChange();
       return;
     }
+
     if (command.action !== "connect" && command.action !== "refresh_qr") return;
-    if ((command.action === "refresh_qr" || (command.action === "connect" && state.status === "awaiting_qr")) && state.socket) {
-      const staleSocket = state.socket as (WaSocketLike & { end?: (error?: Error) => void });
-      try { staleSocket.end?.(new Error("QR_REFRESH")); } catch { /* socket may already be closed */ }
+
+    if (
+      (command.action === "refresh_qr" || (command.action === "connect" && state.status === "awaiting_qr")) &&
+      state.socket
+    ) {
+      try {
+        state.socket.end?.(new Error("QR_REFRESH"));
+      } catch {
+        // Ignore close error
+      }
       state.socket = null;
       state.qr = null;
       state.qrExpiresAt = null;
     }
+
     if (this.connecting.has(command.session_key) || state.socket) return;
 
     const activeCount = Array.from(this.states.values()).filter(
-      (candidate) => candidate.sessionKey !== command.session_key &&
-        candidate.socket !== null && candidate.status !== "disconnected" &&
+      (candidate) =>
+        candidate.sessionKey !== command.session_key &&
+        candidate.socket !== null &&
+        candidate.status !== "disconnected" &&
         candidate.status !== "logged_out",
     ).length;
+
     if (activeCount >= this.maxActiveSessions) {
       this.updateConnection(command.session_key, {
         status: "disconnected",
         disconnect: { code: 503, reason: "CAPACITY" },
       });
       this.logger.warn("Session connect refused: MAX_ACTIVE_SESSIONS reached", {
-        sessionKey: command.session_key, maxActiveSessions: this.maxActiveSessions,
+        sessionKey: command.session_key,
+        maxActiveSessions: this.maxActiveSessions,
       });
       return;
     }
@@ -185,6 +229,12 @@ export class SessionRuntime implements SessionRegistry {
     state.status = "connecting";
     state.qr = null;
     this.onStateChange();
+
+    if (!connectSocket) {
+      this.connecting.delete(command.session_key);
+      return;
+    }
+
     try {
       const socket = await connectSocket(command.session_key);
       this.attachSocket(command.session_key, socket);
@@ -194,7 +244,10 @@ export class SessionRuntime implements SessionRegistry {
         status: "error",
         disconnect: { reason: err instanceof Error ? err.message : String(err) },
       });
-      throw err;
+      this.logger.error("Failed to initialize WhatsApp socket", {
+        sessionKey: command.session_key,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

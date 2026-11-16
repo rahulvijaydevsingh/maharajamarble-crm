@@ -82,6 +82,7 @@ export class SupabaseControlPlane {
         "X-Worker-Timestamp": String(this.clock.nowMs()),
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
     });
 
     const json = (await res.json().catch(() => null)) as

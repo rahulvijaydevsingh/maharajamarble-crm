@@ -4,10 +4,31 @@ import fsSync from "node:fs";
 import path from "node:path";
 import type { AuthStateStore, Logger } from "../ports/index";
 
+type TaggedBinary = { type?: string; data?: unknown };
+
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (value instanceof Uint8Array) {
+    return { type: "Buffer", data: Buffer.from(value).toString("base64") };
+  }
+  const tagged = value as TaggedBinary | null;
+  if (tagged && typeof tagged === "object" && tagged.type === "Buffer" && Array.isArray(tagged.data)) {
+    return { type: "Buffer", data: Buffer.from(tagged.data as number[]).toString("base64") };
+  }
+  return value;
+}
+
+function jsonReviver(_key: string, value: unknown): unknown {
+  const tagged = value as TaggedBinary | null;
+  if (tagged && typeof tagged === "object" && tagged.type === "Buffer") {
+    if (typeof tagged.data === "string") return Buffer.from(tagged.data, "base64");
+    if (Array.isArray(tagged.data)) return Buffer.from(tagged.data as number[]);
+  }
+  return value;
+}
+
 /**
  * AES-256-GCM encrypted local credential store (ADR-0007 & ADR-0010).
- * Cross-platform safe for both Windows NTFS (handles EPERM/EACCES rename contention)
- * and Linux POSIX (applies mode 0o700 best-effort).
+ * Preserves Baileys Buffer/Uint8Array keys across reloads and quarantines unreadable creds.enc files.
  */
 export class EncryptedFileAuthStore implements AuthStateStore {
   private readonly authRootDir: string;
@@ -78,7 +99,7 @@ export class EncryptedFileAuthStore implements AuthStateStore {
   private encryptJson(value: unknown): Buffer {
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv("aes-256-gcm", this.encryptionKey32, iv);
-    const plaintext = Buffer.from(JSON.stringify(value), "utf8");
+    const plaintext = Buffer.from(JSON.stringify(value, jsonReplacer), "utf8");
     const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     const authTag = cipher.getAuthTag();
     return Buffer.concat([iv, authTag, encrypted]);
@@ -94,7 +115,7 @@ export class EncryptedFileAuthStore implements AuthStateStore {
     const decipher = crypto.createDecipheriv("aes-256-gcm", this.encryptionKey32, iv);
     decipher.setAuthTag(authTag);
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    return JSON.parse(decrypted.toString("utf8")) as T;
+    return JSON.parse(decrypted.toString("utf8"), jsonReviver) as T;
   }
 
   private async atomicWriteBuffer(targetPath: string, data: Buffer): Promise<void> {
@@ -106,7 +127,7 @@ export class EncryptedFileAuthStore implements AuthStateStore {
       // Windows NTFS ignore
     }
 
-    const tempPath = `${targetPath}.${ crypto.randomBytes(6).toString("hex") }.tmp`;
+    const tempPath = `${targetPath}.${crypto.randomBytes(6).toString("hex")}.tmp`;
     const handle = await fs.open(tempPath, "w", 0o600);
     try {
       await handle.writeFile(data);
@@ -115,7 +136,6 @@ export class EncryptedFileAuthStore implements AuthStateStore {
       await handle.close();
     }
 
-    // Windows NTFS can transiently return EPERM/EACCES when overwriting an existing file
     let lastErr: unknown = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -144,11 +164,18 @@ export class EncryptedFileAuthStore implements AuthStateStore {
       if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
         return null;
       }
-      this.logger.warn("Unreadable creds.enc treated as missing", {
+      const quarantinePath = `${filePath}.unreadable-${Date.now()}`;
+      try {
+        await fs.rename(filePath, quarantinePath);
+      } catch {
+        // Ignore rename failure
+      }
+      this.logger.error("Unreadable creds.enc quarantined; refusing silent overwrite", {
         sessionKey,
+        quarantinePath,
         error: err instanceof Error ? err.message : String(err),
       });
-      return null;
+      throw new Error("CREDENTIALS_UNREADABLE");
     }
   }
 

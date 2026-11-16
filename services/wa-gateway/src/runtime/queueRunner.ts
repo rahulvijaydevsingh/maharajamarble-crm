@@ -6,6 +6,12 @@ export interface PacingConfig {
   paceMaxSeconds: number;
 }
 
+export type TypingPresence = (
+  sessionKey: string,
+  recipient: string,
+  durationMs: number,
+) => Promise<void>;
+
 /**
  * Computes randomized inter-send gap (15-35s uniform + 60-180s rest every 10-15 sends) (Sec 9.6).
  */
@@ -18,7 +24,7 @@ export function computeNextSendGapMs(
   const maxMs = Math.max(minMs, config.paceMaxSeconds * 1000);
   const baseGapMs = Math.round(minMs + randomFn() * (maxMs - minMs));
 
-  const burstThreshold = 10 + Math.floor(randomFn() * 6); // 10 to 15 sends
+  const burstThreshold = 10 + Math.floor(randomFn() * 6);
   if (sendsInCurrentBurst >= burstThreshold) {
     const extraRestMs = Math.round((60 + randomFn() * 120) * 1000);
     return { gapMs: baseGapMs + extraRestMs, resetBurst: true };
@@ -43,6 +49,7 @@ export class QueueRunner {
   constructor(
     private readonly chatService: WaChatService,
     private readonly randomFn: () => number = Math.random,
+    private readonly typing: TypingPresence = async () => {},
   ) {}
 
   isSessionReadyForClaim(sessionKey: string, nowMs = Date.now()): boolean {
@@ -51,6 +58,14 @@ export class QueueRunner {
     }
     const nextReadyAt = this.nextReadyAtBySession.get(sessionKey) ?? 0;
     return nowMs >= nextReadyAt;
+  }
+
+  isBusy(nowMs = Date.now()): boolean {
+    if (this.inFlightSessions.size > 0) return true;
+    for (const readyAt of this.nextReadyAtBySession.values()) {
+      if (readyAt > nowMs) return true;
+    }
+    return false;
   }
 
   async executeClaimedItem(
@@ -70,6 +85,7 @@ export class QueueRunner {
   }> {
     const sessionKey = item.session_key;
     this.inFlightSessions.add(sessionKey);
+    let socketCallStarted = false;
 
     try {
       if (flags.kill_switch) {
@@ -87,7 +103,23 @@ export class QueueRunner {
       const recipient = item.recipient_jid || item.recipient_phone;
       let sendRes: { providerMessageId: string; jid: string };
 
-      if (item.message_type === "location" && item.location) {
+      if (item.message_type === "location") {
+        if (
+          !item.location ||
+          typeof item.location.lat !== "number" ||
+          typeof item.location.lng !== "number"
+        ) {
+          return {
+            queue_id: item.queue_id,
+            attempt_id: item.attempt_id,
+            outcome: {
+              status: "failed",
+              error_code: "LOCATION_INVALID",
+              error_message: "Location message is missing valid coordinates",
+            },
+          };
+        }
+        socketCallStarted = true;
         sendRes = await this.chatService.sendLocation({
           sessionKey,
           queueId: item.queue_id,
@@ -98,8 +130,21 @@ export class QueueRunner {
           name: item.location.name,
           address: item.location.address,
         });
-      } else if (item.message_type === "media" && item.media?.signed_url) {
-        const mediaResp = await fetch(item.media.signed_url);
+      } else if (item.message_type === "media") {
+        if (!item.media?.signed_url) {
+          return {
+            queue_id: item.queue_id,
+            attempt_id: item.attempt_id,
+            outcome: {
+              status: "failed",
+              error_code: "MEDIA_INVALID",
+              error_message: "Media message is missing a valid signed download URL",
+            },
+          };
+        }
+        const mediaResp = await fetch(item.media.signed_url, {
+          signal: AbortSignal.timeout(30_000),
+        });
         if (!mediaResp.ok) {
           return {
             queue_id: item.queue_id,
@@ -112,6 +157,7 @@ export class QueueRunner {
           };
         }
         const arrayBuf = await mediaResp.arrayBuffer();
+        socketCallStarted = true;
         sendRes = await this.chatService.sendMedia({
           sessionKey,
           queueId: item.queue_id,
@@ -123,12 +169,15 @@ export class QueueRunner {
           caption: item.body ?? "",
         });
       } else {
+        const textBody = item.body ?? "";
+        await this.typing(sessionKey, recipient, computeComposingDelayMs(textBody.length));
+        socketCallStarted = true;
         sendRes = await this.chatService.sendText({
           sessionKey,
           queueId: item.queue_id,
           attemptId: item.attempt_id,
           recipient,
-          text: item.body ?? "",
+          text: textBody,
         });
       }
 
@@ -158,7 +207,12 @@ export class QueueRunner {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
-      if (msg.includes("SESSION_NOT_CONNECTED") || msg.includes("LOCAL_MIN_INTERVAL_WAIT")) {
+      if (
+        msg.includes("SESSION_NOT_CONNECTED") ||
+        msg.includes("LOCAL_MIN_INTERVAL_WAIT") ||
+        msg.includes("LOCAL_DAILY_CEILING_REACHED") ||
+        !socketCallStarted
+      ) {
         return {
           queue_id: item.queue_id,
           attempt_id: item.attempt_id,
@@ -170,13 +224,13 @@ export class QueueRunner {
         };
       }
 
-      if (msg.includes("OUTCOME_UNKNOWN")) {
+      if (msg.includes("PHONE_INVALID") || msg.includes("NOT_ON_WHATSAPP")) {
         return {
           queue_id: item.queue_id,
           attempt_id: item.attempt_id,
           outcome: {
-            status: "unknown",
-            error_code: "OUTCOME_UNKNOWN",
+            status: "failed",
+            error_code: "NOT_ON_WHATSAPP",
             error_message: msg,
           },
         };
@@ -186,8 +240,8 @@ export class QueueRunner {
         queue_id: item.queue_id,
         attempt_id: item.attempt_id,
         outcome: {
-          status: "failed",
-          error_code: msg.includes("NOT_ON_WHATSAPP") ? "NOT_ON_WHATSAPP" : "SEND_FAILED",
+          status: "unknown",
+          error_code: "OUTCOME_UNKNOWN",
           error_message: msg,
         },
       };

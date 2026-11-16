@@ -15,6 +15,8 @@ export const ALLOWED_PLACEHOLDER_KEYS = new Set([
   "valid_until",
 ]);
 
+export const FULL_PLUS_CODE_REGEX = /^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/;
+
 export interface PlaceholderContext {
   name?: string | null;
   firm_name?: string | null;
@@ -38,11 +40,8 @@ export interface RenderResult {
 
 export function buildSiteMapLinkFromPlusCode(plusCode: string | null | undefined): string | null {
   if (typeof plusCode !== "string") return null;
-  const trimmed = plusCode.trim();
-  if (!trimmed) return null;
-  // Full Open Location Code validation (at least 8 chars with '+' after 4-8 valid base20 chars)
-  const clean = trimmed.toUpperCase();
-  if (!/^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,}$/.test(clean)) {
+  const clean = plusCode.trim().toUpperCase();
+  if (!FULL_PLUS_CODE_REGEX.test(clean)) {
     return null;
   }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean)}`;

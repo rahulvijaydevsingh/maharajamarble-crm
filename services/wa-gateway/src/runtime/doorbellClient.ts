@@ -1,4 +1,4 @@
-import { createClient, RealtimeChannel } from "@supabase/supabase-js";
+import { createClient, RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { Logger } from "../ports/index";
 
 /**
@@ -22,9 +22,10 @@ export function computeAdaptivePollIntervalMs(state: {
 }
 
 export class DoorbellClient {
+  private readonly client: SupabaseClient;
   private channel: RealtimeChannel | null = null;
   private healthy = false;
-  private lastHealthyAtMs = Date.now();
+  private unhealthySinceMs: number | null = Date.now();
   private lastWakeSyncAtMs = 0;
   private pendingWakeTimer: NodeJS.Timeout | null = null;
 
@@ -35,11 +36,11 @@ export class DoorbellClient {
     private readonly onWake: () => void,
     private readonly logger: Logger,
   ) {
-    const client = createClient(supabaseUrl, publishableKey, {
+    this.client = createClient(supabaseUrl, publishableKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    this.channel = client.channel(this.channelName);
+    this.channel = this.client.channel(this.channelName);
   }
 
   start(): void {
@@ -51,10 +52,13 @@ export class DoorbellClient {
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           this.healthy = true;
-          this.lastHealthyAtMs = Date.now();
+          this.unhealthySinceMs = null;
           this.logger.info("Doorbell channel subscribed", { channel: this.channelName });
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           this.healthy = false;
+          if (this.unhealthySinceMs === null) {
+            this.unhealthySinceMs = Date.now();
+          }
           this.logger.warn("Doorbell channel degraded; using 30s fallback polling", { status });
         }
       });
@@ -82,7 +86,7 @@ export class DoorbellClient {
   }
 
   isDownOverOneHour(): boolean {
-    return !this.healthy && Date.now() - this.lastHealthyAtMs > 3600_000;
+    return !this.healthy && this.unhealthySinceMs !== null && Date.now() - this.unhealthySinceMs > 3600_000;
   }
 
   stop(): void {
@@ -91,7 +95,7 @@ export class DoorbellClient {
       this.pendingWakeTimer = null;
     }
     if (this.channel) {
-      this.channel.unsubscribe();
+      void this.client.removeChannel(this.channel);
       this.channel = null;
     }
   }
