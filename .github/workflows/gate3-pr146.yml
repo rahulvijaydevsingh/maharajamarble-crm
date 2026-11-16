@@ -1,0 +1,74 @@
+name: Gate 3 — PR 146 independent verification
+
+on:
+  push:
+    branches:
+      - ci/gate3-pr146-d0fc8a2
+
+permissions:
+  contents: read
+
+jobs:
+  gate3:
+    name: Vitest, app TypeScript, gateway build/typecheck, Deno
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact PR commit
+        uses: actions/checkout@v4
+        with:
+          ref: d0fc8a2c2da3bba4221733efcf45c31d75eb98bd
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run requested Vitest files
+        run: npx vitest run src/lib/phone.test.ts src/lib/plusCode.test.ts src/lib/waGatewayVendor.test.ts src/lib/waGatewayRuntime.test.ts
+
+      - name: Run app TypeScript check and verify only 3 known baseline errors
+        shell: bash
+        run: |
+          set +e
+          npx tsc --noEmit -p tsconfig.app.json 2>&1 | tee /tmp/app-tsc.log
+          tsc_status=${PIPESTATUS[0]}
+          set -e
+          echo "APP_TSC_EXIT_CODE=${tsc_status}"
+          error_count=$(grep -E -c 'error TS[0-9]+' /tmp/app-tsc.log || true)
+          echo "APP_TSC_ERROR_COUNT=${error_count}"
+          unexpected=$(grep -E 'error TS[0-9]+' /tmp/app-tsc.log | grep -Ev 'StaffHRSettingsPanel\.tsx|useBackupJobs\.ts' || true)
+          if [ -n "${unexpected}" ]; then
+            echo "UNEXPECTED_TYPESCRIPT_ERRORS:"
+            echo "${unexpected}"
+            exit 1
+          fi
+          if [ "${error_count}" -ne 3 ]; then
+            echo "Expected exactly 3 known baseline errors; got ${error_count}."
+            exit 1
+          fi
+          if [ "${tsc_status}" -eq 0 ]; then
+            echo "TypeScript completed cleanly (baseline errors have since cleared)."
+          else
+            echo "Only the 3 documented baseline errors remain."
+          fi
+
+      - name: Install gateway dependencies
+        run: npm --prefix services/wa-gateway install
+
+      - name: Gateway TypeScript typecheck
+        run: npm --prefix services/wa-gateway run typecheck
+
+      - name: Gateway production build
+        run: npm --prefix services/wa-gateway run build
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Run requested Deno tests
+        run: deno test --allow-read supabase/functions/whatsapp-config_test.ts supabase/functions/whatsapp-core_test.ts
