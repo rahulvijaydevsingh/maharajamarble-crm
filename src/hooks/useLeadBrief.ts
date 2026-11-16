@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { LeadBriefProfessional } from "@/components/tasks/LeadBriefPeopleStrip";
 import type { LeadBriefTrailEntry } from "@/components/tasks/LeadBriefConversationTrail";
-import { resolveProfessionalById } from "@/lib/professionalResolver";
+import {
+  isProfessionalDesignation,
+  resolveProfessionalById,
+  resolveProfessionalForProfessionalLead,
+} from "@/lib/professionalResolver";
 
 interface LeadBriefLead {
   id: string;
@@ -10,6 +14,7 @@ interface LeadBriefLead {
   status: string | null;
   phone: string | null;
   alternate_phone: string | null;
+  designation: string | null;
   firm_name: string | null;
   additional_contacts: unknown;
   deleted_at?: string | null;
@@ -121,7 +126,7 @@ export function useLeadBrief(
         supabase
           .from("leads")
           .select(
-            "id,name,status,phone,alternate_phone,firm_name,additional_contacts,deleted_at,site_location,address,site_plus_code,construction_stage,estimated_quantity,material_interests",
+            "id,name,status,phone,alternate_phone,designation,firm_name,additional_contacts,deleted_at,site_location,address,site_plus_code,construction_stage,estimated_quantity,material_interests",
           )
           .eq("id", resolvedLeadId)
           .maybeSingle(),
@@ -179,6 +184,36 @@ export function useLeadBrief(
           phone: directProfessional.phone,
           designation: directProfessional.professional_type,
         });
+      }
+
+      const resolvedLead = leadResult.data as LeadBriefLead | null;
+      if (resolvedLead && isProfessionalDesignation(resolvedLead.designation)) {
+        const { data: professionalCandidates, error: professionalCandidatesError } = await supabase
+          .from("professionals")
+          .select("id, name, phone, firm_name, professional_type, status")
+          .limit(50);
+        if (professionalCandidatesError) throw professionalCandidatesError;
+
+        const professionalId = resolveProfessionalForProfessionalLead(
+          resolvedLead.designation,
+          resolvedLead.phone,
+          professionalCandidates || [],
+          (profResult.data || []).map((row: any) => ({
+            professional_id: row.professional_id,
+            is_primary_contact: row.is_primary_contact,
+          })),
+        );
+        if (professionalId && !professionalMap.has(professionalId)) {
+          const resolvedProfessional = (professionalCandidates || []).find((candidate) => candidate.id === professionalId);
+          if (resolvedProfessional) {
+            professionalMap.set(resolvedProfessional.id, {
+              id: resolvedProfessional.id,
+              name: resolvedProfessional.name,
+              phone: resolvedProfessional.phone || null,
+              designation: resolvedProfessional.professional_type || null,
+            });
+          }
+        }
       }
       setProfessionals(Array.from(professionalMap.values()));
 

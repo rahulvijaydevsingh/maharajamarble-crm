@@ -7,7 +7,11 @@ import { useLogActivity } from "@/hooks/useActivityLog";
 import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { TablesInsert } from "@/integrations/supabase/types";
-import { isProfessionalDesignation, normalizePhone } from "@/lib/professionalResolver";
+import {
+  isProfessionalDesignation,
+  normalizePhone,
+  resolveProfessionalForProfessionalLead,
+} from "@/lib/professionalResolver";
 
 interface TaskCompletionUpdates {
   completion_outcome?: string;
@@ -530,6 +534,49 @@ function useTasksStore() {
         }
       }
 
+      let relatedEntityType = task.related_entity_type ?? null;
+      let relatedEntityId = task.related_entity_id ?? null;
+
+      // Lead tasks for a lead who is themselves a professional should preserve
+      // the lead context and also carry the proven professional profile link.
+      if (
+        linkedLeadId &&
+        (relatedEntityType === null || relatedEntityType === "lead")
+      ) {
+        try {
+          const [{ data: lead, error: leadError }, { data: links, error: linksError }] = await Promise.all([
+            supabase.from("leads").select("designation, phone").eq("id", linkedLeadId).maybeSingle(),
+            supabase
+              .from("lead_professionals")
+              .select("professional_id, is_primary_contact")
+              .eq("lead_id", linkedLeadId),
+          ]);
+          if (leadError) throw leadError;
+          if (linksError) throw linksError;
+
+          if (lead && isProfessionalDesignation(lead.designation)) {
+            const { data: candidates, error: candidateError } = await supabase
+              .from("professionals")
+              .select("id, phone, status")
+              .limit(50);
+            if (candidateError) throw candidateError;
+
+            const professionalId = resolveProfessionalForProfessionalLead(
+              lead.designation,
+              lead.phone,
+              candidates || [],
+              links || [],
+            );
+            if (professionalId) {
+              relatedEntityType = "professional";
+              relatedEntityId = professionalId;
+            }
+          }
+        } catch (linkResolutionError) {
+          console.warn("[useTasks] Unable to resolve a professional profile for lead task.", linkResolutionError);
+        }
+      }
+
       // INVARIANT-04: staff tracking columns store full_name strings, never emails or UUIDs.
       const isIdentifier = (value: string) =>
         value.includes("@") ||
@@ -617,6 +664,8 @@ function useTasksStore() {
       const taskData = {
         ...task,
         lead_id: linkedLeadId,
+        related_entity_type: relatedEntityType,
+        related_entity_id: relatedEntityId,
         assigned_to: canonicalAssignee,
         created_by: canonicalCreatedBy,
         original_due_date: task.original_due_date || task.due_date,

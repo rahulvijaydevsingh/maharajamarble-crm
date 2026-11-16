@@ -1,5 +1,6 @@
 import React from "react";
-import { Phone } from "lucide-react";
+import { BriefcaseBusiness, Phone } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PhoneLink } from "@/components/shared/PhoneLink";
@@ -25,6 +26,7 @@ export function LeadBriefPeopleStrip({ leadId, name, status, phone, alternatePho
   onLeadClick?: () => void;
   getOptionLabel: (section: string, field: string, value: string) => string;
 }) {
+  const navigate = useNavigate();
   const contacts: AdditionalContact[] = Array.isArray(additionalContacts)
     ? additionalContacts.filter((c): c is AdditionalContact => Boolean(c && typeof c === "object"))
     : [];
@@ -65,7 +67,15 @@ export function LeadBriefPeopleStrip({ leadId, name, status, phone, alternatePho
             const designation = (rawDesignation ? getOptionLabel("professionals", "professional_type", rawDesignation) : "") || rawDesignation || "Professional";
             return (
               <div key={p.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
-                <span>{designation}: {p.name}</span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto gap-1 p-0 text-xs"
+                  onClick={() => navigate(`/professionals?view=${p.id}`)}
+                >
+                  <BriefcaseBusiness className="h-3 w-3" />
+                  {designation}: {p.name}
+                </Button>
                 {p.phone ? <PhoneLink phone={p.phone} log={{ relatedEntityType: "professional", relatedEntityId: p.id }} /> : <Phone className="h-3 w-3 text-muted-foreground" />}
               </div>
             );
