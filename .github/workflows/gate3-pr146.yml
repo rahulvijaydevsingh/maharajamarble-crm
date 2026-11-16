@@ -30,7 +30,7 @@ jobs:
       - name: Run requested Vitest files
         run: npx vitest run src/lib/phone.test.ts src/lib/plusCode.test.ts src/lib/waGatewayVendor.test.ts src/lib/waGatewayRuntime.test.ts
 
-      - name: Run app TypeScript check and verify only 3 known baseline errors
+      - name: Run app TypeScript check and allow zero errors or only 3 known baseline errors
         shell: bash
         run: |
           set +e
@@ -46,14 +46,13 @@ jobs:
             echo "${unexpected}"
             exit 1
           fi
-          if [ "${error_count}" -ne 3 ]; then
-            echo "Expected exactly 3 known baseline errors; got ${error_count}."
-            exit 1
-          fi
-          if [ "${tsc_status}" -eq 0 ]; then
-            echo "TypeScript completed cleanly (baseline errors have since cleared)."
-          else
+          if [ "${tsc_status}" -eq 0 ] && [ "${error_count}" -eq 0 ]; then
+            echo "TypeScript completed cleanly: zero errors."
+          elif [ "${tsc_status}" -ne 0 ] && [ "${error_count}" -eq 3 ]; then
             echo "Only the 3 documented baseline errors remain."
+          else
+            echo "Unexpected TypeScript result: exit=${tsc_status}, errors=${error_count}."
+            exit 1
           fi
 
       - name: Install gateway dependencies
