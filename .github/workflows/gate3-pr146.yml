@@ -25,7 +25,7 @@ jobs:
           node-version: "22"
 
       - name: Install root dependencies
-        run: npm ci --legacy-peer-deps --no-audit --no-fund
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run requested Vitest files
         run: npx vitest run src/lib/phone.test.ts src/lib/plusCode.test.ts src/lib/waGatewayVendor.test.ts src/lib/waGatewayRuntime.test.ts
