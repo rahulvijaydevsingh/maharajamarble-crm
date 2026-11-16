@@ -215,3 +215,48 @@ function readGPSCoordinate(view: DataView, tiffStart: number, entryOffset: numbe
     return null;
   }
 }
+
+ 
+/**
+ * Decodes a full Open Location Code into the center latitude/longitude.
+ * Short, relative, malformed, and unsupported codes return null.
+ */
+export function decodePlusCode(fullCode: string | null | undefined): { lat: number; lng: number } | null {
+  if (typeof fullCode !== "string") return null;
+  const trimmed = fullCode.trim().toUpperCase();
+  if (!/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/.test(trimmed)) return null;
+  const alphabet = "23456789CFGHJMPQRVWX";
+  const clean = trimmed.replace("+", "");
+  let lat = -90;
+  let lng = -180;
+  let latPlace = 400;
+  let lngPlace = 400;
+  for (let i = 0; i < 10; i += 2) {
+    latPlace /= 20;
+    lngPlace /= 20;
+    const latDigit = alphabet.indexOf(clean[i]);
+    const lngDigit = alphabet.indexOf(clean[i + 1]);
+    if (latDigit < 0 || lngDigit < 0) return null;
+    lat += latDigit * latPlace;
+    lng += lngDigit * lngPlace;
+  }
+  for (let i = 10; i < Math.min(clean.length, 15); i++) {
+    latPlace /= 5;
+    lngPlace /= 4;
+    const digit = alphabet.indexOf(clean[i]);
+    if (digit < 0) return null;
+    lat += Math.floor(digit / 4) * latPlace;
+    lng += (digit % 4) * lngPlace;
+  }
+  return { lat: Number((lat + latPlace / 2).toFixed(6)), lng: Number((lng + lngPlace / 2).toFixed(6)) };
+}
+
+/**
+ * Returns a Google Maps search URL for a valid full Plus Code.
+ */
+export function getGoogleMapsUrlFromPlusCode(plusCode: string | null | undefined): string | null {
+  if (typeof plusCode !== "string") return null;
+  const trimmed = plusCode.trim().toUpperCase();
+  if (!/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/.test(trimmed)) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmed)}`;
+}

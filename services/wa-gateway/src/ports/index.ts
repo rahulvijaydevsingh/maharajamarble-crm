@@ -6,6 +6,8 @@ export interface WaSocketLike {
   ): Promise<{ key?: { id?: string } } | undefined>;
   sendPresenceUpdate?(type: "available" | "composing" | "paused", jid?: string): Promise<void>;
   onWhatsApp?(...jids: string[]): Promise<Array<{ jid: string; exists: boolean }> | undefined>;
+  logout?(): Promise<void>;
+  end?(error?: Error): void;
 }
 
 export interface AuthStateStore {

@@ -15,17 +15,9 @@ verify_jwt = true
 [functions.crm-backup-zip-cleanup]
 verify_jwt = true
 
-[functions.whatsapp-create-session]
-verify_jwt = true
 
-[functions.whatsapp-session-status]
-verify_jwt = true
 
-[functions.whatsapp-send-message]
-verify_jwt = true
 
-[functions.whatsapp-process-queue]
-verify_jwt = true
 
 [functions.whatsapp-enqueue]
 verify_jwt = true
