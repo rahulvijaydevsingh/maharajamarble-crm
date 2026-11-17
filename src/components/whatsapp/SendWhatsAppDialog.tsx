@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,12 +20,19 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { MessageCircle, Send, Loader2, AlertTriangle, Eye } from "lucide-react";
-import {
-  useWhatsAppMessages,
-  WhatsAppSendInput,
-} from "@/hooks/useWhatsAppMessages";
+import { MessageCircle, Send, Loader2, AlertTriangle, Eye, Paperclip, X } from "lucide-react";
+import { useWhatsAppMessages, WhatsAppSendInput } from "@/hooks/useWhatsAppMessages";
 import { useWhatsAppSettings } from "@/hooks/useWhatsAppSettings";
+import { useWhatsAppLibrary } from "@/hooks/useWhatsAppLibrary";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  mapLibraryRowToMediaRef,
+  toEnqueueMediaAttachment,
+  uploadWhatsAppStagingMedia,
+  type WhatsAppLibraryItemRow,
+  type WhatsAppMediaRef,
+  type WhatsAppStagingMediaRef,
+} from "@/lib/whatsappMedia";
 
 interface SendWhatsAppDialogProps {
   open: boolean;
@@ -39,6 +47,12 @@ interface SendWhatsAppDialogProps {
   siteLocation?: string;
   firmName?: string;
   assignedTo?: string;
+  defaultAttachment?: WhatsAppMediaRef | null;
+  quotationNumber?: string;
+  quotationTotal?: string;
+  validUntil?: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
 }
 
 const placeholders = [
@@ -51,6 +65,10 @@ const placeholders = [
   "{{showroom_map_link}}",
 ];
 
+function usableLibraryItem(item: WhatsAppLibraryItemRow): boolean {
+  return Boolean(item.active && item.path && item.filename && item.mime);
+}
+
 export function SendWhatsAppDialog({
   open,
   onOpenChange,
@@ -62,6 +80,12 @@ export function SendWhatsAppDialog({
   defaultMessage = "",
   sitePlusCode,
   siteLocation = "",
+  defaultAttachment = null,
+  quotationNumber,
+  quotationTotal,
+  validUntil,
+  relatedEntityType,
+  relatedEntityId,
 }: SendWhatsAppDialogProps) {
   const [slot, setSlot] = useState<"main" | "personal">("main");
   const [message, setMessage] = useState(defaultMessage);
@@ -74,20 +98,43 @@ export function SendWhatsAppDialog({
   const [previewToken, setPreviewToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [stagingAttachment, setStagingAttachment] = useState<WhatsAppStagingMediaRef | null>(null);
+  const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const { previewSend, commitSend } = useWhatsAppMessages(leadId, customerId);
   const { slotStatus } = useWhatsAppSettings();
+  const { items: libraryItems, refresh: refreshLibrary } = useWhatsAppLibrary();
+  const auth = useAuth();
 
   const canUsePersonal = Boolean(slotStatus?.slots?.personal?.can_send);
+  const availableLibraryItems = useMemo(
+    () => libraryItems.filter(usableLibraryItem),
+    [libraryItems],
+  );
+  const selectedLibraryItem = availableLibraryItems.find((item) => item.id === selectedLibraryId) ?? null;
+  const mediaToSend = useMemo<WhatsAppMediaRef | null>(() => {
+    if (stagingAttachment) return stagingAttachment;
+    if (selectedLibraryItem) return mapLibraryRowToMediaRef(selectedLibraryItem);
+    if (defaultAttachment?.kind === "library") {
+      return availableLibraryItems.find((item) => item.id === defaultAttachment.library_item_id)
+        ? defaultAttachment
+        : null;
+    }
+    return null;
+  }, [stagingAttachment, selectedLibraryItem, defaultAttachment, availableLibraryItems]);
 
   useEffect(() => {
-    if (open) {
-      setMessage(defaultMessage);
-      setPreview(null);
-      setRequestId("");
-      setPreviewToken("");
-      setError(null);
-    }
-  }, [open, defaultMessage]);
+    if (!open) return;
+    setMessage(defaultMessage);
+    setPreview(null);
+    setRequestId("");
+    setPreviewToken("");
+    setError(null);
+    setStagingAttachment(defaultAttachment?.kind === "staging" ? defaultAttachment : null);
+    setSelectedLibraryId(defaultAttachment?.kind === "library" ? defaultAttachment.library_item_id : "");
+    setLocationMode("none");
+    void refreshLibrary();
+  }, [open, defaultMessage, defaultAttachment, refreshLibrary]);
 
   const resetPreview = () => {
     setPreview(null);
@@ -95,46 +142,84 @@ export function SendWhatsAppDialog({
     setPreviewToken("");
   };
 
-  const input = useMemo<WhatsAppSendInput>(
-    () => ({
-      recipientPhone,
-      recipientName,
-      messageBody: message,
-      slot,
-      leadId,
-      customerId,
-      professionalId,
-      ...(locationMode !== "none"
-        ? {
-            location:
-              locationMode === "custom"
-                ? {
-                    mode: "custom",
-                    lat: customLat,
-                    lng: customLng,
-                    name: customName,
-                  }
-                : { mode: locationMode },
-          }
-        : {}),
-    }),
-    [
-      recipientPhone,
-      recipientName,
-      message,
-      slot,
-      leadId,
-      customerId,
-      professionalId,
-      locationMode,
-      customLat,
-      customLng,
-      customName,
-    ],
-  );
+  const locationInput = useMemo<Record<string, unknown> | undefined>(() => {
+    if (locationMode === "none") return undefined;
+    if (locationMode === "custom") {
+      return {
+        mode: "custom",
+        lat: customLat,
+        lng: customLng,
+        name: customName,
+      };
+    }
+    return { mode: locationMode };
+  }, [locationMode, customLat, customLng, customName]);
+
+  const input = useMemo<WhatsAppSendInput>(() => ({
+    recipientPhone,
+    recipientName,
+    messageBody: message,
+    slot,
+    leadId,
+    customerId,
+    professionalId,
+    ...(mediaToSend ? { attachment: toEnqueueMediaAttachment(mediaToSend) } : {}),
+    ...(locationInput ? { location: locationInput } : {}),
+    ...(quotationNumber ? { quotationNumber } : {}),
+    ...(quotationTotal ? { quotationTotal } : {}),
+    ...(validUntil ? { validUntil } : {}),
+    ...(relatedEntityType ? { relatedEntityType } : {}),
+    ...(relatedEntityId ? { relatedEntityId } : {}),
+  }), [
+    recipientPhone,
+    recipientName,
+    message,
+    slot,
+    leadId,
+    customerId,
+    professionalId,
+    mediaToSend,
+    locationInput,
+    quotationNumber,
+    quotationTotal,
+    validUntil,
+    relatedEntityType,
+    relatedEntityId,
+  ]);
 
   const insertPlaceholder = (value: string) => {
     setMessage((current) => (current ? current + " " + value : value));
+    resetPreview();
+  };
+
+  const handleMediaFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!auth.user?.id) {
+      setError("Sign in again before uploading an attachment.");
+      return;
+    }
+    setMediaUploading(true);
+    setError(null);
+    try {
+      const uploaded = await uploadWhatsAppStagingMedia({
+        blob: file,
+        fileName: file.name,
+        userId: auth.user.id,
+      });
+      setStagingAttachment(uploaded);
+      setSelectedLibraryId("");
+      setLocationMode("none");
+      resetPreview();
+    } catch (uploadError: any) {
+      setError(uploadError?.message ?? "Could not upload this attachment.");
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const clearMedia = () => {
+    setStagingAttachment(null);
+    setSelectedLibraryId("");
     resetPreview();
   };
 
@@ -176,7 +261,7 @@ export function SendWhatsAppDialog({
 
   const previewRecipient = preview?.recipients?.[0];
   const isBlocked = previewRecipient?.status === "blocked";
-  const canPreview = Boolean(message.trim() || locationMode !== "none");
+  const canPreview = Boolean(message.trim() || locationMode !== "none" || mediaToSend);
 
   return (
     <Dialog
@@ -189,16 +274,17 @@ export function SendWhatsAppDialog({
         }
       }}
     >
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-green-600" />
             Send WhatsApp
           </DialogTitle>
           <DialogDescription>
-            Preview the server-rendered message before it enters the sending queue.
+            Preview the server-rendered message and attachment or location before it enters the sending queue.
           </DialogDescription>
         </DialogHeader>
+
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
             <div>
@@ -215,43 +301,83 @@ export function SendWhatsAppDialog({
                   resetPreview();
                 }}
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="main">Official Main WhatsApp</SelectItem>
-                  {canUsePersonal && (
-                    <SelectItem value="personal">My Personal WhatsApp</SelectItem>
-                  )}
+                  {canUsePersonal && <SelectItem value="personal">My Personal WhatsApp</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Message</Label>
+            <Label>Message / caption</Label>
             <Textarea
               value={message}
               onChange={(event) => {
                 setMessage(event.target.value.slice(0, 4000));
                 resetPreview();
               }}
-              rows={5}
+              rows={4}
               placeholder="Write your WhatsApp message…"
             />
             <div className="flex flex-wrap gap-1.5">
               {placeholders.map((value) => (
-                <Button
-                  key={value}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => insertPlaceholder(value)}
-                >
+                <Button key={value} type="button" size="sm" variant="outline" onClick={() => insertPlaceholder(value)}>
                   {value}
                 </Button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2 rounded-md border p-3">
+            <Label className="flex items-center gap-2"><Paperclip className="h-4 w-4" />Attachment (optional)</Label>
+            <Input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+              disabled={mediaUploading}
+              onChange={(event) => {
+                void handleMediaFile(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+            <p className="text-xs text-muted-foreground">PDF up to 16 MB; JPEG, PNG or WebP up to 5 MB.</p>
+            <div className="space-y-1">
+              <Label className="text-xs">Or choose from the reusable library</Label>
+              <Select
+                value={selectedLibraryId || "none"}
+                onValueChange={(value) => {
+                  setSelectedLibraryId(value === "none" ? "" : value);
+                  if (value !== "none") {
+                    setStagingAttachment(null);
+                    setLocationMode("none");
+                  }
+                  resetPreview();
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Select a library item" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No library item</SelectItem>
+                  {availableLibraryItems.map((item) => (
+                    <SelectItem value={item.id} key={item.id}>
+                      {item.title} · {item.filename ?? item.kind}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {mediaToSend && (
+              <div className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm">
+                <span className="min-w-0 truncate">
+                  {mediaToSend.kind === "staging" ? mediaToSend.file_name : (mediaToSend.title || mediaToSend.file_name)}
+                  {" · "}{(mediaToSend.byte_size / (1024 * 1024)).toFixed(2)} MB
+                </span>
+                <Button type="button" size="icon" variant="ghost" aria-label="Remove attachment" onClick={clearMedia}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            {mediaUploading && <p className="text-xs text-muted-foreground">Uploading attachment securely…</p>}
           </div>
 
           <div className="space-y-2">
@@ -260,12 +386,11 @@ export function SendWhatsAppDialog({
               value={locationMode}
               onValueChange={(value) => {
                 setLocationMode(value);
+                if (value !== "none") clearMedia();
                 resetPreview();
               }}
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No location</SelectItem>
                 <SelectItem value="showroom">Showroom pin</SelectItem>
@@ -275,44 +400,22 @@ export function SendWhatsAppDialog({
             </Select>
             {locationMode === "site" && (
               <p className="text-xs text-muted-foreground">
-                Site Plus Code: {sitePlusCode || "Not provided"}
-                {siteLocation ? " — " + siteLocation : ""}
+                Site Plus Code: {sitePlusCode || "Not provided"}{siteLocation ? " — " + siteLocation : ""}
               </p>
             )}
             {locationMode === "custom" && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label>Latitude</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    value={customLat}
-                    onChange={(event) => {
-                      setCustomLat(event.target.value);
-                      resetPreview();
-                    }}
-                  />
+                  <Input value={customLat} onChange={(event) => { setCustomLat(event.target.value); resetPreview(); }} />
                 </div>
                 <div>
                   <Label>Longitude</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    value={customLng}
-                    onChange={(event) => {
-                      setCustomLng(event.target.value);
-                      resetPreview();
-                    }}
-                  />
+                  <Input value={customLng} onChange={(event) => { setCustomLng(event.target.value); resetPreview(); }} />
                 </div>
                 <div className="col-span-2">
                   <Label>Location name</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    value={customName}
-                    onChange={(event) => {
-                      setCustomName(event.target.value);
-                      resetPreview();
-                    }}
-                  />
+                  <Input value={customName} onChange={(event) => { setCustomName(event.target.value); resetPreview(); }} />
                 </div>
               </div>
             )}
@@ -322,21 +425,16 @@ export function SendWhatsAppDialog({
             <div className="space-y-2 rounded-md border p-3">
               <div className="flex items-center justify-between">
                 <Label>Server preview</Label>
-                <Badge variant={isBlocked ? "destructive" : "secondary"}>
-                  {previewRecipient?.status ?? "checked"}
-                </Badge>
+                <Badge variant={isBlocked ? "destructive" : "secondary"}>{previewRecipient?.status ?? "checked"}</Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Recipient: {previewRecipient?.masked_phone ?? "—"}
-              </p>
+              <p className="text-xs text-muted-foreground">Recipient: {previewRecipient?.masked_phone ?? "—"}</p>
               <p className="whitespace-pre-wrap text-sm">
                 {previewRecipient?.rendered_text ||
-                  (previewRecipient?.location ? "Location pin message" : "")}
+                  (previewRecipient?.location ? "Location pin message" :
+                    previewRecipient?.message_type === "media" ? "Media attachment message" : "")}
               </p>
               {previewRecipient?.blocked_reasons?.length > 0 && (
-                <p className="text-sm text-destructive">
-                  Blocked: {previewRecipient.blocked_reasons.join(", ")}
-                </p>
+                <p className="text-sm text-destructive">Blocked: {previewRecipient.blocked_reasons.join(", ")}</p>
               )}
               <p className="text-xs text-muted-foreground">
                 Estimated send duration: {preview.summary?.estimated_duration_seconds ?? 0}s
@@ -351,26 +449,17 @@ export function SendWhatsAppDialog({
             </Alert>
           )}
         </div>
+
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           {!previewToken || isBlocked ? (
-            <Button onClick={handlePreview} disabled={working || !canPreview}>
-              {working ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Eye className="mr-2 h-4 w-4" />
-              )}
+            <Button onClick={() => void handlePreview()} disabled={working || mediaUploading || !canPreview}>
+              {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
               Preview Message
             </Button>
           ) : (
-            <Button onClick={handleCommit} disabled={working}>
-              {working ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="mr-2 h-4 w-4" />
-              )}
+            <Button onClick={() => void handleCommit()} disabled={working || mediaUploading}>
+              {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               Confirm & Send
             </Button>
           )}

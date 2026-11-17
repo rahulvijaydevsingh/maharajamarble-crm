@@ -43,6 +43,11 @@ export interface WhatsAppSendInput {
   requestId?: string;
   attachment?: Record<string, unknown>;
   location?: Record<string, unknown>;
+  quotationNumber?: string;
+  quotationTotal?: string;
+  validUntil?: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
 }
 
 export interface WhatsAppPreviewResult {
@@ -127,7 +132,16 @@ export function useWhatsAppMessages(leadId?: string, customerId?: string) {
       kind: "single",
       slot: input.slot ?? "main",
       ...(previewToken ? { preview_token: previewToken } : {}),
-      recipients: [{ ...entity, phone: input.recipientPhone, name: input.recipientName }],
+      recipients: [{
+        ...entity,
+        phone: input.recipientPhone,
+        name: input.recipientName,
+        ...(input.quotationNumber ? { quotation_number: input.quotationNumber } : {}),
+        ...(input.quotationTotal ? { quotation_total: input.quotationTotal } : {}),
+        ...(input.validUntil ? { valid_until: input.validUntil } : {}),
+        ...(input.relatedEntityType ? { related_entity_type: input.relatedEntityType } : {}),
+        ...(input.relatedEntityId ? { related_entity_id: input.relatedEntityId } : {}),
+      }],
       message: {
         template_text: input.messageBody,
         message_type: input.messageType ?? "text",

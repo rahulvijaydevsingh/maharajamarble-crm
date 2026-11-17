@@ -1,262 +1,106 @@
-// Plus Code (Open Location Code) conversion utility
-// Uses Google's Open Location Code algorithm
-
 /**
- * Converts GPS coordinates (latitude, longitude) to a Plus Code
- * @param latitude - Latitude in decimal degrees
- * @param longitude - Longitude in decimal degrees
- * @param codeLength - Length of the plus code (default: 10 for ~14m precision)
- * @returns Plus Code string
+ * Open Location Code (Plus Code) utilities for WhatsApp location pins.
  */
-export function coordinatesToPlusCode(latitude: number, longitude: number, codeLength: number = 10): string {
-  // Implementation of Google's Open Location Code algorithm
-  const ALPHABET = "23456789CFGHJMPQRVWX";
-  const CODE_PRECISION = [20, 1, 0.05, 0.0025, 0.000125];
-  const PAIR_CODE_LENGTH = 10;
-  const SEPARATOR = "+";
-  const SEPARATOR_POSITION = 8;
-  
-  // Validate inputs
-  if (latitude < -90 || latitude > 90) {
-    throw new Error("Invalid latitude");
-  }
-  if (longitude < -180 || longitude > 180) {
-    throw new Error("Invalid longitude");
-  }
+const OLC_ALPHABET = "23456789CFGHJMPQRVWX";
+const SEPARATOR = "+";
+const SEPARATOR_POSITION = 8;
+const PAIR_RESOLUTIONS = [20, 1, 0.05, 0.0025, 0.000125];
+const GRID_ROWS = 5;
+const GRID_COLUMNS = 4;
 
-  // Normalize latitude and longitude
-  let normalizedLatitude = Math.min(latitude, 90);
-  let normalizedLongitude = longitude;
-  
-  // Normalize longitude to be in the range [-180, 180)
-  while (normalizedLongitude < -180) {
-    normalizedLongitude += 360;
-  }
-  while (normalizedLongitude >= 180) {
-    normalizedLongitude -= 360;
-  }
+export interface DecodedPlusCodeCenter {
+  lat: number;
+  lng: number;
+}
 
-  // Shift latitude and longitude to positive values
-  normalizedLatitude += 90;
-  normalizedLongitude += 180;
+export function cleanPlusCodeInput(raw: string | null | undefined): string {
+  return typeof raw === "string" ? raw.trim() : "";
+}
 
-  let code = "";
-  
-  // Generate the first 10 characters (pair code)
-  let latPrecision = CODE_PRECISION[0];
-  let lngPrecision = CODE_PRECISION[0];
-  
-  for (let i = 0; i < PAIR_CODE_LENGTH; i += 2) {
-    if (i === SEPARATOR_POSITION) {
-      code += SEPARATOR;
-    }
-    
-    // Latitude
-    const latDigit = Math.floor(normalizedLatitude / latPrecision);
-    normalizedLatitude -= latDigit * latPrecision;
-    latPrecision = latPrecision / 20;
-    code += ALPHABET[latDigit];
-    
-    // Longitude
-    const lngDigit = Math.floor(normalizedLongitude / lngPrecision);
-    normalizedLongitude -= lngDigit * lngPrecision;
-    lngPrecision = lngPrecision / 20;
-    code += ALPHABET[lngDigit];
+function getPlusCodeToken(raw: string | null | undefined): string {
+  const cleaned = cleanPlusCodeInput(raw);
+  return cleaned ? cleaned.split(/\s+/)[0].toUpperCase() : "";
+}
+
+export function isValidPlusCodeFormat(raw: string | null | undefined): boolean {
+  const token = getPlusCodeToken(raw);
+  if (!token) return false;
+  const plusIndex = token.indexOf(SEPARATOR);
+  if (
+    plusIndex < 2 ||
+    plusIndex > SEPARATOR_POSITION ||
+    plusIndex % 2 !== 0 ||
+    token.indexOf(SEPARATOR, plusIndex + 1) !== -1
+  ) return false;
+
+  const code = token.replace(SEPARATOR, "");
+  if (code.length < 4 || code.length > 15) return false;
+  if (code.length % 2 !== 0 && code.length <= 10) return false;
+  for (const character of code) {
+    if (!OLC_ALPHABET.includes(character)) return false;
   }
+  return true;
+}
 
-  // Pad if needed
-  if (code.length < codeLength + 1) {
-    code += SEPARATOR;
-  }
-
-  return code;
+export function getGoogleMapsUrlFromPlusCode(
+  sitePlusCode: string | null | undefined,
+): string | null {
+  const cleaned = cleanPlusCodeInput(sitePlusCode);
+  if (!cleaned) return null;
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(cleaned);
 }
 
 /**
- * Extracts GPS coordinates from image EXIF data
- * @param file - The image file
- * @returns Promise with latitude and longitude, or null if not found
+ * Decodes a full Open Location Code with the separator after eight characters.
+ * Short/local codes are deliberately not decoded because they need a reference area.
  */
-export function extractGPSFromExif(file: File): Promise<{ latitude: number; longitude: number } | null> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      const view = new DataView(e.target?.result as ArrayBuffer);
-      
-      // Check for JPEG SOI marker
-      if (view.getUint16(0, false) !== 0xFFD8) {
-        resolve(null);
-        return;
-      }
-
-      const length = view.byteLength;
-      let offset = 2;
-
-      while (offset < length) {
-        if (view.getUint16(offset, false) === 0xFFE1) {
-          const exifLength = view.getUint16(offset + 2, false);
-          const exifData = extractExifGPS(view, offset + 4, exifLength);
-          resolve(exifData);
-          return;
-        }
-        offset += 2 + view.getUint16(offset + 2, false);
-      }
-      
-      resolve(null);
-    };
-
-    reader.onerror = () => resolve(null);
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-function extractExifGPS(view: DataView, start: number, length: number): { latitude: number; longitude: number } | null {
-  // Check for "Exif\0\0" marker
-  const exifMarker = String.fromCharCode(
-    view.getUint8(start),
-    view.getUint8(start + 1),
-    view.getUint8(start + 2),
-    view.getUint8(start + 3)
-  );
-  
-  if (exifMarker !== "Exif") {
+export function decodePlusCodeCenter(
+  fullCodeRaw: string | null | undefined,
+): DecodedPlusCodeCenter | null {
+  const token = getPlusCodeToken(fullCodeRaw);
+  if (!isValidPlusCodeFormat(token) || token.indexOf(SEPARATOR) !== SEPARATOR_POSITION) {
     return null;
   }
+  const code = token.replace(SEPARATOR, "");
+  if (code.length < 10 || code.length > 15) return null;
 
-  const tiffStart = start + 6;
-  const littleEndian = view.getUint16(tiffStart, false) === 0x4949;
-  
-  // Find IFD0
-  const ifd0Offset = view.getUint32(tiffStart + 4, littleEndian);
-  
-  try {
-    // Parse IFD0 to find GPS IFD pointer
-    const gpsIFDPointer = findGPSIFD(view, tiffStart, tiffStart + ifd0Offset, littleEndian);
-    
-    if (gpsIFDPointer === null) {
-      return null;
+  let latitude = -90;
+  let longitude = -180;
+  let pairResolution = PAIR_RESOLUTIONS[0];
+
+  const pairLength = Math.min(code.length, 10);
+  for (let index = 0; index < pairLength; index += 2) {
+    const latitudeDigit = OLC_ALPHABET.indexOf(code[index]);
+    const longitudeDigit = OLC_ALPHABET.indexOf(code[index + 1]);
+    if (latitudeDigit < 0 || longitudeDigit < 0) return null;
+    latitude += latitudeDigit * pairResolution;
+    longitude += longitudeDigit * pairResolution;
+    pairResolution /= 20;
+  }
+
+  let latitudePrecision = pairResolution * 20;
+  let longitudePrecision = pairResolution * 20;
+
+  if (code.length > 10) {
+    for (let index = 10; index < code.length; index += 1) {
+      latitudePrecision /= GRID_ROWS;
+      longitudePrecision /= GRID_COLUMNS;
+      const digit = OLC_ALPHABET.indexOf(code[index]);
+      if (digit < 0) return null;
+      latitude += Math.floor(digit / GRID_COLUMNS) * latitudePrecision;
+      longitude += (digit % GRID_COLUMNS) * longitudePrecision;
     }
-
-    // Parse GPS IFD
-    return parseGPSIFD(view, tiffStart, gpsIFDPointer, littleEndian);
-  } catch {
-    return null;
-  }
-}
-
-function findGPSIFD(view: DataView, tiffStart: number, ifdStart: number, littleEndian: boolean): number | null {
-  const entries = view.getUint16(ifdStart, littleEndian);
-  
-  for (let i = 0; i < entries; i++) {
-    const entryOffset = ifdStart + 2 + (i * 12);
-    const tag = view.getUint16(entryOffset, littleEndian);
-    
-    // GPS IFD Pointer tag is 0x8825
-    if (tag === 0x8825) {
-      return tiffStart + view.getUint32(entryOffset + 8, littleEndian);
-    }
-  }
-  
-  return null;
-}
-
-function parseGPSIFD(view: DataView, tiffStart: number, gpsStart: number, littleEndian: boolean): { latitude: number; longitude: number } | null {
-  const entries = view.getUint16(gpsStart, littleEndian);
-  
-  let latRef = "N";
-  let lonRef = "E";
-  let latitude: number[] | null = null;
-  let longitude: number[] | null = null;
-
-  for (let i = 0; i < entries; i++) {
-    const entryOffset = gpsStart + 2 + (i * 12);
-    const tag = view.getUint16(entryOffset, littleEndian);
-    
-    switch (tag) {
-      case 0x0001: // GPSLatitudeRef
-        latRef = String.fromCharCode(view.getUint8(entryOffset + 8));
-        break;
-      case 0x0002: // GPSLatitude
-        latitude = readGPSCoordinate(view, tiffStart, entryOffset, littleEndian);
-        break;
-      case 0x0003: // GPSLongitudeRef
-        lonRef = String.fromCharCode(view.getUint8(entryOffset + 8));
-        break;
-      case 0x0004: // GPSLongitude
-        longitude = readGPSCoordinate(view, tiffStart, entryOffset, littleEndian);
-        break;
-    }
+  } else {
+    const lastPairIndex = code.length / 2 - 1;
+    latitudePrecision = PAIR_RESOLUTIONS[lastPairIndex];
+    longitudePrecision = PAIR_RESOLUTIONS[lastPairIndex];
   }
 
-  if (latitude && longitude) {
-    let lat = latitude[0] + latitude[1] / 60 + latitude[2] / 3600;
-    let lon = longitude[0] + longitude[1] / 60 + longitude[2] / 3600;
-    
-    if (latRef === "S") lat = -lat;
-    if (lonRef === "W") lon = -lon;
-    
-    return { latitude: lat, longitude: lon };
-  }
-
-  return null;
-}
-
-function readGPSCoordinate(view: DataView, tiffStart: number, entryOffset: number, littleEndian: boolean): number[] | null {
-  const valueOffset = tiffStart + view.getUint32(entryOffset + 8, littleEndian);
-  
-  try {
-    const degrees = view.getUint32(valueOffset, littleEndian) / view.getUint32(valueOffset + 4, littleEndian);
-    const minutes = view.getUint32(valueOffset + 8, littleEndian) / view.getUint32(valueOffset + 12, littleEndian);
-    const seconds = view.getUint32(valueOffset + 16, littleEndian) / view.getUint32(valueOffset + 20, littleEndian);
-    
-    return [degrees, minutes, seconds];
-  } catch {
-    return null;
-  }
-}
-
- 
-/**
- * Decodes a full Open Location Code into the center latitude/longitude.
- * Short, relative, malformed, and unsupported codes return null.
- */
-export function decodePlusCode(fullCode: string | null | undefined): { lat: number; lng: number } | null {
-  if (typeof fullCode !== "string") return null;
-  const trimmed = fullCode.trim().toUpperCase();
-  if (!/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/.test(trimmed)) return null;
-  const alphabet = "23456789CFGHJMPQRVWX";
-  const clean = trimmed.replace("+", "");
-  let lat = -90;
-  let lng = -180;
-  let latPlace = 400;
-  let lngPlace = 400;
-  for (let i = 0; i < 10; i += 2) {
-    latPlace /= 20;
-    lngPlace /= 20;
-    const latDigit = alphabet.indexOf(clean[i]);
-    const lngDigit = alphabet.indexOf(clean[i + 1]);
-    if (latDigit < 0 || lngDigit < 0) return null;
-    lat += latDigit * latPlace;
-    lng += lngDigit * lngPlace;
-  }
-  for (let i = 10; i < Math.min(clean.length, 15); i++) {
-    latPlace /= 5;
-    lngPlace /= 4;
-    const digit = alphabet.indexOf(clean[i]);
-    if (digit < 0) return null;
-    lat += Math.floor(digit / 4) * latPlace;
-    lng += (digit % 4) * lngPlace;
-  }
-  return { lat: Number((lat + latPlace / 2).toFixed(6)), lng: Number((lng + lngPlace / 2).toFixed(6)) };
-}
-
-/**
- * Returns a Google Maps search URL for a valid full Plus Code.
- */
-export function getGoogleMapsUrlFromPlusCode(plusCode: string | null | undefined): string | null {
-  if (typeof plusCode !== "string") return null;
-  const trimmed = plusCode.trim().toUpperCase();
-  if (!/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/.test(trimmed)) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmed)}`;
+  const lat = Number((latitude + latitudePrecision / 2).toFixed(6));
+  const lng = Number((longitude + longitudePrecision / 2).toFixed(6));
+  if (
+    !Number.isFinite(lat) || !Number.isFinite(lng) ||
+    lat < -90 || lat > 90 || lng < -180 || lng > 180
+  ) return null;
+  return { lat, lng };
 }
