@@ -67,7 +67,15 @@ CREATE POLICY whatsapp_staging_authenticated_select
         (storage.foldername(name))[1] = 'whatsapp-staging'
         AND (storage.foldername(name))[2] = auth.uid()::text
       )
-      OR (storage.foldername(name))[1] = 'whatsapp-library'
+      OR (
+        (storage.foldername(name))[1] = 'whatsapp-library'
+        AND EXISTS (
+          SELECT 1
+            FROM public.whatsapp_library_items AS li
+           WHERE li.path = objects.name
+             AND (li.active = true OR public.is_admin())
+        )
+      )
       OR public.is_admin()
     )
   );
@@ -99,6 +107,12 @@ CREATE POLICY whatsapp_library_authenticated_select
   USING (
     bucket_id = 'crm-attachments'
     AND (storage.foldername(name))[1] = 'whatsapp-library'
+    AND EXISTS (
+      SELECT 1
+        FROM public.whatsapp_library_items AS li
+       WHERE li.path = objects.name
+         AND (li.active = true OR public.is_admin())
+    )
   );
 
 DROP POLICY IF EXISTS whatsapp_library_admin_insert ON storage.objects;
