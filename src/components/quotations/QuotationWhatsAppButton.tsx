@@ -38,6 +38,7 @@ function toPdfInput(quotation: Quotation): QuotationPdfInput {
     subtotal: quotation.subtotal,
     tax_amount: quotation.gst_amount,
     discount_amount: 0,
+    freight_amount: quotation.freight_amount,
     total_amount: quotation.total,
     notes: quotation.notes,
     terms_and_conditions: quotation.terms_and_conditions,
@@ -111,7 +112,7 @@ export function QuotationWhatsAppButton({
 
   const defaultMessage =
     "Dear {{name}}, please find attached quotation {{quotation_number}} for {{quotation_total}}. " +
-    "It is valid until {{valid_until}}. Please let us know if you have any questions.";
+    "It is valid until {{valid_until|15 Days from Issue}}. Please let us know if you have any questions.";
 
   return (
     <>

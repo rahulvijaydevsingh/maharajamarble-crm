@@ -32,6 +32,7 @@ export interface QuotationPdfInput {
   subtotal?: number | null;
   tax_amount?: number | null;
   discount_amount?: number | null;
+  freight_amount?: number | null;
   total_amount: number;
   notes?: string | null;
   terms_and_conditions?: string | null;
@@ -235,6 +236,7 @@ export function createQuotationJsPdf(quotation: QuotationPdfInput): jsPDF {
 
   const subtotal = Number(quotation.subtotal ?? quotation.total_amount ?? 0);
   const discount = Number(quotation.discount_amount ?? 0);
+  const freight = Number(quotation.freight_amount ?? 0);
   const tax = Number(quotation.tax_amount ?? 0);
   const total = Number(quotation.total_amount ?? subtotal - discount + tax);
   const totalX = right - 58;
@@ -245,6 +247,11 @@ export function createQuotationJsPdf(quotation: QuotationPdfInput): jsPDF {
   doc.text("Subtotal:", totalX, y);
   doc.text(formatInr(subtotal), right, y, { align: "right" });
   y += 5;
+  if (freight > 0) {
+    doc.text("Freight:", totalX, y);
+    doc.text(formatInr(freight), right, y, { align: "right" });
+    y += 5;
+  }
   if (discount > 0) {
     doc.text("Discount:", totalX, y);
     doc.text("- " + formatInr(discount), right, y, { align: "right" });
