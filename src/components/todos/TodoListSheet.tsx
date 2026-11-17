@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TodoItemRow } from "./TodoItemRow";
 import { ConvertToTaskDialog } from "./ConvertToTaskDialog";
+import { EditTodoItemDialog } from "./EditTodoItemDialog";
 
 interface TodoListSheetProps {
   list: TodoList | null;
@@ -23,9 +24,10 @@ interface TodoListSheetProps {
 }
 
 export function TodoListSheet({ list, open, onOpenChange, onItemsChanged, onDelete, onTogglePin, onArchive }: TodoListSheetProps) {
-  const { items, addItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list?.id);
+  const { items, addItem, updateItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list?.id);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);
+  const [editingItem, setEditingItem] = useState<TodoItem | null>(null);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
 
   if (!list) return null;
@@ -52,6 +54,10 @@ export function TodoListSheet({ list, open, onOpenChange, onItemsChanged, onDele
 
   const handleToggleStar = async (itemId: string) => {
     await toggleStar(itemId);
+    onItemsChanged();
+  };
+  const handleEditItem = async (itemId: string, updates: { title: string; notes: string | null; due_date: string | null }) => {
+    await updateItem(itemId, updates);
     onItemsChanged();
   };
   const convertItem = (item: TodoItem) => {
@@ -87,19 +93,25 @@ export function TodoListSheet({ list, open, onOpenChange, onItemsChanged, onDele
             <section>
               <h3 className="mb-2 text-sm font-medium">Active ({activeItems.length})</h3>
               <div className="space-y-1">
-                {activeItems.map((item) => <TodoItemRow key={item.id} item={item} variant="full" onToggleComplete={() => handleToggleComplete(item.id)} onToggleStar={() => handleToggleStar(item.id)} onDelete={() => handleDeleteItem(item.id)} onConvertToTask={() => convertItem(item)} />)}
+                {activeItems.map((item) => <TodoItemRow key={item.id} item={item} variant="full" onToggleComplete={() => handleToggleComplete(item.id)} onToggleStar={() => handleToggleStar(item.id)} onEdit={() => setEditingItem(item)} onDelete={() => handleDeleteItem(item.id)} onConvertToTask={() => convertItem(item)} />)}
                 {activeItems.length === 0 && <p className="py-4 text-sm text-muted-foreground">No active items.</p>}
               </div>
             </section>
             {completedItems.length > 0 && <Collapsible className="mt-5">
               <CollapsibleTrigger asChild><Button variant="ghost" className="w-full justify-between px-0 text-sm font-medium">Completed ({completedItems.length})<ChevronDown className="h-4 w-4" /></Button></CollapsibleTrigger>
-              <CollapsibleContent className="space-y-1 pt-2">{completedItems.map((item) => <TodoItemRow key={item.id} item={item} variant="full" onToggleComplete={() => handleToggleComplete(item.id)} onToggleStar={() => handleToggleStar(item.id)} onDelete={() => handleDeleteItem(item.id)} onConvertToTask={() => convertItem(item)} />)}</CollapsibleContent>
+              <CollapsibleContent className="space-y-1 pt-2">{completedItems.map((item) => <TodoItemRow key={item.id} item={item} variant="full" onToggleComplete={() => handleToggleComplete(item.id)} onToggleStar={() => handleToggleStar(item.id)} onEdit={() => setEditingItem(item)} onDelete={() => handleDeleteItem(item.id)} onConvertToTask={() => convertItem(item)} />)}</CollapsibleContent>
             </Collapsible>}
           </div>
           <div className="border-t bg-background p-4"><div className="flex gap-2"><Input placeholder="Add item..." value={newItemTitle} onChange={(event) => setNewItemTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addNewItem(); } }} /><Button size="sm" onClick={addNewItem} disabled={!newItemTitle.trim()} aria-label="Add item"><Plus className="h-4 w-4" /></Button></div></div>
         </SheetContent>
       </Sheet>
       {selectedItem && <ConvertToTaskDialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen} todoItem={selectedItem} />}
+      <EditTodoItemDialog
+        item={editingItem}
+        open={!!editingItem}
+        onOpenChange={(open) => !open && setEditingItem(null)}
+        onSave={handleEditItem}
+      />
     </>
   );
 }

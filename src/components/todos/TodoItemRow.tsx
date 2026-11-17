@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Star, Trash2, ArrowRight, MoreHorizontal, Link } from "lucide-react";
+import { Star, Trash2, ArrowRight, MoreHorizontal, Link, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TodoItem } from "@/hooks/useTodoItems";
 import { format } from "date-fns";
@@ -18,6 +18,7 @@ interface TodoItemRowProps {
   item: TodoItem;
   onToggleComplete: () => void;
   onToggleStar: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   onConvertToTask: () => void;
   variant?: "compact" | "full";
@@ -27,6 +28,7 @@ export function TodoItemRow({
   item,
   onToggleComplete,
   onToggleStar,
+  onEdit,
   onDelete,
   onConvertToTask,
   variant = "full",
@@ -102,6 +104,10 @@ export function TodoItemRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit item
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onConvertToTask}>
                 <ArrowRight className="mr-2 h-4 w-4" />
                 Convert to Task

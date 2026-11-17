@@ -27,6 +27,7 @@ import {
 import { useTodoItems, TodoItem } from "@/hooks/useTodoItems";
 import { TodoItemRow } from "./TodoItemRow";
 import { ConvertToTaskDialog } from "./ConvertToTaskDialog";
+import { EditTodoItemDialog } from "./EditTodoItemDialog";
 import { TodoList } from "@/hooks/useTodoLists";
 
 interface TodoListRowProps {
@@ -50,10 +51,11 @@ export function TodoListRow({
   onOpenList,
   refreshToken,
 }: TodoListRowProps) {
-  const { items, addItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id, refreshToken);
+  const { items, addItem, updateItem, deleteItem, toggleComplete, toggleStar } = useTodoItems(list.id, refreshToken);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);
+  const [editingItem, setEditingItem] = useState<TodoItem | null>(null);
 
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
@@ -135,6 +137,7 @@ export function TodoListRow({
               item={item}
               onToggleComplete={() => toggleComplete(item.id)}
               onToggleStar={() => toggleStar(item.id)}
+              onEdit={() => setEditingItem(item)}
               onDelete={() => deleteItem(item.id)}
               onConvertToTask={() => handleConvertToTask(item)}
               variant="compact"
@@ -170,6 +173,12 @@ export function TodoListRow({
           todoItem={selectedItem}
         />
       )}
+      <EditTodoItemDialog
+        item={editingItem}
+        open={!!editingItem}
+        onOpenChange={(open) => !open && setEditingItem(null)}
+        onSave={async (itemId, updates) => { await updateItem(itemId, updates); }}
+      />
     </>
   );
 }

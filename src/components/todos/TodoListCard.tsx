@@ -21,6 +21,7 @@ import {
 import { useTodoItems, TodoItem } from "@/hooks/useTodoItems";
 import { TodoItemRow } from "./TodoItemRow";
 import { ConvertToTaskDialog } from "./ConvertToTaskDialog";
+import { EditTodoItemDialog } from "./EditTodoItemDialog";
 import { TodoList } from "@/hooks/useTodoLists";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -39,6 +40,7 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive, onOpenLis
   const [newItemTitle, setNewItemTitle] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TodoItem | null>(null);
+  const [editingItem, setEditingItem] = useState<TodoItem | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
 
   const completedCount = items.filter((i) => i.is_completed).length;
@@ -112,13 +114,14 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive, onOpenLis
                 item={item}
                 onToggleComplete={() => toggleComplete(item.id)}
                 onToggleStar={() => toggleStar(item.id)}
+                onEdit={() => setEditingItem(item)}
                 onDelete={() => deleteItem(item.id)}
                 onConvertToTask={() => handleConvertToTask(item)}
                 variant="compact"
               />
             ))}
             {activeItems.length > 4 && <Button type="button" variant="link" size="sm" onClick={onOpenList} className="h-6 px-0 text-xs text-muted-foreground hover:text-foreground">View {activeItems.length - 4} more item{activeItems.length - 4 === 1 ? "" : "s"} ↗</Button>}
-            {completedItems.length > 0 && <Collapsible open={showCompleted} onOpenChange={setShowCompleted}><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-0 text-xs text-muted-foreground">✓ {completedCount} completed <ChevronDown className="ml-1 h-3 w-3" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-1">{completedItems.map((item) => <TodoItemRow key={item.id} item={item} onToggleComplete={() => toggleComplete(item.id)} onToggleStar={() => toggleStar(item.id)} onDelete={() => deleteItem(item.id)} onConvertToTask={() => handleConvertToTask(item)} variant="compact" />)}</CollapsibleContent></Collapsible>}
+            {completedItems.length > 0 && <Collapsible open={showCompleted} onOpenChange={setShowCompleted}><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-7 px-0 text-xs text-muted-foreground">✓ {completedCount} completed <ChevronDown className="ml-1 h-3 w-3" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-1">{completedItems.map((item) => <TodoItemRow key={item.id} item={item} onToggleComplete={() => toggleComplete(item.id)} onToggleStar={() => toggleStar(item.id)} onEdit={() => setEditingItem(item)} onDelete={() => deleteItem(item.id)} onConvertToTask={() => handleConvertToTask(item)} variant="compact" />)}</CollapsibleContent></Collapsible>}
           </div>
 
           {/* Quick add */}
@@ -150,6 +153,12 @@ export function TodoListCard({ list, onDelete, onTogglePin, onArchive, onOpenLis
           todoItem={selectedItem}
         />
       )}
+      <EditTodoItemDialog
+        item={editingItem}
+        open={!!editingItem}
+        onOpenChange={(open) => !open && setEditingItem(null)}
+        onSave={async (itemId, updates) => { await updateItem(itemId, updates); }}
+      />
     </>
   );
 }
