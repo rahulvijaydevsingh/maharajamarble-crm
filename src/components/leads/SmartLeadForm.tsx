@@ -114,7 +114,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
   const [nextActionDate, setNextActionDate] = useState(addDays(new Date(), 2));
   const [nextActionTime, setNextActionTime] = useState("10:00");
   const [initialNote, setInitialNote] = useState("");
-  const [reminderEnabled, setReminderEnabled] = useState(defaultRemindersEnabled);
+  const [reminderEnabled, setReminderEnabled] = useState(defaultRemindersEnabled ?? false);
   const [reminderTime, setReminderTime] = useState("30");
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
@@ -123,7 +123,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
   // Once opened, the user can still override the checkbox for this lead.
   useEffect(() => {
     if (!open) {
-      setReminderEnabled(defaultRemindersEnabled);
+      setReminderEnabled(defaultRemindersEnabled ?? false);
     }
   }, [defaultRemindersEnabled, open]);
 
