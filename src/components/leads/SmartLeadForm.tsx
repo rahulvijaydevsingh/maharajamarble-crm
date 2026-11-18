@@ -31,6 +31,7 @@ import {
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { useControlPanelSettings } from "@/hooks/useControlPanelSettings";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 
 interface SmartLeadFormProps {
   open: boolean;
@@ -43,6 +44,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
   const { user } = useAuth();
   const { staffMembers } = useActiveStaff();
   const { getFieldOptions } = useControlPanelSettings();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateResults, setDuplicateResults] = useState<{ [key: string]: DuplicateCheckResult }>({});
 
@@ -112,10 +114,18 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
   const [nextActionDate, setNextActionDate] = useState(addDays(new Date(), 2));
   const [nextActionTime, setNextActionTime] = useState("10:00");
   const [initialNote, setInitialNote] = useState("");
-  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(defaultRemindersEnabled);
   const [reminderTime, setReminderTime] = useState("30");
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
+
+  // Keep the form default aligned with global settings while the dialog is closed.
+  // Once opened, the user can still override the checkbox for this lead.
+  useEffect(() => {
+    if (!open) {
+      setReminderEnabled(defaultRemindersEnabled);
+    }
+  }, [defaultRemindersEnabled, open]);
 
   // Handle duplicate found for any phone field
   const handleDuplicateFound = useCallback((result: DuplicateCheckResult, contactKey: string) => {
@@ -332,6 +342,8 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
     setNextActionDate(addDays(new Date(), 2));
     setNextActionTime("10:00");
     setInitialNote("");
+    setReminderEnabled(defaultRemindersEnabled);
+    setReminderTime("30");
     setValidationErrors({});
     setDuplicateResults({});
   };
