@@ -31,4 +31,19 @@ describe("resolveProfessionalForProfessionalLead", () => {
       { professional_id: "professional-two", is_primary_contact: true },
     ])).toBe("professional-two");
   });
+
+  it("matches a formatted phone number against an alternate professional phone", () => {
+    expect(resolveProfessionalForProfessionalLead("builder", "+91 98765-43210", [
+      { id: "professional-alt", phone: "9123456789", alternate_phone: "09876543210", status: "active" },
+    ])).toBe("professional-alt");
+  });
+
+  it("short-circuits empty and short phone numbers", () => {
+    expect(resolveProfessionalForProfessionalLead("builder", "", [
+      { id: "professional-one", phone: "9876543210", status: "active" },
+    ])).toBeNull();
+    expect(resolveProfessionalForProfessionalLead("builder", "12345", [
+      { id: "professional-one", phone: "9876543210", status: "active" },
+    ])).toBeNull();
+  });
 });

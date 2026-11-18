@@ -3,9 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { LeadBriefProfessional } from "@/components/tasks/LeadBriefPeopleStrip";
 import type { LeadBriefTrailEntry } from "@/components/tasks/LeadBriefConversationTrail";
 import {
-  isProfessionalDesignation,
+  fetchAndResolveProfessionalForLead,
   resolveProfessionalById,
-  resolveProfessionalForProfessionalLead,
 } from "@/lib/professionalResolver";
 
 interface LeadBriefLead {
@@ -187,32 +186,15 @@ export function useLeadBrief(
       }
 
       const resolvedLead = leadResult.data as LeadBriefLead | null;
-      if (resolvedLead && isProfessionalDesignation(resolvedLead.designation)) {
-        const { data: professionalCandidates, error: professionalCandidatesError } = await supabase
-          .from("professionals")
-          .select("id, name, phone, firm_name, professional_type, status")
-          .limit(50);
-        if (professionalCandidatesError) throw professionalCandidatesError;
-
-        const professionalId = resolveProfessionalForProfessionalLead(
-          resolvedLead.designation,
-          resolvedLead.phone,
-          professionalCandidates || [],
-          (profResult.data || []).map((row: any) => ({
-            professional_id: row.professional_id,
-            is_primary_contact: row.is_primary_contact,
-          })),
-        );
-        if (professionalId && !professionalMap.has(professionalId)) {
-          const resolvedProfessional = (professionalCandidates || []).find((candidate) => candidate.id === professionalId);
-          if (resolvedProfessional) {
-            professionalMap.set(resolvedProfessional.id, {
-              id: resolvedProfessional.id,
-              name: resolvedProfessional.name,
-              phone: resolvedProfessional.phone || null,
-              designation: resolvedProfessional.professional_type || null,
-            });
-          }
+      if (resolvedLead) {
+        const resolvedProfessional = await fetchAndResolveProfessionalForLead(resolvedLead);
+        if (resolvedProfessional && !professionalMap.has(resolvedProfessional.id)) {
+          professionalMap.set(resolvedProfessional.id, {
+            id: resolvedProfessional.id,
+            name: resolvedProfessional.name,
+            phone: resolvedProfessional.phone || null,
+            designation: resolvedProfessional.professional_type || null,
+          });
         }
       }
       setProfessionals(Array.from(professionalMap.values()));

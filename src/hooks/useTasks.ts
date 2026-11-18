@@ -8,9 +8,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { TablesInsert } from "@/integrations/supabase/types";
 import {
+  fetchAndResolveProfessionalForLead,
   isProfessionalDesignation,
   normalizePhone,
-  resolveProfessionalForProfessionalLead,
 } from "@/lib/professionalResolver";
 
 interface TaskCompletionUpdates {
@@ -544,32 +544,18 @@ function useTasksStore() {
         (relatedEntityType === null || relatedEntityType === "lead")
       ) {
         try {
-          const [{ data: lead, error: leadError }, { data: links, error: linksError }] = await Promise.all([
-            supabase.from("leads").select("designation, phone").eq("id", linkedLeadId).maybeSingle(),
-            supabase
-              .from("lead_professionals")
-              .select("professional_id, is_primary_contact")
-              .eq("lead_id", linkedLeadId),
-          ]);
+          const { data: lead, error: leadError } = await supabase
+            .from("leads")
+            .select("id,designation,phone")
+            .eq("id", linkedLeadId)
+            .maybeSingle();
           if (leadError) throw leadError;
-          if (linksError) throw linksError;
 
-          if (lead && isProfessionalDesignation(lead.designation)) {
-            const { data: candidates, error: candidateError } = await supabase
-              .from("professionals")
-              .select("id, phone, status")
-              .limit(50);
-            if (candidateError) throw candidateError;
-
-            const professionalId = resolveProfessionalForProfessionalLead(
-              lead.designation,
-              lead.phone,
-              candidates || [],
-              links || [],
-            );
-            if (professionalId) {
+          if (lead) {
+            const professional = await fetchAndResolveProfessionalForLead(lead);
+            if (professional) {
               relatedEntityType = "professional";
-              relatedEntityId = professionalId;
+              relatedEntityId = professional.id;
             }
           }
         } catch (linkResolutionError) {

@@ -4,8 +4,10 @@ export type MinimalProfessional = {
   id: string;
   name: string;
   phone: string | null;
+  alternate_phone?: string | null;
   firm_name: string | null;
   professional_type: string | null;
+  status?: string | null;
 };
 
 export const CANONICAL_PROFESSIONAL_DESIGNATIONS = [
@@ -52,12 +54,19 @@ export function normalizePhone(phone?: string | null): string {
 export type ProfessionalLeadCandidate = {
   id: string;
   phone: string | null;
+  alternate_phone?: string | null;
   status?: string | null;
 };
 
 export type LeadProfessionalLink = {
   professional_id: string;
   is_primary_contact: boolean;
+};
+
+export type ProfessionalResolutionLead = {
+  id: string;
+  designation: string | null;
+  phone: string | null;
 };
 
 /**
@@ -77,7 +86,8 @@ export function resolveProfessionalForProfessionalLead(
 
   const matchingProfessionals = professionals.filter((professional) =>
     (professional.status?.toLowerCase() ?? "active") === "active" &&
-    normalizePhone(professional.phone) === normalizedLeadPhone,
+    (normalizePhone(professional.phone) === normalizedLeadPhone ||
+      normalizePhone(professional.alternate_phone) === normalizedLeadPhone),
   );
   const primaryMatches = new Set(
     leadProfessionalLinks
@@ -121,7 +131,7 @@ export async function resolveProfessionalById(
   if (cached) return cached;
   const { data, error } = await supabase
     .from("professionals")
-    .select("id,name,phone,firm_name,professional_type")
+    .select("id,name,phone,alternate_phone,firm_name,professional_type,status")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -130,8 +140,64 @@ export async function resolveProfessionalById(
         id: data.id,
         name: data.name,
         phone: data.phone || null,
+        alternate_phone: data.alternate_phone || null,
         firm_name: data.firm_name || null,
         professional_type: data.professional_type || null,
+        status: data.status || null,
+      }
+    : null;
+}
+
+/**
+ * Resolves a professional profile for a lead without scanning a capped client-side
+ * list. A primary junction link is trusted; phone matching is only allowed for
+ * leads that themselves represent a professional.
+ */
+export async function fetchAndResolveProfessionalForLead(
+  lead: ProfessionalResolutionLead,
+): Promise<MinimalProfessional | null> {
+  const { data: primaryLinks, error: primaryLinkError } = await supabase
+    .from("lead_professionals")
+    .select("professional_id")
+    .eq("lead_id", lead.id)
+    .eq("is_primary_contact", true);
+  if (primaryLinkError) throw primaryLinkError;
+
+  const primaryIds = [...new Set((primaryLinks || []).map((link) => link.professional_id))];
+  if (primaryIds.length === 1) {
+    return resolveProfessionalById(primaryIds[0]);
+  }
+  if (primaryIds.length > 1) return null;
+
+  if (!isProfessionalDesignation(lead.designation)) return null;
+
+  const phone10 = normalizePhone(lead.phone);
+  if (phone10.length !== 10) return null;
+
+  const { data: candidates, error: candidateError } = await supabase
+    .from("professionals")
+    .select("id,name,phone,alternate_phone,firm_name,professional_type,status")
+    .eq("status", "active")
+    .or(`phone.ilike.%${phone10}%,alternate_phone.ilike.%${phone10}%`);
+  if (candidateError) throw candidateError;
+
+  const professionalId = resolveProfessionalForProfessionalLead(
+    lead.designation,
+    lead.phone,
+    candidates || [],
+  );
+  if (!professionalId) return null;
+
+  const professional = (candidates || []).find((candidate) => candidate.id === professionalId);
+  return professional
+    ? {
+        id: professional.id,
+        name: professional.name,
+        phone: professional.phone || null,
+        alternate_phone: professional.alternate_phone || null,
+        firm_name: professional.firm_name || null,
+        professional_type: professional.professional_type || null,
+        status: professional.status || null,
       }
     : null;
 }
