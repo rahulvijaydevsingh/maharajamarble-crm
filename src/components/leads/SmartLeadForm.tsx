@@ -342,7 +342,7 @@ export function SmartLeadForm({ open, onOpenChange, onSave }: SmartLeadFormProps
     setNextActionDate(addDays(new Date(), 2));
     setNextActionTime("10:00");
     setInitialNote("");
-    setReminderEnabled(defaultRemindersEnabled);
+    setReminderEnabled(defaultRemindersEnabled ?? false);
     setReminderTime("30");
     setValidationErrors({});
     setDuplicateResults({});
