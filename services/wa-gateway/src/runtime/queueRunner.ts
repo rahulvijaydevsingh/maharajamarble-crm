@@ -1,5 +1,6 @@
 import type { ClaimedQueueItem } from "../adapters/supabaseControlPlane";
 import type { WaChatService } from "../../vendor/wa-akg/chat.service";
+import { fetchSignedMediaBuffer } from "./mediaFetcher";
 
 export interface PacingConfig {
   paceMinSeconds: number;
@@ -142,29 +143,18 @@ export class QueueRunner {
             },
           };
         }
-        const mediaResp = await fetch(item.media.signed_url, {
-          signal: AbortSignal.timeout(30_000),
+        const mediaMime = item.media.mime ?? "application/pdf";
+        const mediaBuffer = await fetchSignedMediaBuffer(item.media.signed_url, mediaMime, {
+          expectedSha256: item.media.sha256,
         });
-        if (!mediaResp.ok) {
-          return {
-            queue_id: item.queue_id,
-            attempt_id: item.attempt_id,
-            outcome: {
-              status: "deferred",
-              error_code: "MEDIA_DOWNLOAD_FAILED",
-              error_message: `Signed URL download returned HTTP ${mediaResp.status}`,
-            },
-          };
-        }
-        const arrayBuf = await mediaResp.arrayBuffer();
         socketCallStarted = true;
         sendRes = await this.chatService.sendMedia({
           sessionKey,
           queueId: item.queue_id,
           attemptId: item.attempt_id,
           recipient,
-          buffer: Buffer.from(arrayBuf),
-          mime: item.media.mime ?? "application/pdf",
+          buffer: mediaBuffer,
+          mime: mediaMime,
           filename: item.media.filename ?? "document.pdf",
           caption: item.body ?? "",
         });
@@ -206,6 +196,36 @@ export class QueueRunner {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes("MEDIA_URL_INVALID") ||
+        msg.includes("MEDIA_MIME_INVALID") ||
+        msg.includes("MEDIA_MIME_MISMATCH") ||
+        msg.includes("MEDIA_HASH_MISMATCH") ||
+        msg.includes("MEDIA_TOO_LARGE") ||
+        msg.includes("MEDIA_EMPTY")
+      ) {
+        return {
+          queue_id: item.queue_id,
+          attempt_id: item.attempt_id,
+          outcome: {
+            status: "failed",
+            error_code: "MEDIA_INVALID",
+            error_message: msg,
+          },
+        };
+      }
+
+      if (msg.includes("MEDIA_DOWNLOAD_FAILED") || msg.includes("MEDIA_DOWNLOAD_TIMEOUT")) {
+        return {
+          queue_id: item.queue_id,
+          attempt_id: item.attempt_id,
+          outcome: {
+            status: "deferred",
+            error_code: "MEDIA_DOWNLOAD_FAILED",
+            error_message: msg,
+          },
+        };
+      }
 
       if (
         msg.includes("SESSION_NOT_CONNECTED") ||

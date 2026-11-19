@@ -16,6 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useWhatsAppSettings } from "@/hooks/useWhatsAppSettings";
 import { useWhatsAppSession } from "@/hooks/useWhatsAppSession";
 import { WhatsAppConnectModal } from "@/components/whatsapp/WhatsAppConnectModal";
+import { WhatsAppLibraryManager } from "./WhatsAppLibraryManager";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Loader2,
@@ -463,6 +464,8 @@ export function WhatsAppSettingsPanel() {
           </Button>
         </CardFooter>
       </Card>
+
+      <WhatsAppLibraryManager />
 
       <WhatsAppConnectModal
         open={connectSlot !== null}

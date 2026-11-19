@@ -118,6 +118,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       for (const res of reportedResults) {
         if (!res?.queue_id || !res?.attempt_id || !res?.outcome) continue;
+        let stagingPath: string | null = null;
+        if (res.outcome.status === "sent") {
+          const { data: queuedRow } = await adminClient
+            .from("whatsapp_queue")
+            .select("media_ref")
+            .eq("id", res.queue_id)
+            .maybeSingle();
+          const mediaRef = queuedRow?.media_ref as Record<string, unknown> | null;
+          const path = typeof mediaRef?.path === "string" ? mediaRef.path : "";
+          if (path.startsWith("whatsapp-staging/")) stagingPath = path;
+        }
         const { data: rpcData, error: rpcErr } = await adminClient.rpc("wa_report_result", {
           p_queue_id: res.queue_id,
           p_attempt_id: res.attempt_id,
@@ -125,6 +136,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
         });
         if (!rpcErr && rpcData?.acked) {
           acks.push(res.queue_id);
+          if (stagingPath) {
+            const { data: canPurge, error: guardError } = await adminClient.rpc(
+              "wa_can_purge_staging_path",
+              { p_path: stagingPath },
+            );
+            if (!guardError && canPurge === true) {
+              const { error: removeError } = await adminClient.storage
+                .from("crm-attachments")
+                .remove([stagingPath]);
+              if (removeError) {
+                await adminClient.from("whatsapp_events").insert({
+                  level: "warn",
+                  worker_id: workerId,
+                  code: "STAGING_POST_SEND_REMOVE_FAILED",
+                  detail: { queue_id: res.queue_id, path: stagingPath, message: removeError.message },
+                });
+              }
+            } else if (guardError) {
+              await adminClient.from("whatsapp_events").insert({
+                level: "warn",
+                worker_id: workerId,
+                code: "STAGING_POST_SEND_GUARD_FAILED",
+                detail: { queue_id: res.queue_id, path: stagingPath, message: guardError.message },
+              });
+            }
+          }
         }
       }
 

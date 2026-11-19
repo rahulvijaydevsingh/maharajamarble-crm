@@ -29,6 +29,23 @@ interface RecipientInput {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ALLOWED_MEDIA_MIMES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const MAX_PDF_BYTES = 16 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function validateMediaMetadata(mimeRaw: unknown, sizeRaw: unknown): { ok: true; mime: string; size: number } | { ok: false; message: string } {
+  const mime = typeof mimeRaw === "string" ? mimeRaw.trim().toLowerCase() : "";
+  const size = typeof sizeRaw === "number" ? sizeRaw : Number(sizeRaw);
+  if (!ALLOWED_MEDIA_MIMES.has(mime)) return { ok: false, message: "Only PDF, JPEG, PNG, and WebP attachments are allowed." };
+  if (!Number.isSafeInteger(size) || size <= 0) return { ok: false, message: "Attachment size must be a positive whole number of bytes." };
+  const maxBytes = mime === "application/pdf" ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+  if (size > maxBytes) return { ok: false, message: mime === "application/pdf" ? "PDF attachments cannot exceed 16 MB." : "Image attachments cannot exceed 5 MB." };
+  return { ok: true, mime, size };
+}
+
+function isSafeStoragePath(path: string): boolean {
+  return Boolean(path) && !path.includes("..") && !path.includes("//") && !path.includes("\\") && !/[\x00-\x1f]/.test(path);
+}
 
 function normalizePhone10(raw: string | null | undefined): string | null {
   if (typeof raw !== "string" || !raw) return null;
@@ -187,58 +204,87 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Validate attachment if provided
+    // Validate attachment using authoritative library metadata or the caller-owned staging folder.
     let resolvedMediaRef: Record<string, unknown> | null = null;
     if (attachmentInput) {
       if (attachmentInput.library_item_id) {
-        const libId = String(attachmentInput.library_item_id);
+        const libId = String(attachmentInput.library_item_id).trim();
         if (!UUID_REGEX.test(libId)) {
           return jsonErr("MEDIA_INVALID", "library_item_id must be a valid UUID.", 400);
         }
-        const { data: libItem } = await adminClient
+        const { data: libItem, error: libError } = await adminClient
           .from("whatsapp_library_items")
           .select("*")
           .eq("id", libId)
           .eq("active", true)
           .maybeSingle();
-
-        if (!libItem) {
+        if (libError || !libItem) {
           return jsonErr("MEDIA_INVALID", "Selected library item is missing or inactive.", 400);
+        }
+        const metadata = validateMediaMetadata(libItem.mime, libItem.size_bytes);
+        const libraryPath = String(libItem.path ?? "");
+        if (!metadata.ok || libItem.bucket !== "crm-attachments" || !libraryPath.startsWith("whatsapp-library/") || !isSafeStoragePath(libraryPath)) {
+          return jsonErr("MEDIA_INVALID", metadata.ok ? "Library media metadata or storage path is invalid." : metadata.message, 400);
+        }
+        const folder = libraryPath.split("/").slice(0, -1).join("/");
+        const storedName = libraryPath.split("/").pop() ?? "";
+        const { data: storedFiles, error: storageListError } = await adminClient.storage
+          .from("crm-attachments")
+          .list(folder, { search: storedName, limit: 20 });
+        const storedFile = (storedFiles ?? []).find((file: { name?: string }) => file.name === storedName);
+        if (storageListError || !storedFile) {
+          return jsonErr("MEDIA_NOT_FOUND", "The selected library file is missing from Storage.", 400);
         }
         resolvedMediaRef = {
           library_item_id: libItem.id,
           kind: libItem.kind,
-          bucket: libItem.bucket,
-          path: libItem.path,
-          filename: libItem.filename,
-          mime: libItem.mime,
-          size_bytes: libItem.size_bytes,
+          bucket: "crm-attachments",
+          path: libraryPath,
+          filename: libItem.filename ?? storedName,
+          mime: metadata.mime,
+          size_bytes: metadata.size,
           sha256: libItem.sha256,
-          external_url: libItem.external_url,
         };
       } else if (typeof attachmentInput.staging_path === "string") {
         const stagingPath = attachmentInput.staging_path.trim();
-        const expectedPrefix = `whatsapp-staging/${caller.userId}/`;
-        if (
-          !stagingPath.startsWith(expectedPrefix) ||
-          stagingPath.includes("..") ||
-          stagingPath.includes("//")
-        ) {
+        const expectedPrefix = "whatsapp-staging/" + caller.userId + "/";
+        if (!stagingPath.startsWith(expectedPrefix) || !isSafeStoragePath(stagingPath)) {
           return jsonErr("MEDIA_INVALID", "Staging attachment path is invalid or outside your user folder.", 400);
         }
+        const metadata = validateMediaMetadata(attachmentInput.mime, attachmentInput.size_bytes);
+        if (!metadata.ok) return jsonErr("MEDIA_INVALID", metadata.message, 400);
+        const folder = stagingPath.split("/").slice(0, -1).join("/");
+        const storedName = stagingPath.split("/").pop() ?? "";
+        const { data: storedFiles, error: storageListError } = await adminClient.storage
+          .from("crm-attachments")
+          .list(folder, { search: storedName, limit: 20 });
+        const storedFile = (storedFiles ?? []).find((file: { name?: string }) => file.name === storedName);
+        if (storageListError || !storedFile) {
+          return jsonErr("MEDIA_NOT_FOUND", "The staging attachment is missing from Storage. Upload it again.", 400);
+        }
+        const fileMetadata = (storedFile.metadata ?? {}) as Record<string, unknown>;
+        const actualSize = Number(fileMetadata.size ?? fileMetadata.contentLength ?? 0);
+        const actualMime = String(fileMetadata.mimetype ?? fileMetadata.mimeType ?? "").split(";")[0].trim().toLowerCase();
+        if (actualSize > 0 && actualSize !== metadata.size) {
+          return jsonErr("MEDIA_METADATA_MISMATCH", "Staging attachment size does not match the uploaded object.", 400);
+        }
+        if (actualMime && actualMime !== metadata.mime) {
+          return jsonErr("MEDIA_MIME_MISMATCH", "Staging attachment MIME type does not match the uploaded object.", 400);
+        }
+        const requestedName = String(attachmentInput.filename ?? storedName).trim();
+        const filename = requestedName.split(/[\\/]/).pop()?.replace(/[\x00-\x1f]/g, "").slice(0, 120) || storedName;
         resolvedMediaRef = {
-          kind: attachmentInput.kind ?? "document",
+          kind: metadata.mime === "application/pdf" ? "document" : "image",
           bucket: "crm-attachments",
           path: stagingPath,
-          filename: attachmentInput.filename ?? stagingPath.split("/").pop() ?? "attachment.pdf",
-          mime: attachmentInput.mime ?? "application/pdf",
-          size_bytes: Number(attachmentInput.size_bytes ?? 0),
+          filename,
+          mime: metadata.mime,
+          size_bytes: metadata.size,
         };
       } else {
         return jsonErr("MEDIA_INVALID", "Attachment must specify library_item_id or staging_path.", 400);
       }
     }
-
     // Load entities through caller.userClient so RLS is enforced (I8)
     const hydratedRecipients: Array<{
       input: RecipientInput;

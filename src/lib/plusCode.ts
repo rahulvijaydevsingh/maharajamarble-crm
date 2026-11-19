@@ -255,8 +255,50 @@ export function decodePlusCode(fullCode: string | null | undefined): { lat: numb
  * Returns a Google Maps search URL for a valid full Plus Code.
  */
 export function getGoogleMapsUrlFromPlusCode(plusCode: string | null | undefined): string | null {
-  if (typeof plusCode !== "string") return null;
-  const trimmed = plusCode.trim().toUpperCase();
-  if (!/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/.test(trimmed)) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmed)}`;
+  const cleaned = cleanPlusCodeInput(plusCode);
+  if (!cleaned) return null;
+  const token = cleaned.split(/\s+/)[0].toUpperCase();
+  if (!isValidPlusCodeFormat(token)) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleaned)}`;
+}
+
+
+/**
+ * Trims a stored Plus Code without changing its case or any locality suffix.
+ */
+export function cleanPlusCodeInput(raw: string | null | undefined): string {
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * Accepts full and short/local Open Location Code tokens, optionally followed
+ * by a locality label. A token is validated independently of that label.
+ */
+export function isValidPlusCodeFormat(raw: string | null | undefined): boolean {
+  const cleaned = cleanPlusCodeInput(raw);
+  if (!cleaned) return false;
+  const token = cleaned.split(/\s+/)[0].toUpperCase();
+  const separatorIndex = token.indexOf("+");
+  if (token.length - separatorIndex - 1 < 2) return false;
+  if (
+    separatorIndex < 2 ||
+    separatorIndex > 8 ||
+    separatorIndex % 2 !== 0 ||
+    token.indexOf("+", separatorIndex + 1) !== -1
+  ) return false;
+
+  const code = token.replace("+", "");
+  if (code.length < 4 || code.length > 15) return false;
+  if (code.length % 2 !== 0 && code.length <= 10) return false;
+  return [...code].every((character) => "23456789CFGHJMPQRVWX".includes(character));
+}
+
+/**
+ * Named alias used by WhatsApp location-pin flows. Only full Plus Codes decode;
+ * short/local codes need a reference location and therefore return null.
+ */
+export function decodePlusCodeCenter(
+  fullCode: string | null | undefined,
+): { lat: number; lng: number } | null {
+  return decodePlusCode(fullCode);
 }
