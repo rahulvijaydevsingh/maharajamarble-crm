@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,7 @@ import { useWhatsAppLibrary } from "@/hooks/useWhatsAppLibrary";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   mapLibraryRowToMediaRef,
+  removeUnsentStagingObject,
   toEnqueueMediaAttachment,
   uploadWhatsAppStagingMedia,
   type WhatsAppLibraryItemRow,
@@ -64,6 +65,8 @@ const placeholders = [
   "{{showroom_name}}",
   "{{showroom_map_link}}",
 ];
+
+const quotationPlaceholders = ["{{quotation_number}}", "{{quotation_total}}", "{{valid_until}}"];
 
 function usableLibraryItem(item: WhatsAppLibraryItemRow): boolean {
   return Boolean(item.active && item.path && item.filename && item.mime);
@@ -105,6 +108,15 @@ export function SendWhatsAppDialog({
   const { slotStatus } = useWhatsAppSettings();
   const { items: libraryItems, refresh: refreshLibrary } = useWhatsAppLibrary();
   const auth = useAuth();
+  // Incremented whenever a dialog session starts or ends, so a slow upload that finishes after the
+  // dialog was closed or reopened is discarded instead of attaching to a different send.
+  const sessionRef = useRef(0);
+  // Staging paths that were handed to whatsapp-enqueue for commit. Queued rows still point at them,
+  // so they must never be deleted from this dialog, even when the commit call reported an error.
+  const committedStagingPathsRef = useRef<Set<string>>(new Set());
+
+  const placeholderChips =
+    quotationNumber || quotationTotal || validUntil ? placeholders.concat(quotationPlaceholders) : placeholders;
 
   const canUsePersonal = Boolean(slotStatus?.slots?.personal?.can_send);
   const availableLibraryItems = useMemo(
@@ -115,16 +127,12 @@ export function SendWhatsAppDialog({
   const mediaToSend = useMemo<WhatsAppMediaRef | null>(() => {
     if (stagingAttachment) return stagingAttachment;
     if (selectedLibraryItem) return mapLibraryRowToMediaRef(selectedLibraryItem);
-    if (defaultAttachment?.kind === "library") {
-      return availableLibraryItems.find((item) => item.id === defaultAttachment.library_item_id)
-        ? defaultAttachment
-        : null;
-    }
     return null;
-  }, [stagingAttachment, selectedLibraryItem, defaultAttachment, availableLibraryItems]);
+  }, [stagingAttachment, selectedLibraryItem]);
 
   useEffect(() => {
     if (!open) return;
+    sessionRef.current += 1;
     setMessage(defaultMessage);
     setPreview(null);
     setRequestId("");
@@ -187,6 +195,25 @@ export function SendWhatsAppDialog({
     relatedEntityId,
   ]);
 
+  const discardUnsentStaging = (path: string | undefined) => {
+    if (!path || !auth.user?.id) return;
+    if (committedStagingPathsRef.current.has(path)) return;
+    void removeUnsentStagingObject(path, auth.user.id);
+  };
+
+  const dropStagedFile = () => {
+    if (stagingAttachment) discardUnsentStaging(stagingAttachment.path);
+    setStagingAttachment(null);
+  };
+
+  const closeWithoutSending = () => {
+    dropStagedFile();
+    sessionRef.current += 1;
+    resetPreview();
+    setError(null);
+    onOpenChange(false);
+  };
+
   const insertPlaceholder = (value: string) => {
     setMessage((current) => (current ? current + " " + value : value));
     resetPreview();
@@ -198,6 +225,8 @@ export function SendWhatsAppDialog({
       setError("Sign in again before uploading an attachment.");
       return;
     }
+    const session = sessionRef.current;
+    const previousStaged = stagingAttachment;
     setMediaUploading(true);
     setError(null);
     try {
@@ -206,6 +235,11 @@ export function SendWhatsAppDialog({
         fileName: file.name,
         userId: auth.user.id,
       });
+      if (session !== sessionRef.current) {
+        discardUnsentStaging(uploaded.path);
+        return;
+      }
+      if (previousStaged) discardUnsentStaging(previousStaged.path);
       setStagingAttachment(uploaded);
       setSelectedLibraryId("");
       setLocationMode("none");
@@ -218,7 +252,7 @@ export function SendWhatsAppDialog({
   };
 
   const clearMedia = () => {
-    setStagingAttachment(null);
+    dropStagedFile();
     setSelectedLibraryId("");
     resetPreview();
   };
@@ -243,6 +277,7 @@ export function SendWhatsAppDialog({
 
   const handleCommit = async () => {
     if (!requestId || !previewToken) return;
+    if (stagingAttachment) committedStagingPathsRef.current.add(stagingAttachment.path);
     setWorking(true);
     setError(null);
     try {
@@ -267,10 +302,10 @@ export function SendWhatsAppDialog({
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        onOpenChange(value);
-        if (!value) {
-          resetPreview();
-          setError(null);
+        if (value) {
+          onOpenChange(true);
+        } else {
+          closeWithoutSending();
         }
       }}
     >
@@ -322,7 +357,7 @@ export function SendWhatsAppDialog({
               placeholder="Write your WhatsApp message…"
             />
             <div className="flex flex-wrap gap-1.5">
-              {placeholders.map((value) => (
+              {placeholderChips.map((value) => (
                 <Button key={value} type="button" size="sm" variant="outline" onClick={() => insertPlaceholder(value)}>
                   {value}
                 </Button>
@@ -349,7 +384,7 @@ export function SendWhatsAppDialog({
                 onValueChange={(value) => {
                   setSelectedLibraryId(value === "none" ? "" : value);
                   if (value !== "none") {
-                    setStagingAttachment(null);
+                    dropStagedFile();
                     setLocationMode("none");
                   }
                   resetPreview();
@@ -451,7 +486,7 @@ export function SendWhatsAppDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={closeWithoutSending}>Cancel</Button>
           {!previewToken || isBlocked ? (
             <Button onClick={() => void handlePreview()} disabled={working || mediaUploading || !canPreview}>
               {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}

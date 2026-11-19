@@ -144,7 +144,7 @@ export function useWhatsAppMessages(leadId?: string, customerId?: string) {
       }],
       message: {
         template_text: input.messageBody,
-        message_type: input.messageType ?? "text",
+        message_type: input.messageType ?? (input.location ? "location" : input.attachment ? "media" : "text"),
         ...(input.attachment ? { attachment: input.attachment } : {}),
         ...(input.location ? { location: input.location } : {}),
       },

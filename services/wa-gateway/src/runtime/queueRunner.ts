@@ -144,7 +144,9 @@ export class QueueRunner {
           };
         }
         const mediaMime = item.media.mime ?? "application/pdf";
-        const mediaBuffer = await fetchSignedMediaBuffer(item.media.signed_url, mediaMime);
+        const mediaBuffer = await fetchSignedMediaBuffer(item.media.signed_url, mediaMime, {
+          expectedSha256: item.media.sha256,
+        });
         socketCallStarted = true;
         sendRes = await this.chatService.sendMedia({
           sessionKey,
@@ -198,6 +200,7 @@ export class QueueRunner {
         msg.includes("MEDIA_URL_INVALID") ||
         msg.includes("MEDIA_MIME_INVALID") ||
         msg.includes("MEDIA_MIME_MISMATCH") ||
+        msg.includes("MEDIA_HASH_MISMATCH") ||
         msg.includes("MEDIA_TOO_LARGE") ||
         msg.includes("MEDIA_EMPTY")
       ) {

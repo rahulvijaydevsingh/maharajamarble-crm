@@ -72,22 +72,39 @@ function dateLabel(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-IN");
 }
 
+/**
+ * Business details printed on the WhatsApp quotation PDF. They mirror the Download PDF template in
+ * QuotationPDFTemplate.tsx so a customer receives the same identity from either path.
+ */
+export const QUOTATION_PDF_COMPANY = {
+  name: "MAHARAJA MARBLE & GRANITES",
+  tagline: "Premium Marble, Granite, Quartz & Natural Stone Solutions",
+  address: "Plot No. 658, JLPL, Sector 82, Mohali, Punjab, India",
+  phone: "7009234919",
+  gstin: "03AMVPT8346H1ZD",
+  bank: "Our Bank: Canara Bank | A/C No. 120001351990 | IFSC: CNRB0019620",
+} as const;
+
+const BODY_TOP_Y = 49;
+const FOOTER_RESERVED_MM = 18;
+
 function drawPageHeader(doc: jsPDF, quotation: QuotationPdfInput): void {
   doc.setFillColor(26, 26, 46);
-  doc.rect(0, 0, 210, 36, "F");
+  doc.rect(0, 0, 210, 38, "F");
   doc.setFillColor(201, 168, 76);
-  doc.rect(0, 36, 210, 2.2, "F");
+  doc.rect(0, 38, 210, 2.2, "F");
 
   doc.setTextColor(201, 168, 76);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(17);
-  doc.text("MAHARAJA MARBLE & GRANITE", 13, 15);
+  doc.text(QUOTATION_PDF_COMPANY.name, 13, 15);
 
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
-  doc.text("Premium Marble, Granite, Quartz & Natural Stone Solutions", 13, 22);
-  doc.text("Ludhiana, Punjab, India", 13, 28);
+  doc.text(QUOTATION_PDF_COMPANY.tagline, 13, 22);
+  doc.text(QUOTATION_PDF_COMPANY.address, 13, 28);
+  doc.text("Phone: " + QUOTATION_PDF_COMPANY.phone + "  |  GSTIN: " + QUOTATION_PDF_COMPANY.gstin, 13, 33.5);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
@@ -98,6 +115,23 @@ function drawPageHeader(doc: jsPDF, quotation: QuotationPdfInput): void {
   doc.setTextColor(255, 255, 255);
   doc.text("No: " + quotation.quotation_number, 197, 22, { align: "right" });
   doc.text("Date: " + dateLabel(quotation.created_at), 197, 28, { align: "right" });
+}
+
+function drawPageFooters(doc: jsPDF): void {
+  const pages = doc.getNumberOfPages();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(201, 168, 76);
+    doc.setLineWidth(0.4);
+    doc.line(13, pageHeight - 14, pageWidth - 13, pageHeight - 14);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(90, 90, 90);
+    doc.text(QUOTATION_PDF_COMPANY.bank, pageWidth / 2, pageHeight - 9.5, { align: "center" });
+    doc.text("Page " + page + " of " + pages, pageWidth / 2, pageHeight - 5.5, { align: "center" });
+  }
 }
 
 function addWrappedText(
@@ -111,6 +145,40 @@ function addWrappedText(
   const lines = doc.splitTextToSize(value, width) as string[];
   doc.text(lines, x, y);
   return y + lines.length * lineHeight;
+}
+
+/**
+ * Writes wrapped text line by line and starts a new page whenever the next line would run into the
+ * footer area, so long notes and terms are never clipped at the bottom of the page.
+ */
+function addPagedText(
+  doc: jsPDF,
+  quotation: QuotationPdfInput,
+  value: string,
+  x: number,
+  startY: number,
+  width: number,
+  lineHeight: number,
+): number {
+  const bottomLimit = doc.internal.pageSize.getHeight() - FOOTER_RESERVED_MM;
+  const { fontName, fontStyle } = doc.getFont();
+  const fontSize = doc.getFontSize();
+  const textColor = doc.getTextColor();
+  const lines = doc.splitTextToSize(value, width) as string[];
+  let y = startY;
+  for (const line of lines) {
+    if (y > bottomLimit) {
+      doc.addPage();
+      drawPageHeader(doc, quotation);
+      y = BODY_TOP_Y;
+      doc.setFont(fontName, fontStyle);
+      doc.setFontSize(fontSize);
+      doc.setTextColor(textColor);
+    }
+    doc.text(line, x, y);
+    y += lineHeight;
+  }
+  return y;
 }
 
 export function createQuotationJsPdf(quotation: QuotationPdfInput): jsPDF {
@@ -285,15 +353,15 @@ export function createQuotationJsPdf(quotation: QuotationPdfInput): jsPDF {
     y += 4.5;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    y = addWrappedText(doc, quotation.notes, left, y, usable, 3.8) + 4;
+    y = addPagedText(doc, quotation, quotation.notes, left, y, usable, 3.6) + 4;
   }
 
   const terms = quotation.terms_and_conditions ||
     "1. Natural marble and granite are products of nature and may vary in shade, veining and texture.\n2. Measurements and applicable taxes are confirmed at dispatch.";
-  if (y > pageHeight - 24) {
+  if (y > pageHeight - 30) {
     doc.addPage();
     drawPageHeader(doc, quotation);
-    y = 49;
+    y = BODY_TOP_Y;
   }
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
@@ -301,8 +369,9 @@ export function createQuotationJsPdf(quotation: QuotationPdfInput): jsPDF {
   y += 4.5;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
-  addWrappedText(doc, terms, left, y, usable, 3.5);
+  addPagedText(doc, quotation, terms, left, y, usable, 3.4);
 
+  drawPageFooters(doc);
   return doc;
 }
 

@@ -264,7 +264,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
         const fileMetadata = (storedFile.metadata ?? {}) as Record<string, unknown>;
         const actualSize = Number(fileMetadata.size ?? fileMetadata.contentLength ?? 0);
-        const actualMime = String(fileMetadata.mimetype ?? fileMetadata.mimeType ?? "").toLowerCase();
+        const actualMime = String(fileMetadata.mimetype ?? fileMetadata.mimeType ?? "").split(";")[0].trim().toLowerCase();
         if (actualSize > 0 && actualSize !== metadata.size) {
           return jsonErr("MEDIA_METADATA_MISMATCH", "Staging attachment size does not match the uploaded object.", 400);
         }

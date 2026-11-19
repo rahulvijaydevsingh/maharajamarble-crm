@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 
 export const MAX_GATEWAY_PDF_BYTES = 16 * 1024 * 1024;
 export const MAX_GATEWAY_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -15,6 +16,17 @@ export interface FetchSignedMediaOptions {
   timeoutMs?: number;
   maxBytes?: number;
   fetchImpl?: typeof fetch;
+  /** Lowercase hex SHA-256 recorded at registration. Verified after download when present. */
+  expectedSha256?: string | null;
+}
+
+function assertExpectedSha256(buffer: Buffer, expected: string | null | undefined): void {
+  const wanted = (expected ?? "").trim().toLowerCase();
+  if (!wanted) return;
+  const actual = createHash("sha256").update(buffer).digest("hex");
+  if (actual !== wanted) {
+    throw new Error("MEDIA_HASH_MISMATCH: Downloaded media does not match the registered SHA-256");
+  }
 }
 
 export async function fetchSignedMediaBuffer(
@@ -73,6 +85,7 @@ export async function fetchSignedMediaBuffer(
       if (fallback.length > maxBytes) {
         throw new Error("MEDIA_TOO_LARGE: Media exceeds the " + maxBytes + " byte download limit");
       }
+      assertExpectedSha256(fallback, options.expectedSha256);
       return fallback;
     }
 
@@ -97,7 +110,9 @@ export async function fetchSignedMediaBuffer(
     }
 
     if (totalBytes === 0) throw new Error("MEDIA_EMPTY: Downloaded media file is empty");
-    return Buffer.concat(chunks, totalBytes);
+    const combined = Buffer.concat(chunks, totalBytes);
+    assertExpectedSha256(combined, options.expectedSha256);
+    return combined;
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error("MEDIA_DOWNLOAD_TIMEOUT: Signed media download exceeded its time limit");

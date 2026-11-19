@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import {
   sanitizeStorageFileName,
   validateWhatsAppMediaFile,
@@ -33,8 +34,24 @@ describe("Slice 1B Media & Quotation PDF Verification", () => {
   });
 
   it("sanitizes untrusted filenames while replacing path separators and unsafe punctuation", () => {
-    expect(sanitizeStorageFileName("../../etc/passwd")).toBe("..-..-etc-passwd");
+    expect(sanitizeStorageFileName("../../etc/passwd")).toBe("etc-passwd");
     expect(sanitizeStorageFileName("Quotation #QT-2026/01.pdf")).toBe("Quotation-QT-2026-01.pdf");
+  });
+
+  it("never emits consecutive dots, because Storage policies and enqueue reject them", () => {
+    expect(sanitizeStorageFileName("Brochure..final.pdf")).toBe("Brochure.final.pdf");
+    expect(sanitizeStorageFileName("scan....jpg")).toBe("scan.jpg");
+    expect(sanitizeStorageFileName("...")).toBe("attachment");
+    expect(sanitizeStorageFileName("..hidden.pdf")).toBe("hidden.pdf");
+    for (const raw of ["a..b.pdf", "../x", "x/../y.pdf", "report...pdf", "..\\..\\win.pdf"]) {
+      expect(sanitizeStorageFileName(raw)).not.toContain("..");
+    }
+  });
+
+  it("keeps the file extension when a very long name is shortened", () => {
+    const longName = sanitizeStorageFileName("a".repeat(150) + ".pdf");
+    expect(longName.length).toBeLessThanOrEqual(100);
+    expect(longName.endsWith(".pdf")).toBe(true);
   });
 
   it("generates a non-empty, in-memory quotation PDF Blob", async () => {
@@ -72,6 +89,29 @@ describe("Slice 1B Media & Quotation PDF Verification", () => {
     expect(Array.from(buffer)).toEqual([1, 2, 3]);
     expect(MAX_GATEWAY_PDF_BYTES).toBe(16 * 1024 * 1024);
     expect(MAX_GATEWAY_IMAGE_BYTES).toBe(5 * 1024 * 1024);
+  });
+
+  it("verifies the registered SHA-256 after download when one is supplied", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const expected = createHash("sha256").update(Buffer.from(bytes)).digest("hex");
+    const makeFetch = () => vi.fn().mockImplementation(() => Promise.resolve(new Response(bytes, {
+      status: 200,
+      headers: { "content-type": "application/pdf" },
+    })));
+    const ok = await fetchSignedMediaBuffer("https://storage.example.test/object", "application/pdf", {
+      fetchImpl: makeFetch(),
+      expectedSha256: expected.toUpperCase(),
+    });
+    expect(Array.from(ok)).toEqual([1, 2, 3]);
+    await expect(fetchSignedMediaBuffer("https://storage.example.test/object", "application/pdf", {
+      fetchImpl: makeFetch(),
+      expectedSha256: "0".repeat(64),
+    })).rejects.toThrow("MEDIA_HASH_MISMATCH");
+    const withoutHash = await fetchSignedMediaBuffer("https://storage.example.test/object", "application/pdf", {
+      fetchImpl: makeFetch(),
+      expectedSha256: null,
+    });
+    expect(withoutHash.length).toBe(3);
   });
 
   it("rejects streamed media beyond the configured size limit", async () => {

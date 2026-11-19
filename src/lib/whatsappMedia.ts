@@ -59,8 +59,17 @@ export interface WhatsAppLibraryItemRow {
 
 export function sanitizeStorageFileName(rawName: string): string {
   const trimmed = (rawName || "attachment").trim();
-  const safe = trimmed.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return safe.slice(0, 100) || "attachment";
+  // Storage policies and whatsapp-enqueue both reject any ".." or "//" in an object name,
+  // so consecutive dots are collapsed instead of being passed through.
+  const safe = trimmed
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  if (safe.length <= 100) return safe || "attachment";
+  const dot = safe.lastIndexOf(".");
+  const extension = dot > 0 && safe.length - dot <= 8 ? safe.slice(dot) : "";
+  const base = extension ? safe.slice(0, dot) : safe;
+  return base.slice(0, 100 - extension.length) + extension;
 }
 
 export function validateWhatsAppMediaFile(
@@ -107,7 +116,7 @@ export async function uploadWhatsAppStagingMedia(params: {
   userId: string;
 }): Promise<WhatsAppStagingMediaRef> {
   const validation = validateWhatsAppMediaFile(params.blob, params.fileName);
-  if (!validation.valid) throw new Error(validation.error);
+  if (validation.valid === false) throw new Error(validation.error);
   if (!params.userId || params.userId.includes("/") || params.userId.includes("..")) {
     throw new Error("Authenticated user ID is required for staging upload.");
   }
@@ -131,6 +140,24 @@ export async function uploadWhatsAppStagingMedia(params: {
     file_name: safeName,
     byte_size: params.blob.size,
   };
+}
+
+interface WaRpcResponse {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+/**
+ * The generated Supabase types do not list the WhatsApp v2 RPCs, so every call goes through this
+ * single typed wrapper instead of repeating an any-cast at each call site. The explicit call keeps
+ * the client as the receiver of rpc.
+ */
+function callWaRpc(fn: string, args: Record<string, unknown>): PromiseLike<WaRpcResponse> {
+  const rpc = supabase.rpc as unknown as (
+    name: string,
+    params: Record<string, unknown>,
+  ) => PromiseLike<WaRpcResponse>;
+  return rpc.call(supabase, fn, args);
 }
 
 async function sha256Hex(blob: Blob): Promise<string> {
@@ -159,7 +186,7 @@ export async function uploadAndRegisterLibraryMedia(params: {
   category: WhatsAppLibraryCategory;
 }): Promise<WhatsAppLibraryItemRow> {
   const validation = validateWhatsAppMediaFile(params.file, params.file.name);
-  if (!validation.valid) throw new Error(validation.error);
+  if (validation.valid === false) throw new Error(validation.error);
   const title = params.title.trim();
   if (!title) throw new Error("Library item title is required.");
 
@@ -174,13 +201,14 @@ export async function uploadAndRegisterLibraryMedia(params: {
     });
   if (uploadError) throw new Error("Storage upload failed: " + uploadError.message);
 
-  const { data, error: rpcError } = await supabase.rpc("wa_library_register", {
+  const { data, error: rpcError } = await callWaRpc("wa_library_register", {
     p_path: storagePath,
     p_title: title,
     p_kind: libraryKindForCategory(params.category),
     p_mime: validation.mimeType,
     p_size_bytes: params.file.size,
     p_sha256: await sha256Hex(params.file),
+    p_description: params.description?.trim() || null,
   });
 
   if (rpcError) {
@@ -189,15 +217,6 @@ export async function uploadAndRegisterLibraryMedia(params: {
   }
 
   const id = typeof data === "string" ? data : String(data ?? "");
-  const { error: descriptionError } = await (supabase.from("whatsapp_library_items" as any) as any)
-    .update({ description: params.description?.trim() || null })
-    .eq("id", id);
-  if (descriptionError) {
-    await supabase.rpc("wa_library_delete", { p_item_id: id });
-    await supabase.storage.from(WHATSAPP_MEDIA_BUCKET).remove([storagePath]);
-    throw new Error("Library description could not be saved: " + descriptionError.message);
-  }
-
   const { data: row, error: rowError } = await (supabase.from("whatsapp_library_items" as any) as any)
     .select("*")
     .eq("id", id)
@@ -214,7 +233,7 @@ export async function deleteLibraryItemWithStorage(item: {
   path: string | null;
   bucket?: string | null;
 }): Promise<void> {
-  const { error: rpcError } = await supabase.rpc("wa_library_delete", {
+  const { error: rpcError } = await callWaRpc("wa_library_delete", {
     p_item_id: item.id,
   });
   if (rpcError) throw new Error(rpcError.message);
@@ -259,4 +278,22 @@ export function mapLibraryRowToMediaRef(row: WhatsAppLibraryItemRow): WhatsAppLi
     title: row.title,
     category: categoryForLibraryKind(row.kind),
   };
+}
+
+/**
+ * Best-effort removal of a staged attachment that was never queued. Uses the Storage API only and
+ * refuses any path outside the caller's own whatsapp-staging folder. Callers must never pass a path
+ * that has been sent to whatsapp-enqueue for commit, because queued rows still point at it.
+ */
+export async function removeUnsentStagingObject(path: string, userId: string): Promise<boolean> {
+  const expectedPrefix = "whatsapp-staging/" + userId + "/";
+  if (!userId || !path.startsWith(expectedPrefix) || path.includes("..") || path.includes("//")) {
+    return false;
+  }
+  try {
+    const { error } = await supabase.storage.from(WHATSAPP_MEDIA_BUCKET).remove([path]);
+    return !error;
+  } catch {
+    return false;
+  }
 }
