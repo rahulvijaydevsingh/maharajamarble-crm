@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppLibrary } from "@/hooks/useWhatsAppLibrary";
+import { useWhatsAppSettings } from "@/hooks/useWhatsAppSettings";
+import { useAuth } from "@/contexts/AuthContext";
 import type { WhatsAppLibraryCategory, WhatsAppLibraryItemRow } from "@/lib/whatsappMedia";
 
 const categoryLabels: Record<WhatsAppLibraryCategory, string> = {
@@ -39,7 +41,13 @@ function formatBytes(bytes: number | null): string {
 
 export function WhatsAppLibraryManager() {
   const { toast } = useToast();
-  const { items, loading, mutating, isAdmin, upload, setActive, remove } = useWhatsAppLibrary();
+  const auth = useAuth();
+  const isAdmin = Boolean(auth.isAdmin());
+  const { settings } = useWhatsAppSettings();
+  const isModuleEnabled = Boolean(settings?.module_enabled);
+  const { items, loading, mutating, libraryUnavailable, upload, setActive, remove } = useWhatsAppLibrary({
+    enabled: isAdmin && isModuleEnabled,
+  });
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -85,6 +93,22 @@ export function WhatsAppLibraryManager() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           Library management is available to administrators only.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!isModuleEnabled || libraryUnavailable) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Archive className="h-5 w-5" />
+            Reusable WhatsApp Media Library
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Enable the WhatsApp module after backend setup to manage the reusable media library.
         </CardContent>
       </Card>
     );

@@ -9,17 +9,28 @@ import {
   type WhatsAppLibraryItemRow,
 } from "@/lib/whatsappMedia";
 
-export function useWhatsAppLibrary() {
+interface UseWhatsAppLibraryOptions {
+  enabled?: boolean;
+}
+
+function isMissingLibraryRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
+  return error?.code === "PGRST202" || /schema cache|could not find the function/i.test(error?.message ?? "");
+}
+
+export function useWhatsAppLibrary(options: UseWhatsAppLibraryOptions = {}) {
+  const { enabled = false } = options;
   const auth = useAuth();
   const { toast } = useToast();
   const isAdmin = Boolean(auth.isAdmin());
   const [items, setItems] = useState<WhatsAppLibraryItemRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [mutating, setMutating] = useState(false);
+  const [libraryUnavailable, setLibraryUnavailable] = useState(false);
 
   const refresh = useCallback(async (includeInactive = false) => {
-    if (!auth.user) {
+    if (!enabled || !auth.user) {
       setItems([]);
+      setLoading(false);
       return [];
     }
     setLoading(true);
@@ -28,7 +39,15 @@ export function useWhatsAppLibrary() {
         p_kind: null,
         p_active_only: !(includeInactive && isAdmin),
       });
-      if (error) throw error;
+      if (error) {
+        if (isMissingLibraryRpcError(error)) {
+          setLibraryUnavailable(true);
+          setItems([]);
+          return [];
+        }
+        throw error;
+      }
+      setLibraryUnavailable(false);
       const rows = (data ?? []) as WhatsAppLibraryItemRow[];
       setItems(rows);
       return rows;
@@ -42,11 +61,13 @@ export function useWhatsAppLibrary() {
     } finally {
       setLoading(false);
     }
-  }, [auth.user, isAdmin, toast]);
+  }, [auth.user, enabled, isAdmin, toast]);
 
   useEffect(() => {
-    void refresh(isAdmin);
-  }, [refresh, isAdmin]);
+    if (enabled && auth.user) {
+      void refresh(isAdmin);
+    }
+  }, [enabled, auth.user, refresh, isAdmin]);
 
   const upload = useCallback(async (params: {
     file: File;
@@ -122,5 +143,5 @@ export function useWhatsAppLibrary() {
     }
   }, [isAdmin, refresh, toast]);
 
-  return { items, loading, mutating, isAdmin, refresh, upload, setActive, remove };
+  return { items, loading, mutating, isAdmin, libraryUnavailable, refresh, upload, setActive, remove };
 }

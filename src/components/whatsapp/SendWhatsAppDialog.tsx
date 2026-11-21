@@ -105,8 +105,9 @@ export function SendWhatsAppDialog({
   const [stagingAttachment, setStagingAttachment] = useState<WhatsAppStagingMediaRef | null>(null);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const { previewSend, commitSend } = useWhatsAppMessages(leadId, customerId);
-  const { slotStatus } = useWhatsAppSettings();
-  const { items: libraryItems, refresh: refreshLibrary } = useWhatsAppLibrary();
+  const { settings, slotStatus } = useWhatsAppSettings();
+  const isLibraryEnabled = Boolean(open && settings?.module_enabled);
+  const { items: libraryItems, libraryUnavailable } = useWhatsAppLibrary({ enabled: isLibraryEnabled });
   const auth = useAuth();
   // Incremented whenever a dialog session starts or ends, so a slow upload that finishes after the
   // dialog was closed or reopened is discarded instead of attaching to a different send.
@@ -141,8 +142,7 @@ export function SendWhatsAppDialog({
     setStagingAttachment(defaultAttachment?.kind === "staging" ? defaultAttachment : null);
     setSelectedLibraryId(defaultAttachment?.kind === "library" ? defaultAttachment.library_item_id : "");
     setLocationMode("none");
-    void refreshLibrary();
-  }, [open, defaultMessage, defaultAttachment, refreshLibrary]);
+  }, [open, defaultMessage, defaultAttachment]);
 
   const resetPreview = () => {
     setPreview(null);
@@ -377,30 +377,36 @@ export function SendWhatsAppDialog({
               }}
             />
             <p className="text-xs text-muted-foreground">PDF up to 16 MB; JPEG, PNG or WebP up to 5 MB.</p>
-            <div className="space-y-1">
-              <Label className="text-xs">Or choose from the reusable library</Label>
-              <Select
-                value={selectedLibraryId || "none"}
-                onValueChange={(value) => {
-                  setSelectedLibraryId(value === "none" ? "" : value);
-                  if (value !== "none") {
-                    dropStagedFile();
-                    setLocationMode("none");
-                  }
-                  resetPreview();
-                }}
-              >
-                <SelectTrigger><SelectValue placeholder="Select a library item" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No library item</SelectItem>
-                  {availableLibraryItems.map((item) => (
-                    <SelectItem value={item.id} key={item.id}>
-                      {item.title} · {item.filename ?? item.kind}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isLibraryEnabled && !libraryUnavailable ? (
+              <div className="space-y-1">
+                <Label className="text-xs">Or choose from the reusable library</Label>
+                <Select
+                  value={selectedLibraryId || "none"}
+                  onValueChange={(value) => {
+                    setSelectedLibraryId(value === "none" ? "" : value);
+                    if (value !== "none") {
+                      dropStagedFile();
+                      setLocationMode("none");
+                    }
+                    resetPreview();
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select a library item" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No library item</SelectItem>
+                    {availableLibraryItems.map((item) => (
+                      <SelectItem value={item.id} key={item.id}>
+                        {item.title} · {item.filename ?? item.kind}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Reusable library media is unavailable until the WhatsApp module is enabled and ready.
+              </p>
+            )}
             {mediaToSend && (
               <div className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm">
                 <span className="min-w-0 truncate">
