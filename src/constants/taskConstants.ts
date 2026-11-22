@@ -146,3 +146,15 @@ export const WEEK_POSITIONS = [
   { value: "fourth", label: "Fourth" },
   { value: "last", label: "Last" },
 ];
+
+// Single source of truth for call/task completion outcomes.
+// Shared by the desktop task-completion dialog and the mobile /m call-outcome sheet,
+// so both surfaces expose exactly the same outcome vocabulary in the same order.
+export const TASK_COMPLETION_OUTCOMES = [
+  "Successful",
+  "No Answer",
+  "Call Back Later",
+  "Not Interested",
+  "Wrong Number",
+  "Rescheduled by Client",
+] as const;

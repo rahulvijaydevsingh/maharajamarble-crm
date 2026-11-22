@@ -45,18 +45,13 @@ import {
   TASK_TYPES as FALLBACK_TASK_TYPES,
   KIT_TASK_TYPES as FALLBACK_KIT_TASK_TYPES,
   TASK_PRIORITIES as FALLBACK_TASK_PRIORITIES,
+  TASK_COMPLETION_OUTCOMES,
 } from "@/constants/taskConstants";
 
 type NextActionType = "follow_up" | "reschedule" | "convert_to_deal";
 
-const OUTCOME_OPTIONS = [
-  { value: "Successful", kind: "success" as const },
-  { value: "No Answer", kind: "unsuccessful" as const },
-  { value: "Call Back Later", kind: "unsuccessful" as const },
-  { value: "Not Interested", kind: "unsuccessful" as const },
-  { value: "Wrong Number", kind: "unsuccessful" as const },
-  { value: "Rescheduled by Client", kind: "unsuccessful" as const },
-];
+// The successful outcome is the first entry of the shared outcome vocabulary.
+const SUCCESSFUL_OUTCOME = TASK_COMPLETION_OUTCOMES[0];
 
 const BUSINESS_HOUR_SLOTS = (() => {
   const slots: { label: string; value: string }[] = [];
@@ -72,7 +67,9 @@ const BUSINESS_HOUR_SLOTS = (() => {
 })();
 
 function outcomeKind(outcome: string | null) {
-  return OUTCOME_OPTIONS.find((o) => o.value === outcome)?.kind ?? null;
+  if (!outcome) return null;
+  if (!(TASK_COMPLETION_OUTCOMES as readonly string[]).includes(outcome)) return null;
+  return outcome === SUCCESSFUL_OUTCOME ? "success" : "unsuccessful";
 }
 
 const getActiveZone = (time: string) => {
@@ -991,8 +988,8 @@ export function TaskCompletionDialog({
                   <SelectValue placeholder="Select outcome" />
                 </SelectTrigger>
 <SelectContent className="z-[200]">
-                  {OUTCOME_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>
+                  {TASK_COMPLETION_OUTCOMES.map((value) => (
+                    <SelectItem key={value} value={value}>{value}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
