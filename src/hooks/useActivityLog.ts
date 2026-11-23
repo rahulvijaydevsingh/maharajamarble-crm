@@ -45,6 +45,21 @@ export interface CreateActivityParams {
   related_entity_id?: string;
 }
 
+export function mergeActivityById(
+  activities: ActivityLogEntry[],
+  activity: ActivityLogEntry,
+): ActivityLogEntry[] {
+  const existingIndex = activities.findIndex((existing) => existing.id === activity.id);
+
+  if (existingIndex === -1) {
+    return [activity, ...activities];
+  }
+
+  const nextActivities = [...activities];
+  nextActivities[existingIndex] = activity;
+  return nextActivities;
+}
+
 // Helper to transform database row to ActivityLogEntry
 const transformActivityRow = (row: any): ActivityLogEntry => ({
   ...row,
@@ -142,7 +157,7 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
       if (error) throw error;
 
       const transformedData = transformActivityRow(data);
-      setActivities(prev => [transformedData, ...prev]);
+      setActivities(prev => mergeActivityById(prev, transformedData));
       
       return transformedData;
     } catch (error) {
@@ -249,7 +264,7 @@ export function useActivityLog(leadId?: string, customerId?: string, professiona
       },
       (payload) => {
         if (payload.eventType === 'INSERT') {
-          setActivities(prev => [transformActivityRow(payload.new), ...prev]);
+          setActivities(prev => mergeActivityById(prev, transformActivityRow(payload.new)));
         } else if (payload.eventType === 'UPDATE') {
           setActivities(prev =>
             prev.map(a => a.id === payload.new.id ? transformActivityRow(payload.new) : a)
