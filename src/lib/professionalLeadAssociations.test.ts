@@ -41,6 +41,13 @@ describe("professional lead Group 3 associations", () => {
     expect(badges).toEqual(["Site Architect", "Referrer"]);
   });
 
+  it("treats an explicit referral ID as authoritative over a matching phone", () => {
+    expect(getProfessionalLeadRoleBadges("professional-1", "9876543210", {
+      id: "lead-1",
+      referred_by: { id: "professional-2", phone: "9876543210" },
+    })).toEqual([]);
+  });
+
   it("does not apply one professional's junction role to a different lead", () => {
     expect(getProfessionalLeadRoleBadges(
       "professional-1",
