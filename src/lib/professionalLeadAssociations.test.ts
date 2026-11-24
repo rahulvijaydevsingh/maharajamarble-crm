@@ -31,6 +31,7 @@ describe("professional lead Group 3 associations", () => {
         referred_by: { id: "professional-1", name: "A. Designer" },
       },
       [{
+        lead_id: "lead-1",
         professional_id: "professional-1",
         is_primary_contact: true,
         contact_designation: "architect",
