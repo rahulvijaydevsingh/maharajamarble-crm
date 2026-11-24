@@ -975,12 +975,16 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
             query: supabase
               .from('leads')
               .select(selectCols)
-              .eq('referred_by->>id', professional.id),
+              .eq('referred_by->>id', professional.id)
+              .is('deleted_at', null)
+              .neq('status', 'deleted'),
           },
           ...(linkedLeadIds.length > 0
             ? [{
                 label: 'professional junction',
-                query: supabase.from('leads').select(selectCols).in('id', linkedLeadIds),
+                query: supabase.from('leads').select(selectCols).in('id', linkedLeadIds)
+                  .is('deleted_at', null)
+                  .neq('status', 'deleted'),
               }]
             : []),
           ...(profPhone.length === 10
@@ -989,7 +993,9 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
                 query: supabase
                   .from('leads')
                   .select(selectCols)
-                  .or(`phone.ilike.%${profPhone}%,alternate_phone.ilike.%${profPhone}%`),
+                  .or(`phone.ilike.%${profPhone}%,alternate_phone.ilike.%${profPhone}%`)
+                  .is('deleted_at', null)
+                  .neq('status', 'deleted'),
               }]
             : []),
           {
@@ -997,14 +1003,18 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
             query: supabase
               .from('leads')
               .select(selectCols)
-              .not('additional_contacts', 'is', null),
+              .contains('additional_contacts', JSON.stringify([{ professional_id: professional.id }]))
+              .is('deleted_at', null)
+              .neq('status', 'deleted'),
           },
           {
             label: 'legacy referral phone',
             query: supabase
               .from('leads')
               .select(selectCols)
-              .not('referred_by', 'is', null),
+              .not('referred_by', 'is', null)
+              .is('deleted_at', null)
+              .neq('status', 'deleted'),
           },
         ];
 
@@ -1043,6 +1053,7 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
         }
 
         const results = Array.from(candidateMap.values())
+          .filter((lead) => lead.status?.toLowerCase() !== 'deleted')
           .map((lead) => ({
             lead,
             roleBadges: getProfessionalLeadRoleBadges(
@@ -1062,7 +1073,8 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
             address: lead.address,
             created_at: lead.created_at,
             roleBadges,
-          }));
+          }))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         setAssociatedLeads(results);
       } catch (error) {
