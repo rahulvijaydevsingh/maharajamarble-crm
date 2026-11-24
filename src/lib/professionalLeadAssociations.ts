@@ -45,8 +45,12 @@ export function getProfessionalLeadRoleBadges(
 
   for (const link of linkRows) {
     if (link.lead_id !== lead.id || link.professional_id !== professionalId) continue;
-    const designation = formatDesignation(link.contact_designation, "Site Professional");
-    badges.add(link.is_primary_contact ? `Site ${designation}` : designation);
+    if (link.contact_designation?.trim().toLowerCase() === "referrer") {
+      badges.add("Referrer");
+    } else {
+      const designation = formatDesignation(link.contact_designation, "Professional");
+      badges.add(`Site ${designation}`);
+    }
   }
 
   const referredBy =
