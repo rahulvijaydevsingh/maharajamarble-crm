@@ -346,12 +346,19 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
       // Group 3 is inserted only after all Group 1 upserts. ignoreDuplicates maps
       // to ON CONFLICT DO NOTHING, so it never downgrades a Group 1 contact.
       const referralLink = buildReferralLinkInsert(lead.id, referredBy);
-      if (referralLink) {
+      const referralPhone = normalizePhone(referredBy?.phone);
+      const referralWasNotPartOfGroup1 =
+        !!referralLink && !linkedProfessionalIds.has(referralLink.professional_id);
+      const referralPhoneDidNotFailGroup1 =
+        !referralPhone || !failedPhones.has(referralPhone);
+
+      if (referralLink && referralWasNotPartOfGroup1 && referralPhoneDidNotFailGroup1) {
+        // A removed Group 1 contact may already have a junction row. Upsert
+        // without ignoreDuplicates so it is demoted to the Group 3 referrer role.
         const { error: referralLinkError } = await supabase
           .from("lead_professionals")
           .upsert([referralLink], {
             onConflict: "lead_id,professional_id",
-            ignoreDuplicates: true,
           });
         if (referralLinkError) throw referralLinkError;
       }
