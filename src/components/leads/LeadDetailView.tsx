@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
  import { HeartHandshake } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { useReminders } from '@/hooks/useReminders';
@@ -59,8 +60,15 @@ import { AddReminderDialog } from './detail-tabs/AddReminderDialog';
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog';
 import { MarkAsLostDialog } from './MarkAsLostDialog';
 import { PendingLostBanner } from './PendingLostBanner';
+import { AddToCustomerDialog } from './actions/AddToCustomerDialog';
+import { getLeadConversionAction } from '@/lib/leadConversionEligibility';
 import { supabase } from '@/integrations/supabase/client';
 import { useZLayer } from '@/contexts/ZLayerContext';
+
+type ConversionAwareLead = Lead & {
+  is_converted?: boolean | null;
+  converted_to_customer_id?: string | null;
+};
 
 interface LeadDetailViewProps {
   lead: Lead | null;
@@ -156,7 +164,10 @@ export function LeadDetailView({
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [markLostOpen, setMarkLostOpen] = useState(false);
   const [sendWAOpen, setSendWAOpen] = useState(false);
+  const [fallbackConversionLead, setFallbackConversionLead] = useState<ConversionAwareLead | null>(null);
+  const [fallbackConversionOpen, setFallbackConversionOpen] = useState(false);
   const { user, isAdmin, role } = useAuth();
+  const { hasPermission } = usePermissions();
   const { settings: waSettings } = useWhatsAppSettings();
   const { session: waSession } = useWhatsAppSession();
   
@@ -170,7 +181,55 @@ export function LeadDetailView({
   }, [user]);
   
   // Get the fresh lead data from the leads array (to ensure we have latest after refetch)
-  const currentLead = leads.find(l => l.id === lead?.id) || lead;
+  const currentLead = (leads.find(l => l.id === lead?.id) || lead) as ConversionAwareLead | null;
+  const conversionAction = currentLead
+    ? getLeadConversionAction(currentLead, hasPermission('leads.convert'), Boolean(onConvertToCustomer))
+    : 'hidden';
+
+  const handleConvertToCustomer = () => {
+    if (!currentLead) return;
+
+    if (conversionAction === 'parent') {
+      onConvertToCustomer?.(currentLead);
+      return;
+    }
+
+    if (conversionAction === 'fallback') {
+      setFallbackConversionLead(currentLead);
+      setFallbackConversionOpen(true);
+      onOpenChange(false);
+    }
+  };
+
+  const handleFallbackConversionOpenChange = (nextOpen: boolean) => {
+    setFallbackConversionOpen(nextOpen);
+    if (!nextOpen) {
+      setFallbackConversionLead(null);
+      void refetch();
+    }
+  };
+
+  const fallbackConversionDialog = fallbackConversionLead ? (
+    <AddToCustomerDialog
+      open={fallbackConversionOpen}
+      onOpenChange={handleFallbackConversionOpenChange}
+      leadData={{
+        id: fallbackConversionLead.id,
+        name: fallbackConversionLead.name,
+        phone: fallbackConversionLead.phone,
+        alternate_phone: fallbackConversionLead.alternate_phone || undefined,
+        email: fallbackConversionLead.email || undefined,
+        address: fallbackConversionLead.address || fallbackConversionLead.site_location || undefined,
+        assigned_to: fallbackConversionLead.assigned_to,
+        source: fallbackConversionLead.source,
+        notes: fallbackConversionLead.notes || undefined,
+        site_plus_code: fallbackConversionLead.site_plus_code || undefined,
+        additional_contacts: fallbackConversionLead.additional_contacts,
+        referred_by: fallbackConversionLead.referred_by,
+      }}
+      onConvert={() => undefined}
+    />
+  ) : null;
 
   // Reset to profile tab when lead changes (but respect initialTab on first open)
   useEffect(() => {
@@ -362,7 +421,7 @@ export function LeadDetailView({
     toast({ title: "Lost Request Rejected", description: `Lead returned to active status.` });
   };
 
-  if (!currentLead) return null;
+  if (!currentLead) return fallbackConversionDialog;
 
   const statusConfig = statusStyles[currentLead.status] || { label: currentLead.status, className: 'bg-gray-100 text-gray-700' };
 
@@ -442,10 +501,15 @@ export function LeadDetailView({
                 Print
               </Button>
               
-              {onConvertToCustomer && (
+              {conversionAction === 'converted' ? (
+                <Button size="sm" variant="outline" disabled title="This lead already has a customer record">
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  Converted to Customer
+                </Button>
+              ) : conversionAction !== 'hidden' && (
                 <Button 
                   size="sm" 
-                  onClick={() => onConvertToCustomer(currentLead)}
+                  onClick={handleConvertToCustomer}
                   className="bg-primary hover:bg-primary/90"
                 >
                   <UserPlus className="h-4 w-4 mr-1" />
@@ -669,6 +733,8 @@ export function LeadDetailView({
           leadId={currentLead.id}
         />
       )}
+
+      {fallbackConversionDialog}
     </>
   );
 }
