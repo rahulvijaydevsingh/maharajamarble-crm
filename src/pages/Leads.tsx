@@ -28,6 +28,14 @@ import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 import { isProfessionalDesignation, mapDesignationToProfessionalType, normalizePhone } from "@/lib/professionalResolver";
 import { buildReferralLinkInsert } from "@/lib/professionalLeadAssociations";
 
+const isStaffFullName = (value: string): boolean => {
+  const candidate = value.trim();
+  if (!candidate) return false;
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate);
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate);
+  return !isEmail && !isUuid;
+};
+
 const Leads = () => {
   const [addLeadDialogOpen, setAddLeadDialogOpen] = useState(false);
   const [bulkUploadDialogOpen, setBulkUploadDialogOpen] = useState(false);
@@ -76,18 +84,18 @@ const Leads = () => {
         });
         return;
       }
-      if (!assignedToName) {
+      if (!isStaffFullName(assignedToName)) {
         toast({
           title: "Cannot create lead",
-          description: "The selected assignee could not be matched to an active staff member. Please select a valid team member.",
+          description: "The selected assignee must resolve to a staff full name, not an email address or account UUID. Please select a valid team member.",
           variant: "destructive",
         });
         return;
       }
-      if (generatedTask && !generatedTaskAssignedToName) {
+      if (generatedTask && !isStaffFullName(generatedTaskAssignedToName)) {
         toast({
           title: "Cannot create lead",
-          description: "The follow-up assignee could not be matched to an active staff member. Please select a valid team member.",
+          description: "The follow-up assignee must resolve to a staff full name, not an email address or account UUID. Please select a valid team member.",
           variant: "destructive",
         });
         return;
@@ -271,7 +279,12 @@ const Leads = () => {
             ignoreDuplicates: true,
           });
         if (referralLinkError) {
-          throw new Error(`Lead created, but the referral link could not be saved: ${referralLinkError.message}`);
+          console.error("Lead was created but its Group 3 referral link failed:", referralLinkError);
+          toast({
+            title: "Lead created; referral link not saved",
+            description: `The lead was created, but its referral association failed: ${referralLinkError.message}. Follow-up task creation will continue; edit the lead later to retry the referral link.`,
+            variant: "destructive",
+          });
         }
       }
 
