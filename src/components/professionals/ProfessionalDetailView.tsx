@@ -956,7 +956,7 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
         // live here, while referred_by JSONB remains a second source of truth.
         const { data: linkRows, error: linkError } = await supabase
           .from('lead_professionals')
-          .select('lead_id, is_primary_contact, contact_designation')
+          .select('lead_id, professional_id, is_primary_contact, contact_designation')
           .eq('professional_id', professional.id);
 
         if (cancelled) return;
