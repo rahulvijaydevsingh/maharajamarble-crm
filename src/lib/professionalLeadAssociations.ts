@@ -1,6 +1,7 @@
 import { isProfessionalDesignation, normalizePhone } from "@/lib/professionalResolver";
 
 export interface ProfessionalLeadLink {
+  lead_id: string;
   professional_id: string;
   is_primary_contact: boolean;
   contact_designation: string | null;
@@ -43,7 +44,7 @@ export function getProfessionalLeadRoleBadges(
   const normalizedProfessionalPhone = normalizePhone(professionalPhone);
 
   for (const link of linkRows) {
-    if (link.professional_id !== professionalId) continue;
+    if (link.lead_id !== lead.id || link.professional_id !== professionalId) continue;
     const designation = formatDesignation(link.contact_designation, "Site Professional");
     badges.add(link.is_primary_contact ? `Site ${designation}` : designation);
   }
