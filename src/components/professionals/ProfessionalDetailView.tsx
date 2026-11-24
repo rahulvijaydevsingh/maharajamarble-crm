@@ -108,7 +108,7 @@ import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDia
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
 import { useZLayer } from '@/contexts/ZLayerContext';
-import { isProfessionalDesignation, normalizePhone } from '@/lib/professionalResolver';
+import { normalizePhone } from '@/lib/professionalResolver';
 import { getProfessionalLeadRoleBadges } from '@/lib/professionalLeadAssociations';
 
 interface ProfessionalDetailViewProps {
