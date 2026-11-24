@@ -1,11 +1,52 @@
+import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import {
+  buildAdditionalContactsContainsFilter,
   buildReferralLinkInsert,
   getPreservedProfessionalIds,
   getProfessionalLeadRoleBadges,
 } from "./professionalLeadAssociations";
 
 describe("professional lead Group 3 associations", () => {
+  it("sends valid JSONB Additional Contact containment and accepts a PostgREST 200", async () => {
+    const requestUrls: string[] = [];
+    let responseStatus = 0;
+    const client = createClient("https://postgrest.test", "test-publishable-key", {
+      global: {
+        fetch: async (input) => {
+          requestUrls.push(
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+          );
+          responseStatus = 200;
+          return new Response(JSON.stringify([{ id: "lead-1" }]), {
+            status: responseStatus,
+            headers: { "Content-Type": "application/json", "Content-Range": "0-0/1" },
+          });
+        },
+      },
+    });
+
+    const filterValue = buildAdditionalContactsContainsFilter("professional-1");
+    const { data, error } = await client
+      .from("leads")
+      .select("id")
+      .contains("additional_contacts", filterValue)
+      .is("deleted_at", null)
+      .neq("status", "deleted");
+
+    expect(error).toBeNull();
+    expect(data).toEqual([{ id: "lead-1" }]);
+    expect(responseStatus).toBe(200);
+
+    const requestUrl = new URL(requestUrls[0]);
+    expect(requestUrl.searchParams.get("additional_contacts")).toBe(
+      'cs.[{"professional_id":"professional-1"}]',
+    );
+    expect(requestUrl.searchParams.get("deleted_at")).toBe("is.null");
+    expect(requestUrl.searchParams.get("status")).toBe("neq.deleted");
+    expect(requestUrls[0]).not.toContain("[object Object]");
+  });
+
   it("creates a referrer-only link with the Group 3 marker", () => {
     expect(buildReferralLinkInsert("lead-1", { id: "professional-1" })).toEqual({
       lead_id: "lead-1",
