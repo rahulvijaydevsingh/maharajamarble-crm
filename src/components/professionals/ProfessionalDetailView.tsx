@@ -130,6 +130,8 @@ function ProfessionalProfileTab({ professional, onEdit }: { professional: Profes
       .from('leads')
       .select('id', { count: 'exact', head: true })
       .eq('referred_by->>id', professional.id)
+      .is('deleted_at', null)
+      .neq('status', 'deleted')
       .then(({ count }) => {
         if (!cancelled) setReferredLeadsCount(count ?? 0);
       });
