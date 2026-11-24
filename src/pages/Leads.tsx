@@ -26,6 +26,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useStaffActivityLog } from "@/hooks/useStaffActivityLog";
 import { isProfessionalDesignation, mapDesignationToProfessionalType, normalizePhone } from "@/lib/professionalResolver";
+import { buildReferralLinkInsert } from "@/lib/professionalLeadAssociations";
+
+const isStaffFullName = (value: string): boolean => {
+  const candidate = value.trim();
+  if (!candidate) return false;
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate);
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate);
+  return !isEmail && !isUuid;
+};
 
 const Leads = () => {
   const [addLeadDialogOpen, setAddLeadDialogOpen] = useState(false);
@@ -43,7 +52,54 @@ const Leads = () => {
 
   const handleAddLead = async (formData: any, generatedTask: any) => {
     try {
-      const staffFullName = profile?.full_name || user?.email || "unknown";
+      // INVARIANT-04: audit columns and assigned_to are staff full_name strings,
+      // never auth emails or UUIDs. Resolve the authenticated profile explicitly.
+      let staffFullName = profile?.full_name?.trim() || "";
+      if (!staffFullName && user?.id) {
+        const { data: staffProfile, error: staffProfileError } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (staffProfileError) throw staffProfileError;
+        staffFullName = staffProfile?.full_name?.trim() || "";
+      }
+
+      const assignedMember = staffMembers.find(m => m.id === formData.assignedTo);
+      const assignedToName = assignedMember?.name?.trim() || "";
+      const generatedTaskMember = generatedTask
+        ? staffMembers.find(m =>
+            m.id === generatedTask.assignedTo ||
+            m.name === generatedTask.assignedTo ||
+            m.email === generatedTask.assignedTo
+          )
+        : null;
+      const generatedTaskAssignedToName = generatedTaskMember?.name?.trim() || "";
+
+      if (!staffFullName) {
+        toast({
+          title: "Cannot create lead",
+          description: "Your staff profile does not have a full name. Ask an administrator to complete your profile before creating a lead.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!isStaffFullName(assignedToName)) {
+        toast({
+          title: "Cannot create lead",
+          description: "The selected assignee must resolve to a staff full name, not an email address or account UUID. Please select a valid team member.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (generatedTask && !isStaffFullName(generatedTaskAssignedToName)) {
+        toast({
+          title: "Cannot create lead",
+          description: "The follow-up assignee must resolve to a staff full name, not an email address or account UUID. Please select a valid team member.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       // Create lead in database
       const leadData: LeadInsert = {
@@ -64,7 +120,7 @@ const Leads = () => {
         material_interests: formData.materialInterests,
         source: formData.leadSource,
         referred_by: formData.referredBy,
-        assigned_to: staffMembers.find(m => m.id === formData.assignedTo)?.name || formData.assignedTo,
+        assigned_to: assignedToName,
         status: "new",
         priority: formData.followUpPriority === "urgent" ? 1 : formData.followUpPriority === "normal" ? 3 : 5,
         notes: formData.initialNote || null,
@@ -108,7 +164,6 @@ const Leads = () => {
       // Auto-create Professionals for professional-designation contacts.
       let primaryProfessionalId: string | null = null;
       if (Array.isArray(formData?.contacts) && formData.contacts.length > 0) {
-        const assignedToName = staffMembers.find(m => m.id === formData.assignedTo)?.name || formData.assignedTo;
         const primaryPhone = normalizePhone(formData.primaryPhone || formData.contacts[0]?.phone || "");
 
         const createdPhones = new Set<string>();
@@ -176,7 +231,7 @@ const Leads = () => {
           }
 
           if (professionalId && newLead?.id) {
-            await supabase
+            const { error: group1LinkError } = await supabase
               .from("lead_professionals")
               .upsert(
                 {
@@ -187,6 +242,7 @@ const Leads = () => {
                 },
                 { onConflict: "lead_id,professional_id" }
               );
+            if (group1LinkError) throw group1LinkError;
           }
         }
 
@@ -210,23 +266,38 @@ const Leads = () => {
         }
       }
 
+      // Group 3: add the selected referrer only after every Group 1 upsert.
+      // ignoreDuplicates emits ON CONFLICT DO NOTHING and preserves Group 1 flags.
+      const referralLink = newLead
+        ? buildReferralLinkInsert(newLead.id, formData.referredBy)
+        : null;
+      if (referralLink) {
+        const { error: referralLinkError } = await supabase
+          .from("lead_professionals")
+          .upsert([referralLink], {
+            onConflict: "lead_id,professional_id",
+            ignoreDuplicates: true,
+          });
+        if (referralLinkError) {
+          console.error("Lead was created but its Group 3 referral link failed:", referralLinkError);
+          toast({
+            title: "Lead created; referral link not saved",
+            description: `The lead was created, but its referral association failed: ${referralLinkError.message}. Follow-up task creation will continue; edit the lead later to retry the referral link.`,
+            variant: "destructive",
+          });
+        }
+      }
+
       // Create associated task
       let createdTaskId: string | undefined;
       if (generatedTask && newLead) {
-        const matchedStaff = staffMembers.find(m =>
-          m.id === generatedTask.assignedTo ||
-          m.name === generatedTask.assignedTo ||
-          m.email === generatedTask.assignedTo
-        );
-        const assignedToName = matchedStaff?.name || generatedTask.assignedTo;
-
         const createdTask = await addTask({
           title: generatedTask.title,
           description: generatedTask.description,
           type: "Follow-up Call",
           priority: generatedTask.priority === "high" ? "High" : generatedTask.priority === "medium" ? "Medium" : "Low",
           status: "Pending",
-          assigned_to: assignedToName,
+          assigned_to: generatedTaskAssignedToName,
           due_date: format(formData.nextActionDate, "yyyy-MM-dd"),
           due_time: formData.nextActionTime,
           lead_id: newLead.id,
@@ -246,9 +317,6 @@ const Leads = () => {
           actionDate.setHours(rHours, rMinutes, 0, 0);
           const offsetMs = parseInt(formData.reminderTime || "30") * 60 * 1000;
           const reminderDatetime = new Date(actionDate.getTime() - offsetMs);
-          const assignedToName =
-            staffMembers.find((m) => m.id === formData.assignedTo || m.name === formData.assignedTo)?.name ||
-            formData.assignedTo;
           await addReminder({
             title: `Follow-up: ${formData.fullName || formData.primaryPhone}`,
             description: `Lead: ${formData.fullName || formData.primaryPhone}`,
@@ -265,6 +333,11 @@ const Leads = () => {
       setAddLeadDialogOpen(false);
     } catch (error) {
       console.error("Failed to add lead:", error);
+      toast({
+        title: "Unable to create lead",
+        description: error instanceof Error ? error.message : "The lead could not be saved. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 

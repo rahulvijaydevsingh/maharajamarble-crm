@@ -108,7 +108,8 @@ import { AddReminderDialog } from '@/components/leads/detail-tabs/AddReminderDia
 import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
 import { useZLayer } from '@/contexts/ZLayerContext';
-import { isProfessionalDesignation, normalizePhone } from '@/lib/professionalResolver';
+import { normalizePhone } from '@/lib/professionalResolver';
+import { buildAdditionalContactsContainsFilter, getProfessionalLeadRoleBadges } from '@/lib/professionalLeadAssociations';
 
 interface ProfessionalDetailViewProps {
   professional: Professional | null;
@@ -129,6 +130,8 @@ function ProfessionalProfileTab({ professional, onEdit }: { professional: Profes
       .from('leads')
       .select('id', { count: 'exact', head: true })
       .eq('referred_by->>id', professional.id)
+      .is('deleted_at', null)
+      .neq('status', 'deleted')
       .then(({ count }) => {
         if (!cancelled) setReferredLeadsCount(count ?? 0);
       });
@@ -927,7 +930,6 @@ function ProfessionalRemindersTab({ professional }: { professional: Professional
 }
 
 function ProfessionalLeadsTab({ professional }: { professional: Professional }) {
-  const navigate = useNavigate();
   const [associatedLeads, setAssociatedLeads] = useState<{
     id: string;
     name: string;
@@ -936,187 +938,213 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
     site_location: string | null;
     address: string | null;
     created_at: string;
-    roleBadge: string;
+    roleBadges: string[];
   }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const loadAssociatedLeads = async () => {
       setLoading(true);
+      setLoadError(null);
+
       try {
         const profPhone = normalizePhone(professional.phone);
+        const selectCols = 'id, name, phone, alternate_phone, designation, status, site_location, address, created_at, referred_by, additional_contacts';
 
-        // 1. Fetch junction links for this professional
-        const { data: linkRows } = await supabase
+        // Fetch canonical junction associations first. Group 1 and Group 3 both
+        // live here, while referred_by JSONB remains a second source of truth.
+        const { data: linkRows, error: linkError } = await supabase
           .from('lead_professionals')
-          .select('lead_id, is_primary_contact, contact_designation')
+          .select('lead_id, professional_id, is_primary_contact, contact_designation')
           .eq('professional_id', professional.id);
 
-        const linkedLeadIds = (linkRows || []).map((r) => r.lead_id).filter(Boolean);
+        if (cancelled) return;
 
-        // 2. Build scalar server-side OR filters (no raw JSON brackets inside .or())
-        const scalarOrFilters: string[] = [
-          `referred_by->>id.eq.${professional.id}`,
+        const normalizedLinks = linkRows || [];
+        const linkedLeadIds = Array.from(new Set(
+          normalizedLinks.map((row) => row.lead_id).filter((id): id is string => Boolean(id)),
+        ));
+
+        // Keep each PostgREST request independently typed and independently
+        // observable. In particular, do not use JSONB .contains() with JS
+        // objects: supabase-js serializes those as "[object Object]".
+        const leadQueries = [
+          {
+            label: 'referral ID',
+            query: supabase
+              .from('leads')
+              .select(selectCols)
+              .eq('referred_by->>id', professional.id)
+              .is('deleted_at', null)
+              .neq('status', 'deleted'),
+          },
+          ...(linkedLeadIds.length > 0
+            ? [{
+                label: 'professional junction',
+                query: supabase.from('leads').select(selectCols).in('id', linkedLeadIds)
+                  .is('deleted_at', null)
+                  .neq('status', 'deleted'),
+              }]
+            : []),
+          ...(profPhone.length === 10
+            ? [{
+                label: 'primary professional phone',
+                query: supabase
+                  .from('leads')
+                  .select(selectCols)
+                  .or(`phone.ilike.%${profPhone}%,alternate_phone.ilike.%${profPhone}%`)
+                  .is('deleted_at', null)
+                  .neq('status', 'deleted'),
+              }]
+            : []),
+          {
+            label: 'legacy additional contacts',
+            query: supabase
+              .from('leads')
+              .select(selectCols)
+              .contains('additional_contacts', buildAdditionalContactsContainsFilter(professional.id))
+              .is('deleted_at', null)
+              .neq('status', 'deleted'),
+          },
+          {
+            label: 'legacy referral phone',
+            query: supabase
+              .from('leads')
+              .select(selectCols)
+              .not('referred_by', 'is', null)
+              .is('deleted_at', null)
+              .neq('status', 'deleted'),
+          },
         ];
 
-        if (linkedLeadIds.length > 0) {
-          scalarOrFilters.push(`id.in.(${linkedLeadIds.join(',')})`);
-        }
+        const queryResults = await Promise.all(leadQueries.map(async ({ label, query }) => {
+          const result = await query;
+          return { label, data: result.data, error: result.error };
+        }));
 
-        if (profPhone && profPhone.length === 10) {
-          scalarOrFilters.push(`phone.ilike.%${profPhone}%`);
-          scalarOrFilters.push(`referred_by->>phone.ilike.%${profPhone}%`);
-        }
+        if (cancelled) return;
 
-        const selectCols = 'id, name, phone, designation, status, site_location, address, created_at, referred_by, additional_contacts';
-
-        const queries = [
-          supabase.from('leads').select(selectCols).or(scalarOrFilters.join(',')),
-          supabase.from('leads').select(selectCols).contains('additional_contacts', [{ professional_id: professional.id }]),
+        const queryErrors = [
+          ...(linkError ? [{ label: 'professional junction links', message: linkError.message }] : []),
+          ...queryResults
+            .filter((result) => result.error)
+            .map((result) => ({
+              label: result.label,
+              message: result.error?.message || 'Unknown query error',
+            })),
         ];
 
-        if (profPhone && profPhone.length === 10) {
-          queries.push(
-            supabase.from('leads').select(selectCols).contains('additional_contacts', [{ phone: profPhone }])
+        if (queryErrors.length > 0) {
+          console.error('Professional lead associations could not be fully loaded:', queryErrors);
+          setLoadError(
+            `Some lead associations could not be loaded (${queryErrors
+              .map((failure) => `${failure.label}: ${failure.message}`)
+              .join('; ')}).`,
           );
         }
 
-        const queryResults = await Promise.all(queries);
-        if (cancelled) return;
-
-        // Merge and deduplicate candidate leads
+        // Union the separate query results by lead.id before resolving roles.
         const candidateMap = new Map<string, any>();
-        for (const res of queryResults) {
-          if (res.data) {
-            for (const row of res.data) {
-              candidateMap.set(row.id, row);
-            }
+        for (const result of queryResults) {
+          for (const row of result.data || []) {
+            if (row?.id) candidateMap.set(row.id, row);
           }
         }
-        const leadsData = Array.from(candidateMap.values());
 
-        const matchedMap = new Map<string, { lead: any; roleBadge: string }>();
-
-        // Process linkRows first
-        (linkRows || []).forEach(r => {
-          const l = (leadsData || []).find(lead => lead.id === r.lead_id);
-          if (l) {
-            const desig = r.contact_designation
-              ? r.contact_designation.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-              : 'Site Professional';
-            matchedMap.set(l.id, {
-              lead: l,
-              roleBadge: r.is_primary_contact ? `Site ${desig}` : desig,
-            });
-          }
-        });
-
-        // Evaluate predicate across returned candidate leads
-        (leadsData || []).forEach(lead => {
-          if (matchedMap.has(lead.id)) return;
-
-          const leadPhone = normalizePhone(lead.phone);
-          const referredBy = typeof lead.referred_by === 'object' && lead.referred_by && !Array.isArray(lead.referred_by)
-            ? (lead.referred_by as Record<string, any>)
-            : null;
-          const referredByPhone = referredBy?.phone ? normalizePhone(referredBy.phone) : null;
-
-          // Check 1: Referred By
-          if (
-            (referredBy?.id && referredBy.id === professional.id) ||
-            (profPhone && referredByPhone && profPhone === referredByPhone)
-          ) {
-            matchedMap.set(lead.id, { lead, roleBadge: "Referrer" });
-            return;
-          }
-
-          // Check 2: Primary Contact
-          if (
-            isProfessionalDesignation(lead.designation) &&
-            ((lead as any).professional_id === professional.id || (profPhone && leadPhone && profPhone === leadPhone))
-          ) {
-            const desig = lead.designation
-              ? lead.designation.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
-              : 'Architect';
-            matchedMap.set(lead.id, { lead, roleBadge: `Site ${desig}` });
-            return;
-          }
-
-          // Check 3: Additional Contacts
-          if (Array.isArray(lead.additional_contacts)) {
-            const matchedContact = (lead.additional_contacts as any[]).find(c => {
-              const cPhone = c?.phone ? normalizePhone(c.phone) : null;
-              return (
-                c?.professional_id === professional.id ||
-                (isProfessionalDesignation(c?.designation) && profPhone && cPhone && profPhone === cPhone)
-              );
-            });
-
-            if (matchedContact) {
-              const desig = matchedContact.designation
-                ? matchedContact.designation.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
-                : 'Site Professional';
-              matchedMap.set(lead.id, { lead, roleBadge: `Site ${desig}` });
-              return;
-            }
-          }
-        });
-
-        const results = Array.from(matchedMap.values()).map(({ lead, roleBadge }) => ({
-          id: lead.id,
-          name: lead.name,
-          phone: lead.phone,
-          status: lead.status,
-          site_location: lead.site_location,
-          address: lead.address,
-          created_at: lead.created_at,
-          roleBadge,
-        }));
+        const results = Array.from(candidateMap.values())
+          .filter((lead) => lead.status?.toLowerCase() !== 'deleted')
+          .map((lead) => ({
+            lead,
+            roleBadges: getProfessionalLeadRoleBadges(
+              professional.id,
+              profPhone,
+              lead,
+              normalizedLinks,
+            ),
+          }))
+          .filter(({ roleBadges }) => roleBadges.length > 0)
+          .map(({ lead, roleBadges }) => ({
+            id: lead.id,
+            name: lead.name,
+            phone: lead.phone,
+            status: lead.status,
+            site_location: lead.site_location,
+            address: lead.address,
+            created_at: lead.created_at,
+            roleBadges,
+          }))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         setAssociatedLeads(results);
-      } catch (err) {
-        console.error("Failed to load associated leads for professional:", err);
+      } catch (error) {
+        console.error('Failed to load associated leads for professional:', error);
+        if (!cancelled) {
+          setLoadError(
+            error instanceof Error
+              ? `Unable to load professional lead associations: ${error.message}`
+              : 'Unable to load professional lead associations. Please retry.',
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
 
+    void loadAssociatedLeads();
     return () => { cancelled = true; };
   }, [professional.id, professional.phone]);
 
   if (loading) return <div className="text-sm text-muted-foreground p-4">Loading leads…</div>;
-  if (associatedLeads.length === 0) return <div className="text-sm text-muted-foreground p-4">No leads linked to this professional yet.</div>;
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Phone</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Site Location</TableHead>
-          <TableHead>Role</TableHead>
-          <TableHead>Added</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {associatedLeads.map((lead) => (
-          <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => window.open(`/leads?view=${lead.id}`, '_blank')}>
-            <TableCell className="font-medium">{lead.name}</TableCell>
-            <TableCell>{lead.phone}</TableCell>
-            <TableCell><Badge variant="outline">{lead.status}</Badge></TableCell>
-            <TableCell>{lead.site_location || lead.address || '—'}</TableCell>
-            <TableCell>
-              <Badge variant="secondary" className="bg-blue-50 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
-                {lead.roleBadge}
-              </Badge>
-            </TableCell>
-            <TableCell>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="space-y-3">
+      {loadError && (
+        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+      {associatedLeads.length === 0 ? (
+        <div className="text-sm text-muted-foreground p-4">
+          No leads linked to this professional yet.
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Site Location</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Added</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {associatedLeads.map((lead) => (
+              <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => window.open(`/leads?view=${lead.id}`, '_blank')}>
+                <TableCell className="font-medium">{lead.name}</TableCell>
+                <TableCell>{lead.phone}</TableCell>
+                <TableCell><Badge variant="outline">{lead.status}</Badge></TableCell>
+                <TableCell>{lead.site_location || lead.address || '—'}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {lead.roleBadges.map((roleBadge) => (
+                      <Badge key={roleBadge} variant="secondary" className="bg-blue-50 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+                        {roleBadge}
+                      </Badge>
+                    ))}
+                  </div>
+                </TableCell>
+                <TableCell>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
   );
 }
 
