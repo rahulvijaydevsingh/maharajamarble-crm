@@ -30,6 +30,7 @@ import {
   ProfessionalRef,
 } from "@/types/lead";
 import { isProfessionalDesignation, mapDesignationToProfessionalType, normalizePhone } from "@/lib/professionalResolver";
+import { buildReferralLinkInsert, getPreservedProfessionalIds } from "@/lib/professionalLeadAssociations";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { Lead } from "@/hooks/useLeads";
@@ -66,14 +67,16 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
   const initialReferredBy = (() => {
     if (lead.referred_by && typeof lead.referred_by === 'object' && !Array.isArray(lead.referred_by)) {
       const ref = lead.referred_by as Record<string, unknown>;
-      if (ref.id && ref.name && ref.firmName && ref.type) {
+      if (typeof ref.id === "string" && ref.id.trim() && typeof ref.name === "string" && ref.name.trim()) {
         return {
-          id: String(ref.id),
-          name: String(ref.name),
-          firmName: String(ref.firmName),
-          type: ref.type as "architect" | "builder" | "contractor" | "interior_designer",
-          phone: ref.phone ? String(ref.phone) : undefined,
-          email: ref.email ? String(ref.email) : undefined,
+          id: ref.id,
+          name: ref.name,
+          firmName: typeof ref.firmName === "string"
+            ? ref.firmName
+            : typeof ref.firm_name === "string" ? ref.firm_name : "",
+          type: (typeof ref.type === "string" ? ref.type : "contractor") as ProfessionalRef["type"],
+          phone: typeof ref.phone === "string" && ref.phone ? ref.phone : undefined,
+          email: typeof ref.email === "string" && ref.email ? ref.email : undefined,
         };
       }
     }
@@ -316,7 +319,7 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
             c.professional_id = professionalId;
             if (isPrimaryContact) primaryProfessionalId = professionalId;
             linkedProfessionalIds.add(professionalId);
-            await supabase
+            const { error: group1LinkError } = await supabase
               .from("lead_professionals")
               .upsert(
                 {
@@ -327,11 +330,25 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
                 },
                 { onConflict: "lead_id,professional_id" }
               );
+            if (group1LinkError) throw group1LinkError;
           }
         } catch (err: any) {
           console.error("Failed to link professional contact:", err);
           if (phone.length === 10) failedPhones.add(phone);
         }
+      }
+
+      // Group 3 is inserted only after all Group 1 upserts. ignoreDuplicates maps
+      // to ON CONFLICT DO NOTHING, so it never downgrades a Group 1 contact.
+      const referralLink = buildReferralLinkInsert(lead.id, referredBy);
+      if (referralLink) {
+        const { error: referralLinkError } = await supabase
+          .from("lead_professionals")
+          .upsert([referralLink], {
+            onConflict: "lead_id,professional_id",
+            ignoreDuplicates: true,
+          });
+        if (referralLinkError) throw referralLinkError;
       }
 
       // 2. Construct updatedData AFTER professional IDs are resolved on contacts
@@ -384,19 +401,26 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         }
       }
 
-      const { data: existingLinks } = await supabase
+      const preservedProfessionalIds = getPreservedProfessionalIds(
+        linkedProfessionalIds,
+        referredBy?.id ?? null,
+      );
+      const { data: existingLinks, error: existingLinksError } = await supabase
         .from("lead_professionals")
         .select("professional_id")
         .eq("lead_id", lead.id);
+      if (existingLinksError) throw existingLinksError;
+
       const staleProfessionalIds = (existingLinks || [])
         .map((r) => r.professional_id)
-        .filter((id) => !linkedProfessionalIds.has(id) && !failedProfessionalIds.includes(id));
+        .filter((id) => !preservedProfessionalIds.has(id) && !failedProfessionalIds.includes(id));
       if (staleProfessionalIds.length > 0) {
-        await supabase
+        const { error: staleCleanupError } = await supabase
           .from("lead_professionals")
           .delete()
           .eq("lead_id", lead.id)
           .in("professional_id", staleProfessionalIds);
+        if (staleCleanupError) throw staleCleanupError;
       }
 
       // Link pending task
@@ -415,9 +439,10 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
         description: `${primaryContact.name}'s information has been updated.`,
       });
     } catch (error) {
+      console.error("Failed to update lead and professional links:", error);
       toast({
-        title: "Error",
-        description: "Failed to update lead. Please try again.",
+        title: "Error updating lead",
+        description: error instanceof Error ? error.message : "Failed to update lead. Please try again.",
         variant: "destructive",
       });
     } finally {
