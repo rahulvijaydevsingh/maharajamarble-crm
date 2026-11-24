@@ -109,7 +109,7 @@ import { AddQuotationDialog } from '@/components/quotations/AddQuotationDialog';
 import { QUOTATION_STATUSES, Quotation } from '@/types/quotation';
 import { useZLayer } from '@/contexts/ZLayerContext';
 import { normalizePhone } from '@/lib/professionalResolver';
-import { getProfessionalLeadRoleBadges } from '@/lib/professionalLeadAssociations';
+import { buildAdditionalContactsContainsFilter, getProfessionalLeadRoleBadges } from '@/lib/professionalLeadAssociations';
 
 interface ProfessionalDetailViewProps {
   professional: Professional | null;
@@ -1005,7 +1005,7 @@ function ProfessionalLeadsTab({ professional }: { professional: Professional }) 
             query: supabase
               .from('leads')
               .select(selectCols)
-              .contains('additional_contacts', JSON.stringify([{ professional_id: professional.id }]))
+              .contains('additional_contacts', buildAdditionalContactsContainsFilter(professional.id))
               .is('deleted_at', null)
               .neq('status', 'deleted'),
           },
