@@ -131,6 +131,11 @@ export function buildReferralLinkInsert(
   };
 }
 
+/** JSONB containment value for a single matching Additional Contact. */
+export function buildAdditionalContactsContainsFilter(professionalId: string): string {
+  return JSON.stringify([{ professional_id: professionalId }]);
+}
+
 /** Keep a link while it remains in either Group 1 or Group 3. */
 export function getPreservedProfessionalIds(
   group1ProfessionalIds: Iterable<string>,
