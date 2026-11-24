@@ -58,22 +58,24 @@ export function getProfessionalLeadRoleBadges(
     ? normalizePhone(referredBy.phone)
     : "";
 
-  if (
-    referredById === professionalId ||
-    (normalizedProfessionalPhone.length === 10 &&
-      referredByPhone.length === 10 &&
-      normalizedProfessionalPhone === referredByPhone)
-  ) {
+  const matchesReferralByPhone =
+    !referredById &&
+    normalizedProfessionalPhone.length === 10 &&
+    referredByPhone.length === 10 &&
+    normalizedProfessionalPhone === referredByPhone;
+  if (referredById === professionalId || matchesReferralByPhone) {
     badges.add("Referrer");
   }
 
   const leadPhone = normalizePhone(lead.phone);
+  const matchesPrimaryLeadByPhone =
+    !lead.professional_id &&
+    normalizedProfessionalPhone.length === 10 &&
+    leadPhone.length === 10 &&
+    normalizedProfessionalPhone === leadPhone;
   if (
     isProfessionalDesignation(lead.designation) &&
-    ((lead.professional_id && lead.professional_id === professionalId) ||
-      (normalizedProfessionalPhone.length === 10 &&
-        leadPhone.length === 10 &&
-        normalizedProfessionalPhone === leadPhone))
+    (lead.professional_id === professionalId || matchesPrimaryLeadByPhone)
   ) {
     badges.add(`Site ${formatDesignation(lead.designation, "Professional")}`);
   }
