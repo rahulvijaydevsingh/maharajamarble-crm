@@ -20,7 +20,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install locked dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps --no-package-lock
       - name: Run Vitest suite
         run: npx vitest run
       - name: TypeScript check
