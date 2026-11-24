@@ -330,10 +330,15 @@ export function EditSmartLeadForm({ lead, onSave, onCancel }: EditSmartLeadFormP
                 },
                 { onConflict: "lead_id,professional_id" }
               );
-            if (group1LinkError) throw group1LinkError;
+            if (group1LinkError) {
+              throw new Error(`Failed to save Group 1 contact link: ${group1LinkError.message}`);
+            }
           }
         } catch (err: any) {
           console.error("Failed to link professional contact:", err);
+          if (err instanceof Error && err.message.startsWith("Failed to save Group 1 contact link:")) {
+            throw err;
+          }
           if (phone.length === 10) failedPhones.add(phone);
         }
       }
