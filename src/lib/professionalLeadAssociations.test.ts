@@ -41,6 +41,29 @@ describe("professional lead Group 3 associations", () => {
     expect(badges).toEqual(["Site Architect", "Referrer"]);
   });
 
+  it("returns one Site Architect badge for an Additional Contact with a Group 1 link", () => {
+    const badges = getProfessionalLeadRoleBadges(
+      "professional-1",
+      "9876543210",
+      {
+        id: "lead-1",
+        additional_contacts: [{
+          professional_id: "professional-1",
+          designation: "architect",
+          phone: "9876543210",
+        }],
+      },
+      [{
+        lead_id: "lead-1",
+        professional_id: "professional-1",
+        is_primary_contact: false,
+        contact_designation: "architect",
+      }],
+    );
+
+    expect(badges).toEqual(["Site Architect"]);
+  });
+
   it("treats an explicit referral ID as authoritative over a matching phone", () => {
     expect(getProfessionalLeadRoleBadges("professional-1", "9876543210", {
       id: "lead-1",
