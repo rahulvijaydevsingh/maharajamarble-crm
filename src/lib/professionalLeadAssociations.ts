@@ -85,8 +85,11 @@ export function getProfessionalLeadRoleBadges(
       if (!contact || typeof contact !== "object") continue;
       const item = contact as Record<string, unknown>;
       const itemPhone = typeof item.phone === "string" ? normalizePhone(item.phone) : "";
-      const matchesId = item.professional_id === professionalId;
+      const itemProfessionalId =
+        typeof item.professional_id === "string" ? item.professional_id : null;
+      const matchesId = itemProfessionalId === professionalId;
       const matchesPhone =
+        !itemProfessionalId &&
         isProfessionalDesignation(typeof item.designation === "string" ? item.designation : null) &&
         normalizedProfessionalPhone.length === 10 &&
         itemPhone.length === 10 &&
