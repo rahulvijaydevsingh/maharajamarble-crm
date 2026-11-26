@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Smartphone } from 'lucide-react';
 
+import { useAuth } from '@/contexts/AuthContext';
 import {
   MOBILE_ROOT,
   isMobileViewport,
@@ -73,10 +74,14 @@ export const WorkspaceGate: React.FC<{ children: React.ReactNode }> = ({ childre
  *
  * It stays visible on desktop routes below the breakpoint even when the user
  * switched to the full CRM — that button is their only way back to `/m`.
+ *
+ * It only exists for a signed-in user: the signed-out landing page must stay
+ * clean.
  */
 export const MobileWorkspaceLauncher: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -91,6 +96,10 @@ export const MobileWorkspaceLauncher: React.FC = () => {
   }, []);
 
   if (!visible) return null;
+
+  // The launcher belongs to a signed-in workspace only — never on the
+  // signed-out landing page.
+  if (!user) return null;
 
   // Inside the mobile workspace (or on the sign-in screen) the launcher would
   // be a duplicate of the workspace's own navigation.
@@ -107,7 +116,7 @@ export const MobileWorkspaceLauncher: React.FC = () => {
         writeWorkspacePreference('mobile');
         navigate(target);
       }}
-      className="fixed bottom-4 right-4 z-[70] min-h-[44px] px-4 rounded-full bg-[#1A1A2E] text-white text-sm font-semibold shadow-lg flex items-center gap-2"
+      className="fixed bottom-4 right-4 z-40 min-h-[44px] px-4 rounded-full bg-[#1A1A2E] text-white text-sm font-semibold shadow-lg flex items-center gap-2"
     >
       <Smartphone className="w-4 h-4" />
       <span className="whitespace-nowrap">Switch to Mobile workspace</span>

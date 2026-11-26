@@ -7,6 +7,7 @@ import {
   handoffPermissionStrings,
   isDesktopHandoffRole,
 } from '@/mobile/lib/roleGating';
+import { FULL_CRM_TARGETS, resolveFullCrmTarget } from '@/mobile/routing/handoffHelper';
 
 const ALL_PERMISSIONS = [
   'tasks.create',
@@ -111,6 +112,35 @@ describe('more hub role gating', () => {
       expect(spec.key.length).toBeGreaterThan(0);
       expect(spec.label.length).toBeGreaterThan(0);
       expect(spec.targetCode.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('uses canonical named target codes — never a raw path', () => {
+    const codeFor = (key: string) =>
+      HANDOFF_ROW_SPECS.find((spec) => spec.key === key)?.targetCode;
+
+    expect(codeFor('control-panel')).toBe('settings');
+    expect(codeFor('roles')).toBe('settings');
+    expect(codeFor('backup')).toBe('settings');
+    expect(codeFor('automation')).toBe('automation');
+    expect(codeFor('api-docs')).toBe('api-docs');
+    expect(codeFor('performance')).toBe('performance');
+
+    // The existing named codes stay as they are.
+    expect(codeFor('calendar')).toBe('calendar');
+    expect(codeFor('todo-lists')).toBe('todo-lists');
+    expect(codeFor('quotations')).toBe('quotations');
+    expect(codeFor('leads-new')).toBe('leads/new');
+    expect(codeFor('customers-new')).toBe('customers/new');
+    expect(codeFor('professionals-new')).toBe('professionals/new');
+    expect(codeFor('customer-attachments')).toBe('customers');
+  });
+
+  it('resolves every row to a known full CRM target', () => {
+    HANDOFF_ROW_SPECS.forEach((spec) => {
+      expect(spec.targetCode.startsWith('/')).toBe(false);
+      // An unknown code would silently fall back to the CRM root.
+      expect(resolveFullCrmTarget(spec.targetCode)).not.toEqual(FULL_CRM_TARGETS.workspace);
     });
   });
 

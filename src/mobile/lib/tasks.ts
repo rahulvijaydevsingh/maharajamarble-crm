@@ -14,8 +14,18 @@
 
 import type { CrmTask } from '@/mobile/types/crmTypes';
 import { isSameLocalDay } from '@/mobile/lib/format';
+import { isDesktopHandoffRole } from '@/mobile/lib/roleGating';
 
 export type TaskUrgency = 'overdue' | 'due_today' | 'upcoming' | 'completed' | 'cancelled';
+
+/**
+ * Whose queue a task list shows.
+ *
+ * `mine` is the default everywhere: a field agent must only ever see the
+ * tasks assigned to them, while a manager can widen the view to the whole
+ * team.
+ */
+export type TaskScope = 'mine' | 'team';
 
 /** Live task statuses that count as terminal. */
 export const COMPLETED_TASK_STATUS = 'Completed';
@@ -139,6 +149,45 @@ export function taskTypeLabel(value?: string | null, labelMap?: Record<string, s
   if (!value) return 'Task';
   if (labelMap && labelMap[value]) return labelMap[value];
   return value;
+}
+
+/**
+ * Filters a task list down to the selected scope.
+ *
+ * - `mine` keeps only the tasks whose `assigned_to` is the signed-in staff
+ *   member. The comparison trims both sides and ignores case, because the
+ *   name is typed by hand in several places. When the signed-in name is
+ *   missing the result is EMPTY — never "everything", a missing name must
+ *   never widen the view.
+ * - `team` returns every task.
+ */
+export function filterTasksByScope(
+  tasks: CrmTask[],
+  scope: TaskScope,
+  currentUserFullName?: string | null,
+): CrmTask[] {
+  if (!Array.isArray(tasks)) return [];
+  if (scope === 'team') return tasks;
+
+  const target = (currentUserFullName ?? '').trim().toLowerCase();
+  if (!target) return [];
+
+  return tasks.filter((task) => {
+    if (!task) return false;
+    const assignee = (task.assigned_to ?? '').trim().toLowerCase();
+    return !!assignee && assignee === target;
+  });
+}
+
+/**
+ * True when the role may switch between the "Mine" and "Team" queues.
+ *
+ * Only the roles that already reach the desktop workspace (`super_admin`,
+ * `admin`, `manager`) may look at the whole team's queue. Every other role
+ * stays on "Mine" and never sees the toggle.
+ */
+export function canUseTaskScopeToggle(role?: string | null): boolean {
+  return isDesktopHandoffRole(role);
 }
 
 /**

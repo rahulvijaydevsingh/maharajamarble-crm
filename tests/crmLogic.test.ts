@@ -33,10 +33,13 @@ describe('normalizePhone10 strips country code and non-digits cleanly', () => {
 });
 
 describe('task type labels use the Control Panel value space', () => {
-  it('resolves canonical snake_case free text to a readable label', () => {
-    expect(taskTypeLabel('Follow-up Call')).toBe('Follow-up Call');
-    expect(taskTypeLabel('Site Visit')).toBe('Site Visit');
-    expect(taskTypeLabel('Sample Delivery')).toBe('Sample Delivery');
+  it('prefers the live Control Panel label over the raw stored value', () => {
+    expect(taskTypeLabel('follow_up_call', { follow_up_call: 'Follow-up Call' })).toBe(
+      'Follow-up Call',
+    );
+    expect(taskTypeLabel('site_visit', { follow_up_call: 'Follow-up Call' })).toBe(
+      'site_visit',
+    );
   });
 
   it('falls back to a generic label for an unknown value', () => {

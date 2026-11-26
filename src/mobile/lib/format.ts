@@ -73,19 +73,45 @@ export function formatPhoneDisplay(phone?: string | null): string {
   return `+91 ${normalized.slice(0, 5)} ${normalized.slice(5)}`;
 }
 
-/** `tel:` deep link. Falls back to the raw digits for non-Indian numbers. */
+/**
+ * Keeps a stored phone number intact for a `tel:` URI.
+ *
+ * A valid 10-digit Indian mobile keeps the canonical `+91…` form. Anything
+ * else — a landline, an international number, a number with a country prefix
+ * — keeps *its own* digits (and a leading `+`) so no part of the number is
+ * silently truncated. Every character that is not a digit (and not the leading
+ * `+`) is dropped, because whitespace and punctuation are illegal in a `tel:`
+ * URI.
+ *
+ * The old implementation used `digitsOnly10()`, which cut `+91 40 1234 5678`
+ * down to `4012345678` and threw the country code away.
+ */
 export function buildTelUrl(phone?: string | null): string {
   const normalized = normalizePhone10(phone);
   if (normalized) {
     return `tel:+${toPhoneE164(normalized)}`;
   }
-  const digits = digitsOnly10(phone);
-  return `tel:${digits || ''}`;
+  return `tel:${preserveTelNumber(phone)}`;
+}
+
+/**
+ * The digits of a phone number, verbatim, plus a leading `+` when the stored
+ * value has one. Nothing is truncated and no prefix is added.
+ */
+export function preserveTelNumber(phone?: string | null): string {
+  if (typeof phone !== 'string') return '';
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '';
+  return trimmed.startsWith('+') ? `+${digits}` : digits;
 }
 
 /**
  * Opens a blank WhatsApp chat. No message template is ever appended — the
  * link must stay a bare `https://wa.me/<number>`.
+ *
+ * Deliberately untouched by the `buildTelUrl` fix: a WhatsApp link is always
+ * built from `normalizePhone10` only, never from a verbatim number.
  */
 export function buildWhatsAppUrl(phone?: string | null): string {
   const normalized = normalizePhone10(phone);

@@ -30,6 +30,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  CheckSquare,
   ChevronDown,
   ChevronUp,
   Crosshair,
@@ -54,8 +55,10 @@ import { useCustomers } from '@/hooks/useCustomers';
 import type { CustomerInsert } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useTasks } from '@/hooks/useTasks';
+import { useReminders } from '@/hooks/useReminders';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
-import { useActiveStaffOptions } from '@/hooks/useActiveStaff';
+import { useActiveStaff, useActiveStaffOptions } from '@/hooks/useActiveStaff';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -89,7 +92,23 @@ import {
   type CallIntentTarget,
 } from '@/mobile/hooks/useCallIntentWatcher';
 import { resolveSafeStaffName, staffNameFromOptionLabel } from '@/mobile/lib/staffAttribution';
-import { parseAdditionalContacts, parseReferredBy, toCustomerInsert, toLeadInsert, toMobileLead } from '@/mobile/lib/mappers';
+import {
+  parseAdditionalContacts,
+  parseReferredBy,
+  toAlternatePhoneValue,
+  toCustomerInsert,
+  toLeadInsert,
+  toLeadUpdate,
+  toMobileLead,
+} from '@/mobile/lib/mappers';
+import {
+  LEAD_CREATE_STEPS,
+  retryLeadCreateEffects,
+  runLeadCreateEffects,
+  type LeadCreateEffectsDeps,
+  type LeadCreateEffectsInput,
+  type LeadCreateEffectsResult,
+} from '@/mobile/lib/leadCreateEffects';
 import {
   buildMapsUrl,
   buildWhatsAppUrl,
@@ -146,6 +165,56 @@ function resolveAttributionName(
 /** A short, human readable identifier for a lead row (the prototype's code). */
 function leadReference(lead: { id: string }): string {
   return `#${lead.id.slice(0, 8)}`;
+}
+
+/**
+ * The invalid fields in the order they appear on the screen.
+ *
+ * The validation summary scrolls to and focuses the **first** invalid field,
+ * so this order has to match the visual order — not the order in which the
+ * validation function happens to check the fields.
+ */
+const VALIDATION_FIELD_ORDER: Array<{ errorKey: string; elementId: string }> = [
+  { errorKey: 'designation', elementId: 'lead-designation' },
+  { errorKey: 'fullName', elementId: 'lead-fullname' },
+  { errorKey: 'phone', elementId: 'lead-phone' },
+  { errorKey: 'siteLocation', elementId: 'lead-site' },
+  { errorKey: 'materialInterests', elementId: 'lead-materials' },
+];
+
+/**
+ * Scrolls to and focuses the first invalid field.
+ *
+ * The element is marked with `aria-invalid` by the form, so the focus moves
+ * to the field the user has to fix first.
+ */
+function focusFirstInvalidField(errors: Record<string, string>): void {
+  if (typeof document === 'undefined') return;
+  const target = VALIDATION_FIELD_ORDER.find((field) => Boolean(errors[field.errorKey]));
+  if (!target) return;
+  const element = document.getElementById(target.elementId);
+  if (!element) return;
+  try {
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof element.focus === 'function') element.focus();
+  } catch {
+    /* the browser refused to scroll — the summary banner still names the field */
+  }
+}
+
+/**
+ * The lead statuses that never count as a duplicate.
+ *
+ * A lost or a deleted lead is not a duplicate of anything — the field user
+ * must not be blocked by a record that is already closed.
+ */
+const NON_DUPLICATE_LEAD_STATUSES = ['lost', 'deleted'];
+
+/** True when a lead may still be shown as a duplicate candidate. */
+function isDuplicateCandidateStatus(status?: string | null): boolean {
+  const value = (status ?? '').trim().toLowerCase();
+  if (!value) return true;
+  return !NON_DUPLICATE_LEAD_STATUSES.includes(value);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -383,14 +452,28 @@ export const MobileLeadForm: React.FC<{
   /** Records the intent to call — shared with the mobile shell. */
   onBeginCall?: (target: CallIntentTarget) => void;
 }> = ({ mode, leadId, onCancel, onNavigate, onOpenQuickAddMode, onBeginCall }) => {
-  const { leads, addLead, updateLead } = useLeads();
+  const { leads, loading: leadsLoading, addLead, updateLead } = useLeads();
   const { professionals } = useProfessionals();
+  const { addTask } = useTasks();
+  const { addReminder } = useReminders();
   const { getFieldOptions } = useMobileControlPanel();
   const { options: staffOptions } = useActiveStaffOptions();
+  const { staffMembers } = useActiveStaff();
+  const { hasPermission } = usePermissions();
   const { profile } = useAuth();
   const { logActivity } = useLogActivity();
   const { isOnline, enqueue } = useWeakSignalOutbox();
   const { toast } = useToast();
+
+  /**
+   * Permission gating.
+   *
+   * A read-only role (`sales_viewer`) gets a clean read-only experience: the
+   * write CTAs are hidden instead of failing at the API.
+   */
+  const canCreateLead = hasPermission('leads.create');
+  const canEditLead = hasPermission('leads.edit');
+  const canWriteThisLead = mode === 'create' ? canCreateLead : canEditLead;
 
   /* ----------------------------- option lists ---------------------------- */
 
@@ -408,11 +491,22 @@ export const MobileLeadForm: React.FC<{
     sourceOptions.find((o) => o.isDefault)?.value ?? sourceOptions[0]?.value ?? 'walk_in';
   const defaultPriority =
     priorityOptions.find((o) => o.isDefault)?.value ?? priorityOptions[0]?.value ?? '3';
-  const defaultMaterials = materialOptions.some((o) => o.value === 'italian_marble')
-    ? ['italian_marble']
-    : materialOptions[0]
-      ? [materialOptions[0].value]
-      : [];
+
+  /**
+   * The default material list.
+   *
+   * `getFieldOptions()` returns a fresh array on every render, so the default
+   * is derived from the *content* of the option list — otherwise the array
+   * identity changes on every render and the defaults effect below re-runs on
+   * every render.
+   */
+  const materialOptionsSignature = materialOptions.map((option) => option.value).join('|');
+  const defaultMaterials = useMemo(() => {
+    const values = materialOptionsSignature.length > 0 ? materialOptionsSignature.split('|') : [];
+    if (values.includes('italian_marble')) return ['italian_marble'];
+    if (values[0]) return [values[0]];
+    return [];
+  }, [materialOptionsSignature]);
 
   /* ------------------------------- lead data ----------------------------- */
 
@@ -498,7 +592,15 @@ export const MobileLeadForm: React.FC<{
   const [showOptionalSourceNote, setShowOptionalSourceNote] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** The duplicate shown in the modal — only ever opened by a Submit. */
   const [duplicateWarning, setDuplicateWarning] = useState<LiveLead | null>(null);
+  /** The calm inline hint under the phone field while the user is typing. */
+  const [duplicateHint, setDuplicateHint] = useState<LiveLead | null>(null);
+  /** True once the user pressed Save — the validation summary shows then. */
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  /** The post-create effects that failed — the lead itself was saved. */
+  const [effectsFailure, setEffectsFailure] = useState<LeadCreateEffectsResult | null>(null);
+  const [retryingEffects, setRetryingEffects] = useState(false);
   const [savedPostLead, setSavedPostLead] = useState<Lead | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -508,6 +610,13 @@ export const MobileLeadForm: React.FC<{
   const forceSaveRef = useRef(false);
   const hydratedLeadIdRef = useRef<string | null>(null);
   const defaultsAppliedRef = useRef(false);
+  /**
+   * The `referred_by` value the lead was hydrated with.
+   *
+   * An Edit save compares the current value against this one: when nothing
+   * changed, the JSONB column is left alone instead of being rewritten.
+   */
+  const originalReferredByRef = useRef<string | ProfessionalRef | null>(null);
   /** The designation + phone the auto-match already ran for. */
   const autoMatchKeyRef = useRef<string | null>(null);
   /** True once the user picked an assignee by hand. */
@@ -517,7 +626,17 @@ export const MobileLeadForm: React.FC<{
 
   const isProfRole = isProfessionalDesignation(designation);
   const normalizedPrimaryPhone = normalizePhone10(phone);
-  const normalizedAlternatePhone = normalizePhone10(alternatePhone);
+  /**
+   * The alternate phone is stored EXACTLY as it was typed unless it is a valid
+   * 10-digit Indian mobile.
+   *
+   * A landline (`011-23456789`) or an international number must never be
+   * turned into `null` — that silently dropped a contact detail on the last
+   * edit. `toAlternatePhoneValue()` owns that rule.
+   */
+  const alternatePhoneValue = alternatePhone.trim()
+    ? toAlternatePhoneValue(alternatePhone)
+    : null;
 
   const linkedProfessional = useMemo(
     () => professionalCandidates.find((p) => p.id === professionalId) ?? null,
@@ -598,10 +717,14 @@ export const MobileLeadForm: React.FC<{
     setShowOptionalSourceNote(false);
     setErrors({});
     setDuplicateWarning(null);
+    setDuplicateHint(null);
+    setSubmitAttempted(false);
+    setEffectsFailure(null);
     forceSaveRef.current = false;
     hydratedLeadIdRef.current = null;
     defaultsAppliedRef.current = false;
     autoMatchKeyRef.current = null;
+    originalReferredByRef.current = null;
     assignedStaffTouchedRef.current = false;
   };
 
@@ -632,7 +755,9 @@ export const MobileLeadForm: React.FC<{
 
     setFullName(editingLead.name ?? '');
     setPhone(extractEditablePhone10(editingLead.phone ?? ''));
-    setAlternatePhone(extractEditablePhone10(editingLead.alternate_phone ?? ''));
+    // A landline (or any other non-10-digit number) is preserved exactly as
+    // it is stored — `normalizePhone10` would throw it away.
+    setAlternatePhone(editingLead.alternate_phone ?? '');
     setEmail(editingLead.email ?? '');
     setDesignation(editingLead.designation || defaultDesignation);
     setFirmName(editingLead.firm_name ?? '');
@@ -650,7 +775,9 @@ export const MobileLeadForm: React.FC<{
       editingLead.estimated_quantity ? String(editingLead.estimated_quantity) : '',
     );
     setLeadSource(editingLead.source || defaultSource);
-    setReferredBy(parseReferredBy(editingLead.referred_by));
+    const parsedReferrer = parseReferredBy(editingLead.referred_by);
+    setReferredBy(parsedReferrer);
+    originalReferredByRef.current = parsedReferrer;
     setNotes(editingLead.notes ?? '');
     setPriority(typeof editingLead.priority === 'number' ? editingLead.priority : 3);
     setDateStr(toLocalDateInputValue(editingLead.next_follow_up ?? defaultNextActionIso));
@@ -772,6 +899,10 @@ export const MobileLeadForm: React.FC<{
     if (!isProfRole) return;
     if (professionalId) return;
     if (!normalizedPrimaryPhone) return;
+    // The professionals list arrives asynchronously. The match key is only
+    // consumed once the list actually holds candidates — otherwise a late
+    // loading list would never match anything.
+    if (professionals.length === 0) return;
     const matchKey = `${designation}|${normalizedPrimaryPhone}`;
     // The match is attempted once per designation + phone so that an explicit
     // "Clear" is not undone by the next render.
@@ -795,6 +926,7 @@ export const MobileLeadForm: React.FC<{
     professionalId,
     normalizedPrimaryPhone,
     designation,
+    professionals.length,
     resolverCandidates,
     professionalCandidates,
   ]);
@@ -803,26 +935,56 @@ export const MobileLeadForm: React.FC<{
 
   /**
    * D9 — synchronous, local duplicate detection over the already loaded leads.
+   *
+   * The check skips:
+   *  - the lead that is being edited (it never matches itself),
+   *  - leads that are lost or deleted (they are closed records),
+   *  - professional designations (a professional legitimately shares the
+   *    number with the professional record it links to).
    */
-  const findDuplicateLead = (phone10: string | null, excludeId?: string): LiveLead | null => {
+  const findDuplicateLead = (
+    phone10: string | null,
+    excludeId?: string,
+    designationValue: string = designation,
+  ): LiveLead | null => {
     if (!phone10) return null;
     // The matching rules live in `@/mobile/lib/leadDuplicates` so they are
     // unit tested: exact 10-digit match, professional designations excluded,
     // and the lead being edited never matches itself.
     const candidate = findDuplicateLeadCandidate(
-      leads.map((lead) => ({
-        id: lead.id,
-        full_name: lead.name,
-        phone: lead.phone,
-        designation: lead.designation,
-        status: lead.status,
-        assigned_to: lead.assigned_to,
-      })),
+      leads
+        .filter((lead) => isDuplicateCandidateStatus(lead.status))
+        .map((lead) => ({
+          id: lead.id,
+          full_name: lead.name,
+          phone: lead.phone,
+          designation: lead.designation,
+          status: lead.status,
+          assigned_to: lead.assigned_to,
+        })),
       phone10,
-      { designation: designation || null, excludeLeadId: excludeId ?? null },
+      { designation: designationValue || null, excludeLeadId: excludeId ?? null },
     );
     if (!candidate) return null;
     return leads.find((lead) => lead.id === candidate.id) ?? null;
+  };
+
+  /**
+   * The calm inline hint under the phone field.
+   *
+   * The modal is never opened while the user is typing — it only ever opens
+   * on a Submit.
+   */
+  const refreshDuplicateHint = (
+    phone10: string | null,
+    designationValue: string = designation,
+  ) => {
+    const clean = normalizePhone10(phone10);
+    if (!clean || isProfessionalDesignation(designationValue)) {
+      setDuplicateHint(null);
+      return;
+    }
+    setDuplicateHint(findDuplicateLead(clean, editingLead?.id, designationValue));
   };
 
   const handlePrimaryPhoneChange = (raw: string) => {
@@ -831,16 +993,12 @@ export const MobileLeadForm: React.FC<{
     setErrors((prev) => ({ ...prev, phone: '' }));
     // Editing the number cancels a forced save.
     forceSaveRef.current = false;
-    const clean = normalizePhone10(digits);
-    if (!clean || isProfRole || mode !== 'create') {
-      setDuplicateWarning(null);
-      return;
-    }
-    setDuplicateWarning(findDuplicateLead(clean, editingLead?.id));
+    refreshDuplicateHint(digits);
   };
 
   const handleAlternatePhoneChange = (raw: string) => {
-    setAlternatePhone(extractEditablePhone10(raw));
+    // The number is kept exactly as it is typed — a landline must survive.
+    setAlternatePhone(raw);
   };
 
   const handleDesignationChange = (next: string) => {
@@ -852,8 +1010,10 @@ export const MobileLeadForm: React.FC<{
       setProfessionalDropdownOpen(false);
     }
     const clean = normalizePhone10(phone);
-    if (!isProfessionalDesignation(next) && clean && mode === 'create') {
-      setDuplicateWarning(findDuplicateLead(clean, editingLead?.id));
+    if (!isProfessionalDesignation(next) && clean) {
+      refreshDuplicateHint(clean, next);
+    } else {
+      setDuplicateHint(null);
     }
   };
 
@@ -861,7 +1021,7 @@ export const MobileLeadForm: React.FC<{
     setProfessionalId(professional.id);
     setFullName(professional.full_name);
     setPhone(extractEditablePhone10(professional.phone));
-    setAlternatePhone(extractEditablePhone10(professional.alternate_phone ?? ''));
+    setAlternatePhone(professional.alternate_phone ?? '');
     setEmail(professional.email ?? '');
     setFirmName(professional.firm_name ?? '');
     if (!siteLocation.trim() && professional.address) {
@@ -1015,6 +1175,42 @@ export const MobileLeadForm: React.FC<{
     );
   };
 
+  /**
+   * The phone of an additional contact.
+   *
+   * A professional contact whose phone reaches 10 digits is auto-matched
+   * against the existing professionals — the same rule the primary contact
+   * uses.
+   */
+  const handleAdditionalContactPhoneChange = (index: number, raw: string) => {
+    const digits = extractEditablePhone10(raw);
+    const contact = additionalContacts[index];
+    const patch: Partial<AdditionalContact> = { phone: digits };
+
+    const isProfessionalContact =
+      contact?.is_professional ?? isProfessionalDesignation(contact?.designation);
+    const phone10 = normalizePhone10(digits);
+
+    if (isProfessionalContact && phone10) {
+      const matched = professionalCandidates.find((professional) => {
+        if ((professional.status ?? 'active').toLowerCase() !== 'active') return false;
+        return (
+          normalizePhone10(professional.phone) === phone10 ||
+          normalizePhone10(professional.alternate_phone) === phone10
+        );
+      });
+      if (matched) {
+        patch.professional_id = matched.id;
+        patch.is_professional = true;
+        patch.name = contact?.name || matched.full_name;
+        patch.firm_name = contact?.firm_name || matched.firm_name || '';
+        patch.email = contact?.email || matched.email || undefined;
+      }
+    }
+
+    updateAdditionalContact(index, patch);
+  };
+
   const removeAdditionalContact = (index: number) => {
     setAdditionalContacts((prev) => prev.filter((_, i) => i !== index));
   };
@@ -1027,7 +1223,7 @@ export const MobileLeadForm: React.FC<{
     id: editingLead?.id,
     full_name: fullName.trim(),
     phone: normalizedPrimaryPhone ?? '',
-    alternate_phone: normalizedAlternatePhone,
+    alternate_phone: alternatePhoneValue,
     email: email.trim() || null,
     designation,
     firm_name: firmName.trim() || null,
@@ -1070,21 +1266,20 @@ export const MobileLeadForm: React.FC<{
   };
 
   /**
-   * Mirrors the desktop professional linking (the `lead_professionals`
-   * junction table) for the primary contact and every linked contact.
+   * Group 1 — the site professionals of a lead.
    *
    * Desktop parity (PR #150):
-   *  - Group 1 (primary contact + professional additional contacts) reuses an
+   *  - the primary contact plus every professional additional contact reuse an
    *    existing **active** professional with the same normalised 10-digit
-   *    phone, or auto-creates a new `professionals` row.
-   *  - The junction rows are de-duplicated by `professional_id` (the primary
+   *    phone, or auto-create a new `professionals` row,
+   *  - the junction rows are de-duplicated by `professional_id` (the primary
    *    contact wins) — Postgres refuses an `ON CONFLICT DO UPDATE` that
    *    touches the same row twice (`21000`).
-   *  - Group 3 (the referrer) is written with `buildReferralLinkInsert` after
-   *    every Group 1 upsert.
-   *  - On Edit, junction rows that are no longer referenced are deleted.
+   *
+   * The professional ids that are now linked are returned, so the Group 3
+   * referral link knows which rows it must not demote.
    */
-  const syncProfessionalLinks = async (savedLeadId: string) => {
+  const syncGroup1Professionals = async (savedLeadId: string): Promise<string[]> => {
     type Group1Candidate = {
       name: string;
       phone: string;
@@ -1199,61 +1394,202 @@ export const MobileLeadForm: React.FC<{
         .upsert(links, { onConflict: 'lead_id,professional_id' });
       if (group1Error) {
         console.warn('[mobile lead] Unable to link professionals.', group1Error);
-        toast({
-          title: 'Lead saved, but the professional links were not saved',
-          description:
-            'The lead was created, but its professional associations failed. Edit the lead later to retry.',
-          variant: 'destructive',
-        });
+        throw group1Error;
       }
     }
 
-    // Group 3 — the referrer. It is written after every Group 1 upsert so a
-    // referrer that is also a Group 1 contact keeps the Group 1 flags.
+    return group1Ids;
+  };
+
+  /**
+   * Group 3 — the referrer.
+   *
+   * It is written after every Group 1 upsert so a referrer that is also a
+   * Group 1 contact keeps the Group 1 flags.
+   */
+  const syncReferralLink = async (
+    savedLeadId: string,
+    group1Ids: string[] = [],
+  ): Promise<void> => {
     const referralLink = buildReferralLinkInsert(savedLeadId, referredBy);
-    if (referralLink) {
-      const isAlsoGroup1 = group1Ids.includes(referralLink.professional_id);
-      const { error: referralError } = await supabase
+    if (!referralLink) return;
+
+    const isAlsoGroup1 = group1Ids.includes(referralLink.professional_id);
+    const { error: referralError } = await supabase
+      .from('lead_professionals')
+      .upsert([referralLink], {
+        onConflict: 'lead_id,professional_id',
+        // On create the referrer is never demoted; on edit a removed Group 1
+        // contact must be demoted to the referrer role instead.
+        ...(mode === 'edit' && !isAlsoGroup1 ? {} : { ignoreDuplicates: true }),
+      });
+    if (referralError) {
+      console.warn('[mobile lead] The referral link was not saved.', referralError);
+      throw referralError;
+    }
+  };
+
+  /**
+   * On Edit, the junction rows that are no longer referenced are deleted.
+   */
+  const cleanupStaleProfessionalLinks = async (
+    savedLeadId: string,
+    group1Ids: string[],
+  ): Promise<void> => {
+    const referralLink = buildReferralLinkInsert(savedLeadId, referredBy);
+    const preserved = preservedLeadProfessionalIds(
+      group1Ids,
+      referralLink?.professional_id ?? null,
+    );
+    const { data: existingLinks, error: existingLinksError } = await supabase
+      .from('lead_professionals')
+      .select('professional_id')
+      .eq('lead_id', savedLeadId);
+    if (existingLinksError) {
+      console.warn('[mobile lead] Unable to read the professional links.', existingLinksError);
+      return;
+    }
+    const staleIds = staleLeadProfessionalIds(
+      (existingLinks ?? []).map((row) => row.professional_id as string),
+      preserved,
+    );
+    if (staleIds.length > 0) {
+      const { error: staleError } = await supabase
         .from('lead_professionals')
-        .upsert([referralLink], {
-          onConflict: 'lead_id,professional_id',
-          // On create the referrer is never demoted; on edit a removed Group 1
-          // contact must be demoted to the referrer role instead.
-          ...(mode === 'edit' && !isAlsoGroup1 ? {} : { ignoreDuplicates: true }),
-        });
-      if (referralError) {
-        console.warn('[mobile lead] The referral link was not saved.', referralError);
+        .delete()
+        .eq('lead_id', savedLeadId)
+        .in('professional_id', staleIds);
+      if (staleError) {
+        console.warn('[mobile lead] Unable to remove the stale professional links.', staleError);
       }
     }
+  };
 
-    // On Edit, drop the junction rows that are no longer referenced.
-    if (mode === 'edit') {
-      const preserved = preservedLeadProfessionalIds(
-        group1Ids,
-        referralLink?.professional_id ?? null,
+  /**
+   * The dependencies of the post-create effects.
+   *
+   * Every side effect arrives through this object, so the whole flow can be
+   * driven by fakes in a unit test.
+   */
+  const buildLeadCreateDeps = (): LeadCreateEffectsDeps => ({
+    syncProfessionals: async (leadId: string) => {
+      await syncGroup1Professionals(leadId);
+    },
+    linkReferral: async (leadId: string) => {
+      await syncReferralLink(leadId, []);
+    },
+    addTask: async (task) => {
+      const created = await addTask({
+        title: task.title,
+        description: task.description ?? null,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        assigned_to: task.assigned_to,
+        due_date: task.due_date,
+        due_time: task.due_time,
+        lead_id: task.lead_id,
+        created_by: task.created_by,
+        reminder: task.reminder,
+        ...(task.related_entity_type && task.related_entity_id
+          ? {
+              related_entity_type: task.related_entity_type,
+              related_entity_id: task.related_entity_id,
+            }
+          : {}),
+      });
+      return created ? { id: created.id } : null;
+    },
+    addReminder: async (reminder) => {
+      await addReminder({
+        title: reminder.title,
+        description: reminder.description,
+        reminder_datetime: reminder.reminder_datetime,
+        entity_type: reminder.entity_type,
+        entity_id: reminder.entity_id,
+        assigned_to: reminder.assigned_to,
+      });
+    },
+    notifyAssignee: async (notification) => {
+      // supabase-js does not throw — the error has to be inspected explicitly.
+      const { error } = await supabase.from('notifications').insert({
+        user_id: notification.user_id,
+        title: notification.title,
+        message: notification.message,
+        type: notification.type,
+        entity_type: notification.entity_type,
+        entity_id: notification.entity_id,
+      });
+      if (error) throw error;
+    },
+    toast: (message) => {
+      toast({
+        title: message.title,
+        description: message.description,
+        variant: message.variant,
+      });
+    },
+  });
+
+  /** The input of the post-create effects of a new lead. */
+  const buildLeadCreateInput = (leadId: string): LeadCreateEffectsInput => {
+    const assigneeEmail =
+      staffMembers.find((member) => member.id === assignedStaffId)?.email ?? null;
+    return {
+      leadId,
+      leadName: fullName.trim(),
+      assignedTo: attributionName,
+      assignedToEmail: assigneeEmail,
+      actorName,
+      dueDate: dateStr,
+      dueTime: timeStr,
+      reminderEnabled,
+      taskDescription: notes.trim() || null,
+      relatedEntityType: professionalId ? 'professional' : null,
+      relatedEntityId: professionalId,
+      notificationTitle: priority === 1 ? 'Hot Lead Assigned' : 'New Lead Assigned',
+      notificationMessage: `${fullName.trim() || phone} — visit at ${
+        siteLocation.trim() || 'site location not set'
+      }.`,
+    };
+  };
+
+  /**
+   * Re-runs only the steps that failed after the lead was saved.
+   *
+   * The lead is never created a second time — the retry only repairs the
+   * missing effects.
+   */
+  const handleRetryFailedSteps = async () => {
+    if (!effectsFailure) return;
+    setRetryingEffects(true);
+    try {
+      const result = await retryLeadCreateEffects(
+        {
+          ...buildLeadCreateInput(effectsFailure.leadId),
+          taskId: effectsFailure.createdTaskId,
+        },
+        buildLeadCreateDeps(),
+        effectsFailure.failedSteps,
       );
-      const { data: existingLinks, error: existingLinksError } = await supabase
-        .from('lead_professionals')
-        .select('professional_id')
-        .eq('lead_id', savedLeadId);
-      if (existingLinksError) {
-        console.warn('[mobile lead] Unable to read the professional links.', existingLinksError);
+      if (result.failedSteps.length === 0) {
+        setEffectsFailure(null);
+        toast({
+          title: 'Everything is saved now',
+          description: 'The failed steps were completed.',
+        });
         return;
       }
-      const staleIds = staleLeadProfessionalIds(
-        (existingLinks ?? []).map((row) => row.professional_id as string),
-        preserved,
-      );
-      if (staleIds.length > 0) {
-        const { error: staleError } = await supabase
-          .from('lead_professionals')
-          .delete()
-          .eq('lead_id', savedLeadId)
-          .in('professional_id', staleIds);
-        if (staleError) {
-          console.warn('[mobile lead] Unable to remove the stale professional links.', staleError);
-        }
-      }
+      setEffectsFailure({
+        ...effectsFailure,
+        completedSteps: [...effectsFailure.completedSteps, ...result.completedSteps],
+        failedSteps: result.failedSteps,
+        errors: result.errors,
+      });
+    } catch (error) {
+      console.warn('[mobile lead] The retry failed.', error);
+    } finally {
+      setRetryingEffects(false);
     }
   };
 
@@ -1270,14 +1606,19 @@ export const MobileLeadForm: React.FC<{
     const nextErrors = validate(formInput);
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
+      // The summary banner names every problem and the first invalid field is
+      // scrolled to and focused.
+      setSubmitAttempted(true);
+      focusFirstInvalidField(nextErrors);
       forceSaveRef.current = false;
       return;
     }
     setErrors({});
+    setSubmitAttempted(false);
 
-    // D9 duplicate gate — skipped for professional designations and when the
-    // user explicitly chose "Save Anyway".
-    if (!formInput.forceSave && !isProfRole && mode === 'create') {
+    // D9 duplicate gate — the modal is opened by the Submit only, never
+    // while the user is typing. It applies to Create **and** Edit.
+    if (!formInput.forceSave && !isProfRole) {
       const duplicate = findDuplicateLead(normalizePhone10(formInput.phone), editingLead?.id);
       // `shouldBlockOnDuplicate` is the shared D9 decision: a duplicate blocks
       // the save unless the user explicitly chose "Save Anyway".
@@ -1292,6 +1633,37 @@ export const MobileLeadForm: React.FC<{
     try {
       const payload = toLeadInsert(formInput, attributionName, actorName);
 
+      // On Edit only the **changed** fields are written: `created_by` is never
+      // touched and an untouched `referred_by` JSONB is left alone.
+      const updatePayload =
+        mode === 'edit' && editingLead
+          ? toLeadUpdate(
+              {
+                name: editingLead.name,
+                phone: editingLead.phone,
+                alternate_phone: editingLead.alternate_phone,
+                email: editingLead.email,
+                designation: editingLead.designation,
+                firm_name: editingLead.firm_name,
+                additional_contacts: editingLead.additional_contacts,
+                site_location: editingLead.site_location,
+                site_plus_code: editingLead.site_plus_code,
+                address: editingLead.address,
+                construction_stage: editingLead.construction_stage,
+                estimated_quantity: editingLead.estimated_quantity,
+                material_interests: editingLead.material_interests,
+                source: editingLead.source,
+                referred_by: originalReferredByRef.current,
+                notes: editingLead.notes,
+                assigned_to: editingLead.assigned_to,
+                priority: editingLead.priority,
+              },
+              formInput,
+              attributionName,
+              actorName,
+            )
+          : null;
+
       // Offline first: the write is parked on the device and replayed by the
       // outbox as soon as the connection is back. The user is told what
       // happened instead of being shown a failure.
@@ -1302,7 +1674,7 @@ export const MobileLeadForm: React.FC<{
           payload:
             mode === 'create'
               ? { lead: { ...payload, status: 'new' } }
-              : { leadId: editingLead?.id, updates: payload },
+              : { leadId: editingLead?.id, updates: updatePayload ?? payload },
         });
         toast({
           title: 'Saved offline',
@@ -1322,8 +1694,7 @@ export const MobileLeadForm: React.FC<{
             ...payload,
             status: 'new',
           } as unknown as LeadInsert);
-        } else if (editingLead) {
-          const { created_by: _createdBy, ...updatePayload } = payload;
+        } else if (editingLead && updatePayload) {
           savedLead = await updateLead(
             editingLead.id,
             updatePayload as unknown as Partial<LeadInsert>,
@@ -1343,7 +1714,34 @@ export const MobileLeadForm: React.FC<{
 
       if (!savedLead) throw new Error('The lead could not be saved.');
 
-      await syncProfessionalLinks(savedLead.id);
+      if (mode === 'create') {
+        // Desktop parity: the lead is saved first, then the professionals, the
+        // referral, the follow-up task, the reminder and the notification.
+        // A failing step never loses the lead — it is reported and can be
+        // retried on its own.
+        const effects = await runLeadCreateEffects(
+          buildLeadCreateInput(savedLead.id),
+          buildLeadCreateDeps(),
+        );
+        if (effects.failedSteps.length > 0) {
+          setEffectsFailure(effects);
+        }
+      } else {
+        // Edit — the junction rows are refreshed and the stale ones removed.
+        try {
+          const group1Ids = await syncGroup1Professionals(savedLead.id);
+          await syncReferralLink(savedLead.id, group1Ids);
+          await cleanupStaleProfessionalLinks(savedLead.id, group1Ids);
+        } catch (linkError) {
+          console.warn('[mobile lead] Unable to refresh the professional links.', linkError);
+          toast({
+            title: 'Lead saved, but the professional links were not saved',
+            description:
+              'The lead was updated, but its professional associations failed. Edit the lead later to retry.',
+            variant: 'destructive',
+          });
+        }
+      }
 
       // The lead is saved. A failed activity log must never claim otherwise.
       try {
@@ -1420,6 +1818,35 @@ export const MobileLeadForm: React.FC<{
 
   /* --------------------------------- render ------------------------------ */
 
+  /**
+   * An edit deep link to a lead that no longer resolves must not render an
+   * empty form — the user gets a clean "Lead Not Found" screen, exactly like
+   * the Customer and Professional edit forms.
+   */
+  if (mode === 'edit' && leadId && !leadsLoading && !editingLead) {
+    return (
+      <div className="min-h-[100dvh] bg-[#F8F9FA] flex flex-col">
+        <SubHeader title="Edit Lead" subtitle="Lead not found" onBack={handleCancel} />
+        <div className="flex-1 p-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-[12px] p-6 text-center space-y-3 shadow-[0_1px_3px_rgba(26,26,46,0.05)]">
+            <AlertCircle className="w-8 h-8 text-[#DC2626] mx-auto" />
+            <h2 className="text-base font-bold text-[#1A1A2E]">Lead Not Found</h2>
+            <p className="text-sm text-[#47464C]">
+              This lead no longer exists — it may have been deleted, or the link may be out of date.
+            </p>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="min-h-[48px] px-4 rounded-[12px] bg-[#1A1A2E] text-white font-semibold text-sm"
+            >
+              Go back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] bg-[#F8F9FA] flex flex-col">
       <SubHeader
@@ -1440,6 +1867,37 @@ export const MobileLeadForm: React.FC<{
       />
 
       <div className="flex-1 p-4 pb-32 space-y-4">
+        {/* A read-only role gets a clean, honest screen instead of a form
+            that fails at the API. */}
+        {!canWriteThisLead && (
+          <div
+            role="alert"
+            className="rounded-[12px] bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] p-3 text-xs font-semibold"
+          >
+            {mode === 'create'
+              ? 'Your role does not allow creating leads. You can still review the form.'
+              : 'Your role does not allow editing leads. You can still review the details.'}
+          </div>
+        )}
+
+        {/* The validation summary names every problem at the top of the form.
+            The first invalid field was already scrolled to and focused. */}
+        {submitAttempted && Object.keys(errors).length > 0 && (
+          <div
+            role="alert"
+            className="rounded-[12px] bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] p-3 space-y-1.5"
+          >
+            <p className="text-xs font-bold">Please fix the following before saving</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {VALIDATION_FIELD_ORDER.filter((field) => errors[field.errorKey]).map((field) => (
+                <li key={field.errorKey} className="text-xs font-semibold">
+                  {errors[field.errorKey]}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* -------------------------- 1. Contact details ------------------- */}
         <section className="bg-white border border-[#E2E8F0] rounded-[12px] p-4 shadow-[0_1px_3px_rgba(26,26,46,0.05)] space-y-3.5">
           <h2 className="text-sm font-bold text-[#1A1A2E] uppercase tracking-wide font-utility">
@@ -1454,6 +1912,7 @@ export const MobileLeadForm: React.FC<{
               id="lead-designation"
               value={designation}
               onChange={(e) => handleDesignationChange(e.target.value)}
+              aria-invalid={Boolean(errors.designation)}
               className="w-full min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
             >
               {designationOptions.length === 0 && <option value="">Loading…</option>}
@@ -1521,6 +1980,7 @@ export const MobileLeadForm: React.FC<{
                 setErrors((prev) => ({ ...prev, fullName: '' }));
               }}
               placeholder="Client or specifier full name"
+              aria-invalid={Boolean(errors.fullName)}
               className="w-full min-h-[48px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
             />
             {errors.fullName && (
@@ -1539,13 +1999,24 @@ export const MobileLeadForm: React.FC<{
               value={phone}
               onChange={(e) => handlePrimaryPhoneChange(e.target.value)}
               placeholder="98290 00000"
+              aria-invalid={Boolean(errors.phone)}
               className="w-full min-h-[48px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white text-base font-utility text-[#191C1D]"
             />
             {errors.phone && (
               <p className="text-xs font-semibold text-[#DC2626] mt-1">{errors.phone}</p>
             )}
-            {/* The emerald badge belongs to the PRIMARY phone only. */}
-            {isProfRole && normalizedPrimaryPhone && (
+            {/* A calm inline hint while the user types. The blocking
+                DuplicateLeadModal is opened by the SUBMIT only. */}
+            {duplicateHint && !duplicateWarning && (
+              <p className="mt-1.5 px-2.5 py-1.5 rounded-[10px] bg-[#FFFBEB] border border-[#FDE68A] text-[#D97706] text-xs font-semibold">
+                This number already belongs to {duplicateHint.name || 'another lead'} — you will be
+                asked to confirm when you save.
+              </p>
+            )}
+            {/* The emerald badge belongs to the PRIMARY phone only, and only
+                when a professional is ACTUALLY linked — a professional
+                designation alone is not a link. */}
+            {linkedProfessional && normalizedPrimaryPhone && (
               <div className="mt-1.5 px-2.5 py-1.5 rounded-[10px] bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-semibold flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>Associated Site Professional · Duplicate check bypassed</span>
@@ -1668,7 +2139,7 @@ export const MobileLeadForm: React.FC<{
                         inputMode="numeric"
                         value={contact.phone}
                         onChange={(e) =>
-                          updateAdditionalContact(index, { phone: extractEditablePhone10(e.target.value) })
+                          handleAdditionalContactPhoneChange(index, e.target.value)
                         }
                         placeholder="10-digit phone"
                         aria-label={`Additional contact ${index + 1} phone`}
@@ -1761,6 +2232,7 @@ export const MobileLeadForm: React.FC<{
                 setErrors((prev) => ({ ...prev, siteLocation: '' }));
               }}
               placeholder="Plot / Villa / Sector, City"
+              aria-invalid={Boolean(errors.siteLocation)}
               className="w-full min-h-[48px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
             />
             {errors.siteLocation && (
@@ -1812,7 +2284,7 @@ export const MobileLeadForm: React.FC<{
 
           <div>
             <label className="block text-xs font-semibold text-[#1A1A2E] mb-1.5">
-              Site Photo (EXIF GPS + Compression)
+              Site Photo
             </label>
             <label className="min-h-[48px] px-4 rounded-[12px] border border-dashed border-[#1A1A2E] bg-[#F8F9FA] flex items-center justify-center gap-2 text-sm font-semibold text-[#1A1A2E] cursor-pointer">
               {photoBusy ? (
@@ -1877,7 +2349,7 @@ export const MobileLeadForm: React.FC<{
             3. Requirements &amp; Stage
           </h2>
 
-          <div>
+          <div id="lead-materials" tabIndex={-1} aria-invalid={Boolean(errors.materialInterests)}>
             <div className="text-xs font-semibold text-[#1A1A2E] mb-2">Material Interests *</div>
             {materialOptions.length === 0 ? (
               <p className="text-xs text-[#47464C]">Loading material options…</p>
@@ -2158,11 +2630,19 @@ export const MobileLeadForm: React.FC<{
         <button
           type="button"
           onClick={() => void runSave(forceSaveRef.current)}
-          disabled={isSaving}
+          disabled={isSaving || !canWriteThisLead}
           className="min-h-[48px] rounded-[12px] bg-[#C9A84C] text-[#1A1A2E] font-semibold text-base shadow-[0_10px_20px_-3px_rgba(201,168,76,0.35)] disabled:opacity-60 flex items-center justify-center gap-2"
         >
           {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-          <span>{isSaving ? 'Saving…' : 'Save Lead'}</span>
+          <span>
+            {isSaving
+              ? 'Saving…'
+              : canWriteThisLead
+                ? 'Save Lead'
+                : mode === 'create'
+                  ? 'No permission to create leads'
+                  : 'No permission to edit leads'}
+          </span>
         </button>
       </div>
 
@@ -2291,6 +2771,15 @@ export const PostSaveQuickActions: React.FC<{
 
           <button
             type="button"
+            onClick={() => onOpenQuickAddMode('task', lead.id)}
+            className="min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-sm flex items-center justify-center gap-2"
+          >
+            <CheckSquare className="w-4 h-4" />
+            <span>Add Task</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => onOpenQuickAddMode('note', lead.id)}
             className="min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-sm flex items-center justify-center gap-2"
           >
@@ -2341,7 +2830,6 @@ export const MarkLostSheet: React.FC<{
 
   const [lostReason, setLostReason] = useState('');
   const [lostNotes, setLostNotes] = useState('');
-  const [cancelOpenTasks, setCancelOpenTasks] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -2349,7 +2837,6 @@ export const MarkLostSheet: React.FC<{
     if (!open) return;
     setLostReason('');
     setLostNotes('');
-    setCancelOpenTasks(true);
     setSubmitting(false);
     setErrorMsg(null);
   }, [open, lead?.id]);
@@ -2411,7 +2898,10 @@ export const MarkLostSheet: React.FC<{
         },
       });
 
-      if (cancelOpenTasks && openLeadTasks.length > 0) {
+      // Desktop parity — the open site tasks are ALWAYS cancelled with the
+      // lost request. There is no opt-out on mobile: the desktop never
+      // offered one either.
+      if (openLeadTasks.length > 0) {
         for (const task of openLeadTasks) {
           try {
             await updateTask(task.id, {
@@ -2535,17 +3025,12 @@ export const MarkLostSheet: React.FC<{
                 ? 'Open site tasks will be suspended and linked architect follow-ups transferred for manager review. Requires live connection.'
                 : 'All open site follow-up tasks for this lead will be suspended and logged for manager review.'}
             </p>
-            {openLeadTasks.length > 0 && (
-              <label className="flex items-center gap-2.5 min-h-[44px] text-xs font-semibold text-[#191C1D]">
-                <input
-                  type="checkbox"
-                  checked={cancelOpenTasks}
-                  onChange={(e) => setCancelOpenTasks(e.target.checked)}
-                  className="w-5 h-5 accent-[#D97706]"
-                />
-                <span>Cancel the {openLeadTasks.length} open task(s) now</span>
-              </label>
-            )}
+            {openLeadTasks.length > 0 ? (
+              <p className="text-xs font-bold text-[#191C1D]">
+                The {openLeadTasks.length} open task{openLeadTasks.length === 1 ? '' : 's'} for
+                this lead will be cancelled automatically.
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -2581,7 +3066,7 @@ export const ConvertToCustomerSheet: React.FC<{
   onClose: () => void;
   onSaved: () => void;
 }> = ({ open, lead, onClose, onSaved }) => {
-  const { addCustomer } = useCustomers();
+  const { customers, addCustomer } = useCustomers();
   const { updateLead } = useLeads();
   const { tasks, updateTask } = useTasks();
   const { logActivity } = useLogActivity();
@@ -2599,12 +3084,22 @@ export const ConvertToCustomerSheet: React.FC<{
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   /** True once the user picked an assignee by hand. */
   const assignedStaffTouchedRef = useRef(false);
+  /**
+   * The lead is read through a ref so the form can be seeded ONCE per lead.
+   *
+   * The effect below is keyed on the lead id: a refreshed lead object (the
+   * realtime channel pushes a new object on every edit) must not wipe what the
+   * user already typed into the sheet.
+   */
+  const leadRef = useRef(lead);
+  leadRef.current = lead;
 
   useEffect(() => {
-    if (!open || !lead) return;
-    setFullName(lead.full_name ?? '');
-    setPhone(extractEditablePhone10(lead.phone ?? ''));
-    setAddress(lead.address || lead.site_location || '');
+    const current = leadRef.current;
+    if (!open || !current) return;
+    setFullName(current.full_name ?? '');
+    setPhone(extractEditablePhone10(current.phone ?? ''));
+    setAddress(current.address || current.site_location || '');
     setImportFiles(true);
     setSubmitting(false);
     setErrorMsg(null);
@@ -2652,6 +3147,89 @@ export const ConvertToCustomerSheet: React.FC<{
           (task.related_entity_type === 'lead' && task.related_entity_id === lead.id)),
     );
   }, [tasks, lead]);
+
+  /**
+   * The customer that already owns this phone number.
+   *
+   * The desktop conversion dialog offers to link an existing customer instead
+   * of creating a duplicate. The mobile sheet does the same.
+   */
+  const existingCustomer = useMemo(() => {
+    const phone10 = normalizePhone10(phone);
+    if (!phone10) return null;
+    return customers.find((customer) => normalizePhone10(customer.phone) === phone10) ?? null;
+  }, [customers, phone]);
+
+  /**
+   * Links the lead to the customer that already owns the phone number.
+   *
+   * The open tasks are relinked to that customer — their `lead_id` stays
+   * INTACT (the desktop never nulls it), so the history of the lead is kept.
+   */
+  const handleLinkExistingCustomer = async () => {
+    if (!isOnline) {
+      setErrorMsg('Internet required — Retry');
+      return;
+    }
+    if (!existingCustomer) {
+      setErrorMsg('This customer could not be found any more. Please try again.');
+      return;
+    }
+    if (!lead) {
+      setErrorMsg('This lead could not be found any more. Please try again.');
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      await updateLead(lead.id, {
+        status: 'won',
+        is_converted: true,
+        converted_to_customer_id: existingCustomer.id,
+        converted_at: new Date().toISOString(),
+        updated_by: actorName,
+      } as unknown as Partial<LeadInsert>);
+
+      // The open lead tasks move to the existing customer. Their `lead_id`
+      // stays intact — only the customer link changes.
+      for (const task of openLeadTasks) {
+        try {
+          await updateTask(task.id, {
+            related_entity_type: 'customer',
+            related_entity_id: existingCustomer.id,
+          });
+        } catch (error) {
+          console.warn('[mobile convert] Unable to relink a task.', error);
+        }
+      }
+
+      await logActivity({
+        lead_id: lead.id,
+        customer_id: existingCustomer.id,
+        activity_type: 'lead_converted',
+        activity_category: 'conversion',
+        title: 'Lead Linked to Existing Customer',
+        description: `${lead.full_name} was linked to the existing customer ${existingCustomer.name}.`,
+        metadata: {
+          customer_id: existingCustomer.id,
+          conversion_type: 'link_existing_customer',
+        },
+      });
+
+      toast({
+        title: 'Lead linked',
+        description: `${lead.full_name} is now linked to ${existingCustomer.name}.`,
+      });
+      onSaved();
+    } catch (error) {
+      setErrorMsg(
+        error instanceof Error ? error.message : 'The lead could not be linked to the customer.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (!open || !lead) return null;
 
@@ -2834,6 +3412,29 @@ export const ConvertToCustomerSheet: React.FC<{
               className="w-full min-h-[48px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white text-base font-utility text-[#191C1D]"
             />
           </div>
+
+          {/* An existing customer owns this phone number — offer to link it
+              instead of creating a duplicate (desktop parity). */}
+          {existingCustomer && (
+            <div className="p-3.5 rounded-[12px] bg-[#EFF6FF] border border-[#BFDBFE] text-[#1E40AF] space-y-2.5">
+              <p className="text-xs font-bold">This phone number already belongs to a customer</p>
+              <p className="text-xs text-[#1E3A8A]">
+                {existingCustomer.name}
+                {existingCustomer.company_name ? ` · ${existingCustomer.company_name}` : ''}
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleLinkExistingCustomer()}
+                disabled={submitting}
+                className="w-full min-h-[44px] px-3 rounded-[10px] bg-[#1D4ED8] text-white font-semibold text-sm disabled:opacity-60"
+              >
+                Link to existing customer
+              </button>
+              <p className="text-[11px] text-[#1E3A8A]">
+                The open tasks are relinked to that customer — the lead link on them stays intact.
+              </p>
+            </div>
+          )}
 
           <div>
             <label htmlFor="conv-address" className="block text-xs font-semibold text-[#1A1A2E] mb-1">

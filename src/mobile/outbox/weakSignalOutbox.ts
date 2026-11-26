@@ -6,14 +6,22 @@
  * on the device and replayed later.
  *
  * Design rules:
- *  - Durable storage is IndexedDB (`mm_outbox_v1`); when IndexedDB is
+ *  - Durable storage is IndexedDB (`mm_crm_outbox`); when IndexedDB is
  *    unavailable (private mode, old WebView) the queue falls back to
  *    localStorage under the same key.
- *  - The queue is capped at {@link OUTBOX_MAX_ITEMS} entries and is strictly
- *    FIFO: the oldest entry is dropped when the cap is exceeded.
- *  - Replay uses an exponential backoff of 2s → 5s → 15s.
+ *  - The queue is scoped per signed-in user: the IndexedDB database name and
+ *    the localStorage fallback key both carry the user id, so one field user
+ *    can never replay another field user's queued work.
+ *  - The queue is capped at {@link OUTBOX_MAX_ITEMS} entries. A full queue
+ *    REFUSES new work instead of dropping the oldest entry — silent data loss
+ *    is worse than an explicit refusal.
+ *  - Replay uses an exponential backoff of 2s → 5s → 15s. Every queued item
+ *    carries the absolute timestamp of its next attempt, and exactly one
+ *    timer is armed for the earliest of them.
  *  - Every mutation carries a `client_mutation_id`. A mutation whose id is
  *    already queued is ignored, so a double tap can never double-apply.
+ *  - A replay is idempotent: the database is checked before the write, so a
+ *    retry after a dropped response never duplicates the row.
  *  - A mutation that collides with an existing record (for example a second
  *    lead with the same phone number) is parked as `needs_review` instead of
  *    being silently dropped or overwriting the live record.
@@ -22,6 +30,7 @@
  * browser environment.
  */
 
+import { normalizePhone10 } from '@/lib/phone';
 import type { OutboxMutation, OutboxMutationKind } from '@/mobile/types/crmTypes';
 
 export const OUTBOX_MAX_ITEMS = 50;
@@ -31,15 +40,69 @@ export const OUTBOX_DB_VERSION = 1;
 export const OUTBOX_STORE_NAME = 'mm_outbox_v1';
 export const OUTBOX_LOCAL_STORAGE_KEY = 'mm_outbox_v1';
 
+/** Scope suffix used when no signed-in user is known. */
+export const OUTBOX_ANONYMOUS_SCOPE = 'anonymous';
+
+/**
+ * Toast shown when the queue is full and the new mutation is refused.
+ *
+ * The wording is fixed: the field user has to understand that the device is
+ * holding 50 unsynced mutations and that reconnecting is the way out.
+ */
+export const OUTBOX_FULL_MESSAGE =
+  'Outbox is full (50/50). Reconnect to sync before adding more.';
+
+/**
+ * Window used to recognise a `create_lead` that was already applied.
+ *
+ * A replay after a dropped network response happens within seconds, so a ten
+ * minute window is generous enough to catch it and short enough to never
+ * suppress a genuinely new lead.
+ */
+export const OUTBOX_LEAD_REPLAY_WINDOW_MS = 10 * 60 * 1000;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers                                                               */
 /* -------------------------------------------------------------------------- */
+
+/** Narrows an unknown value to a plain object without `any`. */
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Sanitises a user id into a storage-scope suffix.
+ *
+ * Every character outside `[A-Za-z0-9_-]` becomes `_`, so a user id can never
+ * inject a separator into a storage key. A missing user id maps to the
+ * dedicated anonymous scope — never to another user's scope.
+ */
+export function sanitizeUserScope(userId?: string | null): string {
+  const raw = typeof userId === 'string' ? userId.trim() : '';
+  if (!raw) return OUTBOX_ANONYMOUS_SCOPE;
+  const cleaned = raw.replace(/[^A-Za-z0-9_-]/g, '_');
+  return cleaned || OUTBOX_ANONYMOUS_SCOPE;
+}
+
+/** IndexedDB database name holding the outbox of one signed-in user. */
+export function outboxDbNameForUser(userId?: string | null): string {
+  return `${OUTBOX_DB_NAME}_${sanitizeUserScope(userId)}`;
+}
+
+/** localStorage key mirroring the outbox of one signed-in user. */
+export function outboxStorageKeyForUser(userId?: string | null): string {
+  return `${OUTBOX_LOCAL_STORAGE_KEY}_${sanitizeUserScope(userId)}`;
+}
 
 /**
  * Appends a mutation to the queue, enforcing the FIFO cap.
  *
  * When the queue is full the oldest entry is discarded so the newest field
  * work is never lost.
+ *
+ * @deprecated Prefer {@link appendToOutboxOrRefuse}: dropping the oldest
+ * entry loses field work without telling anybody.
  */
 export function appendToOutboxCapped(
   queue: OutboxMutation[],
@@ -51,6 +114,37 @@ export function appendToOutboxCapped(
     return next.slice(next.length - maxItems);
   }
   return next;
+}
+
+/**
+ * True when one more mutation still fits into the queue.
+ *
+ * A full queue refuses new work instead of dropping the oldest entry.
+ */
+export function canAcceptOutboxItem(
+  queue: OutboxMutation[],
+  maxItems: number = OUTBOX_MAX_ITEMS,
+): boolean {
+  return (queue ?? []).length < maxItems;
+}
+
+/**
+ * Appends a mutation, or refuses it when the queue is full.
+ *
+ * On refusal the queue is returned untouched — the oldest entry is NOT
+ * dropped — and `refused` is `true` so the caller can tell the field user
+ * that the work was not stored.
+ */
+export function appendToOutboxOrRefuse(
+  queue: OutboxMutation[],
+  item: OutboxMutation,
+  maxItems: number = OUTBOX_MAX_ITEMS,
+): { queue: OutboxMutation[]; refused: boolean } {
+  const current = queue ?? [];
+  if (!canAcceptOutboxItem(current, maxItems)) {
+    return { queue: current, refused: true };
+  }
+  return { queue: [...current, item], refused: false };
 }
 
 /**
@@ -110,8 +204,12 @@ export type OutboxConflictResolution = 'merge_discard' | 'force_create';
 export function readMutationPhone(
   payload: Record<string, unknown> | null | undefined,
 ): string {
-  const source = (payload ?? {}) as Record<string, any>;
-  const candidates = [source.lead?.phone, source.updates?.phone, source.phone];
+  const source = asRecord(payload);
+  const candidates = [
+    asRecord(source.lead).phone,
+    asRecord(source.updates).phone,
+    source.phone,
+  ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim().length > 0) {
       return candidate;
@@ -124,8 +222,8 @@ export function readMutationPhone(
  * True when the mutation was explicitly forced past the duplicate check.
  */
 export function isForceSavedMutation(mutation: OutboxMutation): boolean {
-  const payload = (mutation.payload ?? {}) as Record<string, any>;
-  return payload.forceSave === true || payload.lead?.forceSave === true;
+  const payload = asRecord(mutation?.payload);
+  return payload.forceSave === true || asRecord(payload.lead).forceSave === true;
 }
 
 /**
@@ -163,15 +261,97 @@ export function markNeedsReview(
     ...mutation,
     status: 'needs_review',
     conflictMessage,
+    nextAttemptAt: null,
   };
 }
 
-/** Increments the attempt counter after a failed replay. */
-export function withIncrementedAttempt(mutation: OutboxMutation): OutboxMutation {
+/**
+ * Increments the attempt counter after a failed replay and schedules the next
+ * attempt with the exponential backoff.
+ *
+ * The absolute timestamp of the next attempt is stored on the mutation so the
+ * scheduler can arm exactly one timer for the earliest pending item.
+ */
+export function withIncrementedAttempt(
+  mutation: OutboxMutation,
+  nowMs: number = Date.now(),
+): OutboxMutation {
+  const attempts = (mutation.attempts ?? 0) + 1;
   return {
     ...mutation,
-    attempts: (mutation.attempts ?? 0) + 1,
+    attempts,
+    nextAttemptAt: nowMs + nextBackoffMs(attempts),
   };
+}
+
+/**
+ * Schedules a fresh mutation for its first attempt.
+ *
+ * The item is due after the first backoff step so the scheduler can arm a
+ * single timer for it.
+ */
+export function withNextAttempt(
+  mutation: OutboxMutation,
+  nowMs: number = Date.now(),
+): OutboxMutation {
+  return {
+    ...mutation,
+    nextAttemptAt: nowMs + nextBackoffMs((mutation.attempts ?? 0) + 1),
+  };
+}
+
+/**
+ * True when the queue still holds work the replay can act on.
+ *
+ * Parked conflicts (`needs_review`) and refused items (`full`) are waiting for
+ * a human, so they are not pending work.
+ */
+export function hasPendingOutboxWork(queue: OutboxMutation[]): boolean {
+  return (queue ?? []).some(
+    (mutation) =>
+      !!mutation && mutation.status !== 'needs_review' && mutation.status !== 'full',
+  );
+}
+
+/**
+ * Earliest absolute timestamp at which the queue wants to be replayed.
+ *
+ * Only timestamps still in the future count: an item whose turn already came
+ * is retried by the trigger that is running right now, not by a timer.
+ * Returns `null` when there is nothing to retry.
+ */
+export function computeNextAttemptAt(
+  queue: OutboxMutation[],
+  nowMs: number = Date.now(),
+): number | null {
+  let earliest: number | null = null;
+  (queue ?? []).forEach((mutation) => {
+    if (!mutation) return;
+    if (mutation.status === 'needs_review' || mutation.status === 'full') return;
+    const next = mutation.nextAttemptAt;
+    if (typeof next !== 'number' || !Number.isFinite(next)) return;
+    if (next <= nowMs) return;
+    if (earliest === null || next < earliest) earliest = next;
+  });
+  return earliest;
+}
+
+/**
+ * Guard deciding whether a trigger actually performs a sync.
+ *
+ * A trigger only reads the durable queue when it can do something with it:
+ * the device must be online, no other sync may be running, and the queue must
+ * hold work. This is what keeps an idle app from looping over storage.
+ */
+export function shouldRunOutboxSync(state: {
+  isOnline: boolean;
+  syncing: boolean;
+  hasPendingWork: boolean;
+}): boolean {
+  if (!state || typeof state !== 'object') return false;
+  if (state.isOnline !== true) return false;
+  if (state.syncing === true) return false;
+  return state.hasPendingWork === true;
 }
 
 /**
@@ -234,6 +414,99 @@ export function removeFromOutbox(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Idempotent replay                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Metadata written on the `activity_log` row of a queued note or call.
+ *
+ * The `client_mutation_id` is the idempotency key: before replaying, the
+ * database is asked whether a row with that key already exists. A dropped
+ * network response therefore never duplicates the row.
+ */
+export function buildActivityMetadata(mutation: OutboxMutation): Record<string, unknown> {
+  const payload = asRecord(mutation?.payload);
+  const base = asRecord(payload.metadata);
+  const metadata: Record<string, unknown> = { ...base };
+
+  const clientMutationId = mutation?.client_mutation_id || mutation?.id || null;
+  if (clientMutationId) metadata.client_mutation_id = clientMutationId;
+  if (payload.outcome !== undefined) metadata.outcome = payload.outcome;
+
+  return metadata;
+}
+
+/**
+ * True when a live lead is the one this replay would create again.
+ *
+ * Same normalised phone, same owner and created inside the replay window
+ * means the first attempt already landed and only the response was lost.
+ */
+export function isDuplicateLeadForReplay(
+  lead: { phone?: string | null; created_by?: string | null; created_at?: string | null },
+  phone: string,
+  createdBy: string,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!lead) return false;
+
+  const leadPhone = normalizePhone10(lead.phone ?? null);
+  const targetPhone = normalizePhone10(phone ?? null);
+  if (!leadPhone || !targetPhone || leadPhone !== targetPhone) return false;
+
+  const leadOwner = (lead.created_by ?? '').trim().toLowerCase();
+  const owner = (createdBy ?? '').trim().toLowerCase();
+  if (!leadOwner || !owner || leadOwner !== owner) return false;
+
+  const createdAt = Date.parse(lead.created_at ?? '');
+  if (!Number.isFinite(createdAt)) return false;
+
+  const age = nowMs - createdAt;
+  // A row from the future is clock skew, not our own replay.
+  if (age < -60_000) return false;
+  return age < OUTBOX_LEAD_REPLAY_WINDOW_MS;
+}
+
+/**
+ * True when an existing reminder is the one this replay would create again.
+ *
+ * The reminder tuple is `(entity_type, entity_id, reminder_datetime, title)`.
+ */
+export function isDuplicateReminderForReplay(
+  existing: {
+    entity_type?: string | null;
+    entity_id?: string | null;
+    reminder_datetime?: string | null;
+    title?: string | null;
+  },
+  candidate: {
+    entity_type?: string | null;
+    entity_id?: string | null;
+    reminder_datetime?: string | null;
+    title?: string | null;
+  },
+): boolean {
+  if (!existing || !candidate) return false;
+
+  const sameEntityType =
+    (existing.entity_type ?? '').trim() === (candidate.entity_type ?? '').trim();
+  const sameEntityId = (existing.entity_id ?? '').trim() === (candidate.entity_id ?? '').trim();
+  const sameTitle = (existing.title ?? '').trim() === (candidate.title ?? '').trim();
+  if (!sameEntityType || !sameEntityId || !sameTitle) return false;
+
+  return isSameInstant(existing.reminder_datetime, candidate.reminder_datetime);
+}
+
+/** True when two timestamps point at the same moment. */
+function isSameInstant(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const left = Date.parse(a);
+  const right = Date.parse(b);
+  if (Number.isFinite(left) && Number.isFinite(right)) return left === right;
+  return a === b;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Durable storage                                                            */
 /* -------------------------------------------------------------------------- */
 
@@ -252,7 +525,7 @@ function hasIndexedDb(): boolean {
  */
 let storageMode: 'unknown' | 'idb' | 'local' = 'unknown';
 
-function openOutboxDatabase(): Promise<IDBDatabase | null> {
+function openOutboxDatabase(dbName: string): Promise<IDBDatabase | null> {
   if (!hasIndexedDb()) {
     storageMode = 'local';
     return Promise.resolve(null);
@@ -260,7 +533,7 @@ function openOutboxDatabase(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
     let request: IDBOpenDBRequest;
     try {
-      request = indexedDB.open(OUTBOX_DB_NAME, OUTBOX_DB_VERSION);
+      request = indexedDB.open(dbName, OUTBOX_DB_VERSION);
     } catch {
       storageMode = 'local';
       resolve(null);
@@ -290,10 +563,10 @@ function openOutboxDatabase(): Promise<IDBDatabase | null> {
   });
 }
 
-function readFromLocalStorage(): OutboxMutation[] {
+function readFromLocalStorage(key: string): OutboxMutation[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
   try {
-    const raw = window.localStorage.getItem(OUTBOX_LOCAL_STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as OutboxMutation[]) : [];
@@ -302,22 +575,50 @@ function readFromLocalStorage(): OutboxMutation[] {
   }
 }
 
-function writeToLocalStorage(queue: OutboxMutation[]): void {
+function writeToLocalStorage(queue: OutboxMutation[], key: string): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
-    window.localStorage.setItem(OUTBOX_LOCAL_STORAGE_KEY, JSON.stringify(queue));
+    window.localStorage.setItem(key, JSON.stringify(queue));
   } catch {
     /* quota exceeded — the in-memory queue still works for this session */
   }
 }
 
 /** Removes the localStorage mirror once IndexedDB is authoritative again. */
-function clearLocalStorageCopy(): void {
+function clearLocalStorageCopy(key: string): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
-    window.localStorage.removeItem(OUTBOX_LOCAL_STORAGE_KEY);
+    window.localStorage.removeItem(key);
   } catch {
     /* storage unavailable — nothing to clear */
+  }
+}
+
+/**
+ * Deletes every trace of one user's outbox from the device.
+ *
+ * Called on sign-out: the queued mutations of that user carry lead names,
+ * phone numbers and notes, so they must not survive the session.
+ */
+export function clearOutboxStorageForUser(userId?: string | null): void {
+  const key = outboxStorageKeyForUser(userId);
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    /* storage unavailable — nothing to clear */
+  }
+
+  const dbName = outboxDbNameForUser(userId);
+  try {
+    if (hasIndexedDb()) {
+      // Fire and forget: the database is closed after every operation, so the
+      // delete is normally not blocked.
+      indexedDB.deleteDatabase(dbName);
+    }
+  } catch {
+    /* delete unsupported — the localStorage mirror is already gone */
   }
 }
 
@@ -343,14 +644,22 @@ export function mergeOutboxQueues(
   );
 }
 
-/** Reads the persisted queue, preferring IndexedDB and falling back to localStorage. */
-export async function loadOutbox(): Promise<OutboxMutation[]> {
+/**
+ * Reads the persisted queue of one user, preferring IndexedDB and falling
+ * back to localStorage.
+ *
+ * The queue of one user is never returned for another user: both the database
+ * name and the localStorage key carry the user scope.
+ */
+export async function loadOutbox(userId?: string | null): Promise<OutboxMutation[]> {
+  const storageKey = outboxStorageKeyForUser(userId);
+
   // The session already committed to localStorage — never read the stale
   // IndexedDB copy again.
-  if (storageMode === 'local') return readFromLocalStorage();
+  if (storageMode === 'local') return readFromLocalStorage(storageKey);
 
-  const db = await openOutboxDatabase();
-  if (!db) return readFromLocalStorage();
+  const db = await openOutboxDatabase(outboxDbNameForUser(userId));
+  if (!db) return readFromLocalStorage(storageKey);
 
   return new Promise((resolve) => {
     let request: IDBRequest;
@@ -358,7 +667,7 @@ export async function loadOutbox(): Promise<OutboxMutation[]> {
       request = db.transaction(OUTBOX_STORE_NAME, 'readonly').objectStore(OUTBOX_STORE_NAME).getAll();
     } catch {
       db.close();
-      resolve(readFromLocalStorage());
+      resolve(readFromLocalStorage(storageKey));
       return;
     }
     request.onsuccess = () => {
@@ -367,25 +676,30 @@ export async function loadOutbox(): Promise<OutboxMutation[]> {
       db.close();
       // Converge both stores: anything only present in localStorage (written
       // while IndexedDB was blocked) must not be lost.
-      resolve(mergeOutboxQueues(sorted, readFromLocalStorage()));
+      resolve(mergeOutboxQueues(sorted, readFromLocalStorage(storageKey)));
     };
     request.onerror = () => {
       db.close();
-      resolve(readFromLocalStorage());
+      resolve(readFromLocalStorage(storageKey));
     };
   });
 }
 
-/** Persists the queue. Never throws. */
-export async function saveOutbox(queue: OutboxMutation[]): Promise<void> {
+/** Persists the queue of one user. Never throws. */
+export async function saveOutbox(
+  queue: OutboxMutation[],
+  userId?: string | null,
+): Promise<void> {
+  const storageKey = outboxStorageKeyForUser(userId);
+
   if (storageMode === 'local') {
-    writeToLocalStorage(queue);
+    writeToLocalStorage(queue, storageKey);
     return;
   }
 
-  const db = await openOutboxDatabase();
+  const db = await openOutboxDatabase(outboxDbNameForUser(userId));
   if (!db) {
-    writeToLocalStorage(queue);
+    writeToLocalStorage(queue, storageKey);
     return;
   }
 
@@ -395,7 +709,7 @@ export async function saveOutbox(queue: OutboxMutation[]): Promise<void> {
       transaction = db.transaction(OUTBOX_STORE_NAME, 'readwrite');
     } catch {
       db.close();
-      writeToLocalStorage(queue);
+      writeToLocalStorage(queue, storageKey);
       resolve();
       return;
     }
@@ -412,17 +726,17 @@ export async function saveOutbox(queue: OutboxMutation[]): Promise<void> {
       db.close();
       // IndexedDB is the source of truth now — drop the localStorage copy so
       // the two stores can never disagree.
-      clearLocalStorageCopy();
+      clearLocalStorageCopy(storageKey);
       resolve();
     };
     transaction.onerror = () => {
       db.close();
-      writeToLocalStorage(queue);
+      writeToLocalStorage(queue, storageKey);
       resolve();
     };
     transaction.onabort = () => {
       db.close();
-      writeToLocalStorage(queue);
+      writeToLocalStorage(queue, storageKey);
       resolve();
     };
   });

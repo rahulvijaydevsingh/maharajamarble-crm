@@ -256,7 +256,13 @@ export type OutboxMutationKind =
   | 'snooze_reminder'
   | 'done_reminder';
 
-export type OutboxMutationStatus = 'queued' | 'syncing' | 'needs_review';
+/**
+ * Lifecycle of a queued mutation.
+ *
+ * `full` marks a mutation that was REFUSED because the queue was already at
+ * its cap — it was never stored, so nothing has to replay it.
+ */
+export type OutboxMutationStatus = 'queued' | 'syncing' | 'needs_review' | 'full';
 
 export interface OutboxMutation {
   id: string;
@@ -269,6 +275,13 @@ export interface OutboxMutation {
   status: OutboxMutationStatus;
   attempts: number;
   conflictMessage?: string;
+  /**
+   * Absolute timestamp (epoch ms) of the next replay attempt.
+   *
+   * The scheduler arms exactly one timer for the earliest of these, so an
+   * idle app never spins.
+   */
+  nextAttemptAt?: number | null;
 }
 
 export interface NotificationItem {

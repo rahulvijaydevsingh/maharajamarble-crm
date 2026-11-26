@@ -19,6 +19,7 @@ import type {
 } from '@/hooks/useProfessionals';
 import type { Task as LiveTask, TaskInsert as LiveTaskInsert } from '@/hooks/useTasks';
 import type { Json } from '@/integrations/supabase/types';
+import { normalizePhone10 } from '@/lib/phone';
 
 import type {
   AdditionalContact,
@@ -258,11 +259,130 @@ export function toMobileLead(lead: LiveLead): Lead {
  * site casts once when handing the payload to `useLeads()`.
  */
 export type MobileLeadWrite = Omit<LiveLeadInsert, 'additional_contacts'> & {
-  additional_contacts?: any[];
+  additional_contacts?: Array<Record<string, unknown>>;
   next_follow_up?: string | null;
   last_follow_up?: string | null;
   status?: string;
 };
+
+/**
+ * Normalises an alternate phone number.
+ *
+ * A valid 10-digit Indian mobile is normalised; **anything else is stored
+ * exactly as it was typed**. A landline (`011-23456789`) must never be
+ * turned into `null` — losing it would silently drop a contact detail.
+ */
+export function toAlternatePhoneValue(raw?: string | null): string | null {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (!trimmed) return null;
+  return normalizePhone10(trimmed) ?? trimmed;
+}
+
+/**
+ * The lead columns the mobile form writes, in the shape of the live row.
+ *
+ * `referred_by` must be the **parsed** value (see {@link parseReferredBy}) so
+ * an untouched referral is recognised as unchanged.
+ */
+export interface LeadUpdateOriginal {
+  name?: string | null;
+  phone?: string | null;
+  alternate_phone?: string | null;
+  email?: string | null;
+  designation?: string | null;
+  firm_name?: string | null;
+  additional_contacts?: unknown;
+  site_location?: string | null;
+  site_plus_code?: string | null;
+  address?: string | null;
+  construction_stage?: string | null;
+  estimated_quantity?: number | null;
+  material_interests?: string[] | null;
+  source?: string | null;
+  referred_by?: string | ProfessionalRef | null;
+  notes?: string | null;
+  assigned_to?: string | null;
+  priority?: number | null;
+}
+
+/** A JSON value with a stable key order — used for the change detection. */
+function stableJson(value: unknown): string {
+  if (value === undefined) return 'null';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+}
+
+/**
+ * The comparable shape of one additional contact.
+ *
+ * The generated contact ids are ignored on purpose — they change on every
+ * hydration and would make every save look like a change.
+ */
+function comparableContact(record: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: typeof record.name === 'string' ? record.name : '',
+    phone: typeof record.phone === 'string' ? record.phone : '',
+    email: typeof record.email === 'string' ? record.email : '',
+    designation: typeof record.designation === 'string' ? record.designation : '',
+    firm_name:
+      typeof record.firm_name === 'string'
+        ? record.firm_name
+        : typeof record.firmName === 'string'
+          ? record.firmName
+          : '',
+    professional_id: typeof record.professional_id === 'string' ? record.professional_id : '',
+  };
+}
+
+/** The comparable shape of the whole `additional_contacts` array. */
+function comparableContacts(value: unknown): string {
+  if (!Array.isArray(value)) return '[]';
+  return stableJson(value.map((entry) => comparableContact(entry as Record<string, unknown>)));
+}
+
+/**
+ * Builds the `leads` **update** payload of an Edit save.
+ *
+ * Only the fields that really changed are written:
+ *  - `created_by` is never written (the creator of the lead does not change),
+ *  - an untouched `referred_by` JSONB is left alone (it is never rewritten),
+ *  - `updated_by` always records the signed-in actor.
+ */
+export function toLeadUpdate(
+  original: LeadUpdateOriginal,
+  form: Parameters<typeof toLeadInsert>[0],
+  assignedTo: string,
+  actorName: string = assignedTo,
+): Record<string, unknown> {
+  const payload = toLeadInsert(form, assignedTo, actorName) as unknown as Record<
+    string,
+    unknown
+  >;
+  const updates: Record<string, unknown> = {};
+
+  Object.keys(payload).forEach((key) => {
+    if (key === 'created_by' || key === 'updated_by') return;
+    const next = payload[key];
+    const before = (original as unknown as Record<string, unknown>)[key];
+
+    if (key === 'additional_contacts') {
+      if (comparableContacts(before) !== comparableContacts(next)) {
+        updates[key] = next;
+      }
+      return;
+    }
+
+    if (stableJson(before) !== stableJson(next)) {
+      updates[key] = next;
+    }
+  });
+
+  updates.updated_by = actorName;
+  return updates;
+}
 
 /**
  * Builds the `leads` insert/update payload from a mobile form model.
@@ -273,6 +393,10 @@ export type MobileLeadWrite = Omit<LiveLeadInsert, 'additional_contacts'> & {
  * INVARIANT-04: `assigned_to` records the staff member the record is assigned
  * to, while `created_by` / `updated_by` always record the **signed-in actor**
  * (`profile.full_name`). They are never the same value by accident.
+ *
+ * The follow-up date is NOT part of the payload: the database trigger
+ * `sync_followup_dates_on_task_change` owns `leads.next_follow_up` and
+ * derives it from the tasks.
  */
 export function toLeadInsert(
   form: {
@@ -302,7 +426,7 @@ export function toLeadInsert(
   return {
     name: form.full_name.trim(),
     phone: form.phone,
-    alternate_phone: form.alternate_phone ?? null,
+    alternate_phone: toAlternatePhoneValue(form.alternate_phone),
     email: form.email ?? null,
     designation: form.designation,
     firm_name: form.firm_name ?? null,
@@ -318,7 +442,9 @@ export function toLeadInsert(
     notes: form.notes ?? null,
     assigned_to: assignedTo,
     priority: toPriorityNumber(form.priority),
-    next_follow_up: form.reminder_enabled ? form.next_action_at : null,
+    // `next_follow_up` is deliberately NOT written: the database trigger
+    // `sync_followup_dates_on_task_change` derives it from the tasks. Writing
+    // it here would fight the trigger.
     created_by: actorName,
     updated_by: actorName,
   };

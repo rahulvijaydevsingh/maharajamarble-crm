@@ -148,8 +148,17 @@ describe('lead mapper', () => {
 describe('task mapper', () => {
   it('combines due_date and due_time into one timestamp', () => {
     const task = toMobileTask(liveTask());
-    expect(task.due_at).toContain('2026-11-25');
-    expect(task.due_at).toContain('10:30');
+    // `due_at` is an absolute timestamp, so its UTC rendering depends on the
+    // machine timezone. The stored `due_date` / `due_time` pair is a LOCAL
+    // wall-clock value, so the assertion has to read it back in local time —
+    // otherwise the test only passes under TZ=UTC.
+    const due = new Date(task.due_at);
+    expect(Number.isNaN(due.getTime())).toBe(false);
+    expect(due.getFullYear()).toBe(2026);
+    expect(due.getMonth()).toBe(10); // November (0-based)
+    expect(due.getDate()).toBe(25);
+    expect(due.getHours()).toBe(10);
+    expect(due.getMinutes()).toBe(30);
   });
 
   it('keeps the Control Panel title-case task type', () => {

@@ -28,7 +28,7 @@ export interface HandoffRowSpec {
   /** Stable key — the screen maps this to an icon. */
   key: string;
   label: string;
-  /** Target code understood by `resolveFullCrmTarget`. */
+  /** Canonical target code understood by `resolveFullCrmTarget` — never a raw path. */
   targetCode: string;
   gate: HandoffGate;
   /** Required when `gate` is `permission`. */
@@ -44,12 +44,12 @@ export const HANDOFF_ROW_SPECS: HandoffRowSpec[] = [
   { key: 'customers-new', label: 'New Customer (Full CRM)', targetCode: 'customers/new', gate: 'permission', permission: 'customers.create' },
   { key: 'professionals-new', label: 'New Professional (Full CRM)', targetCode: 'professionals/new', gate: 'permission', permission: 'professionals.create' },
   { key: 'customer-attachments', label: 'Customer Attachments', targetCode: 'customers', gate: 'permission', permission: 'customers.manage_attachments' },
-  { key: 'control-panel', label: 'Control Panel', targetCode: '/settings', gate: 'control_panel' },
-  { key: 'roles', label: 'Roles & Permissions', targetCode: '/settings', gate: 'manage_roles' },
-  { key: 'backup', label: 'Backup & Restore', targetCode: '/settings', gate: 'control_panel' },
-  { key: 'automation', label: 'Automation Rules', targetCode: '/automation', gate: 'control_panel' },
-  { key: 'api-docs', label: 'API Access', targetCode: '/api-docs', gate: 'control_panel' },
-  { key: 'performance', label: 'Performance Reports', targetCode: '/performance', gate: 'control_panel' },
+  { key: 'control-panel', label: 'Control Panel', targetCode: 'settings', gate: 'control_panel' },
+  { key: 'roles', label: 'Roles & Permissions', targetCode: 'settings', gate: 'manage_roles' },
+  { key: 'backup', label: 'Backup & Restore', targetCode: 'settings', gate: 'control_panel' },
+  { key: 'automation', label: 'Automation Rules', targetCode: 'automation', gate: 'control_panel' },
+  { key: 'api-docs', label: 'API Access', targetCode: 'api-docs', gate: 'control_panel' },
+  { key: 'performance', label: 'Performance Reports', targetCode: 'performance', gate: 'control_panel' },
 ];
 
 export interface HandoffPermissionState {

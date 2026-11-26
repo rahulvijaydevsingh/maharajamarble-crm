@@ -18,6 +18,10 @@ describe('INVARIANT-04 staff attribution guard', () => {
   });
 
   it('recognises UUIDs', () => {
+    // A canonical RFC 4122 UUID (8-4-4-4-12)…
+    expect(isUuidLike('25747476-91f4-4c1a-9e4e-1a2b3c4d5e6f')).toBe(true);
+    expect(isUuidLike('25747476-91F4-4C1A-9E4E-1A2B3C4D5E6F')).toBe(true);
+    // …and the malformed variant with a 9 character first group.
     expect(isUuidLike('257474769-1f4c-4a1a-9e4e-1a2b3c4d5e6f')).toBe(true);
     expect(isUuidLike('257474769-1F4C-4A1A-9E4E-1A2B3C4D5E6F')).toBe(true);
     expect(isUuidLike('Test Staff Member')).toBe(false);
@@ -30,6 +34,7 @@ describe('INVARIANT-04 staff attribution guard', () => {
 
   it('treats emails, UUIDs and blanks as unsafe', () => {
     expect(isSafeStaffName('vijay.kumar@example.com')).toBe(false);
+    expect(isSafeStaffName('25747476-91f4-4c1a-9e4e-1a2b3c4d5e6f')).toBe(false);
     expect(isSafeStaffName('257474769-1f4c-4a1a-9e4e-1a2b3c4d5e6f')).toBe(false);
     expect(isSafeStaffName('')).toBe(false);
     expect(isSafeStaffName('   ')).toBe(false);
@@ -54,6 +59,7 @@ describe('INVARIANT-04 staff attribution guard', () => {
 
   it('rejects a UUID candidate', () => {
     expect(resolveSafeStaffName('257474769-1f4c-4a1a-9e4e-1a2b3c4d5e6f', null)).toBeNull();
+    expect(resolveSafeStaffName('25747476-91f4-4c1a-9e4e-1a2b3c4d5e6f', null)).toBeNull();
   });
 
   it('rejects an email profile name and falls through to a safe candidate', () => {

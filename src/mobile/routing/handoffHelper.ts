@@ -29,6 +29,7 @@ export const FULL_CRM_TARGETS = {
   settings: { label: 'Settings', path: '/settings' },
   automation: { label: 'Automation Rules', path: '/automation' },
   apiDocs: { label: 'API Docs', path: '/api-docs' },
+  performance: { label: 'Performance Reports', path: '/performance' },
 } as const;
 
 export type FullCrmTargetKey = keyof typeof FULL_CRM_TARGETS;
@@ -50,29 +51,35 @@ const TARGET_CODE_BY_KEY: Record<string, string> = {
   settings: 'settings',
   automation: 'automation',
   apiDocs: 'api-docs',
+  performance: 'performance',
 };
 
-const TARGET_BY_CODE: Record<string, { label: string; path: string }> = Object.entries(
-  FULL_CRM_TARGETS,
-).reduce<Record<string, { label: string; path: string }>>((acc, [key, value]) => {
+/**
+ * Canonical code → desktop target.
+ *
+ * A `Map` is used on purpose: a plain object would happily return inherited
+ * members (`constructor`, `toString`, …) for a hostile code.
+ */
+const TARGET_BY_CODE = new Map<string, { label: string; path: string }>();
+
+Object.entries(FULL_CRM_TARGETS).forEach(([key, value]) => {
   const code = TARGET_CODE_BY_KEY[key];
-  if (code) acc[code] = value;
-  return acc;
-}, {});
+  if (code) TARGET_BY_CODE.set(code, { label: value.label, path: value.path });
+});
 
 /**
  * Resolves a target code to its desktop label and path.
  *
- * Accepts the canonical codes above, a raw desktop path (anything starting
- * with `/`), or an unknown code — which falls back to the CRM root so the
- * handoff can never produce a dead link.
+ * ONLY the canonical codes listed in {@link TARGET_CODE_BY_KEY} are accepted.
+ * Everything else — a raw path (`/leads`), a protocol-relative URL
+ * (`//evil.com`), a traversal attempt (`../../etc`), an empty string or an
+ * unknown code — falls back to the CRM root so the handoff can never produce
+ * a dead link and never turns into an open redirect.
  */
 export function resolveFullCrmTarget(targetCode: string): { label: string; path: string } {
-  const code = (targetCode ?? '').trim();
-  if (TARGET_BY_CODE[code]) return TARGET_BY_CODE[code];
-  if (code.startsWith('/')) {
-    return { label: 'Full CRM', path: code };
-  }
+  const code = typeof targetCode === 'string' ? targetCode.trim() : '';
+  const target = TARGET_BY_CODE.get(code);
+  if (target) return target;
   return FULL_CRM_TARGETS.workspace;
 }
 

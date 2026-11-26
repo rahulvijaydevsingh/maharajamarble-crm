@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- the provider and its reader form one unit; the mobile workspace is lazily loaded as a single chunk and never hot-reloaded in isolation. */
 import React, { createContext, useContext } from 'react';
 
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
