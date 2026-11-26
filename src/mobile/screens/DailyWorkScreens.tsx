@@ -47,6 +47,7 @@ import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { useToast } from '@/hooks/use-toast';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useLeads } from '@/hooks/useLeads';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useReminders } from '@/hooks/useReminders';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
@@ -74,18 +75,28 @@ import {
 } from '@/mobile/lib/format';
 import { toMobileTask } from '@/mobile/lib/mappers';
 import { requireSafeStaffName } from '@/mobile/lib/staffAttribution';
+import { clockModeLabel, type ClockMode } from '@/mobile/lib/clockMode';
 import {
+  canUseTaskScopeToggle,
+  filterTasksByScope,
   getTaskUrgency,
   isTaskActiveAndNotOrphan,
   isTaskCancelledForBin,
   sortTasksByUrgency,
   taskTypeLabel,
+  type TaskScope,
 } from '@/mobile/lib/tasks';
+import {
+  cancelTaskWithCleanup,
+  completeTaskWithRecurrence,
+  type TaskActionDeps,
+} from '@/mobile/lib/taskActions';
 
 import type { Customer as LiveCustomer } from '@/hooks/useCustomers';
 import type { Lead as LiveLead } from '@/hooks/useLeads';
 import type { Professional as LiveProfessional } from '@/hooks/useProfessionals';
 import type { TaskInsert } from '@/hooks/useTasks';
+import type { Json } from '@/integrations/supabase/types';
 import type {
   CallOutcomeAction,
   CallOutcomeValue,
@@ -131,9 +142,50 @@ const TASK_STATUS_PENDING = 'Pending';
 
 const GRID_COLS = ['', 'grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'];
 
+/**
+ * How many rows a long list renders before the user asks for more.
+ *
+ * The mobile lists can run into the hundreds of rows — rendering all of them
+ * at once is slow on a phone, so the list is windowed and the user reveals
+ * the next chunk with "Show more".
+ */
+const LIST_WINDOW_CHUNK = 40;
+
 /** A task that still needs work — neither completed nor cancelled. */
 function isOpenTask(task: CrmTask): boolean {
   return task.status !== TASK_STATUS_COMPLETED && task.status !== TASK_STATUS_CANCELLED;
+}
+
+/**
+ * Records an event on a task's own trail (`task_activity_log`) — the table
+ * the desktop completion dialog writes to.
+ *
+ * The entry is informational: a failure is swallowed, because a task write
+ * must never be blocked by the activity trail.
+ */
+async function logTaskActivity(
+  taskId: string,
+  eventType: string,
+  metadata: Json,
+  staffName: string,
+  userId?: string | null,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('task_activity_log').insert({
+      task_id: taskId,
+      event_type: eventType,
+      user_id: userId ?? null,
+      user_name: staffName,
+      metadata,
+      notes: null,
+    });
+    if (error) {
+      // The activity trail is informational — never block the task write.
+      console.warn('[mobile/logTaskActivity] Could not record the task event:', error.message);
+    }
+  } catch {
+    // The activity trail is informational — never block the task write.
+  }
 }
 
 /** Local wall-clock ISO for a `YYYY-MM-DD` + `HH:MM` pair. */
@@ -286,7 +338,7 @@ function resolveTaskEntity(
       name: liveLead?.name || task.lead?.full_name || 'Lead',
       phone,
       phone10: normalizePhone10(phone),
-      location: liveLead?.site_location ?? task.lead.site_location ?? null,
+      location: liveLead?.site_location ?? task.lead?.site_location ?? null,
       plusCode: liveLead?.site_plus_code ?? null,
       role: roleForLead(designation, professional, getOptionLabel),
     };
@@ -477,11 +529,23 @@ const CardActionRow: React.FC<{
   fourthLabel: 'Done' | 'Log';
   onCall: () => void;
   onFourthAction: () => void;
-}> = ({ phone, phone10, location, plusCode, fourthLabel, onCall, onFourthAction }) => {
+  /** Hidden for a role that may not write — a dead button is worse than none. */
+  showFourthAction?: boolean;
+}> = ({
+  phone,
+  phone10,
+  location,
+  plusCode,
+  fourthLabel,
+  onCall,
+  onFourthAction,
+  showFourthAction = true,
+}) => {
   const hasPhone = Boolean(phone10);
   const hasLocation = Boolean(location && location.trim().length > 0);
 
-  const tileCount = (hasPhone ? 2 : 0) + (hasLocation ? 1 : 0) + 1;
+  const tileCount =
+    (hasPhone ? 2 : 0) + (hasLocation ? 1 : 0) + (showFourthAction ? 1 : 0);
   const gridClass = GRID_COLS[tileCount] ?? 'grid-cols-2';
 
   return (
@@ -528,20 +592,22 @@ const CardActionRow: React.FC<{
         </a>
       ) : null}
 
-      <button
-        type="button"
-        onClick={onFourthAction}
-        className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#1A1A2E] text-white flex flex-col items-center justify-center gap-0.5 hover:bg-[#2E3148] active:scale-[0.98] transition-transform"
-      >
-        {fourthLabel === 'Done' ? (
-          <Check className="w-4 h-4 shrink-0 text-[#C9A84C]" />
-        ) : (
-          <PhoneCall className="w-4 h-4 shrink-0 text-[#C9A84C]" />
-        )}
-        <span className="font-utility text-[11px] font-semibold whitespace-nowrap">
-          {fourthLabel}
-        </span>
-      </button>
+      {showFourthAction ? (
+        <button
+          type="button"
+          onClick={onFourthAction}
+          className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#1A1A2E] text-white flex flex-col items-center justify-center gap-0.5 hover:bg-[#2E3148] active:scale-[0.98] transition-transform"
+        >
+          {fourthLabel === 'Done' ? (
+            <Check className="w-4 h-4 shrink-0 text-[#C9A84C]" />
+          ) : (
+            <PhoneCall className="w-4 h-4 shrink-0 text-[#C9A84C]" />
+          )}
+          <span className="font-utility text-[11px] font-semibold whitespace-nowrap">
+            {fourthLabel}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 };
@@ -560,6 +626,8 @@ const TaskCard: React.FC<{
   fourthLabel: 'Done' | 'Log';
   /** Long lists get `content-visibility:auto` so off-screen rows cost nothing. */
   virtualise?: boolean;
+  /** Hidden for a role that may not write — a dead button is worse than none. */
+  showFourthAction?: boolean;
 }> = ({
   task,
   entity,
@@ -569,6 +637,7 @@ const TaskCard: React.FC<{
   onFourthAction,
   fourthLabel,
   virtualise = false,
+  showFourthAction = true,
 }) => {
   const urgency = getTaskUrgency(task);
   const badgeTone =
@@ -641,10 +710,49 @@ const TaskCard: React.FC<{
         fourthLabel={fourthLabel}
         onCall={onCall}
         onFourthAction={onFourthAction}
+        showFourthAction={showFourthAction}
       />
     </article>
   );
 };
+
+/* -------------------------------------------------------------------------- */
+/* Shared task scope toggle                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The compact "Mine | Team" segmented toggle.
+ *
+ * Only the roles that may look at the whole team queue ever see it — the
+ * caller decides that with `canUseTaskScopeToggle(role)`.
+ */
+const TaskScopeToggle: React.FC<{
+  scope: TaskScope;
+  onChange: (scope: TaskScope) => void;
+}> = ({ scope, onChange }) => (
+  <div
+    role="group"
+    aria-label="Task scope"
+    className="inline-flex items-center gap-0.5 p-0.5 rounded-[10px] bg-[#F1F5F9] border border-[#E2E8F0]"
+  >
+    {(['mine', 'team'] as const).map((option) => {
+      const active = scope === option;
+      return (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          aria-pressed={active}
+          className={`min-h-[32px] px-2.5 rounded-[8px] font-utility text-[11px] font-bold uppercase tracking-wide transition-colors ${
+            active ? 'bg-[#1A1A2E] text-white' : 'text-[#47464C]'
+          }`}
+        >
+          {option === 'mine' ? 'Mine' : 'Team'}
+        </button>
+      );
+    })}
+  </div>
+);
 
 /* -------------------------------------------------------------------------- */
 /* Screen 1 — TodayPage                                                       */
@@ -661,25 +769,50 @@ export const TodayPage: React.FC<{
    */
   onBeginCall?: (target: MobileCallTarget) => void;
   attendanceBanner?: React.ReactNode;
-}> = ({ onNavigate, onOpenClockModal, onOpenCallOutcome, onBeginCall, attendanceBanner }) => {
-  const { tasks, updateTask } = useTasks();
+  /**
+   * Which half of the attendance pair the clock button offers. The parent
+   * owns the attendance state — the page only renders the label.
+   */
+  clockMode?: ClockMode;
+}> = ({
+  onNavigate,
+  onOpenClockModal,
+  onOpenCallOutcome,
+  onBeginCall,
+  attendanceBanner,
+  clockMode = 'clock-in',
+}) => {
+  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
   const { isOnline, enqueue } = useWeakSignalOutbox();
   const { toast } = useToast();
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
   const { reminders, snoozeReminder, dismissReminder } = useReminders();
+  const { profile, role } = useAuth();
+  const { hasPermission } = usePermissions();
   const control = useControlPanelView();
   const resolveEntity = useTaskEntityResolver(control.getOptionLabel);
   const recentActivity = useRecentActivity(6);
 
   const remindersSectionRef = useRef<HTMLElement | null>(null);
 
+  /** The queue scope — a field agent only ever sees their own tasks. */
+  const [scope, setScope] = useState<TaskScope>('mine');
+  const scopeToggleVisible = canUseTaskScopeToggle(role);
+  /** Writing a task needs `tasks.edit` — a read-only role gets no CTAs. */
+  const canEditTasks = hasPermission('tasks.edit');
+
   const mobileTasks = useMemo(() => tasks.map(toMobileTask), [tasks]);
 
+  const scopedTasks = useMemo(
+    () => filterTasksByScope(mobileTasks, scope, profile?.full_name),
+    [mobileTasks, scope, profile?.full_name],
+  );
+
   const activeTasks = useMemo(
-    () => mobileTasks.filter((task) => isTaskActiveAndNotOrphan(task) && isOpenTask(task)),
-    [mobileTasks],
+    () => scopedTasks.filter((task) => isTaskActiveAndNotOrphan(task) && isOpenTask(task)),
+    [scopedTasks],
   );
 
   const overdueTasks = useMemo(
@@ -771,9 +904,42 @@ export const TodayPage: React.FC<{
     return { name: 'Task', role: 'Follow-up', kind: null };
   };
 
+  /**
+   * Completes a task through the shared helper, so a recurring task rolls
+   * forward into its next occurrence and the task's own alarm is dismissed —
+   * exactly like the desktop completion flow.
+   */
+  const handleCompleteTask = async (task: CrmTask) => {
+    const result = await completeTaskWithRecurrence(
+      { id: task.id, is_recurring: task.is_recurring },
+      {
+        updateTask,
+        createNextRecurringInstance,
+        dismissReminder,
+        reminders,
+        onError: (message: string) =>
+          toast({
+            title: 'Task not updated',
+            description: message,
+            variant: 'destructive',
+          }),
+      },
+    );
+    if (!result.ok) return;
+    toast({ title: 'Task completed', description: task.title });
+  };
+
   return (
     <div className="p-4 space-y-5">
       {attendanceBanner}
+
+      {/* Mine | Team — only for the roles that may see the whole team queue. */}
+      {scopeToggleVisible ? (
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-xl font-bold text-[#1A1A2E]">Today</h1>
+          <TaskScopeToggle scope={scope} onChange={setScope} />
+        </div>
+      ) : null}
 
       {/* 3 Tappable Status Pills */}
       <div className="grid grid-cols-3 gap-2">
@@ -824,7 +990,10 @@ export const TodayPage: React.FC<{
         className="w-full min-h-[44px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] text-sm font-semibold flex items-center justify-center gap-2"
       >
         <Clock className="w-4 h-4 shrink-0 text-[#1A1A2E]" />
-        <span>Clock In / Clock Out</span>
+        <span>{clockModeLabel(clockMode)}</span>
+        <span className="px-2 py-0.5 rounded-full bg-[#EEF2F6] text-[#1A1A2E] font-utility text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
+          {clockMode === 'clock-out' ? 'On shift' : 'Not started'}
+        </span>
       </button>
 
       {/* Overdue-first Follow-Up Cards */}
@@ -898,9 +1067,10 @@ export const TodayPage: React.FC<{
                       });
                       return;
                     }
-                    void updateTask(task.id, updates);
+                    void handleCompleteTask(task);
                   }}
                   fourthLabel="Done"
+                  showFourthAction={canEditTasks}
                 />
               );
             })}
@@ -1086,21 +1256,37 @@ export const WorkPage: React.FC<{
   attendanceBanner?: React.ReactNode;
 }> = ({ initialFilter = 'today', onNavigate, onOpenCallOutcome, onBeginCall, attendanceBanner }) => {
   const { tasks } = useTasks();
+  const { profile, role } = useAuth();
   const control = useControlPanelView();
   const resolveEntity = useTaskEntityResolver(control.getOptionLabel);
 
   const [filter, setFilter] = useState<WorkFilter>(initialFilter);
+  /** The queue scope — a field agent only ever sees their own tasks. */
+  const [scope, setScope] = useState<TaskScope>('mine');
+  const scopeToggleVisible = canUseTaskScopeToggle(role);
+  /** The long list is windowed — the first chunk is rendered, the rest waits. */
+  const [visibleCount, setVisibleCount] = useState(LIST_WINDOW_CHUNK);
 
   useEffect(() => {
     setFilter(initialFilter);
   }, [initialFilter]);
 
+  useEffect(() => {
+    // A new queue starts from the top again.
+    setVisibleCount(LIST_WINDOW_CHUNK);
+  }, [filter, scope]);
+
   const mobileTasks = useMemo(() => tasks.map(toMobileTask), [tasks]);
+
+  const scopedTasks = useMemo(
+    () => filterTasksByScope(mobileTasks, scope, profile?.full_name),
+    [mobileTasks, scope, profile?.full_name],
+  );
 
   /** The orphan-safe universe: deleted-lead orphans and cancelled tasks are out. */
   const visibleTasks = useMemo(
-    () => mobileTasks.filter((task) => isTaskActiveAndNotOrphan(task)),
-    [mobileTasks],
+    () => scopedTasks.filter((task) => isTaskActiveAndNotOrphan(task)),
+    [scopedTasks],
   );
 
   /**
@@ -1109,8 +1295,8 @@ export const WorkPage: React.FC<{
    * the chip could never show a row.
    */
   const cancelledTasks = useMemo(
-    () => mobileTasks.filter((task) => isTaskCancelledForBin(task)),
-    [mobileTasks],
+    () => scopedTasks.filter((task) => isTaskCancelledForBin(task)),
+    [scopedTasks],
   );
 
   const counts = useMemo(
@@ -1161,11 +1347,16 @@ export const WorkPage: React.FC<{
     <div className="p-4 space-y-4">
       {attendanceBanner}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-[#1A1A2E]">Work Queue</h1>
-        <span className="font-utility text-xs font-semibold text-[#47464C] whitespace-nowrap">
-          {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
-        </span>
+        <div className="flex items-center gap-2">
+          {scopeToggleVisible ? (
+            <TaskScopeToggle scope={scope} onChange={setScope} />
+          ) : null}
+          <span className="font-utility text-xs font-semibold text-[#47464C] whitespace-nowrap">
+            {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
+          </span>
+        </div>
       </div>
 
       {/* Horizontally Scrollable Filter Chips (NO "All") */}
@@ -1205,7 +1396,7 @@ export const WorkPage: React.FC<{
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredTasks.map((task) => {
+          {filteredTasks.slice(0, visibleCount).map((task) => {
             const entity = resolveEntity(task);
             return (
               <TaskCard
@@ -1247,6 +1438,17 @@ export const WorkPage: React.FC<{
         </div>
       )}
 
+      {/* The rest of the queue waits for the user to ask for it. */}
+      {filteredTasks.length > visibleCount ? (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((count) => count + LIST_WINDOW_CHUNK)}
+          className="w-full min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] text-sm font-semibold"
+        >
+          Show more ({filteredTasks.length - visibleCount} left)
+        </button>
+      ) : null}
+
     </div>
   );
 };
@@ -1264,13 +1466,15 @@ export const TaskDetailSheet: React.FC<{
   /** Records the intent to call; the sheet opens on return from the dialer. */
   onBeginCall?: (target: MobileCallTarget) => void;
 }> = ({ open, taskId, onClose, onNavigate, onOpenCallOutcome, onBeginCall }) => {
-  const { tasks, updateTask } = useTasks();
+  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
   const { defaultRemindersEnabled } = useSystemSettings();
-  const { addReminder, deleteReminder, reminders } = useReminders(
+  const { addReminder, deleteReminder, dismissReminder, reminders } = useReminders(
     taskId ? 'task' : undefined,
     taskId ?? undefined,
   );
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const { hasPermission } = usePermissions();
+  const { logActivity } = useLogActivity();
   const { isOnline, enqueue } = useWeakSignalOutbox();
   const { toast } = useToast();
   const control = useControlPanelView();
@@ -1278,6 +1482,10 @@ export const TaskDetailSheet: React.FC<{
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** The last failure of a sheet action — shown inline, the sheet stays open. */
+  const [actionError, setActionError] = useState<string | null>(null);
+  /** Writing a task needs `tasks.edit` — a read-only role gets no CTAs. */
+  const canEditTasks = hasPermission('tasks.edit');
 
   const liveTask = useMemo(
     () => (taskId ? tasks.find((item) => item.id === taskId) ?? null : null),
@@ -1298,6 +1506,7 @@ export const TaskDetailSheet: React.FC<{
     // not silently switch a task's reminder on.
     setReminderOn(task.reminder_enabled);
     setRescheduleOpen(false);
+    setActionError(null);
   }, [open, task, defaultRemindersEnabled]);
 
   if (!open || !task) return null;
@@ -1306,6 +1515,15 @@ export const TaskDetailSheet: React.FC<{
   const urgency = getTaskUrgency(task);
   const typeLabel = taskTypeLabel(task.task_type, control.typeLabelMap);
   const staffName = requireSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null);
+
+  /** The write dependencies shared by every task action in this sheet. */
+  const taskActionDeps: TaskActionDeps = {
+    updateTask,
+    createNextRecurringInstance,
+    dismissReminder,
+    reminders,
+    onError: (message: string) => setActionError(message),
+  };
 
   /**
    * Delete-then-insert: the old reminder row is removed first so the new row
@@ -1330,8 +1548,57 @@ export const TaskDetailSheet: React.FC<{
     }
   };
 
+  /**
+   * Records the reschedule on the task trail (`task_activity_log` — the table
+   * the desktop completion dialog writes to) and on the entity timeline.
+   */
+  const recordReschedule = async (oldDueDate: string | null, newDueDate: string) => {
+    await logTaskActivity(
+      task.id,
+      'rescheduled',
+      {
+        old_value: { due_date: oldDueDate, due_time: liveTask?.due_time ?? null },
+        new_value: { due_date: newDueDate, due_time: timeStr },
+        reschedule_count: (liveTask?.reschedule_count ?? 0) + 1,
+      },
+      staffName,
+      user?.id ?? null,
+    );
+
+    if (entity.entityType === 'lead' && entity.entityId) {
+      await logActivity({
+        lead_id: entity.entityId,
+        activity_type: 'task_updated',
+        activity_category: 'task',
+        title: `Task rescheduled: ${task.title}`,
+        description: `Moved to ${newDueDate}`,
+        metadata: { task_id: task.id, old_due_date: oldDueDate, new_due_date: newDueDate },
+        related_entity_type: 'lead',
+        related_entity_id: entity.entityId,
+      });
+    } else if (entity.entityType === 'customer' && entity.entityId) {
+      await logActivity({
+        customer_id: entity.entityId,
+        activity_type: 'task_updated',
+        activity_category: 'task',
+        title: `Task rescheduled: ${task.title}`,
+        description: `Moved to ${newDueDate}`,
+        metadata: { task_id: task.id, old_due_date: oldDueDate, new_due_date: newDueDate },
+        related_entity_type: 'customer',
+        related_entity_id: entity.entityId,
+      });
+    }
+  };
+
   const handleReschedule = async () => {
     if (!liveTask) return;
+    // A reschedule without a date is not a reschedule — the old due date
+    // would silently be cleared.
+    if (!dateStr.trim()) {
+      setActionError('Pick a date before saving the reschedule.');
+      return;
+    }
+    setActionError(null);
     setBusy(true);
     try {
       const dueIso = localIsoFromInputs(dateStr, timeStr);
@@ -1339,6 +1606,7 @@ export const TaskDetailSheet: React.FC<{
         due_date: dateStr,
         due_time: timeStr,
         reminder: reminderOn,
+        reschedule_count: (liveTask.reschedule_count ?? 0) + 1,
       };
       if (liveTask.status === TASK_STATUS_COMPLETED) {
         updates.status = TASK_STATUS_PENDING;
@@ -1361,9 +1629,15 @@ export const TaskDetailSheet: React.FC<{
 
       await updateTask(task.id, updates);
       await rescheduleReminder(dueIso, reminderOn);
+      await recordReschedule(liveTask.due_date ?? null, dateStr);
       onClose();
-    } catch {
-      /* keep the sheet open so the user can retry */
+    } catch (error) {
+      // The sheet stays open so the user can retry.
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'The task could not be rescheduled. Please try again.',
+      );
     } finally {
       setBusy(false);
     }
@@ -1371,6 +1645,7 @@ export const TaskDetailSheet: React.FC<{
 
   const handleStatus = async (status: string) => {
     if (!liveTask) return;
+    setActionError(null);
     setBusy(true);
     try {
       if (!isOnline) {
@@ -1387,10 +1662,29 @@ export const TaskDetailSheet: React.FC<{
         return;
       }
 
-      await updateTask(task.id, { status });
+      if (status === TASK_STATUS_COMPLETED) {
+        const result = await completeTaskWithRecurrence(
+          { id: task.id, is_recurring: task.is_recurring },
+          taskActionDeps,
+        );
+        if (!result.ok) return;
+      } else if (status === TASK_STATUS_CANCELLED) {
+        const result = await cancelTaskWithCleanup(
+          { id: task.id, is_recurring: task.is_recurring },
+          taskActionDeps,
+        );
+        if (!result.ok) return;
+      } else {
+        await updateTask(task.id, { status });
+      }
       onClose();
-    } catch {
-      /* keep the sheet open so the user can retry */
+    } catch (error) {
+      // The sheet stays open so the user can retry.
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'The task could not be updated. Please try again.',
+      );
     } finally {
       setBusy(false);
     }
@@ -1449,6 +1743,15 @@ export const TaskDetailSheet: React.FC<{
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {actionError ? (
+          <div
+            role="alert"
+            className="p-3 rounded-[10px] bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] text-xs font-semibold"
+          >
+            {actionError}
+          </div>
+        ) : null}
 
         {task.description && (
           <p className="text-sm text-[#47464C] bg-[#F8F9FA] border border-[#E2E8F0] rounded-[12px] p-3">
@@ -1559,47 +1862,56 @@ export const TaskDetailSheet: React.FC<{
             <span>Log Call</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setRescheduleOpen((value) => !value)}
-            className="min-h-[48px] rounded-[12px] border-[1.5px] border-[#E2E8F0] bg-white text-sm font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5"
-          >
-            <Calendar className="w-4 h-4 shrink-0" />
-            <span>Reschedule</span>
-          </button>
-
-          {task.status === TASK_STATUS_COMPLETED ? (
+          {canEditTasks ? (
             <button
               type="button"
-              disabled={busy}
-              onClick={() => void handleStatus(TASK_STATUS_PENDING)}
-              className="col-span-2 min-h-[48px] rounded-[12px] bg-[#1A1A2E] text-white text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60"
+              onClick={() => setRescheduleOpen((value) => !value)}
+              className="min-h-[48px] rounded-[12px] border-[1.5px] border-[#E2E8F0] bg-white text-sm font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5"
             >
-              <RotateCcw className="w-4 h-4 shrink-0" />
-              <span>Reopen Task</span>
+              <Calendar className="w-4 h-4 shrink-0" />
+              <span>Reschedule</span>
             </button>
           ) : (
-            <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void handleStatus(TASK_STATUS_CANCELLED)}
-                className="min-h-[48px] rounded-[12px] bg-[#FEF2F2] border border-[#FECACA] text-sm font-semibold text-[#DC2626] flex items-center justify-center gap-1.5 disabled:opacity-60"
-              >
-                <XCircle className="w-4 h-4 shrink-0" />
-                <span>Cancel Task</span>
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void handleStatus(TASK_STATUS_COMPLETED)}
-                className="min-h-[48px] rounded-[12px] bg-[#C9A84C] text-sm font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5 disabled:opacity-60"
-              >
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Complete Task</span>
-              </button>
-            </>
+            <span className="min-h-[48px] rounded-[12px] border-[1.5px] border-[#E2E8F0] bg-[#F8F9FA] text-sm font-semibold text-[#8A8A94] flex items-center justify-center gap-1.5">
+              <Calendar className="w-4 h-4 shrink-0" />
+              <span>Read only</span>
+            </span>
           )}
+
+          {canEditTasks ? (
+            task.status === TASK_STATUS_COMPLETED ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleStatus(TASK_STATUS_PENDING)}
+                className="col-span-2 min-h-[48px] rounded-[12px] bg-[#1A1A2E] text-white text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60"
+              >
+                <RotateCcw className="w-4 h-4 shrink-0" />
+                <span>Reopen Task</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleStatus(TASK_STATUS_CANCELLED)}
+                  className="min-h-[48px] rounded-[12px] bg-[#FEF2F2] border border-[#FECACA] text-sm font-semibold text-[#DC2626] flex items-center justify-center gap-1.5 disabled:opacity-60"
+                >
+                  <XCircle className="w-4 h-4 shrink-0" />
+                  <span>Cancel Task</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleStatus(TASK_STATUS_COMPLETED)}
+                  className="min-h-[48px] rounded-[12px] bg-[#C9A84C] text-sm font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5 disabled:opacity-60"
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Complete Task</span>
+                </button>
+              </>
+            )
+          ) : null}
         </div>
       </div>
     </div>
@@ -1616,15 +1928,22 @@ export const CallOutcomeSheet: React.FC<{
   target: MobileCallTarget | null;
   onDismiss: () => void;
 }> = ({ open, openedAfterCall, target, onDismiss }) => {
-  const { tasks, updateTask } = useTasks();
+  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
   const { logActivity } = useLogActivity();
   const { defaultRemindersEnabled } = useSystemSettings();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const { hasPermission } = usePermissions();
   const control = useControlPanelView();
 
   const scopeType = target?.taskId ? 'task' : target?.entityType;
   const scopeId = target?.taskId ?? target?.entityId;
-  const { addReminder, deleteReminder, reminders } = useReminders(scopeType, scopeId);
+  const { addReminder, deleteReminder, dismissReminder, reminders } = useReminders(
+    scopeType,
+    scopeId,
+  );
+
+  /** Writing a task needs `tasks.edit` — a read-only role never writes one. */
+  const canEditTasks = hasPermission('tasks.edit');
 
   /**
    * "Tomorrow 10 AM" — recomputed every time the sheet opens.
@@ -1632,12 +1951,12 @@ export const CallOutcomeSheet: React.FC<{
    * It used to be computed once at mount, so a sheet opened after midnight
    * still pointed at yesterday.
    */
-  const defaultTomorrow = useMemo(() => {
+  const [defaultTomorrow, setDefaultTomorrow] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() + 1);
     date.setHours(10, 0, 0, 0);
     return date.toISOString();
-  }, [open]);
+  });
 
   const [outcome, setOutcome] = useState<CallOutcomeValue>('');
   const [note, setNote] = useState('');
@@ -1653,26 +1972,35 @@ export const CallOutcomeSheet: React.FC<{
   const [reminderAlarm, setReminderAlarm] = useState<boolean>(defaultRemindersEnabled);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * The sub-steps of a save that already succeeded.
+   *
+   * A retry after a failed `logActivity` must never run `updateTask` a second
+   * time — the completed steps are remembered until the sheet is closed.
+   */
+  const completedStepsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    date.setHours(10, 0, 0, 0);
+    setDefaultTomorrow(date.toISOString());
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     setNote('');
-    // Without a task there is nothing to reschedule — the call only logs.
-    setTaskAction(target?.taskId ? 'reschedule' : 'keep_open');
+    // The outcome is never preselected — the user has to say what happened.
+    setOutcome('');
+    setTaskAction(target?.taskId && canEditTasks ? 'reschedule' : 'keep_open');
     setSnoozePreset('tomorrow');
     setDateStr(toLocalDateInputValue(defaultTomorrow));
     setTimeStr(toLocalTimeInputValue(defaultTomorrow));
     setReminderAlarm(defaultRemindersEnabled);
     setSaveError(null);
-  }, [open, defaultTomorrow, defaultRemindersEnabled, target?.taskId]);
-
-  useEffect(() => {
-    if (!open) return;
-    setOutcome((current) =>
-      control.outcomes.some((option) => option.value === current)
-        ? current
-        : (control.outcomes[0]?.value ?? ''),
-    );
-  }, [open, control.outcomes]);
+    completedStepsRef.current = new Set();
+  }, [open, defaultTomorrow, defaultRemindersEnabled, target?.taskId, canEditTasks]);
 
   if (!open || !target) return null;
 
@@ -1710,26 +2038,35 @@ export const CallOutcomeSheet: React.FC<{
 
   const handleSave = async () => {
     if (!target) return;
+    // The outcome is never preselected — the user has to say what happened.
+    if (!outcome) {
+      setSaveError('Pick a call outcome before saving.');
+      return;
+    }
     setBusy(true);
     setSaveError(null);
+    const steps = completedStepsRef.current;
     try {
       const noteText = note.trim();
 
-      // 1 — write the outcome onto the live task.
-      if (target.taskId) {
+      // 1 — write the outcome onto the live task. A retry never repeats a
+      //     step that already succeeded.
+      if (target.taskId && canEditTasks && !steps.has('task_update')) {
         const updates: Partial<TaskInsert> & { completed_at?: string | null } = {
           completion_outcome: outcome,
           completion_notes: noteText || null,
         };
 
-        if (taskAction === 'complete') {
-          updates.status = TASK_STATUS_COMPLETED;
-        } else if (taskAction === 'cancel') {
-          updates.status = TASK_STATUS_CANCELLED;
-        } else if (taskAction === 'reschedule') {
+        if (taskAction === 'reschedule') {
+          // A reschedule without a date is not a reschedule.
+          if (!dateStr.trim()) {
+            setSaveError('Pick a date before saving the reschedule.');
+            return;
+          }
           updates.due_date = dateStr;
           updates.due_time = timeStr;
           updates.reminder = reminderAlarm;
+          updates.reschedule_count = (liveTask?.reschedule_count ?? 0) + 1;
           if (liveTask?.status === TASK_STATUS_COMPLETED) {
             updates.status = TASK_STATUS_PENDING;
             updates.completed_at = null;
@@ -1737,33 +2074,102 @@ export const CallOutcomeSheet: React.FC<{
         }
 
         await updateTask(target.taskId, updates);
+        steps.add('task_update');
       }
 
-      // 2 — log the call.
-      await logActivity({
-        lead_id: target.entityType === 'lead' ? target.entityId : undefined,
-        customer_id: target.entityType === 'customer' ? target.entityId : undefined,
-        activity_type: 'phone_call',
-        activity_category: 'communication',
-        title: `Call logged — ${outcomeLabel}`,
-        description: noteText || undefined,
-        metadata: {
-          task_id: target.taskId ?? null,
-          outcome,
-          task_action: taskAction,
-          scheduled_at: scheduledIso,
-        },
-        related_entity_type: target.entityType,
-        related_entity_id: target.entityId,
-      });
+      // 2 — complete or cancel the task through the shared helper, so a
+      //     recurring task rolls forward and the task's alarm is dismissed.
+      if (
+        target.taskId &&
+        canEditTasks &&
+        (taskAction === 'complete' || taskAction === 'cancel') &&
+        !steps.has('task_status')
+      ) {
+        const actionOutcome: { error: string | null } = { error: null };
+        const actionDeps: TaskActionDeps = {
+          updateTask,
+          createNextRecurringInstance,
+          dismissReminder,
+          reminders,
+          onError: (message: string) => {
+            actionOutcome.error = message;
+          },
+        };
+        const taskTarget = {
+          id: target.taskId,
+          is_recurring: liveTask?.is_recurring ?? false,
+        };
+        const result =
+          taskAction === 'complete'
+            ? await completeTaskWithRecurrence(taskTarget, actionDeps)
+            : await cancelTaskWithCleanup(taskTarget, actionDeps);
+        if (!result.ok) {
+          setSaveError(
+            result.error ?? actionOutcome.error ?? 'The task could not be updated.',
+          );
+          return;
+        }
+        steps.add('task_status');
+      }
 
-      // 3 — reschedule: delete the old reminder, then insert a fresh one so
+      // 3 — record the reschedule on the task trail.
+      if (
+        target.taskId &&
+        canEditTasks &&
+        taskAction === 'reschedule' &&
+        !steps.has('reschedule_activity')
+      ) {
+        await logTaskActivity(
+          target.taskId,
+          'rescheduled',
+          {
+            old_value: {
+              due_date: liveTask?.due_date ?? null,
+              due_time: liveTask?.due_time ?? null,
+            },
+            new_value: { due_date: dateStr, due_time: timeStr },
+            reschedule_count: (liveTask?.reschedule_count ?? 0) + 1,
+          },
+          staffName,
+          user?.id ?? null,
+        );
+        steps.add('reschedule_activity');
+      }
+
+      // 4 — log the call.
+      if (!steps.has('log_activity')) {
+        await logActivity({
+          lead_id: target.entityType === 'lead' ? target.entityId : undefined,
+          customer_id: target.entityType === 'customer' ? target.entityId : undefined,
+          activity_type: 'phone_call',
+          activity_category: 'communication',
+          title: `Call logged — ${outcomeLabel}`,
+          description: noteText || undefined,
+          metadata: {
+            task_id: target.taskId ?? null,
+            outcome,
+            task_action: taskAction,
+            scheduled_at: scheduledIso,
+          },
+          related_entity_type: target.entityType,
+          related_entity_id: target.entityId,
+        });
+        steps.add('log_activity');
+      }
+
+      // 5 — reschedule: delete the old reminder, then insert a fresh one so
       //     `is_dismissed` starts from false again.
       //
       //     Only reminders that belong to the *task* are replaced. A call that
       //     is not attached to a task must never wipe the entity's other
       //     reminders.
-      if (taskAction === 'reschedule' && scopeType && scopeId) {
+      if (
+        canEditTasks &&
+        taskAction === 'reschedule' &&
+        scopeType &&
+        scopeId &&
+        !steps.has('reminder_sync')
+      ) {
         const scoped = reminders.filter(
           (reminder) => reminder.entity_type === scopeType && reminder.entity_id === scopeId,
         );
@@ -1782,12 +2188,14 @@ export const CallOutcomeSheet: React.FC<{
             assigned_to: staffName,
           });
         }
+        steps.add('reminder_sync');
       }
 
       onDismiss();
     } catch (error) {
       // The sheet stays open and the reason is shown inline — a silent
-      // failure looked like a successful save.
+      // failure looked like a successful save. The steps that already
+      // succeeded are remembered, so a retry does not repeat them.
       setSaveError(
         error instanceof Error
           ? error.message
@@ -1879,32 +2287,41 @@ export const CallOutcomeSheet: React.FC<{
             />
           </div>
 
-          {/* 4-way Task Action */}
-          <div className="space-y-1.5">
-            <div className="text-xs font-bold text-[#1A1A2E]">Task Action</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {taskActions.map((action) => {
-                const active = taskAction === action.value;
-                return (
-                  <button
-                    key={action.value}
-                    type="button"
-                    onClick={() => setTaskAction(action.value)}
-                    className={`min-h-[44px] px-2 rounded-[10px] border text-xs font-semibold whitespace-nowrap ${
-                      active
-                        ? 'bg-[#1A1A2E] text-white border-[#1A1A2E]'
-                        : 'bg-[#F8F9FA] text-[#1A1A2E] border-[#E2E8F0]'
-                    }`}
-                  >
-                    {action.label}
-                  </button>
-                );
-              })}
+          {/* 4-way Task Action — hidden for a role that may not write tasks. */}
+          {canEditTasks ? (
+            <div className="space-y-1.5">
+              <div className="text-xs font-bold text-[#1A1A2E]">Task Action</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {taskActions.map((action) => {
+                  const active = taskAction === action.value;
+                  return (
+                    <button
+                      key={action.value}
+                      type="button"
+                      onClick={() => setTaskAction(action.value)}
+                      className={`min-h-[44px] px-2 rounded-[10px] border text-xs font-semibold whitespace-nowrap ${
+                        active
+                          ? 'bg-[#1A1A2E] text-white border-[#1A1A2E]'
+                          : 'bg-[#F8F9FA] text-[#1A1A2E] border-[#E2E8F0]'
+                      }`}
+                    >
+                      {action.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="text-xs font-bold text-[#1A1A2E]">Task Action</div>
+              <p className="text-xs text-[#47464C]">
+                Your role can log the call, but it cannot change the task.
+              </p>
+            </div>
+          )}
 
           {/* Quick Follow-Up Preset */}
-          {taskAction !== 'complete' && taskAction !== 'cancel' && (
+          {canEditTasks && taskAction !== 'complete' && taskAction !== 'cancel' && (
             <div className="space-y-1.5">
               <div className="text-xs font-bold text-[#1A1A2E]">Quick Follow-Up Preset</div>
               <div className="grid grid-cols-2 gap-1.5">
@@ -1937,7 +2354,7 @@ export const CallOutcomeSheet: React.FC<{
           )}
 
           {/* Next Follow-Up date/time + Set Reminder Alarm toggle */}
-          {taskAction !== 'complete' && taskAction !== 'cancel' && (
+          {canEditTasks && taskAction !== 'complete' && taskAction !== 'cancel' && (
             <div className="space-y-2 bg-[#F8F9FA] border border-[#E2E8F0] rounded-[12px] p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-[#1A1A2E] flex items-center gap-1.5">
@@ -1992,7 +2409,7 @@ export const CallOutcomeSheet: React.FC<{
         <div className="p-4 border-t border-[#E2E8F0] bg-white pb-[calc(1rem+env(safe-area-inset-bottom))] shrink-0">
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !outcome}
             onClick={() => void handleSave()}
             className="w-full min-h-[48px] rounded-[12px] bg-[#C9A84C] text-[#1A1A2E] font-semibold text-base shadow-[0_10px_20px_-3px_rgba(201,168,76,0.35)] disabled:opacity-60"
           >

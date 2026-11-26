@@ -70,7 +70,10 @@ import { useReminders } from '@/hooks/useReminders';
 import { FullCrmHandoffPanel } from '@/mobile/components/FullCrmHandoffPanel';
 import { SubHeader } from '@/mobile/shell/MobileShell';
 import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
+import { clearOutboxStorageForUser } from '@/mobile/outbox/weakSignalOutbox';
+import { clearPendingCallForUser } from '@/mobile/hooks/useCallIntentWatcher';
 import { formatShortDateTime } from '@/mobile/lib/format';
+import { clockModeLabel, type ClockMode } from '@/mobile/lib/clockMode';
 import { openFullCrmRoute } from '@/mobile/routing/handoffHelper';
 import { buildHandoffRows } from '@/mobile/lib/roleGating';
 import { buildMobilePath, writeWorkspacePreference } from '@/mobile/routing/workspacePreference';
@@ -164,6 +167,13 @@ export const MessagesPage: React.FC<{
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const markedKeyRef = useRef<string | null>(null);
+  /**
+   * The mutation object is a new object on every render, so it can never be a
+   * dependency of the effect below without re-running the effect in a loop.
+   * A ref keeps the latest handle without re-triggering anything.
+   */
+  const markReadRef = useRef(markRead);
+  markReadRef.current = markRead;
 
   const threadList = conversations ?? NO_CONVERSATIONS;
   const messageList = messages ?? NO_MESSAGES;
@@ -205,7 +215,7 @@ export const MessagesPage: React.FC<{
     // The invalidation runs in the mutation's `onSuccess`, so the unread
     // badge is refreshed *after* the write landed. Invalidating in parallel
     // resurrected the badge with the pre-write count.
-    markRead.mutate(activeThreadId, {
+    markReadRef.current.mutate(activeThreadId, {
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: ['unread-counts', user?.id] });
       },
@@ -675,10 +685,18 @@ const HANDOFF_ICONS: Record<string, React.ComponentType<{ className?: string }>>
 export const MorePage: React.FC<{
   onNavigate: (route: MobileRoute) => void;
   onOpenClockModal: () => void;
+  /** Which half of the attendance pair the user still needs. */
+  clockMode?: ClockMode;
   onOpenNotifications: () => void;
   onOpenOutbox: () => void;
-}> = ({ onNavigate, onOpenClockModal, onOpenNotifications, onOpenOutbox }) => {
-  const { profile, role, signOut } = useAuth();
+}> = ({
+  onNavigate,
+  onOpenClockModal,
+  clockMode = 'clock-in',
+  onOpenNotifications,
+  onOpenOutbox,
+}) => {
+  const { profile, role, signOut, user } = useAuth();
   const { hasPermission, canAccessControlPanel, canManageRoles, role: permissionRole } =
     usePermissions();
   const { outbox } = useWeakSignalOutbox();
@@ -697,7 +715,10 @@ export const MorePage: React.FC<{
   // table lives in `@/mobile/lib/roleGating` so it can be unit tested.
   const handoffRows: HandoffRow[] = buildHandoffRows({
     role: permissionRole,
-    hasPermission,
+    // `usePermissions().hasPermission` takes the closed `Permission` union,
+    // while the shared decision table works with plain permission strings.
+    hasPermission: (permission) =>
+      hasPermission(permission as Parameters<typeof hasPermission>[0]),
     canAccessControlPanel,
     canManageRoles,
   }).map((spec) => ({
@@ -719,8 +740,18 @@ export const MorePage: React.FC<{
     navigate('/');
   };
 
-  const handleSignOut = () => {
-    void signOut();
+  /**
+   * Sign out.
+   *
+   * The device holds queued field work and a pending call intent in
+   * user-scoped storage. Signing out must wipe BOTH, otherwise the next person
+   * to sign in on this handset could replay the previous user's mutations.
+   */
+  const handleSignOut = async () => {
+    clearOutboxStorageForUser(user?.id);
+    clearPendingCallForUser(user?.id);
+    await signOut();
+    navigate('/auth', { replace: true });
   };
 
   return (
@@ -740,7 +771,7 @@ export const MorePage: React.FC<{
         </div>
         <button
           type="button"
-          onClick={handleSignOut}
+          onClick={() => void handleSignOut()}
           className="min-h-[44px] px-3 rounded-[10px] border border-[#E2E8F0] bg-[#F8F9FA] text-xs font-semibold text-[#DC2626] flex items-center gap-1.5 whitespace-nowrap shrink-0"
         >
           <LogOut className="w-3.5 h-3.5" />
@@ -787,7 +818,7 @@ export const MorePage: React.FC<{
             </span>
             <span className="flex items-center gap-1.5 shrink-0">
               <span className="px-2.5 py-0.5 rounded-full bg-[#EEF2F6] text-[#1A1A2E] font-utility text-[11px] font-bold whitespace-nowrap">
-                Clock In / Out
+                {clockModeLabel(clockMode)}
               </span>
               <ChevronRight className="w-4 h-4 text-[#47464C]" />
             </span>

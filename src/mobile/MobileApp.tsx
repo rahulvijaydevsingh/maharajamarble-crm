@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { PhoneCall, X } from 'lucide-react';
+import { PhoneCall, Search, X } from 'lucide-react';
 
 import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
+import { useTasks } from '@/hooks/useTasks';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 import { WeakSignalOutboxProvider } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { WorkspaceGate } from '@/mobile/routing/WorkspaceGate';
@@ -18,6 +22,16 @@ import { MobileControlPanelProvider } from '@/mobile/lib/controlPanelContext';
 import { ClockInOutModal } from '@/components/hr/ClockInOutModal';
 import { AttendancePromptGuard } from '@/mobile/components/AttendancePromptGuard';
 import { formatPhoneDisplay } from '@/mobile/lib/format';
+import {
+  resolveClockMode,
+  type ClockMode,
+} from '@/mobile/lib/clockMode';
+import {
+  CALL_LOG_PICKER_MAX_MATCHES,
+  filterCallLogContacts,
+  hasMoreCallLogMatches,
+  type CallLogContact,
+} from '@/mobile/lib/contactPicker';
 
 import {
   BottomTabBar,
@@ -45,12 +59,16 @@ import type { EntityKind, MainTab, MobileRoute } from '@/mobile/types/crmTypes';
 const MobileWorkspaceController: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth();
 
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
+  const { tasks, loading: tasksLoading } = useTasks();
 
   const [clockModalOpen, setClockModalOpen] = useState(false);
+  const [clockMode, setClockMode] = useState<ClockMode>('clock-in');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [outboxOpen, setOutboxOpen] = useState(false);
   const [quickAddState, setQuickAddState] = useState<{
@@ -59,6 +77,7 @@ const MobileWorkspaceController: React.FC = () => {
     preselected?: { entityType: EntityKind; entityId: string };
   }>({ open: false, mode: 'menu' });
   const [callLogPickerOpen, setCallLogPickerOpen] = useState(false);
+  const [callLogQuery, setCallLogQuery] = useState('');
 
   const { callOutcomeTarget, openCallOutcome, dismissCallOutcome } =
     useCallIntentWatcher();
@@ -106,7 +125,62 @@ const MobileWorkspaceController: React.FC = () => {
 
   const workTaskId = route.name === 'work' ? route.taskId ?? null : null;
 
-  const allContactsForCallLog = useMemo(
+  /**
+   * Dynamic clock in / clock out.
+   *
+   * The desktop attendance screen (`src/pages/HRAttendance.tsx`) decides the
+   * mode from today's `attendance_records` row. The mobile workspace reads the
+   * same row so the Today / More buttons always offer the half of the pair the
+   * user still needs.
+   */
+  const refreshClockMode = useCallback(async () => {
+    if (!user?.id) {
+      setClockMode('clock-in');
+      return;
+    }
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('attendance_records')
+        .select('clock_in, clock_out')
+        .eq('staff_id', user.id)
+        .eq('date', today)
+        .maybeSingle();
+
+      setClockMode(
+        resolveClockMode(
+          (data ?? null) as { clock_in?: string | null; clock_out?: string | null } | null,
+        ),
+      );
+    } catch {
+      // A failed lookup must never block the attendance action — fall back to
+      // the safe "clock in" mode.
+      setClockMode('clock-in');
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    void refreshClockMode();
+  }, [refreshClockMode]);
+
+  /**
+   * A deep link to a task that no longer exists must not leave the user on an
+   * empty sheet — bounce back to the work list.
+   */
+  useEffect(() => {
+    if (!workTaskId) return;
+    if (tasksLoading) return;
+    if (tasks.some((task) => task.id === workTaskId)) return;
+
+    toast({
+      title: 'Task not found',
+      description: 'This task is no longer available.',
+      variant: 'destructive',
+    });
+    navigate(buildMobilePath({ name: 'work' }), { replace: true });
+  }, [navigate, tasks, tasksLoading, toast, workTaskId]);
+
+  const allContactsForCallLog = useMemo<CallLogContact[]>(
     () => [
       ...leads
         .filter((lead) => lead.status !== 'lost')
@@ -133,6 +207,16 @@ const MobileWorkspaceController: React.FC = () => {
       })),
     ],
     [leads, customers, professionals],
+  );
+
+  const visibleCallLogContacts = useMemo(
+    () => filterCallLogContacts(allContactsForCallLog, callLogQuery, CALL_LOG_PICKER_MAX_MATCHES),
+    [allContactsForCallLog, callLogQuery],
+  );
+
+  const callLogMatchesTruncated = useMemo(
+    () => hasMoreCallLogMatches(allContactsForCallLog, callLogQuery, CALL_LOG_PICKER_MAX_MATCHES),
+    [allContactsForCallLog, callLogQuery],
   );
 
   const handleOpenCallOutcome = useCallback(
@@ -180,6 +264,7 @@ const MobileWorkspaceController: React.FC = () => {
             <TodayPage
               onNavigate={onNavigate}
               onOpenClockModal={() => setClockModalOpen(true)}
+              clockMode={clockMode}
               onOpenCallOutcome={handleOpenCallOutcome}
               onBeginCall={handleBeginCall}
               attendanceBanner={<AttendancePromptGuard />}
@@ -208,6 +293,7 @@ const MobileWorkspaceController: React.FC = () => {
             <MorePage
               onNavigate={onNavigate}
               onOpenClockModal={() => setClockModalOpen(true)}
+              clockMode={clockMode}
               onOpenNotifications={() => setNotificationsOpen(true)}
               onOpenOutbox={() => setOutboxOpen(true)}
             />
@@ -335,34 +421,73 @@ const MobileWorkspaceController: React.FC = () => {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+              <div className="p-3 border-b border-[#E2E8F0]">
+                <div className="flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-[#F8F9FA] px-3">
+                  <Search className="w-4 h-4 text-[#47464C] shrink-0" />
+                  <input
+                    type="search"
+                    value={callLogQuery}
+                    onChange={(event) => setCallLogQuery(event.target.value)}
+                    placeholder="Search name, phone or firm"
+                    aria-label="Search contacts for call log"
+                    className="flex-1 bg-transparent py-3 text-sm text-[#1A1A2E] outline-none placeholder:text-[#8A8A93]"
+                  />
+                </div>
+                {callLogMatchesTruncated && (
+                  <p className="mt-2 text-xs text-[#47464C]">
+                    Showing the first {CALL_LOG_PICKER_MAX_MATCHES} matches — refine your search to see more.
+                  </p>
+                )}
+              </div>
               <div className="flex-1 overflow-y-auto divide-y divide-[#F1F5F9]">
-                {allContactsForCallLog.map((contact) => (
-                  <button
-                    key={`${contact.entityType}:${contact.entityId}`}
-                    type="button"
-                    onClick={() => {
-                      setCallLogPickerOpen(false);
-                      openCallOutcome({
-                        entityType: contact.entityType,
-                        entityId: contact.entityId,
-                        entityName: contact.name,
-                        phone: contact.phone,
-                      });
-                    }}
-                    className="w-full min-h-[56px] px-4 py-3 flex items-center justify-between text-left hover:bg-[#F8F9FA]"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-[#1A1A2E] truncate">{contact.name}</div>
-                      <div className="font-utility text-xs text-[#47464C] truncate">
-                        {contact.sub} · {formatPhoneDisplay(contact.phone)}
+                {visibleCallLogContacts.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-[#47464C]">
+                    No contacts match “{callLogQuery}”.
+                  </p>
+                ) : (
+                  visibleCallLogContacts.map((contact) => (
+                    <button
+                      key={`${contact.entityType}:${contact.entityId}`}
+                      type="button"
+                      onClick={() => {
+                        setCallLogPickerOpen(false);
+                        setCallLogQuery('');
+                        openCallOutcome({
+                          entityType: contact.entityType,
+                          entityId: contact.entityId,
+                          entityName: contact.name,
+                          phone: contact.phone,
+                        });
+                      }}
+                      className="w-full min-h-[56px] px-4 py-3 flex items-center justify-between text-left hover:bg-[#F8F9FA]"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-[#1A1A2E] truncate">{contact.name}</div>
+                        <div className="font-utility text-xs text-[#47464C] truncate">
+                          {contact.sub} · {formatPhoneDisplay(contact.phone)}
+                        </div>
                       </div>
-                    </div>
-                    <PhoneCall className="w-4 h-4 text-[#059669] shrink-0" />
-                  </button>
-                ))}
+                      <PhoneCall className="w-4 h-4 text-[#059669] shrink-0" />
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
+        )}
+
+        {/* The task detail sheet is mounted BEFORE the call outcome sheet, so
+            "Log Call" opened from `/m/work/:taskId` always stacks ON TOP of
+            the task sheet instead of opening behind it. */}
+        {route.name === 'work' && workTaskId && (
+          <TaskDetailSheet
+            open
+            taskId={workTaskId}
+            onClose={() => navigate(buildMobilePath({ name: 'work' }))}
+            onNavigate={onNavigate}
+            onOpenCallOutcome={handleOpenCallOutcome}
+            onBeginCall={handleBeginCall}
+          />
         )}
 
         {callOutcomeTarget ? (
@@ -375,24 +500,16 @@ const MobileWorkspaceController: React.FC = () => {
         ) : null}
 
         {/* The attendance clock — the live desktop modal, mounted in the
-            mobile workspace so the field user can clock in. */}
+            mobile workspace so the field user can clock in AND clock out. */}
         <ClockInOutModal
           open={clockModalOpen}
           onOpenChange={setClockModalOpen}
-          mode="clock-in"
-          onSuccess={() => setClockModalOpen(false)}
+          mode={clockMode}
+          onSuccess={() => {
+            setClockModalOpen(false);
+            void refreshClockMode();
+          }}
         />
-
-        {route.name === 'work' && workTaskId && (
-          <TaskDetailSheet
-            open
-            taskId={workTaskId}
-            onClose={() => navigate(buildMobilePath({ name: 'work' }))}
-            onNavigate={onNavigate}
-            onOpenCallOutcome={handleOpenCallOutcome}
-            onBeginCall={handleBeginCall}
-          />
-        )}
       </div>
     </div>
   );

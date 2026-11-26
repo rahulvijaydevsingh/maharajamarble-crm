@@ -1,7 +1,7 @@
 {
   "name": "Maharaja Marble CRM",
   "short_name": "MM CRM",
-  "start_url": "/m/today",
+  "start_url": "/",
   "scope": "/",
   "icons": [
     {

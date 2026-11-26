@@ -110,8 +110,10 @@ import {
   isTaskActiveAndNotOrphan,
   sortTasksByUrgency,
 } from '@/mobile/lib/tasks';
+import { completeTaskWithRecurrence } from '@/mobile/lib/taskActions';
 
 import type {
+  CrmTask,
   EntityKind,
   EntityProfileTab,
   MobileRoute,
@@ -121,6 +123,14 @@ import type {
 /* -------------------------------------------------------------------------- */
 /* Local types + helpers                                                      */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * How many rows the people directory renders before the user asks for more.
+ *
+ * The directory can run into the hundreds of contacts — the list is windowed
+ * so the phone stays responsive.
+ */
+const PEOPLE_LIST_WINDOW_CHUNK = 40;
 
 /** The call-outcome target the shell hands to this screen. */
 interface CallOutcomeTargetPayload {
@@ -252,6 +262,8 @@ export const PeoplePage: React.FC<{
 
   const [filter, setFilter] = useState<PeopleFilter>(initialFilter);
   const [rawSearch, setRawSearch] = useState('');
+  /** The long directory is windowed — the first chunk is rendered. */
+  const [visibleCount, setVisibleCount] = useState(PEOPLE_LIST_WINDOW_CHUNK);
 
   useEffect(() => {
     setFilter(initialFilter);
@@ -383,6 +395,11 @@ export const PeoplePage: React.FC<{
     },
   ];
 
+  // A new filter or a new search starts from the top of the list again.
+  useEffect(() => {
+    setVisibleCount(PEOPLE_LIST_WINDOW_CHUNK);
+  }, [filter, searchTerm]);
+
   const isLoading = leadsLoading || customersLoading || professionalsLoading;
 
   return (
@@ -459,7 +476,7 @@ export const PeoplePage: React.FC<{
         <EmptyPanel title="No matching contacts" hint="Try another name, phone, or filter pill." />
       ) : (
         <div className="space-y-2.5">
-          {filtered.map((person) => (
+          {filtered.slice(0, visibleCount).map((person) => (
             <article
               key={person.key}
               style={{ contentVisibility: 'auto' }}
@@ -553,6 +570,17 @@ export const PeoplePage: React.FC<{
           ))}
         </div>
       )}
+
+      {/* The rest of the directory waits for the user to ask for it. */}
+      {filtered.length > visibleCount ? (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((count) => count + PEOPLE_LIST_WINDOW_CHUNK)}
+          className="w-full min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] text-sm font-semibold"
+        >
+          Show more ({filtered.length - visibleCount} left)
+        </button>
+      ) : null}
     </div>
   );
 };
@@ -584,7 +612,7 @@ export const EntityProfilePage: React.FC<{
   const { leads, loading: leadsLoading } = useLeads();
   const { customers, loading: customersLoading } = useCustomers();
   const { professionals, loading: professionalsLoading } = useProfessionals();
-  const { tasks, updateTask } = useTasks();
+  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
   const { getOptionLabel } = useMobileControlPanel();
   const { canManage, isLoading: vaultPermissionLoading } = useCanManageCustomerAttachments();
   // The vault access state is derived by the shared, unit-tested helper so
@@ -632,6 +660,17 @@ export const EntityProfilePage: React.FC<{
   } = useActivityLog(activityLeadId, activityCustomerId, activityProfessionalId);
 
   const { reminders } = useReminders(entityType, entityId);
+  /**
+   * The task scoped alarms live in the same table but under a different
+   * entity, so the bell list is read unscoped. Only the rows that belong to
+   * the task are ever dismissed.
+   */
+  const { reminders: taskReminders, dismissReminder } = useReminders();
+
+  /** Writing a task needs `tasks.edit` — a read-only role gets no CTAs. */
+  const canEditTasks = hasPermission('tasks.edit');
+  /** Scheduling a task needs `tasks.create`. */
+  const canCreateTasks = hasPermission('tasks.create');
 
   // A customer may only be listed by staff whose vault permission is granted.
   const entityFileOptions = useMemo(
@@ -896,6 +935,31 @@ export const EntityProfilePage: React.FC<{
       setSavingNote(false);
     }
   }, [noteText, createActivity, entityType, entityId]);
+
+  /**
+   * Completes a task through the shared helper, so a recurring task rolls
+   * forward into its next occurrence and the task's own alarm is dismissed —
+   * exactly like the desktop completion flow.
+   */
+  const handleCompleteTask = async (task: CrmTask) => {
+    const result = await completeTaskWithRecurrence(
+      { id: task.id, is_recurring: task.is_recurring },
+      {
+        updateTask,
+        createNextRecurringInstance,
+        dismissReminder,
+        reminders: taskReminders,
+        onError: (message: string) =>
+          toast({
+            title: 'Task not updated',
+            description: message,
+            variant: 'destructive',
+          }),
+      },
+    );
+    if (!result.ok) return;
+    toast({ title: 'Task completed', description: task.title });
+  };
 
   const handleOpenEntityFile = useCallback(
     async (filePath: string | null | undefined) => {
@@ -1464,14 +1528,16 @@ export const EntityProfilePage: React.FC<{
         {/* ------------------------------------------------------------ Tasks */}
         {activeTab === 'tasks' ? (
           <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => onOpenQuickTask(entityType, entityId)}
-              className="w-full min-h-[48px] rounded-[12px] bg-[#1A1A2E] text-white text-sm font-semibold flex items-center justify-center gap-2"
-            >
-              <Plus className="w-4 h-4 text-[#C9A84C]" />
-              <span>Schedule Task for {entityName}</span>
-            </button>
+            {canCreateTasks ? (
+              <button
+                type="button"
+                onClick={() => onOpenQuickTask(entityType, entityId)}
+                className="w-full min-h-[48px] rounded-[12px] bg-[#1A1A2E] text-white text-sm font-semibold flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4 text-[#C9A84C]" />
+                <span>Schedule Task for {entityName}</span>
+              </button>
+            ) : null}
 
             {entityTasks.length === 0 ? (
               <EmptyPanel
@@ -1517,7 +1583,7 @@ export const EntityProfilePage: React.FC<{
                     <div className="font-utility text-[11px] text-[#47464C]">
                       {task.task_type || 'Task'} · {task.assigned_to || 'Unassigned'}
                     </div>
-                    {task.status !== 'Completed' && task.status !== 'Cancelled' ? (
+                    {task.status !== 'Completed' && task.status !== 'Cancelled' && canEditTasks ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -1536,7 +1602,7 @@ export const EntityProfilePage: React.FC<{
                             });
                             return;
                           }
-                          void updateTask(task.id, { status: 'Completed' });
+                          void handleCompleteTask(task);
                         }}
                         className="w-full min-h-[44px] rounded-[10px] bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-semibold"
                       >

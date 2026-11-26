@@ -28,6 +28,7 @@ import { useReminders } from '@/hooks/useReminders';
 import { useUnreadCounts } from '@/hooks/useChat';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 import { TASK_TYPES as FALLBACK_TASK_TYPES } from '@/constants/taskConstants';
 import { useNavigate } from 'react-router-dom';
@@ -36,6 +37,12 @@ import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { useVersionCheck } from '@/mobile/hooks/useVersionCheck';
 import { buildMobileNotifications } from '@/mobile/lib/mobileNotifications';
 import { formatShortDateTime, toLocalDateInputValue, toLocalTimeInputValue } from '@/mobile/lib/format';
+import {
+  filterEntityChoices,
+  resolveInitialEntityKey,
+  resolveQuickAddEntityError,
+  type QuickAddEntityChoice,
+} from '@/mobile/lib/quickAddSelection';
 import { toMobileCustomer, toMobileLead, toMobileProfessional, toMobileTask, toTaskInsert } from '@/mobile/lib/mappers';
 import { resolveSafeStaffName } from '@/mobile/lib/staffAttribution';
 import { openFullCrmRoute } from '@/mobile/routing/handoffHelper';
@@ -359,12 +366,19 @@ export const WeakSignalSyncStrip: React.FC<{ onOpenOutbox: () => void }> = ({ on
  * The centre action is an elevated gold FAB. The prototype used Tailwind v4's
  * `w-13 h-13`, which emits no CSS in this repository's Tailwind v3 build, so
  * the explicit `w-[52px] h-[52px]` is used instead.
+ *
+ * The FAB is the entry point of the quick-add sheet, which creates tasks,
+ * notes and reminders. A role without `tasks.create` (a read-only
+ * `sales_viewer`, for example) therefore never sees it.
  */
 export const BottomTabBar: React.FC<{
   activeTab: MainTab;
   onSelectTab: (tab: MainTab) => void;
   onOpenQuickAdd: () => void;
 }> = ({ activeTab, onSelectTab, onOpenQuickAdd }) => {
+  const { hasPermission } = usePermissions();
+  const canQuickAdd = hasPermission('tasks.create');
+
   const tabs: { id: MainTab; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'today', label: 'Today', Icon: Home },
     { id: 'work', label: 'Work', Icon: CheckCircle2 },
@@ -409,14 +423,20 @@ export const BottomTabBar: React.FC<{
       {tabs.slice(0, 2).map(renderTab)}
 
       <div className="flex items-center justify-center">
-        <button
-          type="button"
-          onClick={onOpenQuickAdd}
-          aria-label="Quick Add"
-          className="w-[52px] h-[52px] -mt-5 rounded-full bg-[#C9A84C] text-[#1A1A2E] flex items-center justify-center shadow-[0_10px_20px_-3px_rgba(201,168,76,0.35)] border-4 border-white active:scale-95 transition-transform"
-        >
-          <Plus className="w-6 h-6 stroke-[2.5]" />
-        </button>
+        {canQuickAdd ? (
+          <button
+            type="button"
+            onClick={onOpenQuickAdd}
+            aria-label="Quick Add"
+            className="w-[52px] h-[52px] -mt-5 rounded-full bg-[#C9A84C] text-[#1A1A2E] flex items-center justify-center shadow-[0_10px_20px_-3px_rgba(201,168,76,0.35)] border-4 border-white active:scale-95 transition-transform"
+          >
+            <Plus className="w-6 h-6 stroke-[2.5]" />
+          </button>
+        ) : (
+          // The slot is kept so the four tabs stay centred — a read-only role
+          // simply gets no quick-add button.
+          <div aria-hidden="true" className="w-[52px] h-[52px]" />
+        )}
       </div>
 
       {tabs.slice(2).map(renderTab)}
@@ -465,6 +485,7 @@ export const QuickAddSheet: React.FC<{
 
   const [mode, setMode] = useState<'menu' | 'task' | 'note' | 'reminder'>(initialMode);
   const [selectedEntityKey, setSelectedEntityKey] = useState<string>('');
+  const [entityQuery, setEntityQuery] = useState('');
   const [title, setTitle] = useState('');
   const [taskType, setTaskType] = useState('');
   const [dateStr, setDateStr] = useState(() =>
@@ -478,6 +499,9 @@ export const QuickAddSheet: React.FC<{
   const [noteContent, setNoteContent] = useState('');
   const [formError, setFormError] = useState('');
 
+  const { hasPermission } = usePermissions();
+  const canCreateRecords = hasPermission('tasks.create');
+
   const taskTypeOptions = useMemo(() => {
     const controlPanel = getFieldOptions('tasks', 'type').filter(
       (option) => !option.value.startsWith('KIT'),
@@ -486,13 +510,68 @@ export const QuickAddSheet: React.FC<{
     return FALLBACK_TASK_TYPES;
   }, [getFieldOptions]);
 
+  /**
+   * Everyone the sheet may attach a task, a note or a reminder to.
+   *
+   * Lost leads are hidden — but a preselected lead that is lost must never be
+   * swapped for somebody else, so the picker reports it as unresolved instead.
+   */
+  const entityChoices = useMemo<QuickAddEntityChoice[]>(
+    () => [
+      ...leads
+        .filter((lead) => lead.status !== 'lost')
+        .map((lead) => ({
+          key: `lead:${lead.id}`,
+          label: lead.name,
+          sublabel: lead.phone ? `Lead · ${lead.phone}` : 'Lead',
+          entityType: 'lead' as EntityKind,
+          entityId: lead.id,
+        })),
+      ...customers.map((customer) => ({
+        key: `customer:${customer.id}`,
+        label: customer.name,
+        sublabel: customer.phone ? `Customer · ${customer.phone}` : 'Customer',
+        entityType: 'customer' as EntityKind,
+        entityId: customer.id,
+      })),
+      ...professionals.map((professional) => ({
+        key: `professional:${professional.id}`,
+        label: professional.name,
+        sublabel: professional.phone ? `Professional · ${professional.phone}` : 'Professional',
+        entityType: 'professional' as EntityKind,
+        entityId: professional.id,
+      })),
+    ],
+    [leads, customers, professionals],
+  );
+
+  /** The preselected entity, when the sheet was opened for somebody. */
+  const preselectedKey = preselectedEntity
+    ? `${preselectedEntity.entityType}:${preselectedEntity.entityId}`
+    : '';
+
+  /**
+   * The effective selection. There is NO fallback to the first choice — an
+   * unresolved selection blocks the save instead of silently attaching the
+   * record to the wrong person.
+   */
+  const effectiveEntityKey = selectedEntityKey || preselectedKey;
+  const resolvedChoice =
+    entityChoices.find((choice) => choice.key === effectiveEntityKey && !choice.disabled) ?? null;
+  const entityError = resolveQuickAddEntityError(entityChoices, effectiveEntityKey, preselectedEntity);
+
+  const visibleEntityChoices = useMemo(
+    () => filterEntityChoices(entityChoices, entityQuery),
+    [entityChoices, entityQuery],
+  );
+
   // The sheet must only reset when it *opens*. Background refetches of `leads`
   // / `taskTypeOptions` change those identities all the time, and resetting on
   // them wiped whatever the user had already typed.
   const wasOpenRef = useRef(open);
-  const leadsRef = useRef(leads);
+  const entityChoicesRef = useRef(entityChoices);
   const taskTypeOptionsRef = useRef(taskTypeOptions);
-  leadsRef.current = leads;
+  entityChoicesRef.current = entityChoices;
   taskTypeOptionsRef.current = taskTypeOptions;
 
   useEffect(() => {
@@ -500,58 +579,68 @@ export const QuickAddSheet: React.FC<{
     wasOpenRef.current = open;
     if (!justOpened) return;
 
+    // Every open starts from a clean sheet: the date, the time and the
+    // recurring flag are never frozen at first mount and never leak from the
+    // previous session.
+    const freshDueAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
     setMode(initialMode);
     setFormError('');
     setTitle('');
     setNoteContent('');
+    setEntityQuery('');
     setTaskType((current) => current || taskTypeOptionsRef.current[0] || '');
-    if (preselectedEntity) {
-      setSelectedEntityKey(`${preselectedEntity.entityType}:${preselectedEntity.entityId}`);
-    } else if (leadsRef.current[0]) {
-      setSelectedEntityKey(`lead:${leadsRef.current[0].id}`);
-    }
+    setDateStr(toLocalDateInputValue(freshDueAt));
+    setTimeStr(toLocalTimeInputValue(freshDueAt));
+    setIsRecurring(false);
+    // No fallback to the first lead: the user has to pick somebody, unless a
+    // preselected entity was supplied and still exists.
+    setSelectedEntityKey(resolveInitialEntityKey(entityChoicesRef.current, preselectedEntity) ?? '');
   }, [open, initialMode, preselectedEntity]);
 
   useEffect(() => {
     if (open) setReminderEnabled(defaultRemindersEnabled);
   }, [open, defaultRemindersEnabled]);
 
+  // The weekly recurring toggle belongs to the task form only — it must never
+  // leak into the reminder flow.
+  useEffect(() => {
+    if (mode !== 'task') setIsRecurring(false);
+  }, [mode]);
+
   if (!open) return null;
 
-  const entityChoices = [
-    ...leads
-      .filter((lead) => lead.status !== 'lost')
-      .map((lead) => ({
-        key: `lead:${lead.id}`,
-        label: `${lead.name} (Lead)`,
-        entityType: 'lead' as EntityKind,
-        entityId: lead.id,
-      })),
-    ...customers.map((customer) => ({
-      key: `customer:${customer.id}`,
-      label: `${customer.name} (Customer)`,
-      entityType: 'customer' as EntityKind,
-      entityId: customer.id,
-    })),
-    ...professionals.map((professional) => ({
-      key: `professional:${professional.id}`,
-      label: `${professional.name} (Pro)`,
-      entityType: 'professional' as EntityKind,
-      entityId: professional.id,
-    })),
-  ];
-
-  const resolvedChoice =
-    entityChoices.find((entity) => entity.key === selectedEntityKey) ?? entityChoices[0];
-
   const staffName = resolveSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null);
+
+  /**
+   * Blocks a save while the record has no owner (or while the role may not
+   * create records at all). Returns true when the save may continue.
+   */
+  /**
+   * Returns the selected entity, or `null` after raising the blocking error.
+   *
+   * It returns the choice instead of a boolean so the caller gets a **narrowed**
+   * value — the entity is never `null` in the code that follows.
+   */
+  const requireSelection = (): QuickAddEntityChoice | null => {
+    if (!canCreateRecords) {
+      setFormError('You do not have permission to create tasks, notes or reminders.');
+      return null;
+    }
+    if (!resolvedChoice) {
+      setFormError(entityError ?? 'Choose who this belongs to before saving.');
+      return null;
+    }
+    return resolvedChoice;
+  };
 
   const handleCreateTask = async () => {
     if (!title.trim()) {
       setFormError('Please enter a task title');
       return;
     }
-    if (!resolvedChoice) return;
+    const choice = requireSelection();
+    if (!choice) return;
     if (!taskType) {
       setFormError('Please select a task type');
       return;
@@ -566,11 +655,11 @@ export const QuickAddSheet: React.FC<{
           reminder_enabled: reminderEnabled,
           is_recurring: isRecurring,
           recurrence_frequency: isRecurring ? 'weekly' : null,
-          lead_id: resolvedChoice.entityType === 'lead' ? resolvedChoice.entityId : null,
+          lead_id: choice.entityType === 'lead' ? choice.entityId : null,
           related_entity_type:
-            resolvedChoice.entityType === 'lead' ? null : resolvedChoice.entityType,
+            choice.entityType === 'lead' ? null : choice.entityType,
           related_entity_id:
-            resolvedChoice.entityType === 'lead' ? null : resolvedChoice.entityId,
+            choice.entityType === 'lead' ? null : choice.entityId,
         },
         staffName ?? 'System',
       );
@@ -601,14 +690,15 @@ export const QuickAddSheet: React.FC<{
       setFormError('Please enter note text');
       return;
     }
-    if (!resolvedChoice) return;
+    const choice = requireSelection();
+    if (!choice) return;
     const notePayload = {
-      leadId: resolvedChoice.entityType === 'lead' ? resolvedChoice.entityId : undefined,
-      customerId: resolvedChoice.entityType === 'customer' ? resolvedChoice.entityId : undefined,
+      leadId: choice.entityType === 'lead' ? choice.entityId : undefined,
+      customerId: choice.entityType === 'customer' ? choice.entityId : undefined,
       // Without the generic entity link a Professional note is orphaned — it
       // is not attached to any lead or customer.
-      relatedEntityType: resolvedChoice.entityType,
-      relatedEntityId: resolvedChoice.entityId,
+      relatedEntityType: choice.entityType,
+      relatedEntityId: choice.entityId,
       title: 'Note added from mobile',
       content: noteContent.trim(),
     };
@@ -616,7 +706,7 @@ export const QuickAddSheet: React.FC<{
       if (!isOnline) {
         enqueue({
           kind: 'add_note',
-          label: `Note · ${resolvedChoice.label}`,
+          label: `Note · ${choice.label}`,
           payload: notePayload,
         });
         toast({
@@ -648,15 +738,18 @@ export const QuickAddSheet: React.FC<{
       setFormError('Please enter a reminder title');
       return;
     }
-    if (!resolvedChoice) return;
+    const choice = requireSelection();
+    if (!choice) return;
     const dueAt = new Date(`${dateStr}T${timeStr}:00`);
     const reminderPayload = {
       title: title.trim(),
       reminder_datetime: dueAt.toISOString(),
-      entity_type: resolvedChoice.entityType,
-      entity_id: resolvedChoice.entityId,
-      is_recurring: isRecurring,
-      recurrence_pattern: isRecurring ? 'weekly' : null,
+      entity_type: choice.entityType,
+      entity_id: choice.entityId,
+      // A reminder alarm is always a one-off — the weekly toggle belongs to
+      // the task form and must never leak into this flow.
+      is_recurring: false,
+      recurrence_pattern: null,
       assigned_to: staffName ?? 'System',
     };
     try {
@@ -795,23 +888,76 @@ export const QuickAddSheet: React.FC<{
 
             <div>
               <label
-                htmlFor="quick-entity-select"
+                htmlFor="quick-entity-search"
                 className="block text-xs font-semibold text-[#1A1A2E] mb-1"
               >
                 Related Person *
               </label>
-              <select
-                id="quick-entity-select"
-                value={selectedEntityKey}
-                onChange={(event) => setSelectedEntityKey(event.target.value)}
-                className="w-full min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
-              >
-                {entityChoices.map((choice) => (
-                  <option key={choice.key} value={choice.key}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#47464C] pointer-events-none" />
+                <input
+                  id="quick-entity-search"
+                  type="search"
+                  value={entityQuery}
+                  onChange={(event) => setEntityQuery(event.target.value)}
+                  placeholder="Search by name, phone or type…"
+                  autoComplete="off"
+                  className="w-full min-h-[48px] pl-9 pr-3 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
+                />
+              </div>
+
+              {resolvedChoice && (
+                <p className="mt-1.5 text-[11px] font-utility text-[#47464C] truncate">
+                  Selected: {resolvedChoice.label}
+                  {resolvedChoice.sublabel ? ` · ${resolvedChoice.sublabel}` : ''}
+                </p>
+              )}
+
+              <div className="mt-2 max-h-[220px] overflow-y-auto rounded-[12px] border border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+                {visibleEntityChoices.length === 0 ? (
+                  <div className="p-3 text-xs text-[#47464C]">
+                    {entityQuery
+                      ? 'No matches. Try another name or phone number.'
+                      : 'No contacts available yet.'}
+                  </div>
+                ) : (
+                  visibleEntityChoices.map((choice) => {
+                    const isSelected = choice.key === effectiveEntityKey;
+                    return (
+                      <button
+                        key={choice.key}
+                        type="button"
+                        disabled={choice.disabled}
+                        onClick={() => {
+                          setSelectedEntityKey(choice.key);
+                          setFormError('');
+                        }}
+                        className={`w-full min-h-[48px] px-3 py-2 flex items-center justify-between gap-2 text-left ${
+                          isSelected ? 'bg-[#F8F9FA]' : 'bg-white'
+                        } disabled:opacity-50`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-[#1A1A2E] truncate">
+                            {choice.label}
+                          </span>
+                          {choice.sublabel && (
+                            <span className="block text-[11px] text-[#47464C] truncate">
+                              {choice.sublabel}
+                            </span>
+                          )}
+                        </span>
+                        {isSelected && <Check className="w-4 h-4 text-[#1A1A2E] shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {entityError && (
+                <p role="alert" className="mt-2 text-xs font-semibold text-[#DC2626]">
+                  {entityError}
+                </p>
+              )}
             </div>
 
             {mode === 'note' ? (
@@ -937,6 +1083,7 @@ export const QuickAddSheet: React.FC<{
 
             <button
               type="button"
+              disabled={!canCreateRecords || !resolvedChoice}
               onClick={
                 mode === 'task'
                   ? handleCreateTask
@@ -944,7 +1091,7 @@ export const QuickAddSheet: React.FC<{
                     ? handleAddNote
                     : handleAddReminder
               }
-              className="w-full min-h-[48px] rounded-[12px] bg-[#C9A84C] text-[#1A1A2E] font-semibold text-base"
+              className="w-full min-h-[48px] rounded-[12px] bg-[#C9A84C] text-[#1A1A2E] font-semibold text-base disabled:opacity-50"
             >
               {mode === 'task'
                 ? 'Save Task'
