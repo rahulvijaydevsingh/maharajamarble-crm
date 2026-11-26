@@ -9,6 +9,8 @@ import {
   mapMobilePathToDesktop,
   parseMobilePath,
   readWorkspacePreference,
+  resolvePostAuthRedirect,
+  safeDecodeURIComponent,
   writeWorkspacePreference,
 } from '@/mobile/routing/workspacePreference';
 import { createFakeStorage, installFakeWindow } from './helpers/browser';
@@ -140,6 +142,111 @@ describe('mobile path <-> route mapping', () => {
     expect(parseMobilePath('/leads')).toBeNull();
     expect(parseMobilePath('/m')).toEqual({ name: 'today' });
     expect(parseMobilePath('')).toBeNull();
+  });
+});
+
+describe('work filter deep links', () => {
+  it('reserves the five filter tokens below /m/work', () => {
+    expect(parseMobilePath('/m/work/overdue')).toEqual({
+      name: 'work',
+      initialFilter: 'overdue',
+    });
+    expect(parseMobilePath('/m/work/upcoming')).toEqual({
+      name: 'work',
+      initialFilter: 'upcoming',
+    });
+    expect(parseMobilePath('/m/work/completed')).toEqual({
+      name: 'work',
+      initialFilter: 'completed',
+    });
+    expect(parseMobilePath('/m/work/cancelled')).toEqual({
+      name: 'work',
+      initialFilter: 'cancelled',
+    });
+    expect(parseMobilePath('/m/work/today')).toEqual({
+      name: 'work',
+      initialFilter: 'today',
+    });
+  });
+
+  it('treats any other segment as a task id', () => {
+    expect(parseMobilePath('/m/work/t1')).toEqual({ name: 'work', taskId: 't1' });
+    expect(parseMobilePath('/m/work/9f1c2b44-0e1a-4b0e-9a3d-2b6f8c1d0000')).toEqual({
+      name: 'work',
+      taskId: '9f1c2b44-0e1a-4b0e-9a3d-2b6f8c1d0000',
+    });
+  });
+
+  it('builds the filter URL and defaults today to the plain work URL', () => {
+    expect(buildMobilePath({ name: 'work', initialFilter: 'overdue' })).toBe('/m/work/overdue');
+    expect(buildMobilePath({ name: 'work', initialFilter: 'today' })).toBe('/m/work');
+    expect(buildMobilePath({ name: 'work' })).toBe('/m/work');
+  });
+
+  it('round-trips a filter URL', () => {
+    const path = buildMobilePath({ name: 'work', initialFilter: 'overdue' });
+    expect(parseMobilePath(path)).toEqual({ name: 'work', initialFilter: 'overdue' });
+  });
+
+  it('keeps the desktop task deep link intact', () => {
+    expect(mapMobilePathToDesktop('/m/work/t1')).toBe('/tasks?view=t1');
+    expect(mapMobilePathToDesktop('/m/work/overdue')).toBe('/tasks');
+  });
+
+  it('builds a task deep link', () => {
+    expect(buildMobilePath({ name: 'work', taskId: 't1' })).toBe('/m/work/t1');
+  });
+});
+
+describe('safe URL decoding', () => {
+  it('decodes a well formed segment', () => {
+    expect(safeDecodeURIComponent('maharaja%20marble')).toBe('maharaja marble');
+  });
+
+  it('never throws on a malformed percent escape', () => {
+    // `decodeURIComponent('%ZZ')` throws a URIError, which used to take down
+    // a whole render.
+    expect(() => safeDecodeURIComponent('%ZZ')).not.toThrow();
+    expect(safeDecodeURIComponent('%ZZ')).toBe('%ZZ');
+  });
+
+  it('keeps a malformed segment usable inside a parsed path', () => {
+    expect(() => parseMobilePath('/m/work/%ZZ')).not.toThrow();
+    expect(parseMobilePath('/m/work/%ZZ')).toEqual({ name: 'work', taskId: '%ZZ' });
+  });
+});
+
+describe('post-authentication redirect', () => {
+  it('returns to the page the user asked for', () => {
+    expect(
+      resolvePostAuthRedirect({ from: { pathname: '/m/people/lead/123' } }),
+    ).toBe('/m/people/lead/123');
+  });
+
+  it('keeps the query string and the hash', () => {
+    expect(
+      resolvePostAuthRedirect({
+        from: { pathname: '/leads', search: '?view=abc', hash: '#top' },
+      }),
+    ).toBe('/leads?view=abc#top');
+  });
+
+  it('rejects a protocol relative URL', () => {
+    expect(resolvePostAuthRedirect({ from: { pathname: '//evil.com' } })).toBe('/');
+  });
+
+  it('rejects the auth screen itself', () => {
+    expect(resolvePostAuthRedirect({ from: { pathname: '/auth' } })).toBe('/');
+  });
+
+  it('falls back to the CRM root when there is no state', () => {
+    expect(resolvePostAuthRedirect(null)).toBe('/');
+    expect(resolvePostAuthRedirect(undefined)).toBe('/');
+    expect(resolvePostAuthRedirect({})).toBe('/');
+  });
+
+  it('rejects an absolute URL', () => {
+    expect(resolvePostAuthRedirect({ from: { pathname: 'https://evil.com' } })).toBe('/');
   });
 });
 

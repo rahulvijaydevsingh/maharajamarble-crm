@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { PhoneCall, X } from 'lucide-react';
 
@@ -14,6 +14,8 @@ import {
   type CallIntentTarget,
 } from '@/mobile/hooks/useCallIntentWatcher';
 import { buildMobilePath, parseMobilePath } from '@/mobile/routing/workspacePreference';
+import { MobileControlPanelProvider } from '@/mobile/lib/controlPanelContext';
+import { ClockInOutModal } from '@/components/hr/ClockInOutModal';
 import { AttendancePromptGuard } from '@/mobile/components/AttendancePromptGuard';
 import { formatPhoneDisplay } from '@/mobile/lib/format';
 
@@ -40,13 +42,6 @@ import { FullCrmHandoffView, MessagesPage, MorePage } from '@/mobile/screens/Com
 
 import type { EntityKind, MainTab, MobileRoute } from '@/mobile/types/crmTypes';
 
-/** Extracts the task id from a `/m/work/:taskId` URL. */
-function workTaskIdFromPath(pathname: string): string | null {
-  const segments = pathname.split('/').filter(Boolean);
-  if (segments[0] !== 'm' || segments[1] !== 'work') return null;
-  return segments[2] ? decodeURIComponent(segments[2]) : null;
-}
-
 const MobileWorkspaceController: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,9 +63,19 @@ const MobileWorkspaceController: React.FC = () => {
   const { callOutcomeTarget, openCallOutcome, dismissCallOutcome } =
     useCallIntentWatcher();
 
-  const route = useMemo(
-    () => parseMobilePath(location.pathname) ?? { name: 'today' as const },
-    [location.pathname],
+  const parsedRoute = useMemo(() => parseMobilePath(location.pathname), [location.pathname]);
+
+  // An unknown `/m/...` URL is redirected to the Today screen instead of being
+  // left in the address bar as an invalid deep link.
+  useEffect(() => {
+    if (parsedRoute === null) {
+      navigate(buildMobilePath({ name: 'today' }), { replace: true });
+    }
+  }, [parsedRoute, navigate]);
+
+  const route = useMemo<MobileRoute>(
+    () => parsedRoute ?? ({ name: 'today' as const }),
+    [parsedRoute],
   );
 
   const onNavigate = useCallback(
@@ -99,7 +104,7 @@ const MobileWorkspaceController: React.FC = () => {
 
   const activeTab: MainTab = isMainTab ? (route.name as MainTab) : 'today';
 
-  const workTaskId = route.name === 'work' ? workTaskIdFromPath(location.pathname) : null;
+  const workTaskId = route.name === 'work' ? route.taskId ?? null : null;
 
   const allContactsForCallLog = useMemo(
     () => [
@@ -219,6 +224,7 @@ const MobileWorkspaceController: React.FC = () => {
               leadId={route.leadId}
               onCancel={goBack}
               onNavigate={onNavigate}
+              onBeginCall={handleBeginCall}
               onOpenQuickAddMode={(mode, leadId) =>
                 setQuickAddState({
                   open: true,
@@ -284,22 +290,30 @@ const MobileWorkspaceController: React.FC = () => {
           />
         )}
 
-        <NotificationsDrawer
-          open={notificationsOpen}
-          onClose={() => setNotificationsOpen(false)}
-          onNavigate={onNavigate}
-        />
+        {/* The drawers and sheets are only mounted while they are open — a
+            closed modal must not keep its subscriptions alive. */}
+        {notificationsOpen ? (
+          <NotificationsDrawer
+            open={notificationsOpen}
+            onClose={() => setNotificationsOpen(false)}
+            onNavigate={onNavigate}
+          />
+        ) : null}
 
-        <PendingOutboxDrawer open={outboxOpen} onClose={() => setOutboxOpen(false)} />
+        {outboxOpen ? (
+          <PendingOutboxDrawer open={outboxOpen} onClose={() => setOutboxOpen(false)} />
+        ) : null}
 
-        <QuickAddSheet
-          open={quickAddState.open}
-          initialMode={quickAddState.mode}
-          preselectedEntity={quickAddState.preselected}
-          onClose={() => setQuickAddState((previous) => ({ ...previous, open: false }))}
-          onNavigate={onNavigate}
-          onOpenCallLogPicker={() => setCallLogPickerOpen(true)}
-        />
+        {quickAddState.open ? (
+          <QuickAddSheet
+            open={quickAddState.open}
+            initialMode={quickAddState.mode}
+            preselectedEntity={quickAddState.preselected}
+            onClose={() => setQuickAddState((previous) => ({ ...previous, open: false }))}
+            onNavigate={onNavigate}
+            onOpenCallLogPicker={() => setCallLogPickerOpen(true)}
+          />
+        ) : null}
 
         {/* Contact picker used by the "Log a Call" quick action. */}
         {callLogPickerOpen && (
@@ -351,11 +365,22 @@ const MobileWorkspaceController: React.FC = () => {
           </div>
         )}
 
-        <CallOutcomeSheet
-          open={Boolean(callOutcomeTarget)}
-          openedAfterCall={Boolean(callOutcomeTarget?.openedAfterCall)}
-          target={callOutcomeTarget}
-          onDismiss={dismissCallOutcome}
+        {callOutcomeTarget ? (
+          <CallOutcomeSheet
+            open={Boolean(callOutcomeTarget)}
+            openedAfterCall={Boolean(callOutcomeTarget?.openedAfterCall)}
+            target={callOutcomeTarget}
+            onDismiss={dismissCallOutcome}
+          />
+        ) : null}
+
+        {/* The attendance clock — the live desktop modal, mounted in the
+            mobile workspace so the field user can clock in. */}
+        <ClockInOutModal
+          open={clockModalOpen}
+          onOpenChange={setClockModalOpen}
+          mode="clock-in"
+          onSuccess={() => setClockModalOpen(false)}
         />
 
         {route.name === 'work' && workTaskId && (
@@ -383,9 +408,12 @@ export const MobileApp: React.FC = () => {
   return (
     <MobileErrorBoundary>
       <WeakSignalOutboxProvider>
-        <WorkspaceGate>
-          <MobileWorkspaceController />
-        </WorkspaceGate>
+        {/* The Control Panel settings are fetched once for the whole tree. */}
+        <MobileControlPanelProvider>
+          <WorkspaceGate>
+            <MobileWorkspaceController />
+          </WorkspaceGate>
+        </MobileControlPanelProvider>
       </WeakSignalOutboxProvider>
     </MobileErrorBoundary>
   );

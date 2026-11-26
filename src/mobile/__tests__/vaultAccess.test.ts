@@ -30,10 +30,17 @@ describe('customer vault access', () => {
     expect(canViewAttachmentList('manage')).toBe(true);
   });
 
-  it('never offers the uploader to staff without manage access', () => {
-    expect(canUploadAttachments('privacy_notice')).toBe(false);
-    expect(canUploadAttachments('loading')).toBe(false);
+  it('allows a blind upload for every signed-in staff member who can read the customer', () => {
+    // Desktop parity: `CustomerAttachmentsTab.tsx` and the
+    // `customer-attachments` edge function allow any signed-in staff member
+    // to upload a file — they just cannot list, view, download, rename or
+    // delete anything.
+    expect(canUploadAttachments('privacy_notice')).toBe(true);
     expect(canUploadAttachments('manage')).toBe(true);
+  });
+
+  it('blocks the uploader only while the permission is still resolving', () => {
+    expect(canUploadAttachments('loading')).toBe(false);
   });
 
   it('never exposes the bulk import flow in Release 1', () => {

@@ -32,6 +32,7 @@ import {
   Building2,
   CalendarClock,
   Check,
+  CheckCircle2,
   ChevronRight,
   Download,
   Edit3,
@@ -50,6 +51,7 @@ import {
   StickyNote,
   UserPlus,
   X,
+  XCircle,
 } from 'lucide-react';
 
 import { useLeads } from '@/hooks/useLeads';
@@ -58,7 +60,7 @@ import { useProfessionals } from '@/hooks/useProfessionals';
 import { useTasks } from '@/hooks/useTasks';
 import { useReminders } from '@/hooks/useReminders';
 import { useActivityLog } from '@/hooks/useActivityLog';
-import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
 import { useEntityAttachments } from '@/hooks/useEntityAttachments';
 import { useCustomerSecureAttachments } from '@/hooks/useCustomerSecureAttachments';
 import { useCanManageCustomerAttachments } from '@/hooks/useCanManageCustomerAttachments';
@@ -70,14 +72,21 @@ import {
 } from '@/mobile/lib/vaultAccess';
 import { useActiveStaffOptions } from '@/hooks/useActiveStaff';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
+import { usePermissions } from '@/hooks/usePermissions';
 
 import { SecureAttachmentUploader } from '@/components/customers/SecureAttachmentUploader';
 
+import { supabase } from '@/integrations/supabase/client';
 import { normalizePhone10 } from '@/lib/phone';
+import { getLeadConversionAction, isLeadConverted } from '@/lib/leadConversionEligibility';
+import { getProfessionalLeadRoleBadges } from '@/lib/professionalLeadAssociations';
 import { resolveProfessionalForProfessionalLead } from '@/lib/professionalResolver';
 import { extractReferredBy } from '@/lib/referredBy';
 
 import { EntityBadge, StatusBadge, SubHeader } from '@/mobile/shell/MobileShell';
+import { ConvertToCustomerSheet, MarkLostSheet } from '@/mobile/screens/LeadScreens';
 import {
   parseAdditionalContacts,
   toCustomerInsert,
@@ -142,6 +151,7 @@ interface FormErrors {
   name?: string;
   phone?: string;
   address?: string;
+  professionalType?: string;
 }
 
 /** Fallback option sets used when the Control Panel has not loaded yet. */
@@ -238,7 +248,7 @@ export const PeoplePage: React.FC<{
   const { leads, loading: leadsLoading } = useLeads();
   const { customers, loading: customersLoading } = useCustomers();
   const { professionals, loading: professionalsLoading } = useProfessionals();
-  const { getOptionLabel } = useControlPanelSettings();
+  const { getOptionLabel } = useMobileControlPanel();
 
   const [filter, setFilter] = useState<PeopleFilter>(initialFilter);
   const [rawSearch, setRawSearch] = useState('');
@@ -272,7 +282,9 @@ export const PeoplePage: React.FC<{
           statusTag:
             lead.status === 'lost'
               ? 'Lost'
-              : lead.status === 'converted'
+              : // The desktop writes `status: 'won'` for a converted lead, so
+                // the conversion has to be read from the conversion columns.
+                isLeadConverted(lead)
                 ? 'Converted'
                 : undefined,
           updatedAt: lead.updated_at ?? '',
@@ -451,7 +463,7 @@ export const PeoplePage: React.FC<{
             <article
               key={person.key}
               style={{ contentVisibility: 'auto' }}
-              className="[content-visibility:auto] bg-white border border-[#E2E8F0] rounded-[12px] p-4 shadow-[0_1px_3px_rgba(26,26,46,0.05)] space-y-3"
+              className="[content-visibility:auto] [contain-intrinsic-size:auto_180px] bg-white border border-[#E2E8F0] rounded-[12px] p-4 shadow-[0_1px_3px_rgba(26,26,46,0.05)] space-y-3"
             >
               <button
                 type="button"
@@ -494,34 +506,48 @@ export const PeoplePage: React.FC<{
               </button>
 
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#F1F5F9]">
-                <a
-                  href={buildTelUrl(person.phone)}
-                  onClick={() => {
-                    const target = {
-                      entityType: person.entityType,
-                      entityId: person.entityId,
-                      entityName: person.fullName,
-                      phone: person.phone,
-                    };
-                    // This is a `tel:` link: it must only record the intent to
-                    // call. The outcome sheet opens when the user comes back.
-                    if (onBeginCall) onBeginCall(target);
-                    else onOpenCallOutcome(target);
-                  }}
-                  className="min-h-[44px] rounded-[10px] bg-[#EEF2F6] text-[#1A1A2E] text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>Call</span>
-                </a>
-                <a
-                  href={buildWhatsAppUrl(person.phone)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="min-h-[44px] rounded-[10px] bg-[#ECFDF5] text-[#059669] text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>WhatsApp</span>
-                </a>
+                {normalizePhone10(person.phone) ? (
+                  <a
+                    href={buildTelUrl(person.phone)}
+                    onClick={() => {
+                      const target = {
+                        entityType: person.entityType,
+                        entityId: person.entityId,
+                        entityName: person.fullName,
+                        phone: person.phone,
+                      };
+                      // This is a `tel:` link: it must only record the intent to
+                      // call. The outcome sheet opens when the user comes back.
+                      if (onBeginCall) onBeginCall(target);
+                      else onOpenCallOutcome(target);
+                    }}
+                    className="min-h-[44px] rounded-[10px] bg-[#EEF2F6] text-[#1A1A2E] text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span>Call</span>
+                  </a>
+                ) : (
+                  <span className="min-h-[44px] rounded-[10px] bg-[#F3F4F5] text-[#47464C] text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap">
+                    <Phone className="w-4 h-4" />
+                    <span>No number</span>
+                  </span>
+                )}
+                {normalizePhone10(person.phone) ? (
+                  <a
+                    href={buildWhatsAppUrl(person.phone)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] rounded-[10px] bg-[#ECFDF5] text-[#059669] text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>WhatsApp</span>
+                  </a>
+                ) : (
+                  <span className="min-h-[44px] rounded-[10px] bg-[#F3F4F5] text-[#47464C] text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap">
+                    <MessageCircle className="w-4 h-4" />
+                    <span>No number</span>
+                  </span>
+                )}
               </div>
             </article>
           ))}
@@ -559,7 +585,7 @@ export const EntityProfilePage: React.FC<{
   const { customers, loading: customersLoading } = useCustomers();
   const { professionals, loading: professionalsLoading } = useProfessionals();
   const { tasks, updateTask } = useTasks();
-  const { getOptionLabel } = useControlPanelSettings();
+  const { getOptionLabel } = useMobileControlPanel();
   const { canManage, isLoading: vaultPermissionLoading } = useCanManageCustomerAttachments();
   // The vault access state is derived by the shared, unit-tested helper so
   // every surface applies exactly the same rule.
@@ -568,11 +594,26 @@ export const EntityProfilePage: React.FC<{
     isLoading: vaultPermissionLoading,
   });
 
+  const { hasPermission } = usePermissions();
+  const { isOnline, enqueue } = useWeakSignalOutbox();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<EntityProfileTab>(initialTab);
   const [noteText, setNoteText] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
   const [savingNote, setSavingNote] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  /** The lead lifecycle sheets — both are mounted for a lead profile. */
+  const [markLostOpen, setMarkLostOpen] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
+  /** The `lead_professionals` junction rows of this professional. */
+  const [professionalLeadLinks, setProfessionalLeadLinks] = useState<
+    Array<{
+      lead_id: string;
+      professional_id: string;
+      is_primary_contact: boolean;
+      contact_designation: string | null;
+    }>
+  >([]);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -675,6 +716,34 @@ export const EntityProfilePage: React.FC<{
             humanizeToken(professional?.professional_type),
         );
 
+  /* --- the lead <-> professional junction ------------------------------- */
+
+  useEffect(() => {
+    if (entityType !== 'professional') {
+      setProfessionalLeadLinks([]);
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from('lead_professionals')
+      .select('lead_id, professional_id, is_primary_contact, contact_designation')
+      .eq('professional_id', entityId)
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        setProfessionalLeadLinks(
+          data as Array<{
+            lead_id: string;
+            professional_id: string;
+            is_primary_contact: boolean;
+            contact_designation: string | null;
+          }>,
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entityType, entityId]);
+
   /* --- linked records --------------------------------------------------- */
 
   const professionalCandidates = useMemo(
@@ -718,7 +787,21 @@ export const EntityProfilePage: React.FC<{
       const candidate = toMobileLead(row);
       if (candidate.is_deleted) return;
 
-      const roles: string[] = [];
+      // Desktop parity: the shared helper resolves every relationship label
+      // for one lead (referrer + site contact) from the junction rows.
+      const roles: string[] = getProfessionalLeadRoleBadges(
+        professional.id,
+        professional.phone,
+        {
+          id: row.id,
+          designation: candidate.designation,
+          phone: candidate.phone,
+          professional_id: candidate.professional_id ?? null,
+          referred_by: row.referred_by,
+          additional_contacts: row.additional_contacts,
+        },
+        professionalLeadLinks,
+      );
 
       // (1) The professional referred this lead.
       const referred = extractReferredBy(row.referred_by);
@@ -726,7 +809,7 @@ export const EntityProfilePage: React.FC<{
       const isReferrer =
         (!!referred.id && referred.id === professional.id) ||
         (!!professionalName && !!referredName && referredName === professionalName);
-      if (isReferrer) roles.push('Referrer');
+      if (isReferrer && !roles.includes('Referrer')) roles.push('Referrer');
 
       // (2) The professional is the site contact for this lead.
       const contactProfessionalId = candidate.additional_contacts.find(
@@ -739,13 +822,15 @@ export const EntityProfilePage: React.FC<{
           candidate.phone,
           professionalCandidates,
         );
-      if (resolved && resolved === professional.id) roles.push(siteRole);
+      if (resolved && resolved === professional.id && !roles.some((role) => role.startsWith('Site '))) {
+        roles.push(siteRole);
+      }
 
       if (roles.length > 0) rows.push({ lead: candidate, roles });
     });
 
     return rows;
-  }, [professional, leads, professionalCandidates]);
+  }, [professional, leads, professionalCandidates, professionalLeadLinks]);
 
   const additionalContacts = lead?.additional_contacts ?? customer?.additional_contacts ?? [];
 
@@ -819,10 +904,19 @@ export const EntityProfilePage: React.FC<{
         return;
       }
       setFileError(null);
+      // iOS Safari blocks a `window.open` that happens after an await — the
+      // popup is no longer "in the user gesture". The blank window is opened
+      // synchronously and the signed URL is written into it afterwards.
+      const popup = window.open('', '_blank', 'noopener,noreferrer');
       try {
         const url = await getSignedUrl(filePath);
-        window.open(url, '_blank', 'noopener,noreferrer');
+        if (popup) {
+          popup.location.href = url;
+        } else {
+          window.location.assign(url);
+        }
       } catch {
+        if (popup) popup.close();
         setFileError('This file could not be opened. It may have been removed from storage.');
       }
     },
@@ -888,15 +982,35 @@ export const EntityProfilePage: React.FC<{
   const statusTag = lead
     ? lead.status === 'lost'
       ? { tone: 'overdue' as const, label: 'Lost' }
-      : lead.status === 'converted'
+      : // The desktop writes `status: 'won'` for a converted lead — the
+        // conversion lives in `is_converted` / `converted_to_customer_id`.
+        isLeadConverted(lead)
         ? { tone: 'connected' as const, label: 'Converted' }
         : null
     : null;
 
+  /**
+   * The lead lifecycle actions.
+   *
+   * The shared desktop helper decides what is offered: a converted lead shows
+   * a disabled "Converted to Customer" button, a lead that is already lost or
+   * pending a decision cannot be marked lost again, and a staff member without
+   * the `leads.convert` permission never sees the conversion at all.
+   */
+  const conversionAction = lead
+    ? getLeadConversionAction(lead, hasPermission('leads.convert'), true)
+    : 'hidden';
+  const canMarkLost =
+    Boolean(lead) &&
+    lead?.status !== 'lost' &&
+    lead?.status !== 'pending_lost' &&
+    conversionAction !== 'converted';
+
   const tabs: { id: EntityProfileTab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'tasks', label: `Tasks (${entityTasks.length})` },
-    { id: 'notes', label: `Notes (${activities.length})` },
+    // The tab lists every logged activity, not only notes.
+    { id: 'notes', label: `Activity (${activities.length})` },
     { id: 'files', label: 'Files' },
   ];
 
@@ -943,35 +1057,49 @@ export const EntityProfilePage: React.FC<{
               entityLocation ? 'grid-cols-4' : 'grid-cols-3'
             }`}
           >
-            <a
-              href={buildTelUrl(entityPhone)}
-              onClick={() => {
-                const target = {
-                  entityType,
-                  entityId,
-                  entityName,
-                  phone: entityPhone,
-                };
-                // This is a `tel:` link: it must only record the intent to
-                // call. The outcome sheet opens when the user comes back.
-                if (onBeginCall) onBeginCall(target);
-                else onOpenCallOutcome(target);
-              }}
-              className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#EEF2F6] text-[#1A1A2E] flex flex-col items-center justify-center gap-0.5"
-            >
-              <Phone className="w-4 h-4 shrink-0" />
-              <span className="font-utility text-[11px] font-semibold whitespace-nowrap">Call</span>
-            </a>
+            {normalizePhone10(entityPhone) ? (
+              <a
+                href={buildTelUrl(entityPhone)}
+                onClick={() => {
+                  const target = {
+                    entityType,
+                    entityId,
+                    entityName,
+                    phone: entityPhone,
+                  };
+                  // This is a `tel:` link: it must only record the intent to
+                  // call. The outcome sheet opens when the user comes back.
+                  if (onBeginCall) onBeginCall(target);
+                  else onOpenCallOutcome(target);
+                }}
+                className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#EEF2F6] text-[#1A1A2E] flex flex-col items-center justify-center gap-0.5"
+              >
+                <Phone className="w-4 h-4 shrink-0" />
+                <span className="font-utility text-[11px] font-semibold whitespace-nowrap">Call</span>
+              </a>
+            ) : (
+              <span className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#F3F4F5] text-[#47464C] flex flex-col items-center justify-center gap-0.5">
+                <Phone className="w-4 h-4 shrink-0" />
+                <span className="font-utility text-[11px] font-semibold whitespace-nowrap">Call</span>
+              </span>
+            )}
 
-            <a
-              href={buildWhatsAppUrl(entityPhone)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#ECFDF5] text-[#059669] flex flex-col items-center justify-center gap-0.5"
-            >
-              <MessageCircle className="w-4 h-4 shrink-0" />
-              <span className="font-utility text-[11px] font-semibold whitespace-nowrap">WA</span>
-            </a>
+            {normalizePhone10(entityPhone) ? (
+              <a
+                href={buildWhatsAppUrl(entityPhone)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#ECFDF5] text-[#059669] flex flex-col items-center justify-center gap-0.5"
+              >
+                <MessageCircle className="w-4 h-4 shrink-0" />
+                <span className="font-utility text-[11px] font-semibold whitespace-nowrap">WA</span>
+              </a>
+            ) : (
+              <span className="min-h-[48px] px-1 py-1.5 rounded-[10px] bg-[#F3F4F5] text-[#47464C] flex flex-col items-center justify-center gap-0.5">
+                <MessageCircle className="w-4 h-4 shrink-0" />
+                <span className="font-utility text-[11px] font-semibold whitespace-nowrap">WA</span>
+              </span>
+            )}
 
             {entityLocation ? (
               <a
@@ -995,6 +1123,47 @@ export const EntityProfilePage: React.FC<{
             </button>
           </div>
         </section>
+
+        {/* Lead lifecycle — only for a lead record. */}
+        {lead && (conversionAction !== 'hidden' || canMarkLost) ? (
+          <section className="bg-white border border-[#E2E8F0] rounded-[12px] p-4 space-y-2.5">
+            <h2 className="font-utility text-xs font-bold uppercase tracking-wider text-[#47464C]">
+              Lead Lifecycle
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {conversionAction === 'converted' ? (
+                <button
+                  type="button"
+                  disabled
+                  className="min-h-[44px] px-3 rounded-[10px] bg-[#F3F4F5] text-[#47464C] text-sm font-semibold flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Converted to Customer</span>
+                </button>
+              ) : conversionAction === 'parent' || conversionAction === 'fallback' ? (
+                <button
+                  type="button"
+                  onClick={() => setConvertOpen(true)}
+                  className="min-h-[44px] px-3 rounded-[10px] bg-[#1A1A2E] text-white text-sm font-semibold flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-[#C9A84C]" />
+                  <span>Convert to Customer</span>
+                </button>
+              ) : null}
+
+              {canMarkLost ? (
+                <button
+                  type="button"
+                  onClick={() => setMarkLostOpen(true)}
+                  className="min-h-[44px] px-3 rounded-[10px] border border-[#FECACA] text-[#DC2626] text-sm font-semibold flex items-center gap-2"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>Mark Lost</span>
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         {/* Tabs */}
         <div
@@ -1352,6 +1521,21 @@ export const EntityProfilePage: React.FC<{
                       <button
                         type="button"
                         onClick={() => {
+                          if (!isOnline) {
+                            // The device is offline — the completion is parked
+                            // on the device and replayed by the outbox.
+                            enqueue({
+                              kind: 'task_action',
+                              label: `Complete task · ${task.title}`,
+                              payload: { taskId: task.id, updates: { status: 'Completed' } },
+                            });
+                            toast({
+                              title: 'Saved offline',
+                              description:
+                                'This update is stored on the device and will sync automatically.',
+                            });
+                            return;
+                          }
                           void updateTask(task.id, { status: 'Completed' });
                         }}
                         className="w-full min-h-[44px] rounded-[10px] bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-semibold"
@@ -1440,9 +1624,17 @@ export const EntityProfilePage: React.FC<{
           <div className="space-y-3">
             {fileError ? <InlineError id="files-error" message={fileError} /> : null}
 
-            {entityType === 'customer' && !canViewAttachmentList(vaultAccess) ? (
+            {entityType === 'customer' && vaultAccess === 'loading' ? (
+              /* The permission RPC is still in flight. A neutral spinner — never
+                 the restriction notice, which flashed at admins on every load. */
+              <div className="py-8 text-center">
+                <Loader2 className="w-5 h-5 mx-auto text-[#47464C] animate-spin" />
+                <p className="mt-2 text-xs text-[#47464C]">Checking vault access…</p>
+              </div>
+            ) : entityType === 'customer' && vaultAccess === 'privacy_notice' ? (
               /* Strict Customer Vault privacy: staff without vault permission see
-                 nothing but this notice — no list, no preview, no download. */
+                 the notice and may upload a file blind, but they never get the
+                 list, a preview or a download. */
               <section className="bg-white border border-[#E2E8F0] rounded-[12px] p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Lock className="w-4 h-4 text-[#1A1A2E]" />
@@ -1456,6 +1648,13 @@ export const EntityProfilePage: React.FC<{
                     {CUSTOMER_VAULT_PRIVACY_NOTICE}
                   </p>
                 </div>
+                {customer ? (
+                  <SecureAttachmentUploader
+                    mode="immediate"
+                    customerId={customer.id}
+                    onUploaded={() => undefined}
+                  />
+                ) : null}
               </section>
             ) : (
               <>
@@ -1584,6 +1783,25 @@ export const EntityProfilePage: React.FC<{
           </div>
         ) : null}
       </div>
+
+      {/* The lead lifecycle sheets — both are mounted for a lead profile so
+          the actions above are never a dead end. */}
+      {entityType === 'lead' && lead ? (
+        <>
+          <MarkLostSheet
+            open={markLostOpen}
+            lead={lead}
+            onClose={() => setMarkLostOpen(false)}
+            onSaved={() => setMarkLostOpen(false)}
+          />
+          <ConvertToCustomerSheet
+            open={convertOpen}
+            lead={lead}
+            onClose={() => setConvertOpen(false)}
+            onSaved={() => setConvertOpen(false)}
+          />
+        </>
+      ) : null}
     </div>
   );
 };
@@ -1598,7 +1816,7 @@ export const MobileCustomerEditForm: React.FC<{
   onSaved: () => void;
 }> = ({ customerId, onCancel, onSaved }) => {
   const { customers, loading, updateCustomer } = useCustomers();
-  const { getFieldOptions } = useControlPanelSettings();
+  const { getFieldOptions } = useMobileControlPanel();
   const { canManage, isLoading: vaultPermissionLoading } = useCanManageCustomerAttachments();
   const vaultAccess = resolveCustomerVaultAccess({
     canManage,
@@ -2023,13 +2241,21 @@ export const MobileCustomerEditForm: React.FC<{
             </h2>
           </div>
 
-          {canUploadAttachments(vaultAccess) ? (
+          {vaultAccess === 'loading' ? (
+            /* Never flash the restriction notice at an admin while the
+               permission RPC is still resolving. */
+            <div className="py-6 text-center">
+              <Loader2 className="w-5 h-5 mx-auto text-[#47464C] animate-spin" />
+              <p className="mt-2 text-xs text-[#47464C]">Checking vault access…</p>
+            </div>
+          ) : canUploadAttachments(vaultAccess) ? (
             <>
               <div className="p-3.5 rounded-[12px] bg-[#EEF2F6] border border-[#E2E8F0] flex items-start gap-2.5">
                 <Shield className="w-4 h-4 text-[#1A1A2E] shrink-0 mt-0.5" />
                 <p className="text-xs font-medium text-[#1A1A2E] leading-relaxed">
-                  These documents are encrypted at rest. You have vault permission, so you can
-                  upload, preview and download them.
+                  {vaultAccess === 'manage'
+                    ? 'These documents are encrypted at rest. You have vault permission, so you can upload, preview and download them.'
+                    : 'These documents are encrypted at rest. You can upload a file, but only an administrator can list, preview or download the customer’s documents.'}
                 </p>
               </div>
 
@@ -2043,6 +2269,7 @@ export const MobileCustomerEditForm: React.FC<{
                 }}
               />
 
+              {vaultAccess === 'manage' ? (
               <div className="pt-2 border-t border-[#F1F5F9] space-y-2">
                 <div className="font-utility text-[11px] font-bold uppercase text-[#47464C]">
                   Secured files ({vaultFiles.length})
@@ -2086,16 +2313,9 @@ export const MobileCustomerEditForm: React.FC<{
                   ))
                 )}
               </div>
+              ) : null}
             </>
-          ) : (
-            /* No vault permission — a privacy notice and nothing else. */
-            <div className="p-3.5 rounded-[12px] bg-[#EEF2F6] border border-[#E2E8F0] flex items-start gap-2.5">
-              <Shield className="w-4 h-4 text-[#1A1A2E] shrink-0 mt-0.5" />
-              <p className="text-xs font-medium text-[#1A1A2E] leading-relaxed">
-                {CUSTOMER_VAULT_PRIVACY_NOTICE}
-              </p>
-            </div>
-          )}
+          ) : null}
         </section>
       </div>
 
@@ -2134,7 +2354,7 @@ export const MobileProfessionalEditForm: React.FC<{
   onSaved: () => void;
 }> = ({ professionalId, onCancel, onSaved }) => {
   const { professionals, loading, updateProfessional } = useProfessionals();
-  const { getFieldOptions } = useControlPanelSettings();
+  const { getFieldOptions } = useMobileControlPanel();
   const { profile } = useAuth();
   const { options: staffOptions } = useActiveStaffOptions();
 
@@ -2197,6 +2417,11 @@ export const MobileProfessionalEditForm: React.FC<{
     if (!officeLocation.trim()) {
       nextErrors.address = 'Office / business address is required.';
     }
+    // The professional type drives every downstream filter, so it is
+    // required — the error is shown inline instead of being ignored.
+    if (!professionalType.trim()) {
+      nextErrors.professionalType = 'Select a professional type.';
+    }
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
@@ -2227,6 +2452,9 @@ export const MobileProfessionalEditForm: React.FC<{
           notes: notes.trim() || null,
         },
         staffName,
+        // INVARIANT-04 — `created_by` / `updated_by` record the signed-in
+        // actor, `assigned_to` the assignee.
+        resolveSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null) ?? 'System',
       );
 
       await updateProfessional(professionalId, {
@@ -2346,7 +2574,13 @@ export const MobileProfessionalEditForm: React.FC<{
               id="pro-type"
               value={professionalType}
               onChange={(event) => setProfessionalType(event.target.value)}
-              className="w-full min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D] focus:outline-none focus:border-[#1A1A2E]"
+              aria-invalid={Boolean(errors.professionalType)}
+              aria-describedby={errors.professionalType ? 'pro-type-error' : undefined}
+              className={`w-full min-h-[48px] px-3 rounded-[12px] border bg-white text-base text-[#191C1D] focus:outline-none ${
+                errors.professionalType
+                  ? 'border-[#DC2626]'
+                  : 'border-[#E2E8F0] focus:border-[#1A1A2E]'
+              }`}
             >
               <option value="">Select a type</option>
               {typeOptions.map((option) => (
@@ -2355,6 +2589,9 @@ export const MobileProfessionalEditForm: React.FC<{
                 </option>
               ))}
             </select>
+            {errors.professionalType ? (
+              <InlineError id="pro-type-error" message={errors.professionalType} />
+            ) : null}
           </div>
 
           <div>
