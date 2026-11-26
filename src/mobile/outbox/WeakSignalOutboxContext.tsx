@@ -18,8 +18,9 @@ import {
   OUTBOX_MAX_ITEMS,
   appendToOutboxCapped,
   buildOutboxMutation,
-  dedupeByClientMutationId,
   detectDuplicatePhoneConflict,
+  hasClientMutationId,
+  isForceSavedMutation,
   loadOutbox,
   markNeedsReview,
   nextBackoffMs,
@@ -38,6 +39,10 @@ export interface WeakSignalOutboxContextValue {
   isSyncingOutbox: boolean;
   /** Number of mutations waiting for a human decision. */
   conflictCount: number;
+  /** Last error raised by the outbox (for example a failed forced save). */
+  lastError: string | null;
+  /** Clears {@link lastError}. */
+  clearLastError: () => void;
   /** Parks a mutation on the device. Returns the queued mutation. */
   enqueue: (input: {
     clientMutationId?: string;
@@ -62,17 +67,26 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
   children,
 }) => {
   const { leads, addLead, updateLead } = useLeads();
-  const { tasks, updateTask } = useTasks();
+  const { updateTask, addTask } = useTasks();
   const { addReminder, snoozeReminder, dismissReminder } = useReminders();
   const { logActivity } = useLogActivity();
 
   const [outbox, setOutbox] = useState<OutboxMutation[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncingOutbox, setIsSyncingOutbox] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const syncingRef = useRef(false);
   const retryTimerRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  /** Mirror of the queue so `enqueue` never has to run inside a state updater. */
+  const outboxRef = useRef<OutboxMutation[]>([]);
+  /**
+   * The live phone set lives in a ref on purpose: a `leads` refetch must not
+   * rebuild the context value, which would re-open IndexedDB for every
+   * consumer of the provider.
+   */
+  const livePhoneSetRef = useRef<Set<string>>(new Set());
 
   /* ----------------------------- persistence ----------------------------- */
 
@@ -80,6 +94,7 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
     mountedRef.current = true;
     void loadOutbox().then((queue) => {
       if (!mountedRef.current) return;
+      outboxRef.current = queue;
       setOutbox(queue);
     });
     return () => {
@@ -103,33 +118,51 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
     await saveOutbox(queue);
   }, []);
 
+  /**
+   * Single write path for the queue: updates the ref, the state and the
+   * durable store together.
+   */
+  const commitQueue = useCallback(
+    (next: OutboxMutation[]) => {
+      outboxRef.current = next;
+      setOutbox(next);
+      void persist(next);
+    },
+    [persist],
+  );
+
   /* ------------------------------- enqueue ------------------------------- */
 
   const enqueue = useCallback<WeakSignalOutboxContextValue['enqueue']>(
     (input) => {
       const mutation = buildOutboxMutation(input);
-      let queued = mutation;
-      setOutbox((prev) => {
-        const deduped = dedupeByClientMutationId(prev, mutation);
-        if (deduped === prev) return prev;
-        const next = appendToOutboxCapped(deduped, mutation, OUTBOX_MAX_ITEMS);
-        void persist(next);
-        return next;
-      });
-      return queued;
+      const current = outboxRef.current;
+
+      // A mutation with the same `client_mutation_id` is already queued — the
+      // replay is idempotent, so the queue is left untouched.
+      if (hasClientMutationId(current, mutation.client_mutation_id)) {
+        return mutation;
+      }
+
+      const next = appendToOutboxCapped(current, mutation, OUTBOX_MAX_ITEMS);
+      // The persist call deliberately lives OUTSIDE the state updater: a
+      // functional updater can run twice under React StrictMode, which would
+      // write the durable queue twice.
+      commitQueue(next);
+      return mutation;
     },
-    [persist],
+    [commitQueue],
   );
 
   /* -------------------------------- replay ------------------------------- */
 
-  const livePhoneSet = useMemo(() => {
+  useEffect(() => {
     const phones = new Set<string>();
     leads.forEach((lead) => {
       const digits = (lead.phone ?? '').replace(/\D/g, '');
       if (digits.length >= 10) phones.add(digits.slice(-10));
     });
-    return phones;
+    livePhoneSetRef.current = phones;
   }, [leads]);
 
   const applyMutation = useCallback(
@@ -138,13 +171,27 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
 
       switch (mutation.kind) {
         case 'create_lead': {
-          const conflict = detectDuplicatePhoneConflict(mutation, livePhoneSet);
-          if (conflict) return { ok: false, conflict };
-          await addLead(payload.lead);
+          // A forced save is the user explicitly asking to keep the record, so
+          // the duplicate check is skipped for it.
+          if (!isForceSavedMutation(mutation)) {
+            const conflict = detectDuplicatePhoneConflict(mutation, livePhoneSetRef.current);
+            if (conflict) return { ok: false, conflict };
+          }
+          const { forceSave, ...leadPayload } = (payload.lead ?? {}) as Record<string, unknown>;
+          await addLead(leadPayload as unknown as Parameters<typeof addLead>[0]);
           return { ok: true };
         }
         case 'update_lead': {
-          await updateLead(payload.leadId, payload.updates);
+          if (!isForceSavedMutation(mutation)) {
+            const conflict = detectDuplicatePhoneConflict(mutation, livePhoneSetRef.current);
+            if (conflict) return { ok: false, conflict };
+          }
+          const { forceSave, ...updates } = (payload.updates ?? {}) as Record<string, unknown>;
+          await updateLead(payload.leadId, updates);
+          return { ok: true };
+        }
+        case 'create_task': {
+          await addTask(payload.task);
           return { ok: true };
         }
         case 'task_action': {
@@ -158,6 +205,8 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
           await logActivity({
             lead_id: payload.leadId ?? undefined,
             customer_id: payload.customerId ?? undefined,
+            related_entity_type: payload.relatedEntityType ?? undefined,
+            related_entity_id: payload.relatedEntityId ?? undefined,
             activity_type: 'phone_call',
             activity_category: 'communication',
             title: payload.title ?? 'Call logged',
@@ -170,6 +219,8 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
           await logActivity({
             lead_id: payload.leadId ?? undefined,
             customer_id: payload.customerId ?? undefined,
+            related_entity_type: payload.relatedEntityType ?? undefined,
+            related_entity_id: payload.relatedEntityId ?? undefined,
             activity_type: 'custom_note',
             activity_category: 'note',
             title: payload.title ?? 'Note added',
@@ -193,7 +244,7 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
           return { ok: false };
       }
     },
-    [addLead, addReminder, dismissReminder, livePhoneSet, logActivity, snoozeReminder, updateLead, updateTask],
+    [addLead, addReminder, addTask, dismissReminder, logActivity, snoozeReminder, updateLead, updateTask],
   );
 
   const scheduleRetry = useCallback((attempt: number) => {
@@ -239,8 +290,7 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
       }
 
       if (!mountedRef.current) return;
-      setOutbox(remaining);
-      await persist(remaining);
+      commitQueue(remaining);
 
       const retryable = remaining.filter((mutation) => mutation.status !== 'needs_review');
       if (retryable.length > 0) {
@@ -248,13 +298,14 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
           (max, mutation) => Math.max(max, mutation.attempts ?? 0),
           0,
         );
-        scheduleRetry(highestAttempt + 1);
+        // Attempt 1 waits 2s, attempt 2 waits 5s, attempt 3+ waits 15s.
+        scheduleRetry(Math.max(1, highestAttempt));
       }
     } finally {
       syncingRef.current = false;
       if (mountedRef.current) setIsSyncingOutbox(false);
     }
-  }, [applyMutation, persist, scheduleRetry]);
+  }, [applyMutation, commitQueue, scheduleRetry]);
 
   const syncRef = useRef<(() => Promise<void>) | null>(null);
   syncRef.current = syncOutboxNow;
@@ -282,34 +333,46 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
       if (!target) return;
 
       if (resolution === 'merge_discard') {
-        const next = removeFromOutbox(queue, mutationId);
-        setOutbox(next);
-        await persist(next);
+        commitQueue(removeFromOutbox(queue, mutationId));
         return;
       }
 
       // `force_create`: apply the mutation even though a duplicate was detected.
+      let applied = false;
       try {
-        await applyMutation({ ...target, payload: { ...target.payload, forceSave: true } });
+        const result = await applyMutation({
+          ...target,
+          payload: { ...target.payload, forceSave: true },
+        });
+        applied = result.ok === true;
       } catch {
-        /* keep it parked if the forced apply still fails */
+        applied = false;
       }
-      const next = removeFromOutbox(queue, mutationId);
-      setOutbox(next);
-      await persist(next);
+
+      if (!applied) {
+        // The forced apply failed — the mutation stays parked so the field user
+        // can retry instead of losing the work silently.
+        setLastError(
+          'Could not save the queued update. It is still pending review — please try again.',
+        );
+        return;
+      }
+
+      setLastError(null);
+      commitQueue(removeFromOutbox(queue, mutationId));
     },
-    [applyMutation, persist],
+    [applyMutation, commitQueue],
   );
 
   const discardOutboxMutation = useCallback(
     async (mutationId: string) => {
       const queue = await loadOutbox();
-      const next = removeFromOutbox(queue, mutationId);
-      setOutbox(next);
-      await persist(next);
+      commitQueue(removeFromOutbox(queue, mutationId));
     },
-    [persist],
+    [commitQueue],
   );
+
+  const clearLastError = useCallback(() => setLastError(null), []);
 
   const conflictCount = useMemo(
     () => outbox.filter((mutation) => mutation.status === 'needs_review').length,
@@ -322,17 +385,21 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
       isOnline,
       isSyncingOutbox,
       conflictCount,
+      lastError,
+      clearLastError,
       enqueue,
       syncOutboxNow,
       resolveOutboxConflict,
       discardOutboxMutation,
     }),
     [
+      clearLastError,
       conflictCount,
       discardOutboxMutation,
       enqueue,
       isOnline,
       isSyncingOutbox,
+      lastError,
       outbox,
       resolveOutboxConflict,
       syncOutboxNow,
@@ -360,6 +427,8 @@ export function useWeakSignalOutbox(): WeakSignalOutboxContextValue {
     isOnline: true,
     isSyncingOutbox: false,
     conflictCount: 0,
+    lastError: null,
+    clearLastError: () => undefined,
     enqueue: (input) =>
       buildOutboxMutation({
         kind: input.kind,

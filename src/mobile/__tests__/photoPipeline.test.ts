@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { calls } = vi.hoisted(() => ({ calls: [] as string[] }));
 
@@ -79,6 +79,14 @@ describe('site photo pipeline', () => {
 });
 
 describe('preview URL cleanup', () => {
+  const originalUrl = globalThis.URL;
+
+  // The fake `URL` is restored after every test — otherwise it leaks into the
+  // other suites and breaks their `URL.createObjectURL` usage.
+  afterEach(() => {
+    (globalThis as unknown as { URL: unknown }).URL = originalUrl;
+  });
+
   it('revokes an object URL', () => {
     const revoke = vi.fn();
     (globalThis as unknown as { URL: { revokeObjectURL: unknown } }).URL = {
@@ -96,5 +104,10 @@ describe('preview URL cleanup', () => {
     revokePreviewUrl(null);
     revokePreviewUrl(undefined);
     expect(revoke).not.toHaveBeenCalled();
+  });
+
+  it('restores the real URL implementation', () => {
+    (globalThis as unknown as { URL: unknown }).URL = { revokeObjectURL: vi.fn() };
+    expect(globalThis.URL).not.toBe(originalUrl);
   });
 });

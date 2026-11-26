@@ -42,7 +42,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useLogActivity } from '@/hooks/useActivityLog';
-import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
+import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
+import { useToast } from '@/hooks/use-toast';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useLeads } from '@/hooks/useLeads';
 import { useProfessionals } from '@/hooks/useProfessionals';
@@ -54,6 +56,7 @@ import { normalizePhone10 } from '@/lib/phone';
 import {
   isProfessionalDesignation,
   resolveProfessionalForProfessionalLead,
+  type ProfessionalLeadCandidate,
 } from '@/lib/professionalResolver';
 import { TASK_COMPLETION_OUTCOMES, TASK_TYPES } from '@/constants/taskConstants';
 
@@ -156,11 +159,11 @@ interface ControlPanelView {
 /**
  * Single entry point to the live Control Panel.
  *
- * `useControlPanelSettings()` keeps its own state, so it is called exactly once
+ * `useMobileControlPanel()` keeps its own state, so it is called exactly once
  * per screen and everything the screen needs is derived from that one call.
  */
 function useControlPanelView(): ControlPanelView {
-  const { getFieldOptions, getOptionLabel } = useControlPanelSettings();
+  const { getFieldOptions, getOptionLabel } = useMobileControlPanel();
 
   const taskTypes = useMemo(() => {
     const controlPanel = getFieldOptions('tasks', 'type').filter(
@@ -175,16 +178,17 @@ function useControlPanelView(): ControlPanelView {
     return TASK_TYPES.map((value) => ({ value, label: value }));
   }, [getFieldOptions, getOptionLabel]);
 
-  const outcomes = useMemo(() => {
-    const controlPanel = getFieldOptions('tasks', 'completion_outcome');
-    if (controlPanel.length > 0) {
-      return controlPanel.map((option) => ({
-        value: option.value,
-        label: getOptionLabel('tasks', 'completion_outcome', option.value) || option.label,
-      }));
-    }
-    return TASK_COMPLETION_OUTCOMES.map((value) => ({ value, label: value }));
-  }, [getFieldOptions, getOptionLabel]);
+  /**
+   * The completion outcomes come straight from the shared constant.
+   *
+   * The desktop `TaskCompletionDialog` uses `TASK_COMPLETION_OUTCOMES`, so a
+   * mobile-only Control Panel list would let the two surfaces write different
+   * values into the same column.
+   */
+  const outcomes = useMemo(
+    () => TASK_COMPLETION_OUTCOMES.map((value) => ({ value, label: value })),
+    [],
+  );
 
   const typeLabelMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -212,21 +216,15 @@ function useControlPanelView(): ControlPanelView {
 function resolveLeadProfessional(
   designation: string | null | undefined,
   phone: string | null | undefined,
-  professionals: LiveProfessional[],
+  candidates: ProfessionalLeadCandidate[],
+  professionals: Map<string, LiveProfessional>,
 ): LiveProfessional | null {
   if (!isProfessionalDesignation(designation)) return null;
-
-  const candidates = professionals.map((professional) => ({
-    id: professional.id,
-    phone: professional.phone,
-    alternate_phone: professional.alternate_phone,
-    status: professional.status,
-  }));
 
   const professionalId = resolveProfessionalForProfessionalLead(designation, phone, candidates);
   if (!professionalId) return null;
 
-  return professionals.find((professional) => professional.id === professionalId) ?? null;
+  return professionals.get(professionalId) ?? null;
 }
 
 /**
@@ -263,21 +261,29 @@ function roleForLead(
  */
 function resolveTaskEntity(
   task: CrmTask,
-  leads: LiveLead[],
-  customers: LiveCustomer[],
-  professionals: LiveProfessional[],
+  leads: Map<string, LiveLead>,
+  customers: Map<string, LiveCustomer>,
+  professionals: Map<string, LiveProfessional>,
+  professionalCandidates: ProfessionalLeadCandidate[],
   getOptionLabel: OptionLabelFn,
 ): TaskEntityInfo {
-  if (task.lead_id && task.lead) {
-    const liveLead = leads.find((lead) => lead.id === task.lead_id) ?? null;
-    const designation = liveLead?.designation ?? task.lead.designation ?? '';
-    const phone = liveLead?.phone ?? task.lead.phone ?? '';
-    const professional = resolveLeadProfessional(designation, phone, professionals);
+  // A task that points at a lead is a lead task even when the joined lead
+  // snapshot is missing — the snapshot is only a convenience.
+  if (task.lead_id) {
+    const liveLead = leads.get(task.lead_id) ?? null;
+    const designation = liveLead?.designation ?? task.lead?.designation ?? '';
+    const phone = liveLead?.phone ?? task.lead?.phone ?? '';
+    const professional = resolveLeadProfessional(
+      designation,
+      phone,
+      professionalCandidates,
+      professionals,
+    );
 
     return {
       entityType: 'lead',
-      entityId: task.lead.id,
-      name: liveLead?.name || task.lead.full_name || 'Lead',
+      entityId: task.lead_id,
+      name: liveLead?.name || task.lead?.full_name || 'Lead',
       phone,
       phone10: normalizePhone10(phone),
       location: liveLead?.site_location ?? task.lead.site_location ?? null,
@@ -287,7 +293,7 @@ function resolveTaskEntity(
   }
 
   if (task.customer_id) {
-    const customer = customers.find((item) => item.id === task.customer_id) ?? null;
+    const customer = customers.get(task.customer_id) ?? null;
     const phone = customer?.phone ?? '';
     return {
       entityType: 'customer',
@@ -302,7 +308,7 @@ function resolveTaskEntity(
   }
 
   if (task.professional_id) {
-    const professional = professionals.find((item) => item.id === task.professional_id) ?? null;
+    const professional = professionals.get(task.professional_id) ?? null;
     const phone = professional?.phone ?? '';
     const type = professional?.professional_type ?? '';
     return {
@@ -337,10 +343,49 @@ function useTaskEntityResolver(getOptionLabel: OptionLabelFn): (task: CrmTask) =
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
 
+  // The lists are turned into Maps once: the resolver runs for every task in
+  // the list, so an array `.find()` per task made the screen O(tasks × rows).
+  const leadById = useMemo(() => {
+    const map = new Map<string, LiveLead>();
+    leads.forEach((lead) => map.set(lead.id, lead));
+    return map;
+  }, [leads]);
+
+  const customerById = useMemo(() => {
+    const map = new Map<string, LiveCustomer>();
+    customers.forEach((customer) => map.set(customer.id, customer));
+    return map;
+  }, [customers]);
+
+  const professionalById = useMemo(() => {
+    const map = new Map<string, LiveProfessional>();
+    professionals.forEach((professional) => map.set(professional.id, professional));
+    return map;
+  }, [professionals]);
+
+  // The candidate list is built once — it used to be rebuilt for every task.
+  const professionalCandidates = useMemo<ProfessionalLeadCandidate[]>(
+    () =>
+      professionals.map((professional) => ({
+        id: professional.id,
+        phone: professional.phone,
+        alternate_phone: professional.alternate_phone,
+        status: professional.status,
+      })),
+    [professionals],
+  );
+
   return useMemo(
     () => (task: CrmTask) =>
-      resolveTaskEntity(task, leads, customers, professionals, getOptionLabel),
-    [leads, customers, professionals, getOptionLabel],
+      resolveTaskEntity(
+        task,
+        leadById,
+        customerById,
+        professionalById,
+        professionalCandidates,
+        getOptionLabel,
+      ),
+    [leadById, customerById, professionalById, professionalCandidates, getOptionLabel],
   );
 }
 
@@ -371,25 +416,45 @@ function useRecentActivity(limit: number): RecentActivityRow[] {
     if (authLoading || !user) return undefined;
 
     let cancelled = false;
-    void (async () => {
+
+    const load = async () => {
       try {
-        const { data } = await supabase
+        // supabase-js does not throw on a database error — the `{ error }` has
+        // to be inspected explicitly.
+        const { data, error } = await supabase
           .from('activity_log')
           .select(
             'id,title,user_name,activity_timestamp,lead_id,customer_id,related_entity_type,related_entity_id',
           )
           .order('activity_timestamp', { ascending: false })
           .limit(limit);
-        if (!cancelled && Array.isArray(data)) {
+        if (cancelled) return;
+        if (error) {
+          console.warn('[mobile activity] The recent activity feed failed.', error);
+          setRows([]);
+          return;
+        }
+        if (Array.isArray(data)) {
           setRows(data as RecentActivityRow[]);
         }
       } catch {
         /* the activity feed is a nice-to-have — never block the screen */
       }
-    })();
+    };
+
+    void load();
+
+    // The feed is refreshed whenever the app comes back to the foreground.
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void load();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [authLoading, user, limit]);
 
@@ -528,7 +593,7 @@ const TaskCard: React.FC<{
   return (
     <article
       className={`bg-white border border-[#E2E8F0] rounded-[12px] p-4 shadow-[0_1px_3px_rgba(26,26,46,0.05)] space-y-3 ${
-        virtualise ? '[content-visibility:auto]' : ''
+        virtualise ? '[content-visibility:auto] [contain-intrinsic-size:auto_180px]' : ''
       }`}
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -598,6 +663,8 @@ export const TodayPage: React.FC<{
   attendanceBanner?: React.ReactNode;
 }> = ({ onNavigate, onOpenClockModal, onOpenCallOutcome, onBeginCall, attendanceBanner }) => {
   const { tasks, updateTask } = useTasks();
+  const { isOnline, enqueue } = useWeakSignalOutbox();
+  const { toast } = useToast();
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
@@ -635,14 +702,50 @@ export const TodayPage: React.FC<{
     [reminders],
   );
 
+  // The lookups are Maps: the reminder list is rendered row by row and an
+  // array `.find()` per row made the screen O(reminders × rows).
+  const leadById = useMemo(() => {
+    const map = new Map<string, LiveLead>();
+    leads.forEach((lead) => map.set(lead.id, lead));
+    return map;
+  }, [leads]);
+
+  const customerById = useMemo(() => {
+    const map = new Map<string, LiveCustomer>();
+    customers.forEach((customer) => map.set(customer.id, customer));
+    return map;
+  }, [customers]);
+
+  const professionalById = useMemo(() => {
+    const map = new Map<string, LiveProfessional>();
+    professionals.forEach((professional) => map.set(professional.id, professional));
+    return map;
+  }, [professionals]);
+
+  const professionalCandidates = useMemo<ProfessionalLeadCandidate[]>(
+    () =>
+      professionals.map((professional) => ({
+        id: professional.id,
+        phone: professional.phone,
+        alternate_phone: professional.alternate_phone,
+        status: professional.status,
+      })),
+    [professionals],
+  );
+
   const reminderEntity = (
     entityType: string,
     entityId: string,
   ): { name: string; role: string; kind: EntityKind | null } => {
     if (entityType === 'lead') {
-      const lead = leads.find((item) => item.id === entityId);
+      const lead = leadById.get(entityId);
       if (!lead) return { name: 'Lead', role: 'Homeowner', kind: 'lead' };
-      const professional = resolveLeadProfessional(lead.designation, lead.phone, professionals);
+      const professional = resolveLeadProfessional(
+        lead.designation,
+        lead.phone,
+        professionalCandidates,
+        professionalById,
+      );
       return {
         name: lead.name,
         role: roleForLead(lead.designation, professional, control.getOptionLabel),
@@ -650,7 +753,7 @@ export const TodayPage: React.FC<{
       };
     }
     if (entityType === 'customer') {
-      const customer = customers.find((item) => item.id === entityId);
+      const customer = customerById.get(entityId);
       return {
         name: customer?.name ?? 'Customer',
         role: customer?.profession?.trim() || customer?.customer_type?.trim() || 'Customer',
@@ -780,7 +883,22 @@ export const TodayPage: React.FC<{
                     else onOpenCallOutcome(target);
                   }}
                   onFourthAction={() => {
-                    void updateTask(task.id, { status: TASK_STATUS_COMPLETED });
+                    const updates = { status: TASK_STATUS_COMPLETED };
+                    if (!isOnline) {
+                      // The device is offline — the write is parked on the
+                      // device and replayed by the outbox.
+                      enqueue({
+                        kind: 'task_action',
+                        label: `Complete task · ${task.title}`,
+                        payload: { taskId: task.id, updates },
+                      });
+                      toast({
+                        title: 'Saved offline',
+                        description: 'This update is stored on the device and will sync automatically.',
+                      });
+                      return;
+                    }
+                    void updateTask(task.id, updates);
                   }}
                   fourthLabel="Done"
                 />
@@ -836,12 +954,26 @@ export const TodayPage: React.FC<{
                   <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#F1F5F9]">
                     <button
                       type="button"
-                      onClick={() =>
-                        void snoozeReminder(
-                          reminder.id,
-                          new Date(Date.now() + 60 * 60 * 1000),
-                        )
-                      }
+                      onClick={() => {
+                        const snoozeUntil = new Date(Date.now() + 60 * 60 * 1000);
+                        if (!isOnline) {
+                          enqueue({
+                            kind: 'snooze_reminder',
+                            label: `Snooze · ${reminder.title}`,
+                            payload: {
+                              reminderId: reminder.id,
+                              snoozeUntil: snoozeUntil.toISOString(),
+                            },
+                          });
+                          toast({
+                            title: 'Saved offline',
+                            description:
+                              'This alarm is stored on the device and will sync automatically.',
+                          });
+                          return;
+                        }
+                        void snoozeReminder(reminder.id, snoozeUntil);
+                      }}
                       className="min-h-[44px] rounded-[10px] border border-[#E2E8F0] bg-[#F8F9FA] text-xs font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5"
                     >
                       <Clock className="w-3.5 h-3.5 shrink-0" />
@@ -849,7 +981,22 @@ export const TodayPage: React.FC<{
                     </button>
                     <button
                       type="button"
-                      onClick={() => void dismissReminder(reminder.id)}
+                      onClick={() => {
+                        if (!isOnline) {
+                          enqueue({
+                            kind: 'done_reminder',
+                            label: `Dismiss · ${reminder.title}`,
+                            payload: { reminderId: reminder.id },
+                          });
+                          toast({
+                            title: 'Saved offline',
+                            description:
+                              'This alarm is stored on the device and will sync automatically.',
+                          });
+                          return;
+                        }
+                        void dismissReminder(reminder.id);
+                      }}
                       className="min-h-[44px] rounded-[10px] bg-[#ECFDF5] border border-[#A7F3D0] text-xs font-semibold text-[#059669] flex items-center justify-center gap-1.5"
                     >
                       <Check className="w-3.5 h-3.5 shrink-0" />
@@ -943,7 +1090,6 @@ export const WorkPage: React.FC<{
   const resolveEntity = useTaskEntityResolver(control.getOptionLabel);
 
   const [filter, setFilter] = useState<WorkFilter>(initialFilter);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     setFilter(initialFilter);
@@ -1068,7 +1214,9 @@ export const WorkPage: React.FC<{
                 entity={entity}
                 typeLabel={taskTypeLabel(task.task_type, control.typeLabelMap)}
                 virtualise
-                onOpenProfile={() => setSelectedTaskId(task.id)}
+                // The task sheet is route-driven (`/m/work/:taskId`) — a local
+                // modal could not be reached with the hardware Back button.
+                onOpenProfile={() => onNavigate({ name: 'work', taskId: task.id })}
                 onCall={() => {
                   const target = {
                     entityType: entity.entityType,
@@ -1099,16 +1247,6 @@ export const WorkPage: React.FC<{
         </div>
       )}
 
-      {selectedTaskId ? (
-        <TaskDetailSheet
-          open
-          taskId={selectedTaskId}
-          onClose={() => setSelectedTaskId(null)}
-          onNavigate={onNavigate}
-          onOpenCallOutcome={onOpenCallOutcome}
-          onBeginCall={onBeginCall}
-        />
-      ) : null}
     </div>
   );
 };
@@ -1133,6 +1271,8 @@ export const TaskDetailSheet: React.FC<{
     taskId ?? undefined,
   );
   const { profile } = useAuth();
+  const { isOnline, enqueue } = useWeakSignalOutbox();
+  const { toast } = useToast();
   const control = useControlPanelView();
   const resolveEntity = useTaskEntityResolver(control.getOptionLabel);
 
@@ -1154,7 +1294,9 @@ export const TaskDetailSheet: React.FC<{
     if (!open || !task) return;
     setDateStr(toLocalDateInputValue(task.due_at));
     setTimeStr(toLocalTimeInputValue(task.due_at));
-    setReminderOn(defaultRemindersEnabled || task.reminder_enabled);
+    // The toggle starts from the task's own value — the system default must
+    // not silently switch a task's reminder on.
+    setReminderOn(task.reminder_enabled);
     setRescheduleOpen(false);
   }, [open, task, defaultRemindersEnabled]);
 
@@ -1202,6 +1344,21 @@ export const TaskDetailSheet: React.FC<{
         updates.status = TASK_STATUS_PENDING;
         updates.completed_at = null;
       }
+      if (!isOnline) {
+        // The device is offline — the write is parked and replayed later.
+        enqueue({
+          kind: 'task_action',
+          label: `Reschedule task · ${task.title}`,
+          payload: { taskId: task.id, updates },
+        });
+        toast({
+          title: 'Saved offline',
+          description: 'This update is stored on the device and will sync automatically.',
+        });
+        onClose();
+        return;
+      }
+
       await updateTask(task.id, updates);
       await rescheduleReminder(dueIso, reminderOn);
       onClose();
@@ -1216,6 +1373,20 @@ export const TaskDetailSheet: React.FC<{
     if (!liveTask) return;
     setBusy(true);
     try {
+      if (!isOnline) {
+        enqueue({
+          kind: 'task_action',
+          label: `Update task · ${task.title}`,
+          payload: { taskId: task.id, updates: { status } },
+        });
+        toast({
+          title: 'Saved offline',
+          description: 'This update is stored on the device and will sync automatically.',
+        });
+        onClose();
+        return;
+      }
+
       await updateTask(task.id, { status });
       onClose();
     } catch {
@@ -1455,16 +1626,25 @@ export const CallOutcomeSheet: React.FC<{
   const scopeId = target?.taskId ?? target?.entityId;
   const { addReminder, deleteReminder, reminders } = useReminders(scopeType, scopeId);
 
+  /**
+   * "Tomorrow 10 AM" — recomputed every time the sheet opens.
+   *
+   * It used to be computed once at mount, so a sheet opened after midnight
+   * still pointed at yesterday.
+   */
   const defaultTomorrow = useMemo(() => {
     const date = new Date();
     date.setDate(date.getDate() + 1);
     date.setHours(10, 0, 0, 0);
     return date.toISOString();
-  }, []);
+  }, [open]);
 
   const [outcome, setOutcome] = useState<CallOutcomeValue>('');
   const [note, setNote] = useState('');
-  const [taskAction, setTaskAction] = useState<CallOutcomeAction>('reschedule');
+  // A call that is not attached to a task must never close the task by
+  // accident — the default is "keep it open".
+  const [taskAction, setTaskAction] = useState<CallOutcomeAction>('keep_open');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [snoozePreset, setSnoozePreset] = useState<'1h' | '4h' | 'tomorrow' | 'custom'>(
     'tomorrow',
   );
@@ -1476,12 +1656,14 @@ export const CallOutcomeSheet: React.FC<{
   useEffect(() => {
     if (!open) return;
     setNote('');
-    setTaskAction('reschedule');
+    // Without a task there is nothing to reschedule — the call only logs.
+    setTaskAction(target?.taskId ? 'reschedule' : 'keep_open');
     setSnoozePreset('tomorrow');
     setDateStr(toLocalDateInputValue(defaultTomorrow));
     setTimeStr(toLocalTimeInputValue(defaultTomorrow));
     setReminderAlarm(defaultRemindersEnabled);
-  }, [open, defaultTomorrow, defaultRemindersEnabled]);
+    setSaveError(null);
+  }, [open, defaultTomorrow, defaultRemindersEnabled, target?.taskId]);
 
   useEffect(() => {
     if (!open) return;
@@ -1529,6 +1711,7 @@ export const CallOutcomeSheet: React.FC<{
   const handleSave = async () => {
     if (!target) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const noteText = note.trim();
 
@@ -1576,12 +1759,18 @@ export const CallOutcomeSheet: React.FC<{
 
       // 3 — reschedule: delete the old reminder, then insert a fresh one so
       //     `is_dismissed` starts from false again.
+      //
+      //     Only reminders that belong to the *task* are replaced. A call that
+      //     is not attached to a task must never wipe the entity's other
+      //     reminders.
       if (taskAction === 'reschedule' && scopeType && scopeId) {
         const scoped = reminders.filter(
           (reminder) => reminder.entity_type === scopeType && reminder.entity_id === scopeId,
         );
-        for (const reminder of scoped) {
-          await deleteReminder(reminder.id);
+        if (target.taskId) {
+          for (const reminder of scoped) {
+            await deleteReminder(reminder.id);
+          }
         }
         if (reminderAlarm) {
           await addReminder({
@@ -1596,8 +1785,14 @@ export const CallOutcomeSheet: React.FC<{
       }
 
       onDismiss();
-    } catch {
-      /* the sheet stays open so the user can retry */
+    } catch (error) {
+      // The sheet stays open and the reason is shown inline — a silent
+      // failure looked like a successful save.
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : 'The call could not be saved. Please try again in a moment.',
+      );
     } finally {
       setBusy(false);
     }
@@ -1635,6 +1830,15 @@ export const CallOutcomeSheet: React.FC<{
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto px-4 py-2.5 space-y-2.5">
+          {saveError ? (
+            <div
+              role="alert"
+              className="p-3 rounded-[10px] bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] text-xs font-semibold"
+            >
+              {saveError}
+            </div>
+          ) : null}
+
           {/* Outcome list — one per row so the full label is never truncated */}
           <div className="space-y-1.5">
             <div className="text-xs font-bold text-[#1A1A2E]">Call Outcome</div>

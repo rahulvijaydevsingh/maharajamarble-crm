@@ -37,7 +37,8 @@ export function resolveCustomerVaultAccess(
 
 /**
  * True when the staff member may see the list of already-uploaded files.
- * Only privileged staff ever see it.
+ * Only privileged staff ever see it — the list, the preview, the download,
+ * the rename and the delete all require `canManage === true`.
  */
 export function canViewAttachmentList(access: CustomerVaultAccess): boolean {
   return access === 'manage';
@@ -45,10 +46,18 @@ export function canViewAttachmentList(access: CustomerVaultAccess): boolean {
 
 /**
  * True when the staff member may upload new files.
- * Only privileged staff ever see the uploader.
+ *
+ * Desktop parity: the customer vault allows a **blind upload** for every
+ * signed-in staff member who can read the customer. The file is stored, but
+ * the uploader cannot list, view, download, rename or delete anything —
+ * including what they just uploaded. See
+ * `src/components/customers/CustomerAttachmentsTab.tsx` and
+ * `supabase/functions/customer-attachments/handler.ts` (the upload branch).
+ *
+ * Only the unresolved state (`loading`) blocks the uploader.
  */
 export function canUploadAttachments(access: CustomerVaultAccess): boolean {
-  return access === 'manage';
+  return access !== 'loading';
 }
 
 /**

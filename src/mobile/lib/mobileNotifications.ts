@@ -10,9 +10,12 @@ import type { Customer, Lead, Professional } from '@/mobile/types/crmTypes';
 import type { MobileRoute, NotificationItem } from '@/mobile/types/crmTypes';
 import { formatShortDateTime } from '@/mobile/lib/format';
 
-type LeadMapper = (lead: any) => Lead;
-type CustomerMapper = (customer: any) => Customer;
-type ProfessionalMapper = (professional: any) => Professional;
+/** The live rows the notification body resolves its entity name from. */
+export interface MobileNotificationLookups {
+  leads: Lead[];
+  customers: Customer[];
+  professionals: Professional[];
+}
 
 function routeForReminder(reminder: Reminder): MobileRoute | undefined {
   switch (reminder.entity_type) {
@@ -46,14 +49,7 @@ function routeForReminder(reminder: Reminder): MobileRoute | undefined {
 
 function entityNameForReminder(
   reminder: Reminder,
-  toLead: LeadMapper,
-  toCustomer: CustomerMapper,
-  toProfessional: ProfessionalMapper,
-  lookups: {
-    leads: Lead[];
-    customers: Customer[];
-    professionals: Professional[];
-  },
+  lookups: MobileNotificationLookups,
 ): string {
   switch (reminder.entity_type) {
     case 'lead': {
@@ -74,41 +70,41 @@ function entityNameForReminder(
 }
 
 /**
+ * The raw timestamp of a reminder, or `Infinity` when it has none.
+ *
+ * The list is sorted on this value — sorting the formatted `time_label`
+ * compared strings such as "9 Nov · 9:00 AM" lexicographically, which put the
+ * wrong reminder first.
+ */
+function reminderTimestamp(reminder: Reminder): number {
+  if (!reminder.reminder_datetime) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(reminder.reminder_datetime).getTime();
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+/**
  * Maps the live reminder rows into the mobile notification list.
  *
- * Dismissed reminders are excluded. Upcoming reminders are listed first, then
- * the rest, each with the entity it belongs to so the user can jump straight
- * to the record.
+ * Dismissed reminders are excluded. The remaining reminders are ordered by
+ * their raw `reminder_datetime` (oldest first), each with the entity it
+ * belongs to so the user can jump straight to the record.
  */
 export function buildMobileNotifications(
   reminders: Reminder[] | null | undefined,
-  toLead: LeadMapper,
-  toCustomer: CustomerMapper,
-  toProfessional: ProfessionalMapper,
-  lookups: { leads: Lead[]; customers: Customer[]; professionals: Professional[] } = {
-    leads: [],
-    customers: [],
-    professionals: [],
-  },
+  lookups: MobileNotificationLookups = { leads: [], customers: [], professionals: [] },
 ): NotificationItem[] {
   if (!Array.isArray(reminders)) return [];
 
   return reminders
     .filter((reminder) => !reminder.is_dismissed)
+    .sort((a, b) => reminderTimestamp(a) - reminderTimestamp(b))
     .map((reminder) => ({
       id: `reminder-${reminder.id}`,
       title: reminder.title,
-      body: entityNameForReminder(
-        reminder,
-        toLead,
-        toCustomer,
-        toProfessional,
-        lookups,
-      ),
+      body: entityNameForReminder(reminder, lookups),
       time_label: formatShortDateTime(reminder.reminder_datetime),
       category: 'reminder' as const,
       read: reminder.is_snoozed,
       target_route: routeForReminder(reminder),
-    }))
-    .sort((a, b) => a.time_label.localeCompare(b.time_label));
+    }));
 }

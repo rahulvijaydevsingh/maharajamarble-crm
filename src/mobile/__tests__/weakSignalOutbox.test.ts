@@ -7,9 +7,13 @@ import {
   buildOutboxMutation,
   dedupeByClientMutationId,
   detectDuplicatePhoneConflict,
+  hasClientMutationId,
+  isForceSavedMutation,
   markNeedsReview,
+  mergeOutboxQueues,
   nextBackoffMs,
   partitionOutbox,
+  readMutationPhone,
   removeFromOutbox,
   withIncrementedAttempt,
 } from '@/mobile/outbox/weakSignalOutbox';
@@ -66,11 +70,31 @@ describe('client_mutation_id idempotency', () => {
     expect(result).toHaveLength(1);
   });
 
-  it('keeps a mutation with a fresh client_mutation_id', () => {
+  it('appends a mutation with a fresh client_mutation_id', () => {
+    // The helper used to return the queue unchanged in both branches, so a
+    // queued mutation was silently dropped instead of being stored.
     const queue = [mutation(1)];
     const fresh = mutation(2);
     const result = dedupeByClientMutationId(queue, fresh);
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(queue[0]);
+    expect(result[1].id).toBe('m-2');
+    expect(result).not.toBe(queue);
+  });
+
+  it('reports whether a client_mutation_id is already queued', () => {
+    const queue = [mutation(1)];
+    expect(hasClientMutationId(queue, 'm-1')).toBe(true);
+    expect(hasClientMutationId(queue, 'm-2')).toBe(false);
+    expect(hasClientMutationId(queue, '')).toBe(false);
+    expect(hasClientMutationId(queue, undefined)).toBe(false);
+  });
+
+  it('appends a fresh mutation to a real queue', () => {
+    let queue: OutboxMutation[] = [];
+    queue = appendToOutboxCapped(queue, mutation(1));
+    queue = appendToOutboxCapped(queue, mutation(2));
+    expect(queue.map((item) => item.id)).toEqual(['m-1', 'm-2']);
   });
 
   it('builds a mutation with a stable client_mutation_id', () => {
@@ -126,6 +150,34 @@ describe('duplicate conflict routing', () => {
     expect(conflict).toContain('9829112233');
   });
 
+  it('reads the phone from the create_lead payload shape', () => {
+    const queued = mutation(1, {
+      kind: 'create_lead',
+      payload: { lead: { phone: '9829112233' } },
+    });
+    expect(readMutationPhone(queued.payload)).toBe('9829112233');
+    expect(detectDuplicatePhoneConflict(queued, new Set(['9829112233']))).not.toBeNull();
+  });
+
+  it('reads the phone from the update_lead payload shape', () => {
+    const queued = mutation(1, {
+      kind: 'update_lead',
+      payload: { leadId: 'l1', updates: { phone: '9829112233' } },
+    });
+    expect(readMutationPhone(queued.payload)).toBe('9829112233');
+    expect(detectDuplicatePhoneConflict(queued, new Set(['9829112233']))).not.toBeNull();
+  });
+
+  it('never flags a forced save', () => {
+    // `force_create` is the user explicitly asking to keep the record.
+    const queued = mutation(1, {
+      kind: 'create_lead',
+      payload: { lead: { phone: '9829112233' }, forceSave: true },
+    });
+    expect(isForceSavedMutation(queued)).toBe(true);
+    expect(detectDuplicatePhoneConflict(queued, new Set(['9829112233']))).toBeNull();
+  });
+
   it('does not flag a phone that is free', () => {
     const queued = mutation(1, {
       kind: 'create_lead',
@@ -163,5 +215,35 @@ describe('duplicate conflict routing', () => {
   it('removes a resolved mutation from the queue', () => {
     const queue = [mutation(1), mutation(2)];
     expect(removeFromOutbox(queue, 'm-1').map((item) => item.id)).toEqual(['m-2']);
+  });
+
+  it('converges two stores so a queued mutation is never lost', () => {
+    const indexed = [mutation(1)];
+    const local = [mutation(2)];
+    const merged = mergeOutboxQueues(indexed, local);
+    expect(merged.map((item) => item.id)).toEqual(['m-1', 'm-2']);
+  });
+
+  it('lets the primary store win a duplicate id', () => {
+    const primary = mutation(1, { label: 'from IndexedDB' });
+    const secondary = mutation(1, { label: 'from localStorage' });
+    const merged = mergeOutboxQueues([primary], [secondary]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].label).toBe('from IndexedDB');
+  });
+});
+
+describe('replay backoff schedule', () => {
+  it('waits 2s, then 5s, then 15s for the first three attempts', () => {
+    // The retry scheduler used `attempt + 1`, which shifted every delay by
+    // one: attempt 1 waited 5s instead of 2s.
+    expect(nextBackoffMs(1)).toBe(2000);
+    expect(nextBackoffMs(2)).toBe(5000);
+    expect(nextBackoffMs(3)).toBe(15000);
+  });
+
+  it('stays at 15s for every further attempt', () => {
+    expect(nextBackoffMs(4)).toBe(15000);
+    expect(nextBackoffMs(10)).toBe(15000);
   });
 });

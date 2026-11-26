@@ -11,7 +11,7 @@ import { TaskDetailModalProvider } from "@/contexts/TaskDetailModalContext";
 import { ZLayerProvider } from "@/contexts/ZLayerContext";
 import { RemindersProvider } from "@/contexts/RemindersContext";
 import { BackupJobsProvider } from "@/contexts/BackupJobsContext";
-import { MobileWorkspaceLauncher } from "@/mobile/routing/WorkspaceGate";
+import { MobileWorkspaceLauncher, DesktopToMobileAutoRouter } from "@/mobile/routing/WorkspaceGate";
 import { BackupJobNotifier } from "@/components/shared/BackupJobNotifier";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { TasksProvider } from "@/hooks/useTasks";
@@ -114,11 +114,12 @@ const App = () => (
                                       <Route path="/hr" element={<ProtectedRoute><HRAttendance /></ProtectedRoute>} />
                                       <Route path="/performance" element={<ProtectedRoute requiredRole="admin"><PerformanceMatrix /></ProtectedRoute>} />
                                       {/* Mobile workspace — lazy loaded, kept above the catch-all */}
-                                      <Route path="/m" element={<Navigate to="/m/today" replace />} />
-                                      <Route path="/m/*" element={<Suspense fallback={<MobileWorkspaceFallback />}><MobileApp /></Suspense>} />
+                                      <Route path="/m" element={<ProtectedRoute><Navigate to="/m/today" replace /></ProtectedRoute>} />
+                                      <Route path="/m/*" element={<ProtectedRoute><Suspense fallback={<MobileWorkspaceFallback />}><MobileApp /></Suspense></ProtectedRoute>} />
                                       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                                       <Route path="*" element={<NotFound />} />
                                     </Routes>
+                                    <DesktopToMobileAutoRouter />
                                     <MobileWorkspaceLauncher />
                                   </TaskDetailModalProvider>
                                 </ZLayerProvider>
