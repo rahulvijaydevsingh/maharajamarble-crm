@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { resolvePostAuthRedirect } from "@/mobile/routing/workspacePreference";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ const passwordSchema = z.string().min(6, "Password must be at least 6 characters
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading, signIn } = useAuth();
   const { toast } = useToast();
 
@@ -25,9 +27,12 @@ export default function Auth() {
 
   useEffect(() => {
     if (user && !loading) {
-      navigate("/");
+      // Return the user to the page they originally asked for. `ProtectedRoute`
+      // stores it in `location.state.from`; anything that is not a same-origin
+      // internal path falls back to the CRM root.
+      navigate(resolvePostAuthRedirect(location.state), { replace: true });
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, location.state, navigate]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -73,7 +78,7 @@ export default function Auth() {
         title: "Welcome back!",
         description: "You have signed in successfully.",
       });
-      navigate("/");
+      navigate(resolvePostAuthRedirect(location.state), { replace: true });
     }
   };
 

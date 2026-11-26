@@ -18,6 +18,21 @@ export type PeopleFilter = 'recent' | 'leads' | 'customers' | 'professionals';
 export type EntityProfileTab = 'overview' | 'tasks' | 'notes' | 'files';
 
 /**
+ * A professional captured on `leads.referred_by` (JSONB).
+ *
+ * The desktop CRM stores a structured object here, not a plain string, so the
+ * mobile workspace must be able to round-trip it without flattening it.
+ */
+export interface ProfessionalRef {
+  id: string;
+  name: string;
+  firmName?: string | null;
+  type?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/**
  * A secondary contact stored on `leads.additional_contacts` / `customers.additional_contacts`
  * (a JSONB array on the live table). `professional_id` / `is_primary_contact` are
  * optional so the JSONB shape stays backwards compatible with the desktop writer.
@@ -34,6 +49,13 @@ export interface AdditionalContact {
   professional_id?: string | null;
   is_primary_contact?: boolean;
   is_professional?: boolean;
+  /**
+   * Non-rendered passthrough for the desktop-only JSONB keys of this contact.
+   *
+   * The desktop writes fields the mobile screens never display. Keeping them
+   * here means editing a lead on mobile does not silently drop them.
+   */
+  raw?: Record<string, unknown>;
 }
 
 export interface LeadAttachment {
@@ -44,6 +66,13 @@ export interface LeadAttachment {
   url?: string | null;
   uploadedAt: string;
   uploadedBy: string;
+  /**
+   * The compressed file that is still on the device.
+   *
+   * It is uploaded to the attachment storage once the lead is saved — the
+   * `url` above is only a local `blob:` preview and must never be persisted.
+   */
+  localFile?: File;
   exifGps?: {
     lat: number;
     lng: number;
@@ -72,11 +101,21 @@ export interface Lead {
   construction_stage: string;
   estimated_qty_sqft?: number | null;
   lead_source: string;
-  referred_by?: string | null;
+  /** Desktop stores a `ProfessionalRef` JSONB object here; legacy rows are plain strings. */
+  referred_by?: string | ProfessionalRef | null;
   /** Control Panel `leads.priority` value space ("1".."5"), stored as a number. */
   priority: number;
   /** Control Panel `leads.status` value space ("new" | "in-progress" | ...). */
   status: string;
+  /**
+   * The conversion columns.
+   *
+   * The desktop converts a lead by writing `status: 'won'` plus
+   * `is_converted` / `converted_to_customer_id` — the status alone never says
+   * that a lead became a customer.
+   */
+  is_converted?: boolean | null;
+  converted_to_customer_id?: string | null;
   lost_reason?: string | null;
   next_action_at: string;
   reminder_enabled: boolean;
@@ -209,6 +248,7 @@ export interface PendingCallState {
 export type OutboxMutationKind =
   | 'create_lead'
   | 'update_lead'
+  | 'create_task'
   | 'task_action'
   | 'log_call'
   | 'add_note'
@@ -243,7 +283,7 @@ export interface NotificationItem {
 
 export type MobileRoute =
   | { name: 'today' }
-  | { name: 'work'; initialFilter?: WorkFilter }
+  | { name: 'work'; initialFilter?: WorkFilter; taskId?: string }
   | { name: 'people'; initialFilter?: PeopleFilter }
   | { name: 'more' }
   | { name: 'messages'; threadId?: string | null }
@@ -288,7 +328,8 @@ export interface LeadFormInput {
   construction_stage: string;
   estimated_qty_sqft?: number | null;
   lead_source: string;
-  referred_by?: string | null;
+  /** Desktop stores a `ProfessionalRef` JSONB object here; legacy rows are plain strings. */
+  referred_by?: string | ProfessionalRef | null;
   notes?: string | null;
   priority: number;
   next_action_at: string;

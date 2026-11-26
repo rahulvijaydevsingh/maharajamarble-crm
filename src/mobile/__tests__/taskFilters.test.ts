@@ -312,6 +312,63 @@ describe('task urgency', () => {
     );
     expect(sorted.map((task) => task.id)).toEqual(['overdue', 'soon', 'later']);
   });
+
+  it('never throws on an unparseable due date', () => {
+    const make = (id: string, dueAt: string): CrmTask => ({
+      ...BASE,
+      id,
+      due_at: dueAt,
+      lead_id: null,
+      lead: null,
+      customer_id: null,
+      professional_id: null,
+    });
+
+    let sorted: CrmTask[] = [];
+    expect(() => {
+      sorted = sortTasksByUrgency(
+        [make('broken', 'not-a-date'), make('valid', '2026-12-01T10:00:00.000Z')],
+        now,
+      );
+    }).not.toThrow();
+    expect(sorted).toHaveLength(2);
+  });
+
+  it('keeps an invalid date behind every dated task', () => {
+    const make = (id: string, dueAt: string): CrmTask => ({
+      ...BASE,
+      id,
+      due_at: dueAt,
+      lead_id: null,
+      lead: null,
+      customer_id: null,
+      professional_id: null,
+    });
+
+    const sorted = sortTasksByUrgency(
+      [make('broken', 'not-a-date'), make('valid', '2026-12-01T10:00:00.000Z')],
+      now,
+    );
+    expect(sorted.map((task) => task.id)).toEqual(['valid', 'broken']);
+  });
+
+  it('keeps a task without a due date at the end of the list', () => {
+    const make = (id: string, dueAt: string): CrmTask => ({
+      ...BASE,
+      id,
+      due_at: dueAt,
+      lead_id: null,
+      lead: null,
+      customer_id: null,
+      professional_id: null,
+    });
+
+    const sorted = sortTasksByUrgency(
+      [make('none', ''), make('dated', '2026-12-01T10:00:00.000Z')],
+      now,
+    );
+    expect(sorted.map((task) => task.id)).toEqual(['dated', 'none']);
+  });
 });
 
 describe('task helpers', () => {

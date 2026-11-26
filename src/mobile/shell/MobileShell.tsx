@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useMemo, useState } from 'react';
+import React, { Component, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -22,20 +22,24 @@ import {
   X,
 } from 'lucide-react';
 
-import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { useReminders } from '@/hooks/useReminders';
 import { useUnreadCounts } from '@/hooks/useChat';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { TASK_TYPES as FALLBACK_TASK_TYPES } from '@/constants/taskConstants';
+import { useNavigate } from 'react-router-dom';
 
 import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { useVersionCheck } from '@/mobile/hooks/useVersionCheck';
 import { buildMobileNotifications } from '@/mobile/lib/mobileNotifications';
 import { formatShortDateTime, toLocalDateInputValue, toLocalTimeInputValue } from '@/mobile/lib/format';
-import { toMobileCustomer, toMobileLead, toMobileProfessional, toMobileTask } from '@/mobile/lib/mappers';
+import { toMobileCustomer, toMobileLead, toMobileProfessional, toMobileTask, toTaskInsert } from '@/mobile/lib/mappers';
 import { resolveSafeStaffName } from '@/mobile/lib/staffAttribution';
+import { openFullCrmRoute } from '@/mobile/routing/handoffHelper';
+import { writeWorkspacePreference } from '@/mobile/routing/workspacePreference';
 import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
@@ -295,6 +299,7 @@ export const VersionCheckBanner: React.FC<{ isDirty?: boolean }> = ({ isDirty = 
 export const WeakSignalSyncStrip: React.FC<{ onOpenOutbox: () => void }> = ({ onOpenOutbox }) => {
   const { isOnline, outbox, isSyncingOutbox } = useWeakSignalOutbox();
   const conflictCount = outbox.filter((mutation) => mutation.status === 'needs_review').length;
+  const pendingCount = outbox.filter((mutation) => mutation.status !== 'needs_review').length;
 
   if (isOnline && !isSyncingOutbox && outbox.length === 0) return null;
 
@@ -325,7 +330,12 @@ export const WeakSignalSyncStrip: React.FC<{ onOpenOutbox: () => void }> = ({ on
             ? `Offline · ${outbox.length} update${outbox.length === 1 ? '' : 's'} saved on device`
             : isSyncingOutbox
               ? 'Syncing…'
-              : `${conflictCount} offline update${conflictCount === 1 ? '' : 's'} need review`}
+              : conflictCount > 0
+                ? `${conflictCount} offline update${conflictCount === 1 ? '' : 's'} need review`
+                : // Without a conflict the queue is simply waiting for its
+                  // turn — saying "0 offline updates need review" was a
+                  // permanent false banner.
+                  `${pendingCount} offline update${pendingCount === 1 ? '' : 's'} pending sync`}
         </span>
       </div>
       <button
@@ -446,9 +456,12 @@ export const QuickAddSheet: React.FC<{
   const { addTask } = useTasks();
   const { addReminder } = useReminders();
   const { logActivity } = useLogActivity();
-  const { getFieldOptions } = useControlPanelSettings();
+  const { getFieldOptions } = useMobileControlPanel();
   const { defaultRemindersEnabled } = useSystemSettings();
   const { profile } = useAuth();
+  const { isOnline, enqueue } = useWeakSignalOutbox();
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [mode, setMode] = useState<'menu' | 'task' | 'note' | 'reminder'>(initialMode);
   const [selectedEntityKey, setSelectedEntityKey] = useState<string>('');
@@ -473,19 +486,31 @@ export const QuickAddSheet: React.FC<{
     return FALLBACK_TASK_TYPES;
   }, [getFieldOptions]);
 
+  // The sheet must only reset when it *opens*. Background refetches of `leads`
+  // / `taskTypeOptions` change those identities all the time, and resetting on
+  // them wiped whatever the user had already typed.
+  const wasOpenRef = useRef(open);
+  const leadsRef = useRef(leads);
+  const taskTypeOptionsRef = useRef(taskTypeOptions);
+  leadsRef.current = leads;
+  taskTypeOptionsRef.current = taskTypeOptions;
+
   useEffect(() => {
-    if (!open) return;
+    const justOpened = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (!justOpened) return;
+
     setMode(initialMode);
     setFormError('');
     setTitle('');
     setNoteContent('');
-    setTaskType((current) => current || taskTypeOptions[0] || '');
+    setTaskType((current) => current || taskTypeOptionsRef.current[0] || '');
     if (preselectedEntity) {
       setSelectedEntityKey(`${preselectedEntity.entityType}:${preselectedEntity.entityId}`);
-    } else if (leads[0]) {
-      setSelectedEntityKey(`lead:${leads[0].id}`);
+    } else if (leadsRef.current[0]) {
+      setSelectedEntityKey(`lead:${leadsRef.current[0].id}`);
     }
-  }, [open, initialMode, preselectedEntity, leads, taskTypeOptions]);
+  }, [open, initialMode, preselectedEntity]);
 
   useEffect(() => {
     if (open) setReminderEnabled(defaultRemindersEnabled);
@@ -533,24 +558,38 @@ export const QuickAddSheet: React.FC<{
     }
     try {
       const dueAt = new Date(`${dateStr}T${timeStr}:00`);
-      await addTask({
-        title: title.trim(),
-        type: taskType,
-        due_date: dateStr,
-        due_time: timeStr,
-        status: 'Pending',
-        priority: 'Medium',
-        assigned_to: staffName ?? 'System',
-        reminder: reminderEnabled,
-        is_recurring: isRecurring,
-        recurrence_frequency: isRecurring ? 'weekly' : null,
-        lead_id: resolvedChoice.entityType === 'lead' ? resolvedChoice.entityId : null,
-        related_entity_type:
-          resolvedChoice.entityType === 'lead' ? null : resolvedChoice.entityType,
-        related_entity_id:
-          resolvedChoice.entityType === 'lead' ? null : resolvedChoice.entityId,
-        created_by: staffName ?? 'System',
-      });
+      const insert = toTaskInsert(
+        {
+          title: title.trim(),
+          task_type: taskType,
+          due_at: dueAt.toISOString(),
+          reminder_enabled: reminderEnabled,
+          is_recurring: isRecurring,
+          recurrence_frequency: isRecurring ? 'weekly' : null,
+          lead_id: resolvedChoice.entityType === 'lead' ? resolvedChoice.entityId : null,
+          related_entity_type:
+            resolvedChoice.entityType === 'lead' ? null : resolvedChoice.entityType,
+          related_entity_id:
+            resolvedChoice.entityType === 'lead' ? null : resolvedChoice.entityId,
+        },
+        staffName ?? 'System',
+      );
+
+      if (!isOnline) {
+        enqueue({
+          kind: 'create_task',
+          label: `New task · ${title.trim()}`,
+          payload: { task: insert },
+        });
+        toast({
+          title: 'Saved offline',
+          description: 'This task is stored on the device and will sync automatically.',
+        });
+        onClose();
+        return;
+      }
+
+      await addTask(insert);
       onClose();
     } catch {
       setFormError('Could not save the task. Please try again.');
@@ -563,15 +602,40 @@ export const QuickAddSheet: React.FC<{
       return;
     }
     if (!resolvedChoice) return;
+    const notePayload = {
+      leadId: resolvedChoice.entityType === 'lead' ? resolvedChoice.entityId : undefined,
+      customerId: resolvedChoice.entityType === 'customer' ? resolvedChoice.entityId : undefined,
+      // Without the generic entity link a Professional note is orphaned — it
+      // is not attached to any lead or customer.
+      relatedEntityType: resolvedChoice.entityType,
+      relatedEntityId: resolvedChoice.entityId,
+      title: 'Note added from mobile',
+      content: noteContent.trim(),
+    };
     try {
+      if (!isOnline) {
+        enqueue({
+          kind: 'add_note',
+          label: `Note · ${resolvedChoice.label}`,
+          payload: notePayload,
+        });
+        toast({
+          title: 'Saved offline',
+          description: 'This note is stored on the device and will sync automatically.',
+        });
+        onClose();
+        return;
+      }
+
       await logActivity({
-        lead_id: resolvedChoice.entityType === 'lead' ? resolvedChoice.entityId : undefined,
-        customer_id:
-          resolvedChoice.entityType === 'customer' ? resolvedChoice.entityId : undefined,
+        lead_id: notePayload.leadId,
+        customer_id: notePayload.customerId,
+        related_entity_type: notePayload.relatedEntityType,
+        related_entity_id: notePayload.relatedEntityId,
         activity_type: 'custom_note',
         activity_category: 'note',
-        title: 'Note added from mobile',
-        description: noteContent.trim(),
+        title: notePayload.title,
+        description: notePayload.content,
       });
       onClose();
     } catch {
@@ -586,16 +650,31 @@ export const QuickAddSheet: React.FC<{
     }
     if (!resolvedChoice) return;
     const dueAt = new Date(`${dateStr}T${timeStr}:00`);
+    const reminderPayload = {
+      title: title.trim(),
+      reminder_datetime: dueAt.toISOString(),
+      entity_type: resolvedChoice.entityType,
+      entity_id: resolvedChoice.entityId,
+      is_recurring: isRecurring,
+      recurrence_pattern: isRecurring ? 'weekly' : null,
+      assigned_to: staffName ?? 'System',
+    };
     try {
-      await addReminder({
-        title: title.trim(),
-        reminder_datetime: dueAt.toISOString(),
-        entity_type: resolvedChoice.entityType,
-        entity_id: resolvedChoice.entityId,
-        is_recurring: isRecurring,
-        recurrence_pattern: isRecurring ? 'weekly' : null,
-        assigned_to: staffName ?? 'System',
-      });
+      if (!isOnline) {
+        enqueue({
+          kind: 'add_reminder',
+          label: `Reminder · ${title.trim()}`,
+          payload: { reminder: reminderPayload },
+        });
+        toast({
+          title: 'Saved offline',
+          description: 'This alarm is stored on the device and will sync automatically.',
+        });
+        onClose();
+        return;
+      }
+
+      await addReminder(reminderPayload);
       onClose();
     } catch {
       setFormError('Could not save the reminder. Please try again.');
@@ -676,7 +755,10 @@ export const QuickAddSheet: React.FC<{
               type="button"
               onClick={() => {
                 onClose();
-                onNavigate({ name: 'entity_profile', entityType: 'customer', entityId: '' });
+                // A "Full CRM" action must open the real desktop route — the
+                // previous `entity_profile` with an empty id was a dead end.
+                writeWorkspacePreference('desktop');
+                openFullCrmRoute('customers/new', (path) => navigate(path));
               }}
               className="w-full min-h-[52px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white flex items-center justify-between text-sm font-semibold text-[#1A1A2E]"
             >
@@ -690,11 +772,8 @@ export const QuickAddSheet: React.FC<{
               type="button"
               onClick={() => {
                 onClose();
-                onNavigate({
-                  name: 'full_crm_handoff',
-                  targetLabel: 'New Professional (Full CRM)',
-                  targetCode: 'professionals/new',
-                });
+                writeWorkspacePreference('desktop');
+                openFullCrmRoute('professionals/new', (path) => navigate(path));
               }}
               className="w-full min-h-[52px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white flex items-center justify-between text-sm font-semibold text-[#1A1A2E]"
             >
@@ -899,15 +978,15 @@ export const NotificationsDrawer: React.FC<{
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
+  const [confirmDismissAll, setConfirmDismissAll] = useState(false);
 
   const notifications = useMemo(
     () =>
-      buildMobileNotifications(
-        reminders,
-        toMobileLead,
-        toMobileCustomer,
-        toMobileProfessional,
-      ),
+      buildMobileNotifications(reminders, {
+        leads: leads.map(toMobileLead),
+        customers: customers.map(toMobileCustomer),
+        professionals: professionals.map(toMobileProfessional),
+      }),
     [reminders, leads, customers, professionals],
   );
 
@@ -978,18 +1057,46 @@ export const NotificationsDrawer: React.FC<{
         </div>
 
         <div className="p-4 border-t border-[#E2E8F0]">
-          <button
-            type="button"
-            onClick={() => {
-              notifications.forEach((notification) => {
-                const reminderId = notification.id.replace('reminder-', '');
-                void dismissReminder(reminderId);
-              });
-            }}
-            className="w-full min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-base"
-          >
-            Mark all read
-          </button>
+          {confirmDismissAll ? (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-[#47464C]">
+                Dismiss all {notifications.length} alarm
+                {notifications.length === 1 ? '' : 's'}? This permanently clears them.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDismissAll(false)}
+                  className="flex-1 min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-base"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    notifications.forEach((notification) => {
+                      const reminderId = notification.id.replace('reminder-', '');
+                      void dismissReminder(reminderId);
+                    });
+                    setConfirmDismissAll(false);
+                  }}
+                  className="flex-1 min-h-[48px] rounded-[12px] bg-[#DC2626] text-white font-semibold text-base"
+                >
+                  Dismiss all
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDismissAll(true)}
+              className="w-full min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-base"
+            >
+              {/* "Mark all read" was misleading: this permanently dismissed
+                  every alarm instead of clearing a read flag. */}
+              Dismiss all alarms
+            </button>
+          )}
         </div>
       </div>
     </div>

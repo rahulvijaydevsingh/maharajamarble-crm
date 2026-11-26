@@ -28,6 +28,74 @@ export const WORKSPACE_PREF_EVENT = 'mm_workspace_pref_change';
 
 export const MOBILE_ROOT = '/m';
 
+/**
+ * Reserved `/m/work/:filter` tokens.
+ *
+ * These five segments are work-list filters, NOT task ids. Every other
+ * segment below `/m/work/` is treated as a task id so `/m/work/t1` keeps
+ * resolving to `/tasks?view=t1` on the desktop surface.
+ */
+export const WORK_FILTER_TOKENS = [
+  'today',
+  'overdue',
+  'upcoming',
+  'completed',
+  'cancelled',
+] as const;
+
+export type WorkFilterToken = (typeof WORK_FILTER_TOKENS)[number];
+
+/** True when `value` is one of the reserved `/m/work/:filter` tokens. */
+export function isWorkFilterToken(value: string): value is WorkFilterToken {
+  return (WORK_FILTER_TOKENS as readonly string[]).includes(value);
+}
+
+/**
+ * `decodeURIComponent` that never throws.
+ *
+ * Malformed percent-encoding (`%ZZ`) makes `decodeURIComponent` throw a
+ * `URIError`, which would take down a whole render. The raw value is returned
+ * unchanged instead, so a broken deep link degrades to a readable URL instead
+ * of an exception.
+ */
+export function safeDecodeURIComponent(value: string): string {
+  if (typeof value !== 'string') return '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Resolves where the user should land after a successful sign-in.
+ *
+ * `ProtectedRoute` stores the attempted location in `state.from`. Only a
+ * same-origin, absolute internal path is honoured: protocol-relative URLs
+ * (`//evil.com`) and the auth screen itself are rejected so the redirect can
+ * never be used as an open redirect.
+ */
+export function resolvePostAuthRedirect(from: unknown): string {
+  const state = (from ?? null) as
+    | { from?: { pathname?: string; search?: string; hash?: string } | null }
+    | null;
+  const source = state?.from;
+  const pathname = typeof source?.pathname === 'string' ? source.pathname : '';
+
+  if (!pathname.startsWith('/')) return '/';
+  if (pathname.startsWith('//')) return '/';
+  if (pathname === '/auth') return '/';
+
+  const search = typeof source?.search === 'string' && source.search.startsWith('?')
+    ? source.search
+    : '';
+  const hash = typeof source?.hash === 'string' && source.hash.startsWith('#')
+    ? source.hash
+    : '';
+
+  return `${pathname}${search}${hash}`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Viewport + preference                                                      */
 /* -------------------------------------------------------------------------- */
@@ -93,8 +161,13 @@ export function buildMobilePath(route: MobileRoute): string {
   switch (route.name) {
     case 'today':
       return `${MOBILE_ROOT}/today`;
-    case 'work':
-      return `${MOBILE_ROOT}/work`;
+    case 'work': {
+      // A task id wins over a filter — `/m/work/<taskId>` is the deep link.
+      if (route.taskId) return `${MOBILE_ROOT}/work/${encodeURIComponent(route.taskId)}`;
+      return route.initialFilter && route.initialFilter !== 'today'
+        ? `${MOBILE_ROOT}/work/${route.initialFilter}`
+        : `${MOBILE_ROOT}/work`;
+    }
     case 'people':
       return `${MOBILE_ROOT}/people`;
     case 'more':
@@ -136,7 +209,7 @@ export function parseMobilePath(pathname: string): MobileRoute | null {
     .slice(MOBILE_ROOT.length + 1)
     .split('/')
     .filter((segment) => segment.length > 0)
-    .map((segment) => decodeURIComponent(segment));
+    .map((segment) => safeDecodeURIComponent(segment));
 
   if (segments.length === 0) return { name: 'today' };
 
@@ -149,6 +222,15 @@ export function parseMobilePath(pathname: string): MobileRoute | null {
       return { name: 'more' };
     case 'work':
       if (rest.length === 0) return { name: 'work' };
+      if (rest.length === 1) {
+        const segment = rest[0];
+        // The five reserved filter tokens are work-list filters; anything else
+        // below /m/work/ is a task id.
+        if (isWorkFilterToken(segment)) {
+          return { name: 'work', initialFilter: segment };
+        }
+        return { name: 'work', taskId: segment };
+      }
       return { name: 'work' };
     case 'people':
       if (rest.length === 0) return { name: 'people' };
@@ -280,8 +362,13 @@ export function mapMobilePathToDesktop(pathname: string): string | null {
     }
     case 'work': {
       const segments = pathname.split('/').filter(Boolean);
-      const taskId = segments[2];
-      return taskId ? `/tasks?view=${encodeURIComponent(taskId)}` : '/tasks';
+      const segment = segments[2];
+      if (!segment) return '/tasks';
+      const decoded = safeDecodeURIComponent(segment);
+      // A reserved filter token is not a task id — it maps back to the plain
+      // task list, while a real task id keeps the `?view=` deep link.
+      if (isWorkFilterToken(decoded)) return '/tasks';
+      return `/tasks?view=${encodeURIComponent(decoded)}`;
     }
     case 'people': {
       if (route.initialFilter === 'customers') return '/customers';

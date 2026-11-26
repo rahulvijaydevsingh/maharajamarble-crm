@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   jsonToString,
   parseAdditionalContacts,
+  parseReferredBy,
   serializeAdditionalContacts,
   toPriorityNumber,
   toMobileLead,
   toMobileTask,
 } from '@/mobile/lib/mappers';
+import { isLeadConverted } from '@/lib/leadConversionEligibility';
 import type { Lead as LiveLead } from '@/hooks/useLeads';
 import type { Task as LiveTaskRow } from '@/hooks/useTasks';
 
@@ -116,6 +118,31 @@ describe('lead mapper', () => {
     expect(lead.material_interests).toEqual([]);
     expect(lead.additional_contacts).toEqual([]);
   });
+
+  it('carries the conversion columns onto the mobile model', () => {
+    // The desktop converts a lead by writing `status: 'won'` plus the
+    // conversion columns. Without them the mobile badge and the conversion
+    // action could never see that the lead became a customer.
+    const converted = toMobileLead(
+      liveLead({
+        status: 'won',
+        ...({
+          is_converted: true,
+          converted_to_customer_id: 'cust-1',
+        } as unknown as Partial<LiveLead>),
+      }),
+    );
+    expect(converted.status).toBe('won');
+    expect(converted.is_converted).toBe(true);
+    expect(converted.converted_to_customer_id).toBe('cust-1');
+  });
+
+  it('reports an unconverted lead as such', () => {
+    const lead = toMobileLead(liveLead());
+    expect(lead.is_converted).toBeNull();
+    expect(lead.converted_to_customer_id).toBeNull();
+    expect(isLeadConverted(lead)).toBe(false);
+  });
 });
 
 describe('task mapper', () => {
@@ -215,5 +242,112 @@ describe('misc mappers', () => {
     expect(toPriorityNumber('2')).toBe(2);
     expect(toPriorityNumber(null)).toBe(3);
     expect(toPriorityNumber('nonsense')).toBe(3);
+  });
+});
+
+describe('desktop JSONB keys survive a mobile edit', () => {
+  it('keeps an unknown desktop key on an additional contact', () => {
+    // The desktop writes fields the mobile screens never render. Dropping
+    // them on an edit silently changed the customer's data.
+    const contacts = parseAdditionalContacts([
+      {
+        id: 'ac-1',
+        name: 'Site Engineer',
+        phone: '9829112233',
+        designation: 'site_supervisor',
+        gstin: '29ABCDE1234F1Z5',
+        custom_note: 'Preferred contact',
+      },
+    ]);
+
+    expect(contacts[0].name).toBe('Site Engineer');
+    expect((contacts[0] as unknown as Record<string, unknown>).gstin).toBe(
+      '29ABCDE1234F1Z5',
+    );
+  });
+
+  it('writes the unknown keys back on serialization', () => {
+    const contacts = parseAdditionalContacts([
+      {
+        id: 'ac-1',
+        name: 'Site Engineer',
+        phone: '9829112233',
+        gstin: '29ABCDE1234F1Z5',
+      },
+    ]);
+
+    const serialized = serializeAdditionalContacts(contacts);
+    expect(serialized[0].gstin).toBe('29ABCDE1234F1Z5');
+    expect(serialized[0].name).toBe('Site Engineer');
+  });
+
+  it('never writes the passthrough itself into the stored shape', () => {
+    const contacts = parseAdditionalContacts([{ id: 'ac-1', name: 'A', phone: '9829112233' }]);
+    const serialized = serializeAdditionalContacts(contacts);
+    expect('raw' in serialized[0]).toBe(false);
+  });
+
+  it('round-trips the desktop shape without losing a key', () => {
+    const original = [
+      {
+        id: 'ac-1',
+        name: 'Site Engineer',
+        phone: '9829112233',
+        designation: 'site_supervisor',
+        isProfessional: true,
+        firm_name: 'Build Co',
+        gstin: '29ABCDE1234F1Z5',
+      },
+    ];
+
+    const serialized = serializeAdditionalContacts(parseAdditionalContacts(original));
+    expect(serialized[0]).toMatchObject({
+      id: 'ac-1',
+      name: 'Site Engineer',
+      phone: '9829112233',
+      designation: 'site_supervisor',
+      isProfessional: true,
+      firm_name: 'Build Co',
+      gstin: '29ABCDE1234F1Z5',
+    });
+  });
+});
+
+describe('leads.referred_by JSONB', () => {
+  it('keeps the structured professional reference intact', () => {
+    // The desktop stores a `ProfessionalRef` object here. Flattening it to a
+    // string — or wiping it on edit — lost the referral.
+    const referred = parseReferredBy({
+      id: 'p1',
+      name: 'Riya Architects',
+      firmName: 'Riya & Co',
+      type: 'architect',
+      phone: '9829112233',
+      email: 'riya@example.com',
+    });
+
+    expect(referred).toEqual({
+      id: 'p1',
+      name: 'Riya Architects',
+      firmName: 'Riya & Co',
+      type: 'architect',
+      phone: '9829112233',
+      email: 'riya@example.com',
+    });
+  });
+
+  it('still reads a legacy free text referral', () => {
+    expect(parseReferredBy('Mr. Sharma')).toBe('Mr. Sharma');
+  });
+
+  it('returns null for an empty value', () => {
+    expect(parseReferredBy(null)).toBeNull();
+    expect(parseReferredBy(undefined)).toBeNull();
+    expect(parseReferredBy('')).toBeNull();
+    expect(parseReferredBy({})).toBeNull();
+  });
+
+  it('never returns an object without an id or a name', () => {
+    expect(parseReferredBy({ firmName: 'Riya & Co' })).toBeNull();
   });
 });

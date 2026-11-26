@@ -52,23 +52,29 @@ export function isSafeStaffName(value?: string | null): boolean {
 /**
  * Resolve a safe attribution name.
  *
- * The preferred source (`fallbackFullName`) is used first — in the mobile app
- * that is `useAuth().profile?.full_name`. When it is missing or unsafe the
- * `candidate` (for example a `useActiveStaffOptions()` label) is used, but only
+ * The **second** argument wins: it is the signed-in user's profile full name
+ * (`useAuth().profile?.full_name`). When that is missing or unsafe the first
+ * argument (for example a `useActiveStaffOptions()` label) is used, but only
  * when it is also safe.
+ *
+ * The argument names below make that priority explicit — the first parameter
+ * is the *secondary* source and the second one is the *preferred* source, so a
+ * caller can never be surprised about which value is stored.
  *
  * Returns `null` when neither source yields a usable name, so callers can fall
  * back to a known-safe value rather than writing an email into the database.
  */
 export function resolveSafeStaffName(
-  candidate?: string | null,
-  fallbackFullName?: string | null,
+  /** Secondary source: a staff option label or other display name. */
+  candidateLabel?: string | null,
+  /** Preferred source: the signed-in user's profile full name. */
+  signedInFullName?: string | null,
 ): string | null {
-  if (isSafeStaffName(fallbackFullName)) {
-    return (fallbackFullName as string).trim();
+  if (isSafeStaffName(signedInFullName)) {
+    return (signedInFullName as string).trim();
   }
-  if (isSafeStaffName(candidate)) {
-    return (candidate as string).trim();
+  if (isSafeStaffName(candidateLabel)) {
+    return (candidateLabel as string).trim();
   }
   return null;
 }
@@ -79,11 +85,13 @@ export function resolveSafeStaffName(
  * NOT NULL and an attribution must always be written.
  */
 export function requireSafeStaffName(
-  candidate?: string | null,
-  fallbackFullName?: string | null,
+  /** Secondary source: a staff option label or other display name. */
+  candidateLabel?: string | null,
+  /** Preferred source: the signed-in user's profile full name. */
+  signedInFullName?: string | null,
   lastResort = 'System',
 ): string {
-  return resolveSafeStaffName(candidate, fallbackFullName) ?? lastResort;
+  return resolveSafeStaffName(candidateLabel, signedInFullName) ?? lastResort;
 }
 
 /**
@@ -92,9 +100,10 @@ export function requireSafeStaffName(
  */
 export function staffNameFromOptionLabel(
   label?: string | null,
-  fallbackFullName?: string | null,
+  /** Preferred source: the signed-in user's profile full name. */
+  signedInFullName?: string | null,
 ): string | null {
-  if (typeof label !== 'string') return resolveSafeStaffName(null, fallbackFullName);
+  if (typeof label !== 'string') return resolveSafeStaffName(null, signedInFullName);
   const withoutRole = label.replace(/\s*\([^)]*\)\s*$/, '').trim();
-  return resolveSafeStaffName(withoutRole, fallbackFullName);
+  return resolveSafeStaffName(withoutRole, signedInFullName);
 }

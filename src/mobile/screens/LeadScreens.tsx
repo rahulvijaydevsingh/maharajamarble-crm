@@ -7,7 +7,7 @@
  *
  *  - `useLeads()` / `useCustomers()` / `useProfessionals()` / `useTasks()` for
  *    the data,
- *  - `useControlPanelSettings()` for every option list (designation,
+ *  - `useMobileControlPanel()` for every option list (designation,
  *    construction stage, lead source, priority, material interests and the
  *    DB-only `lost_reason` field) — no option array is ever hardcoded here,
  *  - `useActiveStaffOptions()` + `@/mobile/lib/staffAttribution` for the
@@ -54,7 +54,7 @@ import { useCustomers } from '@/hooks/useCustomers';
 import type { CustomerInsert } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useTasks } from '@/hooks/useTasks';
-import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
+import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
 import { useActiveStaffOptions } from '@/hooks/useActiveStaff';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -63,8 +63,15 @@ import { useToast } from '@/hooks/use-toast';
 import { normalizePhone10 } from '@/lib/phone';
 import {
   isProfessionalDesignation,
+  mapDesignationToProfessionalType,
   resolveProfessionalForProfessionalLead,
 } from '@/lib/professionalResolver';
+import { buildReferralLinkInsert } from '@/lib/professionalLeadAssociations';
+import {
+  buildLeadProfessionalLinkInserts,
+  preservedLeadProfessionalIds,
+  staleLeadProfessionalIds,
+} from '@/mobile/lib/professionalLinks';
 import { coordinatesToPlusCode } from '@/lib/plusCode';
 import { extractExifThenCompress } from '@/mobile/lib/photoPipeline';
 import {
@@ -72,18 +79,24 @@ import {
   shouldBlockOnDuplicate,
 } from '@/mobile/lib/leadDuplicates';
 import { importLeadFiles } from '@/lib/customerAttachmentsApi';
+import { uploadLeadAttachmentFiles } from '@/mobile/lib/leadAttachments';
 
 import { SubHeader } from '@/mobile/shell/MobileShell';
 import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
-import { useCallIntentWatcher } from '@/mobile/hooks/useCallIntentWatcher';
+import {
+  recordCallIntent,
+  useCallIntentWatcher,
+  type CallIntentTarget,
+} from '@/mobile/hooks/useCallIntentWatcher';
 import { resolveSafeStaffName, staffNameFromOptionLabel } from '@/mobile/lib/staffAttribution';
-import { parseAdditionalContacts, toCustomerInsert, toLeadInsert, toMobileLead } from '@/mobile/lib/mappers';
+import { parseAdditionalContacts, parseReferredBy, toCustomerInsert, toLeadInsert, toMobileLead } from '@/mobile/lib/mappers';
 import {
   buildMapsUrl,
   buildWhatsAppUrl,
   combineDateAndTime,
   formatFileSize,
   formatPhoneDisplay,
+  extractEditablePhone10,
   toLocalDateInputValue,
   toLocalTimeInputValue,
 } from '@/mobile/lib/format';
@@ -93,6 +106,7 @@ import type {
   LeadAttachment,
   LeadFormInput,
   MobileRoute,
+  ProfessionalRef,
 } from '@/mobile/types/crmTypes';
 
 /* -------------------------------------------------------------------------- */
@@ -110,11 +124,6 @@ interface ProfessionalOption {
   address: string | null;
   professional_type: string;
   status: string;
-}
-
-/** Digits only, capped at the 10 digits an Indian mobile number carries. */
-function digitsOnly(value: string): string {
-  return value.replace(/\D/g, '').slice(0, 10);
 }
 
 /**
@@ -371,13 +380,16 @@ export const MobileLeadForm: React.FC<{
   onCancel: () => void;
   onNavigate: (route: MobileRoute) => void;
   onOpenQuickAddMode: (mode: 'task' | 'note' | 'reminder', leadId: string) => void;
-}> = ({ mode, leadId, onCancel, onNavigate, onOpenQuickAddMode }) => {
+  /** Records the intent to call — shared with the mobile shell. */
+  onBeginCall?: (target: CallIntentTarget) => void;
+}> = ({ mode, leadId, onCancel, onNavigate, onOpenQuickAddMode, onBeginCall }) => {
   const { leads, addLead, updateLead } = useLeads();
   const { professionals } = useProfessionals();
-  const { getFieldOptions } = useControlPanelSettings();
+  const { getFieldOptions } = useMobileControlPanel();
   const { options: staffOptions } = useActiveStaffOptions();
   const { profile } = useAuth();
   const { logActivity } = useLogActivity();
+  const { isOnline, enqueue } = useWeakSignalOutbox();
   const { toast } = useToast();
 
   /* ----------------------------- option lists ---------------------------- */
@@ -465,7 +477,9 @@ export const MobileLeadForm: React.FC<{
   const [constructionStage, setConstructionStage] = useState('');
   const [estimatedQtySqft, setEstimatedQtySqft] = useState('');
   const [leadSource, setLeadSource] = useState('');
-  const [referredBy, setReferredBy] = useState('');
+  const [referredBy, setReferredBy] = useState<string | ProfessionalRef | null>(null);
+  const [referrerSearchQuery, setReferrerSearchQuery] = useState('');
+  const [referrerDropdownOpen, setReferrerDropdownOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [priority, setPriority] = useState(3);
   const [dateStr, setDateStr] = useState(() => toLocalDateInputValue(defaultNextActionIso));
@@ -514,6 +528,17 @@ export const MobileLeadForm: React.FC<{
     const label = staffOptions.find((o) => o.id === assignedStaffId)?.label ?? null;
     return resolveAttributionName(staffNameFromOptionLabel(label, null), profile?.full_name);
   }, [staffOptions, assignedStaffId, profile?.full_name]);
+
+  /**
+   * INVARIANT-04 — the signed-in actor.
+   *
+   * `created_by` / `updated_by` always record the person who performed the
+   * write, never the staff member the record is assigned to.
+   */
+  const actorName = useMemo(
+    () => resolveSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null) ?? 'System',
+    [profile?.full_name],
+  );
 
   /* -------------------------------- helpers ------------------------------ */
 
@@ -606,8 +631,8 @@ export const MobileLeadForm: React.FC<{
     const rawAdditional = parseAdditionalContacts(editingLead.additional_contacts);
 
     setFullName(editingLead.name ?? '');
-    setPhone(digitsOnly(editingLead.phone ?? ''));
-    setAlternatePhone(digitsOnly(editingLead.alternate_phone ?? ''));
+    setPhone(extractEditablePhone10(editingLead.phone ?? ''));
+    setAlternatePhone(extractEditablePhone10(editingLead.alternate_phone ?? ''));
     setEmail(editingLead.email ?? '');
     setDesignation(editingLead.designation || defaultDesignation);
     setFirmName(editingLead.firm_name ?? '');
@@ -625,9 +650,7 @@ export const MobileLeadForm: React.FC<{
       editingLead.estimated_quantity ? String(editingLead.estimated_quantity) : '',
     );
     setLeadSource(editingLead.source || defaultSource);
-    setReferredBy(
-      typeof editingLead.referred_by === 'string' ? editingLead.referred_by : '',
-    );
+    setReferredBy(parseReferredBy(editingLead.referred_by));
     setNotes(editingLead.notes ?? '');
     setPriority(typeof editingLead.priority === 'number' ? editingLead.priority : 3);
     setDateStr(toLocalDateInputValue(editingLead.next_follow_up ?? defaultNextActionIso));
@@ -650,6 +673,52 @@ export const MobileLeadForm: React.FC<{
 
     assignedStaffTouchedRef.current = false;
   }, [mode, editingLead, defaultDesignation, defaultStage, defaultSource, defaultNextActionIso]);
+
+  /**
+   * The junction rows are read on Edit.
+   *
+   * The mobile form used to write `lead_professionals` but never read it, so
+   * the professional link of an existing lead was lost as soon as the form
+   * was opened — the additional contacts only matched by phone.
+   */
+  useEffect(() => {
+    if (mode !== 'edit' || !editingLead) return;
+    let cancelled = false;
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from('lead_professionals')
+        .select('professional_id, is_primary_contact')
+        .eq('lead_id', editingLead.id);
+      if (cancelled || error || !data || data.length === 0) return;
+
+      const rows = data as Array<{
+        professional_id: string;
+        is_primary_contact: boolean;
+      }>;
+      const primary = rows.find((row) => row.is_primary_contact);
+      if (primary?.professional_id) {
+        setProfessionalId(primary.professional_id);
+      }
+
+      const additionalIds = rows
+        .filter((row) => !row.is_primary_contact)
+        .map((row) => row.professional_id);
+
+      if (additionalIds.length === 0) return;
+      setAdditionalContacts((prev) =>
+        prev.map((contact, index) =>
+          index < additionalIds.length && !contact.professional_id
+            ? { ...contact, professional_id: additionalIds[index] }
+            : contact,
+        ),
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, editingLead]);
 
   // Keep the current assignee when it still matches an active staff member.
   // The staff list arrives asynchronously, so this runs on its own and never
@@ -757,7 +826,7 @@ export const MobileLeadForm: React.FC<{
   };
 
   const handlePrimaryPhoneChange = (raw: string) => {
-    const digits = digitsOnly(raw);
+    const digits = extractEditablePhone10(raw);
     setPhone(digits);
     setErrors((prev) => ({ ...prev, phone: '' }));
     // Editing the number cancels a forced save.
@@ -771,7 +840,7 @@ export const MobileLeadForm: React.FC<{
   };
 
   const handleAlternatePhoneChange = (raw: string) => {
-    setAlternatePhone(digitsOnly(raw));
+    setAlternatePhone(extractEditablePhone10(raw));
   };
 
   const handleDesignationChange = (next: string) => {
@@ -791,8 +860,8 @@ export const MobileLeadForm: React.FC<{
   const handleSelectExistingProfessional = (professional: ProfessionalOption) => {
     setProfessionalId(professional.id);
     setFullName(professional.full_name);
-    setPhone(digitsOnly(professional.phone));
-    setAlternatePhone(digitsOnly(professional.alternate_phone ?? ''));
+    setPhone(extractEditablePhone10(professional.phone));
+    setAlternatePhone(extractEditablePhone10(professional.alternate_phone ?? ''));
     setEmail(professional.email ?? '');
     setFirmName(professional.firm_name ?? '');
     if (!siteLocation.trim() && professional.address) {
@@ -897,6 +966,10 @@ export const MobileLeadForm: React.FC<{
         type: rawFile.type === 'application/pdf' ? 'pdf' : 'image',
         sizeLabel: formatFileSize(compressed.size),
         url: previewUrl,
+        // The compressed file travels with the staged attachment so it can be
+        // uploaded once the lead is saved. The `blob:` preview above is never
+        // persisted.
+        localFile: compressed,
         uploadedAt: new Date().toISOString(),
         uploadedBy: attributionName,
         exifGps:
@@ -968,7 +1041,7 @@ export const MobileLeadForm: React.FC<{
     construction_stage: constructionStage,
     estimated_qty_sqft: estimatedQtySqft ? Number(estimatedQtySqft) : null,
     lead_source: leadSource,
-    referred_by: referredBy.trim() || null,
+    referred_by: referredBy,
     notes: notes.trim() || null,
     priority,
     next_action_at: combineDateAndTime(dateStr, timeStr),
@@ -996,41 +1069,191 @@ export const MobileLeadForm: React.FC<{
     return nextErrors;
   };
 
-  /** Mirrors the desktop professional linking (the `lead_professionals`
-   *  junction table) for the primary contact and every linked contact. */
+  /**
+   * Mirrors the desktop professional linking (the `lead_professionals`
+   * junction table) for the primary contact and every linked contact.
+   *
+   * Desktop parity (PR #150):
+   *  - Group 1 (primary contact + professional additional contacts) reuses an
+   *    existing **active** professional with the same normalised 10-digit
+   *    phone, or auto-creates a new `professionals` row.
+   *  - The junction rows are de-duplicated by `professional_id` (the primary
+   *    contact wins) — Postgres refuses an `ON CONFLICT DO UPDATE` that
+   *    touches the same row twice (`21000`).
+   *  - Group 3 (the referrer) is written with `buildReferralLinkInsert` after
+   *    every Group 1 upsert.
+   *  - On Edit, junction rows that are no longer referenced are deleted.
+   */
   const syncProfessionalLinks = async (savedLeadId: string) => {
-    const links: Array<{
-      lead_id: string;
+    type Group1Candidate = {
+      name: string;
+      phone: string;
+      email?: string | null;
+      firmName?: string | null;
+      designation?: string | null;
+    };
+
+    /** Reuses an existing active professional, or creates one (desktop parity). */
+    const resolveProfessional = async (
+      candidate: Group1Candidate,
+    ): Promise<string | null> => {
+      const phone10 = normalizePhone10(candidate.phone);
+      if (!phone10) return null;
+
+      const existing = professionals.find((professional) => {
+        if ((professional.status ?? 'active').toLowerCase() !== 'active') return false;
+        return (
+          normalizePhone10(professional.phone) === phone10 ||
+          normalizePhone10(professional.alternate_phone) === phone10
+        );
+      });
+      if (existing) return existing.id;
+
+      const { data, error } = await supabase
+        .from('professionals')
+        .insert({
+          name: candidate.name.trim() || 'Professional',
+          phone: phone10,
+          alternate_phone: null,
+          email: candidate.email ?? null,
+          firm_name: candidate.firmName ?? null,
+          address: siteLocation.trim() || null,
+          professional_type: mapDesignationToProfessionalType(candidate.designation),
+          status: 'active',
+          priority: 3,
+          assigned_to: attributionName,
+          created_by: actorName,
+          site_plus_code: plusCode.trim() || null,
+          added_via_lead_id: savedLeadId,
+        })
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[mobile lead] Unable to create the professional.', error);
+        return null;
+      }
+      return data?.id ?? null;
+    };
+
+    /** One entry per professional — the primary contact wins a duplicate id. */
+    const group1Drafts: Array<{
       professional_id: string;
       is_primary_contact: boolean;
       contact_designation: string;
     }> = [];
 
-    if (professionalId) {
-      links.push({
-        lead_id: savedLeadId,
+    const register = (
+      professionalId: string | null | undefined,
+      isPrimary: boolean,
+      designationValue: string,
+    ) => {
+      if (!professionalId) return;
+      group1Drafts.push({
         professional_id: professionalId,
-        is_primary_contact: true,
-        contact_designation: designation,
+        is_primary_contact: isPrimary,
+        contact_designation: designationValue,
       });
-    }
-    additionalContacts.forEach((contact) => {
-      if (!contact.professional_id) return;
-      links.push({
-        lead_id: savedLeadId,
-        professional_id: contact.professional_id,
-        is_primary_contact: false,
-        contact_designation: contact.designation ?? '',
-      });
-    });
+    };
 
-    if (links.length === 0) return;
-    try {
-      await supabase
+    // A professional that was picked from the existing list always wins over
+    // the phone-based resolution.
+    const primaryProfessionalId =
+      professionalId ??
+      (await resolveProfessional({
+        name: fullName.trim(),
+        phone,
+        email: email.trim() || null,
+        firmName: firmName.trim() || null,
+        designation,
+      }));
+    register(primaryProfessionalId, true, designation);
+
+    for (const contact of additionalContacts) {
+      const isProfessionalContact =
+        contact.is_professional ?? isProfessionalDesignation(contact.designation);
+      if (!isProfessionalContact) continue;
+      // A contact that is already linked to a professional keeps that link.
+      const contactProfessionalId =
+        contact.professional_id ??
+        (await resolveProfessional({
+          name: contact.name,
+          phone: contact.phone,
+          email: contact.email ?? null,
+          firmName: contact.firm_name ?? null,
+          designation: contact.designation ?? null,
+        }));
+      register(contactProfessionalId, false, contact.designation ?? '');
+    }
+
+    // The duplicates are removed before the upsert — Postgres refuses an
+    // `ON CONFLICT DO UPDATE` that touches the same row twice (`21000`).
+    const links = buildLeadProfessionalLinkInserts(savedLeadId, group1Drafts);
+    const group1Ids = links.map((link) => link.professional_id);
+
+    if (links.length > 0) {
+      // supabase-js does NOT throw on a database error — the `{ error }` has to
+      // be inspected explicitly or a failed upsert looks like a success.
+      const { error: group1Error } = await supabase
         .from('lead_professionals')
         .upsert(links, { onConflict: 'lead_id,professional_id' });
-    } catch (error) {
-      console.warn('[mobile lead] Unable to link professionals.', error);
+      if (group1Error) {
+        console.warn('[mobile lead] Unable to link professionals.', group1Error);
+        toast({
+          title: 'Lead saved, but the professional links were not saved',
+          description:
+            'The lead was created, but its professional associations failed. Edit the lead later to retry.',
+          variant: 'destructive',
+        });
+      }
+    }
+
+    // Group 3 — the referrer. It is written after every Group 1 upsert so a
+    // referrer that is also a Group 1 contact keeps the Group 1 flags.
+    const referralLink = buildReferralLinkInsert(savedLeadId, referredBy);
+    if (referralLink) {
+      const isAlsoGroup1 = group1Ids.includes(referralLink.professional_id);
+      const { error: referralError } = await supabase
+        .from('lead_professionals')
+        .upsert([referralLink], {
+          onConflict: 'lead_id,professional_id',
+          // On create the referrer is never demoted; on edit a removed Group 1
+          // contact must be demoted to the referrer role instead.
+          ...(mode === 'edit' && !isAlsoGroup1 ? {} : { ignoreDuplicates: true }),
+        });
+      if (referralError) {
+        console.warn('[mobile lead] The referral link was not saved.', referralError);
+      }
+    }
+
+    // On Edit, drop the junction rows that are no longer referenced.
+    if (mode === 'edit') {
+      const preserved = preservedLeadProfessionalIds(
+        group1Ids,
+        referralLink?.professional_id ?? null,
+      );
+      const { data: existingLinks, error: existingLinksError } = await supabase
+        .from('lead_professionals')
+        .select('professional_id')
+        .eq('lead_id', savedLeadId);
+      if (existingLinksError) {
+        console.warn('[mobile lead] Unable to read the professional links.', existingLinksError);
+        return;
+      }
+      const staleIds = staleLeadProfessionalIds(
+        (existingLinks ?? []).map((row) => row.professional_id as string),
+        preserved,
+      );
+      if (staleIds.length > 0) {
+        const { error: staleError } = await supabase
+          .from('lead_professionals')
+          .delete()
+          .eq('lead_id', savedLeadId)
+          .in('professional_id', staleIds);
+        if (staleError) {
+          console.warn('[mobile lead] Unable to remove the stale professional links.', staleError);
+        }
+      }
     }
   };
 
@@ -1067,42 +1290,104 @@ export const MobileLeadForm: React.FC<{
 
     setIsSaving(true);
     try {
-      const payload = toLeadInsert(formInput, attributionName);
+      const payload = toLeadInsert(formInput, attributionName, actorName);
+
+      // Offline first: the write is parked on the device and replayed by the
+      // outbox as soon as the connection is back. The user is told what
+      // happened instead of being shown a failure.
+      if (!isOnline) {
+        enqueue({
+          kind: mode === 'create' ? 'create_lead' : 'update_lead',
+          label: mode === 'create' ? `New lead · ${formInput.full_name}` : `Lead update · ${formInput.full_name}`,
+          payload:
+            mode === 'create'
+              ? { lead: { ...payload, status: 'new' } }
+              : { leadId: editingLead?.id, updates: payload },
+        });
+        toast({
+          title: 'Saved offline',
+          description: 'This lead is stored on the device and will sync automatically.',
+        });
+        setDuplicateWarning(null);
+        forceSaveRef.current = false;
+        onCancel();
+        return;
+      }
+
       let savedLead: LiveLead | null = null;
 
-      if (mode === 'create') {
-        savedLead = await addLead({
-          ...payload,
-          status: 'new',
-        } as unknown as LeadInsert);
-      } else if (editingLead) {
-        const { created_by: _createdBy, ...updatePayload } = payload;
-        savedLead = await updateLead(
-          editingLead.id,
-          updatePayload as unknown as Partial<LeadInsert>,
-        );
+      try {
+        if (mode === 'create') {
+          savedLead = await addLead({
+            ...payload,
+            status: 'new',
+          } as unknown as LeadInsert);
+        } else if (editingLead) {
+          const { created_by: _createdBy, ...updatePayload } = payload;
+          savedLead = await updateLead(
+            editingLead.id,
+            updatePayload as unknown as Partial<LeadInsert>,
+          );
+        }
+      } catch (saveError) {
+        // The lead write itself failed — this is the only failure that may
+        // report "Lead not saved".
+        toast({
+          title: 'Lead not saved',
+          description:
+            saveError instanceof Error ? saveError.message : 'Please try again in a moment.',
+          variant: 'destructive',
+        });
+        return;
       }
 
       if (!savedLead) throw new Error('The lead could not be saved.');
 
       await syncProfessionalLinks(savedLead.id);
 
-      await logActivity({
-        lead_id: savedLead.id,
-        activity_type: mode === 'create' ? 'lead_created' : 'lead_updated',
-        activity_category: mode === 'create' ? 'system' : 'follow_up',
-        title: mode === 'create' ? 'Lead Created' : 'Lead Updated',
-        description:
-          mode === 'create'
-            ? `${savedLead.name} was added as a lead.`
-            : `${savedLead.name} lead details were updated.`,
-        metadata: {
-          designation,
-          source: leadSource,
-          priority,
-          force_save: forceSave,
-        },
-      });
+      // The lead is saved. A failed activity log must never claim otherwise.
+      try {
+        await logActivity({
+          lead_id: savedLead.id,
+          activity_type: mode === 'create' ? 'lead_created' : 'lead_updated',
+          activity_category: mode === 'create' ? 'system' : 'follow_up',
+          title: mode === 'create' ? 'Lead Created' : 'Lead Updated',
+          description:
+            mode === 'create'
+              ? `${savedLead.name} was added as a lead.`
+              : `${savedLead.name} lead details were updated.`,
+          metadata: {
+            designation,
+            source: leadSource,
+            priority,
+            force_save: forceSave,
+          },
+        });
+      } catch (logError) {
+        console.warn('[mobile lead] The activity log entry failed.', logError);
+        toast({
+          title: 'Lead saved',
+          description: 'The lead was saved, but the activity entry could not be logged.',
+          variant: 'destructive',
+        });
+      }
+
+      // The staged site photos are uploaded through the real attachment
+      // storage. A temporary `blob:` preview URL is NEVER written to
+      // `leads.site_photo_url`.
+      const stagedFiles = stagedAttachments
+        .map((attachment) => attachment.localFile)
+        .filter((file): file is File => Boolean(file));
+      if (stagedFiles.length > 0) {
+        const upload = await uploadLeadAttachmentFiles(savedLead.id, stagedFiles);
+        if (upload.failed > 0) {
+          toast({
+            title: 'Lead saved, but some photos did not upload',
+            description: `${upload.failed} photo(s) could not be uploaded. Add them again from the lead profile.`,
+            variant: 'destructive',
+          });
+        }
+      }
 
       // The duplicate modal must always be closed once the write succeeded.
       setDuplicateWarning(null);
@@ -1383,7 +1668,7 @@ export const MobileLeadForm: React.FC<{
                         inputMode="numeric"
                         value={contact.phone}
                         onChange={(e) =>
-                          updateAdditionalContact(index, { phone: digitsOnly(e.target.value) })
+                          updateAdditionalContact(index, { phone: extractEditablePhone10(e.target.value) })
                         }
                         placeholder="10-digit phone"
                         aria-label={`Additional contact ${index + 1} phone`}
@@ -1422,7 +1707,7 @@ export const MobileLeadForm: React.FC<{
                                   ? professional.professional_type
                                   : contact.designation,
                                 name: contact.name || professional.full_name,
-                                phone: contact.phone || digitsOnly(professional.phone),
+                                phone: contact.phone || extractEditablePhone10(professional.phone),
                                 firm_name: contact.firm_name || professional.firm_name || '',
                                 email: contact.email || professional.email || undefined,
                               });
@@ -1798,11 +2083,50 @@ export const MobileLeadForm: React.FC<{
                 <input
                   id="lead-ref"
                   type="text"
-                  value={referredBy}
-                  onChange={(e) => setReferredBy(e.target.value)}
+                  value={
+                    typeof referredBy === 'string'
+                      ? referredBy
+                      : (referredBy?.name ?? '')
+                  }
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    // Typing over the name of a linked professional must not
+                    // throw the structured reference away — the desktop stores
+                    // `leads.referred_by` as an object.
+                    setReferredBy((current) =>
+                      current && typeof current !== 'string' && current.name === next
+                        ? current
+                        : next,
+                    );
+                  }}
                   placeholder="Name of referring architect or client"
                   className="w-full min-h-[48px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
                 />
+                <div className="mt-2">
+                  <ProfessionalCombobox
+                    inputId="search-referrer-pro"
+                    label="Link an existing professional as referrer"
+                    placeholder="Search professionals…"
+                    query={referrerSearchQuery}
+                    onQueryChange={setReferrerSearchQuery}
+                    open={referrerDropdownOpen}
+                    onOpenChange={setReferrerDropdownOpen}
+                    candidates={professionalCandidates}
+                    onSelect={(professional) => {
+                      setReferredBy({
+                        id: professional.id,
+                        name: professional.full_name,
+                        firmName: professional.firm_name,
+                        type: professional.professional_type,
+                        phone: professional.phone,
+                        email: professional.email,
+                      });
+                      setReferrerSearchQuery('');
+                      setReferrerDropdownOpen(false);
+                    }}
+                    emptyMessage="No matching professional."
+                  />
+                </div>
               </div>
               <div>
                 <label htmlFor="lead-note" className="block text-xs font-semibold text-[#1A1A2E] mb-1">
@@ -1875,6 +2199,7 @@ export const MobileLeadForm: React.FC<{
             onNavigate({ name: 'today' });
           }}
           onOpenQuickAddMode={onOpenQuickAddMode}
+          onBeginCall={onBeginCall}
         />
       )}
     </div>
@@ -1890,8 +2215,22 @@ export const PostSaveQuickActions: React.FC<{
   onNavigate: (route: MobileRoute) => void;
   onClose: () => void;
   onOpenQuickAddMode: (mode: 'task' | 'note' | 'reminder', leadId: string) => void;
-}> = ({ lead, onNavigate, onClose, onOpenQuickAddMode }) => {
-  const { beginCall } = useCallIntentWatcher();
+  /**
+   * Records the intent to call.
+   *
+   * It is passed down from the mobile shell: a second
+   * `useCallIntentWatcher()` inside this sheet meant the intent was recorded
+   * twice and the outcome sheet could open twice.
+   */
+  onBeginCall?: (target: CallIntentTarget) => void;
+}> = ({ lead, onNavigate, onClose, onOpenQuickAddMode, onBeginCall }) => {
+  const beginCall = (target: CallIntentTarget) => {
+    if (onBeginCall) {
+      onBeginCall(target);
+      return;
+    }
+    recordCallIntent(target);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
@@ -1991,7 +2330,7 @@ export const MarkLostSheet: React.FC<{
   onClose: () => void;
   onSaved: () => void;
 }> = ({ open, lead, onClose, onSaved }) => {
-  const { getFieldOptions, getOptionLabel, loading: panelLoading } = useControlPanelSettings();
+  const { getFieldOptions, getOptionLabel, loading: panelLoading } = useMobileControlPanel();
   const { updateLead } = useLeads();
   const { tasks, updateTask } = useTasks();
   const { logActivity } = useLogActivity();
@@ -2264,7 +2603,7 @@ export const ConvertToCustomerSheet: React.FC<{
   useEffect(() => {
     if (!open || !lead) return;
     setFullName(lead.full_name ?? '');
-    setPhone(digitsOnly(lead.phone ?? ''));
+    setPhone(extractEditablePhone10(lead.phone ?? ''));
     setAddress(lead.address || lead.site_location || '');
     setImportFiles(true);
     setSubmitting(false);
@@ -2289,6 +2628,18 @@ export const ConvertToCustomerSheet: React.FC<{
     const label = staffOptions.find((o) => o.id === assignedStaffId)?.label ?? null;
     return resolveAttributionName(staffNameFromOptionLabel(label, null), profile?.full_name);
   }, [staffOptions, assignedStaffId, profile?.full_name]);
+
+  /**
+   * INVARIANT-04 — the signed-in actor.
+   *
+   * The customer record is *assigned* to `assignedName`, but it was *created*
+   * by whoever performed the conversion, so `created_by` / `updated_by` record
+   * the actor and never the assignee.
+   */
+  const actorName = useMemo(
+    () => resolveSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null) ?? 'System',
+    [profile?.full_name],
+  );
 
   const openLeadTasks = useMemo(() => {
     if (!lead) return [];
@@ -2334,6 +2685,7 @@ export const ConvertToCustomerSheet: React.FC<{
           additional_contacts: lead.additional_contacts ?? [],
         },
         assignedName,
+        actorName,
       );
 
       const payload = {
@@ -2373,11 +2725,14 @@ export const ConvertToCustomerSheet: React.FC<{
         }
       }
 
+      // Desktop parity: the conversion writes `status: 'won'` — never
+      // `'converted'` — plus the conversion columns.
       await updateLead(lead.id, {
         status: 'won',
         is_converted: true,
         converted_to_customer_id: customerId,
         converted_at: new Date().toISOString(),
+        updated_by: actorName,
       } as unknown as Partial<LeadInsert>);
 
       // Open lead tasks move to the new customer.
@@ -2475,7 +2830,7 @@ export const ConvertToCustomerSheet: React.FC<{
               type="tel"
               inputMode="numeric"
               value={phone}
-              onChange={(e) => setPhone(digitsOnly(e.target.value))}
+              onChange={(e) => setPhone(extractEditablePhone10(e.target.value))}
               className="w-full min-h-[48px] px-3.5 rounded-[12px] border border-[#E2E8F0] bg-white text-base font-utility text-[#191C1D]"
             />
           </div>

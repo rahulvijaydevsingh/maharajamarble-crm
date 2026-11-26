@@ -71,9 +71,9 @@ import { FullCrmHandoffPanel } from '@/mobile/components/FullCrmHandoffPanel';
 import { SubHeader } from '@/mobile/shell/MobileShell';
 import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { formatShortDateTime } from '@/mobile/lib/format';
-import { buildHandoffRoute, openFullCrmRoute } from '@/mobile/routing/handoffHelper';
+import { openFullCrmRoute } from '@/mobile/routing/handoffHelper';
 import { buildHandoffRows } from '@/mobile/lib/roleGating';
-import { writeWorkspacePreference } from '@/mobile/routing/workspacePreference';
+import { buildMobilePath, writeWorkspacePreference } from '@/mobile/routing/workspacePreference';
 import type { MobileRoute } from '@/mobile/types/crmTypes';
 
 /* -------------------------------------------------------------------------- */
@@ -141,6 +141,7 @@ export const MessagesPage: React.FC<{
   initialThreadId?: string | null;
   onBackToShell: () => void;
 }> = ({ initialThreadId = null, onBackToShell }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { isOnline } = useWeakSignalOutbox();
@@ -201,9 +202,17 @@ export const MessagesPage: React.FC<{
     const key = `${activeThreadId}:${messageList.length}`;
     if (markedKeyRef.current === key) return;
     markedKeyRef.current = key;
-    markRead.mutate(activeThreadId);
-    void queryClient.invalidateQueries({ queryKey: ['unread-counts', user?.id] });
-  }, [activeThreadId, messageList.length, markRead, queryClient, user?.id]);
+    // The invalidation runs in the mutation's `onSuccess`, so the unread
+    // badge is refreshed *after* the write landed. Invalidating in parallel
+    // resurrected the badge with the pre-write count.
+    markRead.mutate(activeThreadId, {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: ['unread-counts', user?.id] });
+      },
+    });
+    // The mutation object is intentionally not a dependency: it is a new
+    // object on every render and re-ran the effect in a loop.
+  }, [activeThreadId, messageList.length, queryClient, user?.id]);
 
   // Keep the thread pinned to the newest message.
   useEffect(() => {
@@ -220,14 +229,22 @@ export const MessagesPage: React.FC<{
     node.scrollTop = node.scrollHeight;
   }, []);
 
+  /**
+   * The selected thread is part of the URL.
+   *
+   * The thread used to live only in a piece of component state, so the Android
+   * hardware Back button left the app instead of returning to the inbox.
+   */
   const handleOpenThread = (threadId: string) => {
     setActiveThreadId(threadId);
     setSendError(null);
+    navigate(buildMobilePath({ name: 'messages', threadId }));
   };
 
   const handleBackToInbox = () => {
     setActiveThreadId(null);
     setSendError(null);
+    navigate(buildMobilePath({ name: 'messages' }), { replace: true });
   };
 
   const handleSend = async (event: React.FormEvent) => {
@@ -270,7 +287,7 @@ export const MessagesPage: React.FC<{
       : '';
 
     return (
-      <div className="flex-1 min-h-0 h-[100dvh] flex flex-col overflow-hidden bg-[#F8F9FA]">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#F8F9FA]">
         {/* Thread header */}
         <header className="h-14 bg-[#1A1A2E] text-white px-3 flex items-center gap-2.5 shrink-0">
           <button
@@ -415,7 +432,7 @@ export const MessagesPage: React.FC<{
   const unreadAnnouncements = unreadCounts?.announcements ?? 0;
 
   return (
-    <div className="flex-1 min-h-0 h-[100dvh] flex flex-col overflow-hidden bg-[#F8F9FA]">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#F8F9FA]">
       <SubHeader title="Messages" onBack={onBackToShell} />
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -671,7 +688,7 @@ export const MorePage: React.FC<{
 
   const displayName = profile?.full_name || profile?.email || 'Signed in';
   const displayRole = roleLabel(role);
-  const pendingReminders = reminders.length;
+  const pendingReminders = reminders.filter((reminder) => !reminder.is_dismissed).length;
 
   /* -------------------------- full CRM handoffs -------------------------- */
 
@@ -689,17 +706,12 @@ export const MorePage: React.FC<{
     Icon: HANDOFF_ICONS[spec.key] ?? Building2,
   }));
 
-  const handleHandoff = (code: string, label: string) => {
-    // `openFullCrmRoute` resolves the desktop destination for the target code.
-    // The mobile shell renders the placeholder itself, so the resolved target
-    // is translated into the matching mobile handoff route.
-    openFullCrmRoute(code, () => {
-      const route = buildHandoffRoute(code) as Extract<
-        MobileRoute,
-        { name: 'full_crm_handoff' }
-      >;
-      onNavigate({ ...route, targetLabel: label });
-    });
+  const handleHandoff = (code: string) => {
+    // A handoff must genuinely open the desktop surface — a placeholder is a
+    // dead end for the field user. The stored preference is switched first so
+    // the `/m` gate stops fighting the user on the way out.
+    writeWorkspacePreference('desktop');
+    openFullCrmRoute(code, (path) => navigate(path));
   };
 
   const handleSwitchToFullCrm = () => {
@@ -849,7 +861,7 @@ export const MorePage: React.FC<{
               <button
                 key={`${code}-${label}`}
                 type="button"
-                onClick={() => handleHandoff(code, label)}
+                onClick={() => handleHandoff(code)}
                 className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-left"
               >
                 <span className="flex items-center gap-3 text-sm font-semibold text-[#1A1A2E] min-w-0">

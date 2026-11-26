@@ -89,7 +89,7 @@ export function getTaskUrgency(
   if (isTaskCompleted(task)) return 'completed';
   if (isTaskCancelled(task)) return 'cancelled';
   const dueMs = task.due_at ? new Date(task.due_at).getTime() : NaN;
-  if (Number.isNaN(dueMs)) return 'upcoming';
+  if (!Number.isFinite(dueMs)) return 'upcoming';
   if (dueMs < nowMs) return 'overdue';
   return isSameLocalDay(new Date(dueMs), new Date(nowMs)) ? 'due_today' : 'upcoming';
 }
@@ -106,13 +106,23 @@ const URGENCY_WEIGHT: Record<TaskUrgency, number> = {
 /**
  * Sorts tasks overdue-first, then by due time ascending. Ties fall back to the
  * creation time so the order is stable.
+ *
+ * An unparseable `due_at` must never throw and must never reorder the list —
+ * such a task is treated as "no due date" and keeps its relative position
+ * behind every dated task.
  */
 export function sortTasksByUrgency(tasks: CrmTask[], nowMs: number = Date.now()): CrmTask[] {
+  const dueTime = (task: CrmTask): number => {
+    if (!task.due_at) return Number.MAX_SAFE_INTEGER;
+    const parsed = new Date(task.due_at).getTime();
+    return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+  };
+
   return [...tasks].sort((a, b) => {
     const urgencyDelta = URGENCY_WEIGHT[getTaskUrgency(a, nowMs)] - URGENCY_WEIGHT[getTaskUrgency(b, nowMs)];
     if (urgencyDelta !== 0) return urgencyDelta;
-    const dueA = a.due_at ? new Date(a.due_at).getTime() : Number.MAX_SAFE_INTEGER;
-    const dueB = b.due_at ? new Date(b.due_at).getTime() : Number.MAX_SAFE_INTEGER;
+    const dueA = dueTime(a);
+    const dueB = dueTime(b);
     if (dueA !== dueB) return dueA - dueB;
     return (a.created_at ?? '').localeCompare(b.created_at ?? '');
   });

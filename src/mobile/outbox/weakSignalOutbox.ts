@@ -56,18 +56,33 @@ export function appendToOutboxCapped(
 /**
  * Idempotency guard.
  *
+ * Returns `true` when a mutation with the same `client_mutation_id` is
+ * already present in the queue.
+ */
+export function hasClientMutationId(
+  queue: OutboxMutation[],
+  clientMutationId: string | undefined | null,
+): boolean {
+  if (!clientMutationId) return false;
+  return (queue ?? []).some(
+    (existing) => existing.client_mutation_id === clientMutationId,
+  );
+}
+
+/**
+ * Idempotency guard that also appends.
+ *
  * Returns the queue unchanged when a mutation with the same
- * `client_mutation_id` is already present.
+ * `client_mutation_id` is already present, and a **new** array with the
+ * mutation appended otherwise.
  */
 export function dedupeByClientMutationId(
   queue: OutboxMutation[],
   item: OutboxMutation,
 ): OutboxMutation[] {
-  if (!item.client_mutation_id) return queue;
-  const alreadyQueued = queue.some(
-    (existing) => existing.client_mutation_id === item.client_mutation_id,
-  );
-  return alreadyQueued ? queue : queue;
+  if (!item.client_mutation_id) return [...queue, item];
+  if (hasClientMutationId(queue, item.client_mutation_id)) return queue;
+  return [...queue, item];
 }
 
 /**
@@ -84,6 +99,36 @@ export function nextBackoffMs(attempt: number): number {
 export type OutboxConflictResolution = 'merge_discard' | 'force_create';
 
 /**
+ * Reads the phone number out of a queued lead mutation payload.
+ *
+ * The mobile producers use three different shapes and they must agree with
+ * `applyMutation`:
+ *  - `create_lead` → `payload.lead.phone`
+ *  - `update_lead` → `payload.updates.phone`
+ *  - flat payloads → `payload.phone`
+ */
+export function readMutationPhone(
+  payload: Record<string, unknown> | null | undefined,
+): string {
+  const source = (payload ?? {}) as Record<string, any>;
+  const candidates = [source.lead?.phone, source.updates?.phone, source.phone];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+/**
+ * True when the mutation was explicitly forced past the duplicate check.
+ */
+export function isForceSavedMutation(mutation: OutboxMutation): boolean {
+  const payload = (mutation.payload ?? {}) as Record<string, any>;
+  return payload.forceSave === true || payload.lead?.forceSave === true;
+}
+
+/**
  * Detects a duplicate-phone conflict for a queued lead mutation.
  *
  * `existingPhones` is the set of phone numbers already present in the live
@@ -96,9 +141,10 @@ export function detectDuplicatePhoneConflict(
 ): string | null {
   if (!existingPhones || existingPhones.size === 0) return null;
   if (mutation.kind !== 'create_lead' && mutation.kind !== 'update_lead') return null;
+  // A forced save is the user explicitly asking to keep the record.
+  if (isForceSavedMutation(mutation)) return null;
 
-  const payload = (mutation.payload ?? {}) as Record<string, unknown>;
-  const rawPhone = typeof payload.phone === 'string' ? payload.phone : '';
+  const rawPhone = readMutationPhone(mutation.payload);
   const digits = rawPhone.replace(/\D/g, '');
   if (digits.length < 10) return null;
 
@@ -195,13 +241,28 @@ function hasIndexedDb(): boolean {
   return typeof indexedDB !== 'undefined' && indexedDB !== null;
 }
 
+/**
+ * Session-scoped storage mode.
+ *
+ * `local` means IndexedDB could not be used (private mode, or another tab
+ * holding the database open). Once that happens the whole session sticks to
+ * localStorage: falling back *per call* would leave IndexedDB and
+ * localStorage holding two different queues — a split brain that silently
+ * drops queued field work.
+ */
+let storageMode: 'unknown' | 'idb' | 'local' = 'unknown';
+
 function openOutboxDatabase(): Promise<IDBDatabase | null> {
-  if (!hasIndexedDb()) return Promise.resolve(null);
+  if (!hasIndexedDb()) {
+    storageMode = 'local';
+    return Promise.resolve(null);
+  }
   return new Promise((resolve) => {
     let request: IDBOpenDBRequest;
     try {
       request = indexedDB.open(OUTBOX_DB_NAME, OUTBOX_DB_VERSION);
     } catch {
+      storageMode = 'local';
       resolve(null);
       return;
     }
@@ -211,9 +272,21 @@ function openOutboxDatabase(): Promise<IDBDatabase | null> {
         db.createObjectStore(OUTBOX_STORE_NAME, { keyPath: 'id' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
-    request.onblocked = () => resolve(null);
+    request.onsuccess = () => {
+      storageMode = 'idb';
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      storageMode = 'local';
+      resolve(null);
+    };
+    request.onblocked = () => {
+      // Another tab holds the database open. Falling back right now would
+      // split the queue across two stores, so the session commits to
+      // localStorage and never reads the stale IndexedDB copy again.
+      storageMode = 'local';
+      resolve(null);
+    };
   });
 }
 
@@ -238,8 +311,44 @@ function writeToLocalStorage(queue: OutboxMutation[]): void {
   }
 }
 
+/** Removes the localStorage mirror once IndexedDB is authoritative again. */
+function clearLocalStorageCopy(): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(OUTBOX_LOCAL_STORAGE_KEY);
+  } catch {
+    /* storage unavailable — nothing to clear */
+  }
+}
+
+/**
+ * Merges two queue snapshots into one, newest-id-wins per entry.
+ *
+ * Used to converge IndexedDB and localStorage so a blocked database never
+ * strands queued mutations in the store that is no longer read.
+ */
+export function mergeOutboxQueues(
+  primary: OutboxMutation[],
+  secondary: OutboxMutation[],
+): OutboxMutation[] {
+  const merged = new Map<string, OutboxMutation>();
+  (secondary ?? []).forEach((mutation) => {
+    if (mutation?.id) merged.set(mutation.id, mutation);
+  });
+  (primary ?? []).forEach((mutation) => {
+    if (mutation?.id) merged.set(mutation.id, mutation);
+  });
+  return [...merged.values()].sort((a, b) =>
+    (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+  );
+}
+
 /** Reads the persisted queue, preferring IndexedDB and falling back to localStorage. */
 export async function loadOutbox(): Promise<OutboxMutation[]> {
+  // The session already committed to localStorage — never read the stale
+  // IndexedDB copy again.
+  if (storageMode === 'local') return readFromLocalStorage();
+
   const db = await openOutboxDatabase();
   if (!db) return readFromLocalStorage();
 
@@ -256,7 +365,9 @@ export async function loadOutbox(): Promise<OutboxMutation[]> {
       const rows = (request.result ?? []) as OutboxMutation[];
       const sorted = [...rows].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
       db.close();
-      resolve(sorted);
+      // Converge both stores: anything only present in localStorage (written
+      // while IndexedDB was blocked) must not be lost.
+      resolve(mergeOutboxQueues(sorted, readFromLocalStorage()));
     };
     request.onerror = () => {
       db.close();
@@ -267,6 +378,11 @@ export async function loadOutbox(): Promise<OutboxMutation[]> {
 
 /** Persists the queue. Never throws. */
 export async function saveOutbox(queue: OutboxMutation[]): Promise<void> {
+  if (storageMode === 'local') {
+    writeToLocalStorage(queue);
+    return;
+  }
+
   const db = await openOutboxDatabase();
   if (!db) {
     writeToLocalStorage(queue);
@@ -294,6 +410,9 @@ export async function saveOutbox(queue: OutboxMutation[]): Promise<void> {
     }
     transaction.oncomplete = () => {
       db.close();
+      // IndexedDB is the source of truth now — drop the localStorage copy so
+      // the two stores can never disagree.
+      clearLocalStorageCopy();
       resolve();
     };
     transaction.onerror = () => {

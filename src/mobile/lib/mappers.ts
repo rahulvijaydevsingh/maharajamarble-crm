@@ -27,6 +27,7 @@ import type {
   Lead,
   LeadAttachment,
   Professional,
+  ProfessionalRef,
 } from '@/mobile/types/crmTypes';
 import { combineDateAndTime, toLocalTimeInputValue } from '@/mobile/lib/format';
 
@@ -44,6 +45,9 @@ export function jsonToString(value: Json | null | undefined): string | null {
 /**
  * Reads `additional_contacts` (a JSONB array) into typed contacts.
  * Never throws: a malformed or non-array value yields an empty list.
+ *
+ * Every contact keeps the raw JSONB record in `raw` so desktop-only keys
+ * survive a mobile edit — see {@link serializeAdditionalContacts}.
  */
 export function parseAdditionalContacts(value: Json | null | undefined): AdditionalContact[] {
   if (!Array.isArray(value)) return [];
@@ -54,6 +58,7 @@ export function parseAdditionalContacts(value: Json | null | undefined): Additio
     const name = typeof record.name === 'string' ? record.name : '';
     const phone = typeof record.phone === 'string' ? record.phone : '';
     contacts.push({
+      ...record,
       id: typeof record.id === 'string' && record.id ? record.id : `ac-${index}-${name}-${phone}`,
       name,
       phone,
@@ -82,18 +87,25 @@ export function parseAdditionalContacts(value: Json | null | undefined): Additio
           : typeof record.is_professional === 'boolean'
             ? record.is_professional
             : undefined,
+      raw: { ...record },
     });
   });
   return contacts;
 }
 
-/** Serializes contacts back into the JSONB array shape the desktop writes. */
+/**
+ * Serializes contacts back into the JSONB array shape the desktop writes.
+ *
+ * The unknown desktop-only keys captured in `raw` are written back first, so a
+ * round trip through the mobile form never drops a field the desktop owns.
+ */
 export function serializeAdditionalContacts(
   contacts: AdditionalContact[] | null | undefined,
 ): Array<Record<string, unknown>> {
   if (!Array.isArray(contacts)) return [];
   return contacts.map((contact) => {
     const record: Record<string, unknown> = {
+      ...(contact.raw ?? {}),
       id: contact.id,
       name: contact.name,
       phone: contact.phone,
@@ -109,8 +121,43 @@ export function serializeAdditionalContacts(
     if (contact.professional_id) record.professional_id = contact.professional_id;
     if (contact.is_primary_contact) record.is_primary_contact = true;
     if (contact.is_professional) record.isProfessional = contact.is_professional;
+    // The passthrough itself is never part of the stored shape.
+    delete record.raw;
     return record;
   });
+}
+
+/**
+ * Reads `leads.referred_by` (JSONB) into either a plain string (legacy rows)
+ * or a {@link ProfessionalRef} object (the desktop shape).
+ *
+ * The desktop stores a structured object here. Flattening it to a string — or
+ * wiping it on edit — loses the referral, so the object is preserved as-is.
+ */
+export function parseReferredBy(
+  value: Json | null | undefined,
+): string | ProfessionalRef | null {
+  if (typeof value === 'string') return value.trim() ? value : null;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id : '';
+    const name = typeof record.name === 'string' ? record.name : '';
+    if (!id && !name) return null;
+    return {
+      id,
+      name,
+      firmName:
+        typeof record.firmName === 'string'
+          ? record.firmName
+          : typeof record.firm_name === 'string'
+            ? record.firm_name
+            : null,
+      type: typeof record.type === 'string' ? record.type : null,
+      phone: typeof record.phone === 'string' ? record.phone : null,
+      email: typeof record.email === 'string' ? record.email : null,
+    };
+  }
+  return null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -169,9 +216,17 @@ export function toMobileLead(lead: LiveLead): Lead {
     construction_stage: lead.construction_stage ?? '',
     estimated_qty_sqft: lead.estimated_quantity ?? null,
     lead_source: lead.source ?? '',
-    referred_by: jsonToString(lead.referred_by),
+    referred_by: parseReferredBy(lead.referred_by),
     priority: toPriorityNumber(lead.priority),
     status: lead.status ?? 'new',
+    // The live `Lead` type does not declare the conversion columns even
+    // though they exist on the table — they decide whether a lead is a
+    // customer already.
+    is_converted:
+      (lead as unknown as { is_converted?: boolean | null }).is_converted ?? null,
+    converted_to_customer_id:
+      (lead as unknown as { converted_to_customer_id?: string | null })
+        .converted_to_customer_id ?? null,
     lost_reason:
       typeof (lead as unknown as Record<string, unknown>).lost_reason === 'string'
         ? ((lead as unknown as Record<string, unknown>).lost_reason as string)
@@ -214,6 +269,10 @@ export type MobileLeadWrite = Omit<LiveLeadInsert, 'additional_contacts'> & {
  *
  * `forceSave` is intentionally NOT part of the payload — it only controls the
  * client-side duplicate gate before this function is called.
+ *
+ * INVARIANT-04: `assigned_to` records the staff member the record is assigned
+ * to, while `created_by` / `updated_by` always record the **signed-in actor**
+ * (`profile.full_name`). They are never the same value by accident.
  */
 export function toLeadInsert(
   form: {
@@ -230,14 +289,15 @@ export function toLeadInsert(
     construction_stage: string;
     estimated_qty_sqft?: number | null;
     lead_source: string;
-    referred_by?: string | null;
+    referred_by?: string | ProfessionalRef | null;
     notes?: string | null;
     priority: number;
     next_action_at: string;
     reminder_enabled: boolean;
     additional_contacts?: AdditionalContact[];
   },
-  staffName: string,
+  assignedTo: string,
+  actorName: string = assignedTo,
 ): MobileLeadWrite {
   return {
     name: form.full_name.trim(),
@@ -254,13 +314,13 @@ export function toLeadInsert(
     estimated_quantity: form.estimated_qty_sqft ?? null,
     material_interests: Array.isArray(form.material_interests) ? form.material_interests : [],
     source: form.lead_source,
-    referred_by: form.referred_by ?? null,
+    referred_by: (form.referred_by ?? null) as unknown as Json,
     notes: form.notes ?? null,
-    assigned_to: staffName,
+    assigned_to: assignedTo,
     priority: toPriorityNumber(form.priority),
     next_follow_up: form.reminder_enabled ? form.next_action_at : null,
-    created_by: staffName,
-    updated_by: staffName,
+    created_by: actorName,
+    updated_by: actorName,
   };
 }
 
@@ -308,7 +368,8 @@ export function toCustomerInsert(
     notes?: string | null;
     additional_contacts?: AdditionalContact[];
   },
-  staffName: string,
+  assignedTo: string,
+  actorName: string = assignedTo,
 ): LiveCustomerInsert {
   return {
     name: form.full_name.trim(),
@@ -321,9 +382,9 @@ export function toCustomerInsert(
     site_plus_code: form.plus_code ?? null,
     notes: form.notes ?? null,
     additional_contacts: serializeAdditionalContacts(form.additional_contacts) as unknown as Json,
-    assigned_to: staffName,
-    created_by: staffName,
-    updated_by: staffName,
+    assigned_to: assignedTo,
+    created_by: actorName,
+    updated_by: actorName,
   };
 }
 
@@ -368,6 +429,7 @@ export function toProfessionalInsert(
     notes?: string | null;
   },
   staffName: string,
+  actorName: string = staffName,
 ): LiveProfessionalInsert {
   return {
     name: form.full_name.trim(),
@@ -381,8 +443,8 @@ export function toProfessionalInsert(
     site_plus_code: form.plus_code ?? null,
     notes: form.notes ?? null,
     assigned_to: staffName,
-    created_by: staffName,
-    updated_by: staffName,
+    created_by: actorName,
+    updated_by: actorName,
   };
 }
 
