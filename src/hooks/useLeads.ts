@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Json } from "@/integrations/supabase/types";
 import { logToStaffActivity } from "@/lib/staffActivityLogger";
 import { useAuth } from "@/contexts/AuthContext";
+import { upsertLeadById } from "@/lib/leadListMerge";
 
 export interface Lead {
   id: string;
@@ -115,7 +116,7 @@ function useLeadsStore(): LeadsStore {
         .single();
 
       if (error) throw error;
-      setLeads((prev) => [data, ...prev]);
+      setLeads((prev) => upsertLeadById(prev, data));
       return data;
     } catch (error: any) {
       toast({
@@ -240,13 +241,9 @@ function useLeadsStore(): LeadsStore {
         { event: "*", schema: "public", table: "leads" },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            setLeads((prev) => [payload.new as Lead, ...prev]);
+            setLeads((prev) => upsertLeadById(prev, payload.new as Lead));
           } else if (payload.eventType === "UPDATE") {
-            setLeads((prev) =>
-              prev.map((lead) =>
-                lead.id === payload.new.id ? (payload.new as Lead) : lead
-              )
-            );
+            setLeads((prev) => upsertLeadById(prev, payload.new as Lead));
           } else if (payload.eventType === "DELETE") {
             setLeads((prev) =>
               prev.filter((lead) => lead.id !== payload.old.id)

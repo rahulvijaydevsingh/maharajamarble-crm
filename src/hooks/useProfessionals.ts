@@ -73,6 +73,21 @@ interface ProfessionalsContextType {
 
 const ProfessionalsContext = createContext<ProfessionalsContextType | undefined>(undefined);
 
+export function mergeProfessionalById(
+  professionals: Professional[],
+  professional: Professional,
+): Professional[] {
+  const existingIndex = professionals.findIndex((existing) => existing.id === professional.id);
+
+  if (existingIndex === -1) {
+    return [professional, ...professionals];
+  }
+
+  const nextProfessionals = [...professionals];
+  nextProfessionals[existingIndex] = professional;
+  return nextProfessionals;
+}
+
 async function getSessionUser() {
   const { data } = await supabase.auth.getSession();
   return data.session?.user ?? null;
@@ -133,7 +148,7 @@ function useProfessionalsStore() {
 
       if (error) throw error;
 
-      setProfessionals((prev) => [data, ...prev]);
+      setProfessionals((prev) => mergeProfessionalById(prev, data));
       toast({ title: "Professional added successfully" });
 
       const u = await getSessionUser();
@@ -239,7 +254,7 @@ function useProfessionalsStore() {
         { event: "*", schema: "public", table: "professionals" },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            setProfessionals((prev) => [payload.new as Professional, ...prev]);
+            setProfessionals((prev) => mergeProfessionalById(prev, payload.new as Professional));
           } else if (payload.eventType === "UPDATE") {
             setProfessionals((prev) =>
               prev.map((p) =>
