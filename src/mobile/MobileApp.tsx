@@ -232,21 +232,29 @@ const MobileWorkspaceController: React.FC = () => {
     [parsedRoute],
   );
 
+  const currentRouteKey = buildMobilePath(route);
+  const prevRouteKeyRef = React.useRef(currentRouteKey);
   useEffect(() => {
+    if (prevRouteKeyRef.current === currentRouteKey) return;
+    prevRouteKeyRef.current = currentRouteKey;
     if (
       pendingLeadLifecycle &&
-      (route.name !== 'entity_profile' || route.entityType !== 'lead' || route.entityId !== pendingLeadLifecycle.leadId)
+      (route.name !== 'entity_profile' ||
+        route.entityType !== 'lead' ||
+        route.entityId !== pendingLeadLifecycle.leadId)
     ) {
       setPendingLeadLifecycle(null);
     }
     if (
       pendingTaskCompletion &&
       !pendingTaskCompletion.ready &&
-      (route.name !== 'entity_profile' || route.entityType !== 'lead' || route.entityId !== pendingTaskCompletion.handoff.leadId)
+      (route.name !== 'entity_profile' ||
+        route.entityType !== 'lead' ||
+        route.entityId !== pendingTaskCompletion.handoff.leadId)
     ) {
       setPendingTaskCompletion(null);
     }
-  }, [route, pendingLeadLifecycle, pendingTaskCompletion]);
+  }, [currentRouteKey, route, pendingLeadLifecycle, pendingTaskCompletion]);
 
   const onNavigate = useCallback(
     (next: MobileRoute) => {

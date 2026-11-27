@@ -1969,9 +1969,8 @@ export const CallOutcomeSheet: React.FC<{
   const defaultFollowUpType = defaultFollowUpOption?.value ?? '';
   const defaultFollowUpLabel = defaultFollowUpOption?.label ?? '';
   const targetTask = target?.taskId ? tasks.find((item) => item.id === target.taskId) ?? null : null;
-  const targetTaskId = targetTask?.id;
   const targetTaskReminder = targetTask?.reminder;
-  const hasTargetTask = Boolean(targetTaskId);
+  const hasTargetTask = Boolean(targetTask);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
 
@@ -2081,11 +2080,12 @@ export const CallOutcomeSheet: React.FC<{
 
   useEffect(() => {
     if (!open || reminderTouchedRef.current) return;
-    const nextReminder = mode === 'call' && hasTargetTask
-      ? (targetTaskReminder ?? defaultRemindersEnabled)
-      : defaultRemindersEnabled;
+    const nextReminder =
+      taskAction === 'reschedule' && hasTargetTask
+        ? (targetTaskReminder ?? defaultRemindersEnabled)
+        : defaultRemindersEnabled;
     setReminderAlarm((current) => (current === nextReminder ? current : nextReminder));
-  }, [open, mode, hasTargetTask, targetTaskId, targetTaskReminder, defaultRemindersEnabled]);
+  }, [open, taskAction, hasTargetTask, targetTaskReminder, defaultRemindersEnabled]);
 
   if (!open || !target) return null;
 
@@ -2178,6 +2178,7 @@ export const CallOutcomeSheet: React.FC<{
     }
     if (
       shouldHandoffTaskCompletion &&
+      onLeadLifecycleAction &&
       target.taskId &&
       linkedLeadId &&
       (nextStep === 'convert' || nextStep === 'lost')
