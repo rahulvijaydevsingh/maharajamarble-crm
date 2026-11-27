@@ -21,7 +21,7 @@ import { buildMobilePath, parseMobilePath } from '@/mobile/routing/workspacePref
 import { MobileControlPanelProvider } from '@/mobile/lib/controlPanelContext';
 import { ClockInOutModal } from '@/components/hr/ClockInOutModal';
 import { AttendancePromptGuard } from '@/mobile/components/AttendancePromptGuard';
-import { formatPhoneDisplay } from '@/mobile/lib/format';
+import { formatPhoneDisplay, toLocalDateInputValue } from '@/mobile/lib/format';
 import {
   resolveClockMode,
   type ClockMode,
@@ -78,6 +78,8 @@ const MobileWorkspaceController: React.FC = () => {
   }>({ open: false, mode: 'menu' });
   const [callLogPickerOpen, setCallLogPickerOpen] = useState(false);
   const [callLogQuery, setCallLogQuery] = useState('');
+  const [callOutcomeMode, setCallOutcomeMode] = useState<'call' | 'complete'>('call');
+  const [pendingLeadLifecycle, setPendingLeadLifecycle] = useState<{ leadId: string; action: 'convert' | 'lost' } | null>(null);
 
   const { callOutcomeTarget, openCallOutcome, dismissCallOutcome } =
     useCallIntentWatcher();
@@ -139,7 +141,7 @@ const MobileWorkspaceController: React.FC = () => {
       return;
     }
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateInputValue(new Date().toISOString());
       const { data } = await supabase
         .from('attendance_records')
         .select('clock_in, clock_out')
@@ -221,6 +223,15 @@ const MobileWorkspaceController: React.FC = () => {
 
   const handleOpenCallOutcome = useCallback(
     (target: CallIntentTarget) => {
+      setCallOutcomeMode('call');
+      openCallOutcome(target);
+    },
+    [openCallOutcome],
+  );
+
+  const handleOpenCompletionSheet = useCallback(
+    (target: CallIntentTarget) => {
+      setCallOutcomeMode('complete');
       openCallOutcome(target);
     },
     [openCallOutcome],
@@ -235,6 +246,15 @@ const MobileWorkspaceController: React.FC = () => {
    */
   const handleBeginCall = useCallback((target: CallIntentTarget) => {
     recordCallIntent(target);
+  }, []);
+
+  const handleLeadLifecycleAction = useCallback((action: 'convert' | 'lost', leadId: string) => {
+    setPendingLeadLifecycle({ leadId, action });
+    navigate(buildMobilePath({ name: 'entity_profile', entityType: 'lead', entityId: leadId, initialTab: 'overview' }));
+  }, [navigate]);
+
+  const handleLeadActionHandled = useCallback(() => {
+    setPendingLeadLifecycle(null);
   }, []);
 
   return (
@@ -266,6 +286,7 @@ const MobileWorkspaceController: React.FC = () => {
               onOpenClockModal={() => setClockModalOpen(true)}
               clockMode={clockMode}
               onOpenCallOutcome={handleOpenCallOutcome}
+              onOpenCompletionSheet={handleOpenCompletionSheet}
               onBeginCall={handleBeginCall}
               attendanceBanner={<AttendancePromptGuard />}
             />
@@ -330,6 +351,9 @@ const MobileWorkspaceController: React.FC = () => {
               onBack={goBack}
               onNavigate={onNavigate}
               onOpenCallOutcome={handleOpenCallOutcome}
+              onOpenCompletionSheet={handleOpenCompletionSheet}
+              initialLeadAction={pendingLeadLifecycle?.leadId === route.entityId ? pendingLeadLifecycle.action : null}
+              onLeadActionHandled={handleLeadActionHandled}
               onBeginCall={handleBeginCall}
               onOpenQuickTask={(entityType, entityId) =>
                 setQuickAddState({
@@ -430,7 +454,7 @@ const MobileWorkspaceController: React.FC = () => {
                     onChange={(event) => setCallLogQuery(event.target.value)}
                     placeholder="Search name, phone or firm"
                     aria-label="Search contacts for call log"
-                    className="flex-1 bg-transparent py-3 text-sm text-[#1A1A2E] outline-none placeholder:text-[#8A8A93]"
+                    className="flex-1 bg-transparent py-3 text-[#1A1A2E] outline-none placeholder:text-[#8A8A93] text-base"
                   />
                 </div>
                 {callLogMatchesTruncated && (
@@ -486,6 +510,7 @@ const MobileWorkspaceController: React.FC = () => {
             onClose={() => navigate(buildMobilePath({ name: 'work' }))}
             onNavigate={onNavigate}
             onOpenCallOutcome={handleOpenCallOutcome}
+            onOpenCompletionSheet={handleOpenCompletionSheet}
             onBeginCall={handleBeginCall}
           />
         )}
@@ -493,9 +518,14 @@ const MobileWorkspaceController: React.FC = () => {
         {callOutcomeTarget ? (
           <CallOutcomeSheet
             open={Boolean(callOutcomeTarget)}
+            mode={callOutcomeMode}
+            onLeadLifecycleAction={handleLeadLifecycleAction}
             openedAfterCall={Boolean(callOutcomeTarget?.openedAfterCall)}
             target={callOutcomeTarget}
-            onDismiss={dismissCallOutcome}
+            onDismiss={() => {
+              setCallOutcomeMode('call');
+              dismissCallOutcome();
+            }}
           />
         ) : null}
 

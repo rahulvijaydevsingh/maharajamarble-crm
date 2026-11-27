@@ -16,6 +16,7 @@ import { useLogActivity } from '@/hooks/useActivityLog';
 import { useToast } from '@/hooks/use-toast';
 import { normalizePhone10 } from '@/lib/phone';
 import { supabase } from '@/integrations/supabase/client';
+import { requireSafeStaffName } from '@/mobile/lib/staffAttribution';
 
 import type { OutboxMutation } from '@/mobile/types/crmTypes';
 import {
@@ -282,8 +283,11 @@ export const WeakSignalOutboxProvider: React.FC<{ children: React.ReactNode }> =
    * It mirrors what `addLead` stores, so the replay guard compares like with
    * like.
    */
-  const creatorValue =
-    profile?.full_name || user?.email || user?.id || 'unknown';
+  const creatorValue = requireSafeStaffName(
+    profile?.full_name ?? null,
+    profile?.full_name ?? null,
+    'System',
+  );
 
   const applyMutation = useCallback(
     async (mutation: OutboxMutation): Promise<{ ok: boolean; conflict?: string }> => {

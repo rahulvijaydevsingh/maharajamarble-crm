@@ -10,11 +10,11 @@
  *    (the byte-for-byte copy of `src/pages/Tasks.tsx:116-118`), so Customer and
  *    Professional tasks stay visible while deleted-lead orphans, soft-deleted
  *    tasks and cancelled tasks never show up,
- *  - task types and call outcomes come from the Control Panel
- *    (`getFieldOptions('tasks', 'type' | 'completion_outcome')`) and fall back
- *    to `src/constants/taskConstants.ts` — no snake_case values are invented,
- *  - reminders come from `useReminders()` and a reschedule always deletes the
- *    old row before inserting a new one so `is_dismissed` resets to false.
+ *  - task types and configured completion outcomes come from the live Control Panel;
+ *    completion outcomes fall back to the shared six-option constant while the
+ *    configured field has no active values, and `KIT*` task types are excluded,
+ *  - task reschedules use `useTasks().updateTask()`, whose canonical reminder
+ *    mirror DELETEs and INSERTs one task-scoped row with `is_dismissed=false`.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -52,6 +52,7 @@ import { useProfessionals } from '@/hooks/useProfessionals';
 import { useReminders } from '@/hooks/useReminders';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { useTasks } from '@/hooks/useTasks';
+import { useActiveStaffOptions } from '@/hooks/useActiveStaff';
 
 import { normalizePhone10 } from '@/lib/phone';
 import {
@@ -59,7 +60,8 @@ import {
   resolveProfessionalForProfessionalLead,
   type ProfessionalLeadCandidate,
 } from '@/lib/professionalResolver';
-import { TASK_COMPLETION_OUTCOMES, TASK_TYPES } from '@/constants/taskConstants';
+import { getRescheduleReasonSuggestions, OUTCOME_OPTIONS } from '@/constants/taskConstants';
+import type { ActivityType } from '@/constants/activityLogConstants';
 
 import { EntityBadge, StatusBadge } from '@/mobile/shell/MobileShell';
 import {
@@ -74,7 +76,7 @@ import {
   toLocalTimeInputValue,
 } from '@/mobile/lib/format';
 import { toMobileTask } from '@/mobile/lib/mappers';
-import { requireSafeStaffName } from '@/mobile/lib/staffAttribution';
+import { isSafeStaffName, requireSafeStaffName } from '@/mobile/lib/staffAttribution';
 import { clockModeLabel, type ClockMode } from '@/mobile/lib/clockMode';
 import {
   canUseTaskScopeToggle,
@@ -87,8 +89,13 @@ import {
   type TaskScope,
 } from '@/mobile/lib/tasks';
 import {
+  buildFollowUpTaskPayload,
   cancelTaskWithCleanup,
   completeTaskWithRecurrence,
+  createFollowUpTaskOnce,
+  getDefaultFollowUpTaskTitle,
+  hasValidTaskReschedule,
+  isLeadOnlyOpenNonRecurringTask,
   type TaskActionDeps,
 } from '@/mobile/lib/taskActions';
 
@@ -200,8 +207,8 @@ function localIsoFromInputs(dateStr: string, timeStr: string): string {
 
 interface ControlPanelView {
   /** Task types — Control Panel values, `KIT*` entries removed. */
-  taskTypes: { value: string; label: string }[];
-  /** Call outcomes — Control Panel values, falling back to the constants. */
+  taskTypes: { value: string; label: string; isDefault: boolean }[];
+  /** Call outcomes — the shared code-defined six-outcome vocabulary. */
   outcomes: { value: string; label: string }[];
   /** `value → label` map for the task types. */
   typeLabelMap: Record<string, string>;
@@ -221,26 +228,24 @@ function useControlPanelView(): ControlPanelView {
     const controlPanel = getFieldOptions('tasks', 'type').filter(
       (option) => !option.value.startsWith('KIT'),
     );
-    if (controlPanel.length > 0) {
-      return controlPanel.map((option) => ({
-        value: option.value,
-        label: getOptionLabel('tasks', 'type', option.value) || option.label,
-      }));
-    }
-    return TASK_TYPES.map((value) => ({ value, label: value }));
+    return controlPanel.map((option) => ({
+      value: option.value,
+      label: getOptionLabel('tasks', 'type', option.value) || option.label,
+      isDefault: option.isDefault,
+    }));
   }, [getFieldOptions, getOptionLabel]);
 
-  /**
-   * The completion outcomes come straight from the shared constant.
-   *
-   * The desktop `TaskCompletionDialog` uses `TASK_COMPLETION_OUTCOMES`, so a
-   * mobile-only Control Panel list would let the two surfaces write different
-   * values into the same column.
-   */
-  const outcomes = useMemo(
-    () => TASK_COMPLETION_OUTCOMES.map((value) => ({ value, label: value })),
-    [],
-  );
+  /** Prefer configured outcomes; use the shared desktop vocabulary while the panel is empty. */
+  const outcomes = useMemo(() => {
+    const configured = getFieldOptions('tasks', 'completion_outcome');
+    if (configured.length === 0) {
+      return OUTCOME_OPTIONS.map((value) => ({ value, label: value }));
+    }
+    return configured.map((option) => ({
+      value: option.value,
+      label: getOptionLabel('tasks', 'completion_outcome', option.value) || option.label,
+    }));
+  }, [getFieldOptions, getOptionLabel]);
 
   const typeLabelMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -762,6 +767,7 @@ export const TodayPage: React.FC<{
   onNavigate: (route: MobileRoute) => void;
   onOpenClockModal: () => void;
   onOpenCallOutcome: (target: MobileCallTarget) => void;
+  onOpenCompletionSheet: (target: MobileCallTarget) => void;
   /**
    * Called when the user taps the Call tile. It only records the intent to
    * call; the sheet then opens once the user comes back from the dialer.
@@ -778,11 +784,12 @@ export const TodayPage: React.FC<{
   onNavigate,
   onOpenClockModal,
   onOpenCallOutcome,
+  onOpenCompletionSheet,
   onBeginCall,
   attendanceBanner,
   clockMode = 'clock-in',
 }) => {
-  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
+  const { tasks } = useTasks();
   const { isOnline, enqueue } = useWeakSignalOutbox();
   const { toast } = useToast();
   const { leads } = useLeads();
@@ -904,29 +911,16 @@ export const TodayPage: React.FC<{
     return { name: 'Task', role: 'Follow-up', kind: null };
   };
 
-  /**
-   * Completes a task through the shared helper, so a recurring task rolls
-   * forward into its next occurrence and the task's own alarm is dismissed —
-   * exactly like the desktop completion flow.
-   */
-  const handleCompleteTask = async (task: CrmTask) => {
-    const result = await completeTaskWithRecurrence(
-      { id: task.id, is_recurring: task.is_recurring },
-      {
-        updateTask,
-        createNextRecurringInstance,
-        dismissReminder,
-        reminders,
-        onError: (message: string) =>
-          toast({
-            title: 'Task not updated',
-            description: message,
-            variant: 'destructive',
-          }),
-      },
-    );
-    if (!result.ok) return;
-    toast({ title: 'Task completed', description: task.title });
+  /** Every Done tap enters the completion sheet, never a silent status update. */
+  const handleCompleteTask = (task: CrmTask) => {
+    const entity = resolveEntity(task);
+    onOpenCompletionSheet({
+      entityType: entity.entityType,
+      entityId: entity.entityId,
+      entityName: entity.name,
+      phone: entity.phone,
+      taskId: task.id,
+    });
   };
 
   return (
@@ -1051,24 +1045,7 @@ export const TodayPage: React.FC<{
                     if (onBeginCall) onBeginCall(target);
                     else onOpenCallOutcome(target);
                   }}
-                  onFourthAction={() => {
-                    const updates = { status: TASK_STATUS_COMPLETED };
-                    if (!isOnline) {
-                      // The device is offline — the write is parked on the
-                      // device and replayed by the outbox.
-                      enqueue({
-                        kind: 'task_action',
-                        label: `Complete task · ${task.title}`,
-                        payload: { taskId: task.id, updates },
-                      });
-                      toast({
-                        title: 'Saved offline',
-                        description: 'This update is stored on the device and will sync automatically.',
-                      });
-                      return;
-                    }
-                    void handleCompleteTask(task);
-                  }}
+                  onFourthAction={() => handleCompleteTask(task)}
                   fourthLabel="Done"
                   showFourthAction={canEditTasks}
                 />
@@ -1463,12 +1440,13 @@ export const TaskDetailSheet: React.FC<{
   onClose: () => void;
   onNavigate: (route: MobileRoute) => void;
   onOpenCallOutcome: (target: MobileCallTarget) => void;
+  onOpenCompletionSheet: (target: MobileCallTarget) => void;
   /** Records the intent to call; the sheet opens on return from the dialer. */
   onBeginCall?: (target: MobileCallTarget) => void;
-}> = ({ open, taskId, onClose, onNavigate, onOpenCallOutcome, onBeginCall }) => {
+}> = ({ open, taskId, onClose, onNavigate, onOpenCallOutcome, onOpenCompletionSheet, onBeginCall }) => {
   const { tasks, updateTask, createNextRecurringInstance } = useTasks();
   const { defaultRemindersEnabled } = useSystemSettings();
-  const { addReminder, deleteReminder, dismissReminder, reminders } = useReminders(
+  const { dismissReminder, reminders } = useReminders(
     taskId ? 'task' : undefined,
     taskId ?? undefined,
   );
@@ -1481,6 +1459,7 @@ export const TaskDetailSheet: React.FC<{
   const resolveEntity = useTaskEntityResolver(control.getOptionLabel);
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleReason, setRescheduleReason] = useState('');
   const [busy, setBusy] = useState(false);
   /** The last failure of a sheet action — shown inline, the sheet stays open. */
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1502,12 +1481,12 @@ export const TaskDetailSheet: React.FC<{
     if (!open || !task) return;
     setDateStr(toLocalDateInputValue(task.due_at));
     setTimeStr(toLocalTimeInputValue(task.due_at));
-    // The toggle starts from the task's own value — the system default must
-    // not silently switch a task's reminder on.
+    // Existing task reschedules preserve that task's reminder setting.
     setReminderOn(task.reminder_enabled);
+    setRescheduleReason('');
     setRescheduleOpen(false);
     setActionError(null);
-  }, [open, task, defaultRemindersEnabled]);
+  }, [open, task]);
 
   if (!open || !task) return null;
 
@@ -1526,29 +1505,6 @@ export const TaskDetailSheet: React.FC<{
   };
 
   /**
-   * Delete-then-insert: the old reminder row is removed first so the new row
-   * starts with `is_dismissed = false` again.
-   */
-  const rescheduleReminder = async (dueIso: string, withReminder: boolean) => {
-    const scoped = reminders.filter(
-      (reminder) => reminder.entity_type === 'task' && reminder.entity_id === task.id,
-    );
-    for (const reminder of scoped) {
-      await deleteReminder(reminder.id);
-    }
-    if (withReminder) {
-      await addReminder({
-        title: task.title,
-        description: `Follow-up for ${entity.name}`,
-        reminder_datetime: dueIso,
-        entity_type: 'task',
-        entity_id: task.id,
-        assigned_to: staffName,
-      });
-    }
-  };
-
-  /**
    * Records the reschedule on the task trail (`task_activity_log` — the table
    * the desktop completion dialog writes to) and on the entity timeline.
    */
@@ -1559,6 +1515,7 @@ export const TaskDetailSheet: React.FC<{
       {
         old_value: { due_date: oldDueDate, due_time: liveTask?.due_time ?? null },
         new_value: { due_date: newDueDate, due_time: timeStr },
+        reason: rescheduleReason.trim(),
         reschedule_count: (liveTask?.reschedule_count ?? 0) + 1,
       },
       staffName,
@@ -1568,24 +1525,26 @@ export const TaskDetailSheet: React.FC<{
     if (entity.entityType === 'lead' && entity.entityId) {
       await logActivity({
         lead_id: entity.entityId,
-        activity_type: 'task_updated',
+        activity_type: 'task_outcome_recorded' as ActivityType,
         activity_category: 'task',
-        title: `Task rescheduled: ${task.title}`,
+        title: `Task Rescheduled: ${task.title} — ${rescheduleReason.trim()}`,
         description: `Moved to ${newDueDate}`,
-        metadata: { task_id: task.id, old_due_date: oldDueDate, new_due_date: newDueDate },
-        related_entity_type: 'lead',
-        related_entity_id: entity.entityId,
+        is_manual: false,
+        metadata: { task_id: task.id, old_due_date: oldDueDate, new_due_date: newDueDate, reason: rescheduleReason.trim() },
+        related_entity_type: 'task',
+        related_entity_id: task.id,
       });
     } else if (entity.entityType === 'customer' && entity.entityId) {
       await logActivity({
         customer_id: entity.entityId,
-        activity_type: 'task_updated',
+        activity_type: 'task_outcome_recorded' as ActivityType,
         activity_category: 'task',
-        title: `Task rescheduled: ${task.title}`,
+        title: `Task Rescheduled: ${task.title} — ${rescheduleReason.trim()}`,
         description: `Moved to ${newDueDate}`,
-        metadata: { task_id: task.id, old_due_date: oldDueDate, new_due_date: newDueDate },
-        related_entity_type: 'customer',
-        related_entity_id: entity.entityId,
+        is_manual: false,
+        metadata: { task_id: task.id, old_due_date: oldDueDate, new_due_date: newDueDate, reason: rescheduleReason.trim() },
+        related_entity_type: 'task',
+        related_entity_id: task.id,
       });
     }
   };
@@ -1594,18 +1553,18 @@ export const TaskDetailSheet: React.FC<{
     if (!liveTask) return;
     // A reschedule without a date is not a reschedule — the old due date
     // would silently be cleared.
-    if (!dateStr.trim()) {
-      setActionError('Pick a date before saving the reschedule.');
+    if (!hasValidTaskReschedule(rescheduleReason, dateStr)) {
+      setActionError(!rescheduleReason.trim() ? 'Enter a reschedule reason before saving.' : 'Pick a date before saving the reschedule.');
       return;
     }
     setActionError(null);
     setBusy(true);
     try {
-      const dueIso = localIsoFromInputs(dateStr, timeStr);
       const updates: Partial<TaskInsert> & { completed_at?: string | null } = {
         due_date: dateStr,
         due_time: timeStr,
         reminder: reminderOn,
+        reschedule_reason: rescheduleReason.trim(),
         reschedule_count: (liveTask.reschedule_count ?? 0) + 1,
       };
       if (liveTask.status === TASK_STATUS_COMPLETED) {
@@ -1627,8 +1586,9 @@ export const TaskDetailSheet: React.FC<{
         return;
       }
 
+      // useTasks.updateTask owns the canonical task-scoped reminder mirror:
+      // it DELETEs old rows and INSERTs one new row with is_dismissed=false.
       await updateTask(task.id, updates);
-      await rescheduleReminder(dueIso, reminderOn);
       await recordReschedule(liveTask.due_date ?? null, dateStr);
       onClose();
     } catch (error) {
@@ -1804,6 +1764,17 @@ export const TaskDetailSheet: React.FC<{
 
         {rescheduleOpen && (
           <div className="p-3.5 rounded-[12px] bg-[#F8F9FA] border border-[#E2E8F0] space-y-3">
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-[#1A1A2E]">Reschedule Reason *</div>
+              <div className="flex flex-wrap gap-1.5">
+                {getRescheduleReasonSuggestions('').map((suggestion) => (
+                  <button key={suggestion} type="button" onClick={() => setRescheduleReason(suggestion)} className="min-h-[44px] px-2.5 rounded-full border border-[#E2E8F0] bg-white text-xs font-medium text-[#1A1A2E]">
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+              <textarea rows={2} value={rescheduleReason} onChange={(event) => setRescheduleReason(event.target.value)} placeholder="Why is this task being rescheduled?" className="w-full min-h-[72px] p-3 rounded-[10px] border border-[#E2E8F0] bg-white text-base" />
+            </div>
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-xs font-semibold text-[#1A1A2E] mb-1">New Date</label>
@@ -1903,7 +1874,7 @@ export const TaskDetailSheet: React.FC<{
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void handleStatus(TASK_STATUS_COMPLETED)}
+                  onClick={() => onOpenCompletionSheet({ entityType: entity.entityType, entityId: entity.entityId, entityName: entity.name, phone: entity.phone, taskId: task.id })}
                   className="min-h-[48px] rounded-[12px] bg-[#C9A84C] text-sm font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5 disabled:opacity-60"
                 >
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -1924,22 +1895,23 @@ export const TaskDetailSheet: React.FC<{
 
 export const CallOutcomeSheet: React.FC<{
   open: boolean;
+  mode?: 'call' | 'complete';
   openedAfterCall: boolean;
   target: MobileCallTarget | null;
   onDismiss: () => void;
-}> = ({ open, openedAfterCall, target, onDismiss }) => {
-  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
+  onLeadLifecycleAction?: (action: 'convert' | 'lost', leadId: string) => void;
+}> = ({ open, mode = 'call', openedAfterCall, target, onDismiss, onLeadLifecycleAction }) => {
+  const { tasks, updateTask, createNextRecurringInstance, addTask } = useTasks();
+  const { options: activeStaffOptions } = useActiveStaffOptions();
   const { logActivity } = useLogActivity();
   const { defaultRemindersEnabled } = useSystemSettings();
   const { profile, user } = useAuth();
   const { hasPermission } = usePermissions();
   const control = useControlPanelView();
 
-  const scopeType = target?.taskId ? 'task' : target?.entityType;
-  const scopeId = target?.taskId ?? target?.entityId;
-  const { addReminder, deleteReminder, dismissReminder, reminders } = useReminders(
-    scopeType,
-    scopeId,
+  const { dismissReminder, reminders } = useReminders(
+    target?.taskId ? 'task' : undefined,
+    target?.taskId ?? undefined,
   );
 
   /** Writing a task needs `tasks.edit` — a read-only role never writes one. */
@@ -1960,6 +1932,14 @@ export const CallOutcomeSheet: React.FC<{
 
   const [outcome, setOutcome] = useState<CallOutcomeValue>('');
   const [note, setNote] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [createAdHocFollowUp, setCreateAdHocFollowUp] = useState(false);
+  const [nextStep, setNextStep] = useState<'create' | 'none' | 'convert' | 'lost'>('create');
+  const [followUpTaskType, setFollowUpTaskType] = useState('');
+  const [followUpAssignee, setFollowUpAssignee] = useState('');
+  const [followUpTitle, setFollowUpTitle] = useState('');
+  const followUpTitleTouchedRef = useRef(false);
+  const followUpTaskIdRef = useRef<string | null>(null);
   // A call that is not attached to a task must never close the task by
   // accident — the default is "keep it open".
   const [taskAction, setTaskAction] = useState<CallOutcomeAction>('keep_open');
@@ -1971,6 +1951,13 @@ export const CallOutcomeSheet: React.FC<{
   const [timeStr, setTimeStr] = useState(() => toLocalTimeInputValue(defaultTomorrow));
   const [reminderAlarm, setReminderAlarm] = useState<boolean>(defaultRemindersEnabled);
   const [busy, setBusy] = useState(false);
+  const taskTypeOptions = control.taskTypes.filter((option) => !option.value.startsWith('KIT'));
+  const defaultFollowUpOption = taskTypeOptions.find((option) => option.isDefault) ?? taskTypeOptions[0];
+  const defaultFollowUpType = defaultFollowUpOption?.value ?? '';
+  const defaultFollowUpLabel = defaultFollowUpOption?.label ?? '';
+  const targetTask = target?.taskId ? tasks.find((item) => item.id === target.taskId) ?? null : null;
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
 
   /**
    * The sub-steps of a save that already succeeded.
@@ -1993,14 +1980,32 @@ export const CallOutcomeSheet: React.FC<{
     setNote('');
     // The outcome is never preselected — the user has to say what happened.
     setOutcome('');
-    setTaskAction(target?.taskId && canEditTasks ? 'reschedule' : 'keep_open');
+    setTaskAction(mode === 'complete' ? 'complete' : target?.taskId && canEditTasks ? 'reschedule' : 'keep_open');
+    setRescheduleReason('');
+    setCreateAdHocFollowUp(false);
+    const initialLeadId = target?.entityType === 'lead'
+      ? target.entityId
+      : targetTask?.lead_id ?? (targetTask?.related_entity_type === 'lead' ? targetTask.related_entity_id : null);
+    const requiresLeadNextStep = Boolean(
+      targetTask && initialLeadId && isLeadOnlyOpenNonRecurringTask(targetTask, tasksRef.current, initialLeadId),
+    );
+    setNextStep(requiresLeadNextStep ? 'create' : 'none');
+    setFollowUpTaskType(defaultFollowUpType);
+    setFollowUpAssignee(staffName);
+    setFollowUpTitle(defaultFollowUpLabel ? getDefaultFollowUpTaskTitle(defaultFollowUpLabel, target?.entityName ?? '') : '');
+    followUpTitleTouchedRef.current = false;
+    followUpTaskIdRef.current = null;
     setSnoozePreset('tomorrow');
     setDateStr(toLocalDateInputValue(defaultTomorrow));
     setTimeStr(toLocalTimeInputValue(defaultTomorrow));
-    setReminderAlarm(defaultRemindersEnabled);
+    setReminderAlarm(
+      mode === 'call' && targetTask
+        ? (targetTask.reminder ?? defaultRemindersEnabled)
+        : defaultRemindersEnabled,
+    );
     setSaveError(null);
     completedStepsRef.current = new Set();
-  }, [open, defaultTomorrow, defaultRemindersEnabled, target?.taskId, canEditTasks]);
+  }, [open, defaultTomorrow, defaultRemindersEnabled, target?.taskId, target?.entityType, target?.entityId, canEditTasks, mode, defaultFollowUpType, defaultFollowUpLabel, targetTask?.id, targetTask?.is_recurring, targetTask?.lead_id, targetTask?.related_entity_type, targetTask?.related_entity_id, targetTask?.reminder, staffName, target?.entityName]);
 
   if (!open || !target) return null;
 
@@ -2008,10 +2013,23 @@ export const CallOutcomeSheet: React.FC<{
   const outcomeLabel =
     control.outcomes.find((option) => option.value === outcome)?.label ?? outcome;
   const staffName = requireSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null);
-  const liveTask = target.taskId ? tasks.find((item) => item.id === target.taskId) ?? null : null;
+  const liveTask = targetTask;
+  const safeStaffOptions = activeStaffOptions.filter((option) => isSafeStaffName(option.name));
+  const assigneeOptions = safeStaffOptions.some((option) => option.name === staffName)
+    ? safeStaffOptions
+    : [{ id: 'current-staff', name: staffName, label: staffName }, ...safeStaffOptions];
+  const linkedLeadId = target.entityType === 'lead'
+    ? target.entityId
+    : liveTask?.lead_id ?? (liveTask?.related_entity_type === 'lead' ? liveTask.related_entity_id : null);
+  const leadOnlyOpenTask = Boolean(
+    linkedLeadId && liveTask && isLeadOnlyOpenNonRecurringTask(liveTask, tasks, linkedLeadId),
+  );
+  const shouldCreateFollowUp = canEditTasks && (target.taskId
+    ? taskAction === 'complete' && nextStep === 'create'
+    : createAdHocFollowUp);
 
   const taskActions: { value: CallOutcomeAction; label: string }[] = [
-    { value: 'keep_open', label: 'Keep Open' },
+    ...(mode === 'call' ? [{ value: 'keep_open' as const, label: 'Keep Open' }] : []),
     { value: 'reschedule', label: 'Reschedule' },
     { value: 'complete', label: 'Complete' },
     { value: 'cancel', label: 'Cancel' },
@@ -2023,16 +2041,16 @@ export const CallOutcomeSheet: React.FC<{
       const date = new Date(Date.now() + 60 * 60 * 1000);
       setDateStr(toLocalDateInputValue(date.toISOString()));
       setTimeStr(toLocalTimeInputValue(date.toISOString()));
-      setTaskAction('reschedule');
+      if (!shouldCreateFollowUp) setTaskAction('reschedule');
     } else if (preset === '4h') {
       const date = new Date(Date.now() + 4 * 60 * 60 * 1000);
       setDateStr(toLocalDateInputValue(date.toISOString()));
       setTimeStr(toLocalTimeInputValue(date.toISOString()));
-      setTaskAction('reschedule');
+      if (!shouldCreateFollowUp) setTaskAction('reschedule');
     } else if (preset === 'tomorrow') {
       setDateStr(toLocalDateInputValue(defaultTomorrow));
       setTimeStr('10:00');
-      setTaskAction('reschedule');
+      if (!shouldCreateFollowUp) setTaskAction('reschedule');
     }
   };
 
@@ -2043,11 +2061,36 @@ export const CallOutcomeSheet: React.FC<{
       setSaveError('Pick a call outcome before saving.');
       return;
     }
+    if (target.taskId && canEditTasks && taskAction === 'complete' && leadOnlyOpenTask && !['create', 'convert', 'lost'].includes(nextStep)) {
+      setSaveError('Choose a required next step before completing this lead task.');
+      return;
+    }
+    if (shouldCreateFollowUp) {
+      if (!followUpTaskType) { setSaveError('Choose a follow-up task type.'); return; }
+      if (!isSafeStaffName(followUpAssignee)) { setSaveError('Choose an active staff member with a valid full name.'); return; }
+      if (!followUpTitle.trim()) { setSaveError('Enter a follow-up task title.'); return; }
+      if (!dateStr.trim()) { setSaveError('Choose a follow-up date.'); return; }
+    }
+    if (target.taskId && canEditTasks && taskAction === 'reschedule' && !hasValidTaskReschedule(rescheduleReason, dateStr)) {
+      setSaveError(!rescheduleReason.trim() ? 'Enter a reschedule reason before saving.' : 'Pick a date before saving the reschedule.');
+      return;
+    }
     setBusy(true);
     setSaveError(null);
     const steps = completedStepsRef.current;
     try {
       const noteText = note.trim();
+      const nowIso = new Date().toISOString();
+      const completionStatus = outcome === OUTCOME_OPTIONS[0] ? 'success' : 'unsuccessful';
+      const attemptCount = ((liveTask as unknown as { attempt_count?: number } | null)?.attempt_count ?? 0) + 1;
+      const nextActionType = taskAction === 'reschedule'
+        ? 'reschedule'
+        : shouldCreateFollowUp ? 'follow_up' : null;
+      const nextActionPayload = taskAction === 'reschedule'
+        ? { due_date: dateStr, due_time: timeStr }
+        : shouldCreateFollowUp
+          ? { due_date: dateStr, due_time: timeStr, task_type: followUpTaskType, assigned_to: followUpAssignee }
+          : null;
 
       // 1 — write the outcome onto the live task. A retry never repeats a
       //     step that already succeeded.
@@ -2055,7 +2098,16 @@ export const CallOutcomeSheet: React.FC<{
         const updates: Partial<TaskInsert> & { completed_at?: string | null } = {
           completion_outcome: outcome,
           completion_notes: noteText || null,
+          completion_status: completionStatus,
+          attempt_count: attemptCount,
+          last_attempt_at: nowIso,
+          next_action_type: nextActionType,
+          next_action_payload: nextActionPayload,
         };
+        if (taskAction === 'complete') {
+          updates.closed_at = nowIso;
+          updates.closed_by = user?.id ?? null;
+        }
 
         if (taskAction === 'reschedule') {
           // A reschedule without a date is not a reschedule.
@@ -2066,6 +2118,7 @@ export const CallOutcomeSheet: React.FC<{
           updates.due_date = dateStr;
           updates.due_time = timeStr;
           updates.reminder = reminderAlarm;
+          updates.reschedule_reason = rescheduleReason.trim();
           updates.reschedule_count = (liveTask?.reschedule_count ?? 0) + 1;
           if (liveTask?.status === TASK_STATUS_COMPLETED) {
             updates.status = TASK_STATUS_PENDING;
@@ -2112,6 +2165,36 @@ export const CallOutcomeSheet: React.FC<{
         steps.add('task_status');
       }
 
+      // 2 — record the submitted outcome on the task trail using the
+      // Desktop event name and metadata shape.
+      if (target.taskId && canEditTasks && !steps.has('outcome_activity')) {
+        await logTaskActivity(target.taskId, 'outcome_recorded', {
+          outcome,
+          completion_status: completionStatus,
+          notes: noteText,
+          attempt_count: attemptCount,
+        } as Json, staffName, user?.id ?? null);
+        steps.add('outcome_activity');
+      }
+
+      if (target.taskId && canEditTasks && taskAction === 'complete' && !steps.has('closed_activity')) {
+        await logTaskActivity(target.taskId, 'closed', {
+          closed_by: user?.id ?? null,
+          closed_at: nowIso,
+          outcome,
+        } as Json, staffName, user?.id ?? null);
+        steps.add('closed_activity');
+      }
+
+      if (target.taskId && canEditTasks && taskAction === 'cancel' && !steps.has('cancelled_activity')) {
+        await logTaskActivity(target.taskId, 'cancelled', {
+          cancelled_by: user?.id ?? null,
+          cancelled_at: nowIso,
+          outcome,
+        } as Json, staffName, user?.id ?? null);
+        steps.add('cancelled_activity');
+      }
+
       // 3 — record the reschedule on the task trail.
       if (
         target.taskId &&
@@ -2128,6 +2211,7 @@ export const CallOutcomeSheet: React.FC<{
               due_time: liveTask?.due_time ?? null,
             },
             new_value: { due_date: dateStr, due_time: timeStr },
+            reason: rescheduleReason.trim(),
             reschedule_count: (liveTask?.reschedule_count ?? 0) + 1,
           },
           staffName,
@@ -2136,61 +2220,97 @@ export const CallOutcomeSheet: React.FC<{
         steps.add('reschedule_activity');
       }
 
-      // 4 — log the call.
+      // 4 — create a follow-up only after the parent task status is saved.
+      // addTask writes the canonical staff full_name and its tasks INSERT
+      // enters the existing notify_automation_engine() database trigger path.
+      if (shouldCreateFollowUp) {
+        // The helper caches the inserted id in a ref. If task/activity logging
+        // below fails, a retry resumes without inserting a duplicate task.
+        const newTaskId = await createFollowUpTaskOnce(followUpTaskIdRef, () =>
+          addTask({
+            ...buildFollowUpTaskPayload({
+              title: followUpTitle,
+              type: followUpTaskType,
+              assignedTo: followUpAssignee,
+              createdBy: staffName,
+              dueDate: dateStr,
+              dueTime: timeStr,
+              reminder: reminderAlarm,
+              entityType: target.entityType,
+              entityId: target.entityId,
+            }),
+            parent_task_id: target.taskId ?? null,
+          }),
+        );
+        steps.add('followup_task');
+
+        if (!steps.has('followup_task_activity')) {
+          await logTaskActivity(newTaskId, 'created', {
+            source: 'mobile_task_completion',
+            parent_task_id: target.taskId ?? null,
+            task_type: followUpTaskType,
+            assigned_to: followUpAssignee,
+            due_date: dateStr,
+            due_time: timeStr,
+            reminder: reminderAlarm,
+            related_entity_type: target.entityType,
+            related_entity_id: target.entityId,
+          } as Json, staffName, user?.id ?? null);
+          steps.add('followup_task_activity');
+        }
+
+        if (target.taskId && !steps.has('followup_parent_activity')) {
+          await logTaskActivity(target.taskId, 'follow_up_created', {
+            new_task_id: newTaskId,
+            new_task_title: followUpTitle.trim(),
+            due_date: dateStr,
+          } as Json, staffName, user?.id ?? null);
+          steps.add('followup_parent_activity');
+        }
+        // addTask already calls the shared syncTaskReminder(data) mirror,
+        // which creates/deletes the task-scoped row. A second insert here
+        // would race that upsert and could duplicate the bell alarm.
+      }
+
+      // 5 — log the call or the task completion on the entity timeline.
       if (!steps.has('log_activity')) {
         await logActivity({
-          lead_id: target.entityType === 'lead' ? target.entityId : undefined,
+          lead_id: linkedLeadId ?? (target.entityType === 'lead' ? target.entityId : undefined),
           customer_id: target.entityType === 'customer' ? target.entityId : undefined,
-          activity_type: 'phone_call',
-          activity_category: 'communication',
-          title: `Call logged — ${outcomeLabel}`,
+          activity_type: (target.taskId && canEditTasks ? 'task_outcome_recorded' : 'phone_call') as ActivityType,
+          activity_category: target.taskId && canEditTasks ? 'task' : 'communication',
+          title: target.taskId && canEditTasks
+            ? taskAction === 'reschedule'
+              ? `Task Rescheduled: ${liveTask?.title ?? target.entityName} — ${rescheduleReason.trim()}`
+              : `${taskAction === 'complete' ? 'Task Closed' : taskAction === 'cancel' ? 'Task Cancelled' : 'Task Outcome Recorded'}: ${liveTask?.title ?? target.entityName} — ${outcomeLabel}`
+            : `Call logged — ${outcomeLabel}`,
           description: noteText || undefined,
+          is_manual: false,
           metadata: {
             task_id: target.taskId ?? null,
+            follow_up_task_id: followUpTaskIdRef.current,
             outcome,
             task_action: taskAction,
+            next_step: nextStep,
+            completion_status: completionStatus,
+            attempt_count: attemptCount,
+            notes: noteText,
+            reason: taskAction === 'reschedule' ? rescheduleReason.trim() : null,
+            old_due_date: taskAction === 'reschedule' ? liveTask?.due_date ?? null : null,
+            new_due_date: taskAction === 'reschedule' ? dateStr : null,
             scheduled_at: scheduledIso,
           },
-          related_entity_type: target.entityType,
-          related_entity_id: target.entityId,
+          related_entity_type: target.taskId && canEditTasks ? 'task' : target.entityType,
+          related_entity_id: target.taskId && canEditTasks ? target.taskId : target.entityId,
         });
         steps.add('log_activity');
       }
 
-      // 5 — reschedule: delete the old reminder, then insert a fresh one so
-      //     `is_dismissed` starts from false again.
-      //
-      //     Only reminders that belong to the *task* are replaced. A call that
-      //     is not attached to a task must never wipe the entity's other
-      //     reminders.
-      if (
-        canEditTasks &&
-        taskAction === 'reschedule' &&
-        scopeType &&
-        scopeId &&
-        !steps.has('reminder_sync')
-      ) {
-        const scoped = reminders.filter(
-          (reminder) => reminder.entity_type === scopeType && reminder.entity_id === scopeId,
-        );
-        if (target.taskId) {
-          for (const reminder of scoped) {
-            await deleteReminder(reminder.id);
-          }
-        }
-        if (reminderAlarm) {
-          await addReminder({
-            title: liveTask?.title ?? `Follow-up: ${target.entityName}`,
-            description: `Call follow-up for ${target.entityName}`,
-            reminder_datetime: localIsoFromInputs(dateStr, timeStr),
-            entity_type: scopeType,
-            entity_id: scopeId,
-            assigned_to: staffName,
-          });
-        }
-        steps.add('reminder_sync');
+      if (target.taskId && taskAction === 'complete' && (nextStep === 'convert' || nextStep === 'lost') && linkedLeadId) {
+        onDismiss();
+        onLeadLifecycleAction?.(nextStep, linkedLeadId);
+        return;
       }
-
       onDismiss();
     } catch (error) {
       // The sheet stays open and the reason is shown inline — a silent
@@ -2211,20 +2331,21 @@ export const CallOutcomeSheet: React.FC<{
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Log Call Outcome"
+        aria-label={mode === 'complete' ? 'Complete Task' : 'Log Call Outcome'}
         className="w-full bg-white rounded-t-[20px] max-h-[95dvh] flex flex-col"
       >
         {/* Sheet Header */}
         <div className="px-4 py-2.5 border-b border-[#E2E8F0] flex items-center justify-between gap-2 shrink-0">
           <div className="min-w-0">
             <div className="font-utility text-[11px] font-bold uppercase tracking-wider text-[#059669]">
-              {openedAfterCall ? 'Opened after call' : 'Call Log'}
+              {mode === 'complete' ? 'Task Completion' : openedAfterCall ? 'Opened after call' : 'Call Log'}
             </div>
             <h2 className="text-base font-bold text-[#1A1A2E] leading-tight truncate">
-              {target.entityName}
+              {mode === 'complete' ? 'Complete Task' : 'Log Call Outcome'}
             </h2>
+            <div className="font-utility text-xs text-[#47464C] truncate">{target.entityName}</div>
             <div className="font-utility text-xs text-[#47464C]">
-              {formatPhoneDisplay(target.phone)}
+              {target.phone ? formatPhoneDisplay(target.phone) : 'No phone number'}
             </div>
           </div>
           <button
@@ -2288,7 +2409,7 @@ export const CallOutcomeSheet: React.FC<{
           </div>
 
           {/* 4-way Task Action — hidden for a role that may not write tasks. */}
-          {canEditTasks ? (
+          {target.taskId && canEditTasks ? (
             <div className="space-y-1.5">
               <div className="text-xs font-bold text-[#1A1A2E]">Task Action</div>
               <div className="grid grid-cols-2 gap-1.5">
@@ -2298,7 +2419,14 @@ export const CallOutcomeSheet: React.FC<{
                     <button
                       key={action.value}
                       type="button"
-                      onClick={() => setTaskAction(action.value)}
+                      onClick={() => {
+                        setTaskAction(action.value);
+                        setReminderAlarm(
+                          action.value === 'reschedule'
+                            ? (liveTask?.reminder ?? defaultRemindersEnabled)
+                            : defaultRemindersEnabled,
+                        );
+                      }}
                       className={`min-h-[44px] px-2 rounded-[10px] border text-xs font-semibold whitespace-nowrap ${
                         active
                           ? 'bg-[#1A1A2E] text-white border-[#1A1A2E]'
@@ -2311,17 +2439,103 @@ export const CallOutcomeSheet: React.FC<{
                 })}
               </div>
             </div>
-          ) : (
+          ) : target.taskId ? (
             <div className="space-y-1.5">
               <div className="text-xs font-bold text-[#1A1A2E]">Task Action</div>
               <p className="text-xs text-[#47464C]">
                 Your role can log the call, but it cannot change the task.
               </p>
             </div>
-          )}
+          ) : null}
+
+          {!target.taskId && canEditTasks ? (
+            <label className="flex min-h-[48px] items-center justify-between rounded-[10px] border border-[#E2E8F0] bg-white px-3">
+              <span className="text-sm font-semibold text-[#1A1A2E]">Create a follow-up task?</span>
+              <input type="checkbox" checked={createAdHocFollowUp} onChange={(event) => setCreateAdHocFollowUp(event.target.checked)} className="h-5 w-5 accent-[#1A1A2E]" />
+            </label>
+          ) : null}
+
+          {target.taskId && taskAction === 'cancel' ? (
+            <p className="rounded-[10px] border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">This will cancel the task and dismiss its task reminders. The selected outcome and note will be recorded.</p>
+          ) : null}
+
+          {target.taskId && taskAction === 'complete' ? (
+            <div className="space-y-2 rounded-[12px] border border-[#E2E8F0] bg-[#F8F9FA] p-3">
+              {liveTask?.is_recurring ? (
+                <p className="rounded-[10px] border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">Next recurring occurrence will be created automatically</p>
+              ) : null}
+              <div className="text-xs font-bold text-[#1A1A2E]">Next Step</div>
+              {leadOnlyOpenTask ? (
+                <div className="grid grid-cols-1 gap-1.5">
+                  {([
+                    { value: 'create', label: 'Create Next Task' },
+                    { value: 'convert', label: 'Convert to Customer' },
+                    { value: 'lost', label: 'Mark as Lost' },
+                  ] as const).map((option) => (
+                    <button key={option.value} type="button" onClick={() => setNextStep(option.value)} className={`min-h-[44px] rounded-[10px] border px-3 text-sm font-semibold ${nextStep === option.value ? 'border-[#1A1A2E] bg-[#1A1A2E] text-white' : 'border-[#E2E8F0] bg-white text-[#1A1A2E]'}`}>{option.label}</button>
+                  ))}
+                  <p className="text-xs text-[#B45309]">This lead has no other open task. Select a next step to continue.</p>
+                </div>
+              ) : liveTask?.is_recurring ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {([
+                    { value: 'none', label: 'No Extra Task' },
+                    { value: 'create', label: 'Create Extra Follow-up' },
+                  ] as const).map((option) => (
+                    <button key={option.value} type="button" onClick={() => setNextStep(option.value)} className={`min-h-[44px] rounded-[10px] border px-3 text-xs font-semibold ${nextStep === option.value ? 'border-[#1A1A2E] bg-[#1A1A2E] text-white' : 'border-[#E2E8F0] bg-white text-[#1A1A2E]'}`}>{option.label}</button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {([
+                    { value: 'none', label: 'No Next Task (Just Complete)' },
+                    { value: 'create', label: 'Create Next Task' },
+                  ] as const).map((option) => (
+                    <button key={option.value} type="button" onClick={() => setNextStep(option.value)} className={`min-h-[44px] rounded-[10px] border px-3 text-xs font-semibold ${nextStep === option.value ? 'border-[#1A1A2E] bg-[#1A1A2E] text-white' : 'border-[#E2E8F0] bg-white text-[#1A1A2E]'}`}>{option.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {shouldCreateFollowUp && canEditTasks ? (
+            <div className="space-y-2 rounded-[12px] border border-[#E2E8F0] bg-[#F8F9FA] p-3">
+              <div className="text-xs font-bold text-[#1A1A2E]">{target.taskId ? 'Create Next Task' : 'Follow-up Task'}</div>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-[#1A1A2E]">Task Type</span>
+                <select value={followUpTaskType} onChange={(event) => { setFollowUpTaskType(event.target.value); if (!followUpTitleTouchedRef.current) setFollowUpTitle(getDefaultFollowUpTaskTitle(taskTypeOptions.find((option) => option.value === event.target.value)?.label ?? event.target.value, target.entityName)); }} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base">
+                  {taskTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-[#1A1A2E]">Assign To</span>
+                <select value={followUpAssignee} onChange={(event) => setFollowUpAssignee(event.target.value)} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base">
+                  {assigneeOptions.map((option) => <option key={option.id} value={option.name}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-[#1A1A2E]">Title</span>
+                <input value={followUpTitle} onChange={(event) => { followUpTitleTouchedRef.current = true; setFollowUpTitle(event.target.value); }} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base" />
+              </label>
+            </div>
+          ) : null}
+
+          {target.taskId && taskAction === 'reschedule' ? (
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-[#1A1A2E]">Reschedule Reason *</div>
+              <div className="flex flex-wrap gap-1.5">
+                {getRescheduleReasonSuggestions(outcome).map((suggestion) => (
+                  <button key={suggestion} type="button" onClick={() => setRescheduleReason(suggestion)} className="min-h-[44px] px-2.5 rounded-full border border-[#E2E8F0] bg-white text-xs font-medium text-[#1A1A2E]">
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+              <textarea rows={2} value={rescheduleReason} onChange={(event) => setRescheduleReason(event.target.value)} placeholder="Why is this task being rescheduled?" className="w-full min-h-[72px] p-3 rounded-[10px] border border-[#E2E8F0] bg-white text-base" />
+            </div>
+          ) : null}
 
           {/* Quick Follow-Up Preset */}
-          {canEditTasks && taskAction !== 'complete' && taskAction !== 'cancel' && (
+          {canEditTasks && ((target.taskId && taskAction === 'reschedule') || shouldCreateFollowUp) && (
             <div className="space-y-1.5">
               <div className="text-xs font-bold text-[#1A1A2E]">Quick Follow-Up Preset</div>
               <div className="grid grid-cols-2 gap-1.5">
@@ -2354,7 +2568,7 @@ export const CallOutcomeSheet: React.FC<{
           )}
 
           {/* Next Follow-Up date/time + Set Reminder Alarm toggle */}
-          {canEditTasks && taskAction !== 'complete' && taskAction !== 'cancel' && (
+          {canEditTasks && ((target.taskId && taskAction === 'reschedule') || shouldCreateFollowUp) && (
             <div className="space-y-2 bg-[#F8F9FA] border border-[#E2E8F0] rounded-[12px] p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-[#1A1A2E] flex items-center gap-1.5">
@@ -2413,7 +2627,13 @@ export const CallOutcomeSheet: React.FC<{
             onClick={() => void handleSave()}
             className="w-full min-h-[48px] rounded-[12px] bg-[#C9A84C] text-[#1A1A2E] font-semibold text-base shadow-[0_10px_20px_-3px_rgba(201,168,76,0.35)] disabled:opacity-60"
           >
-            Save Call Log
+            {mode === 'complete'
+              ? taskAction === 'cancel'
+                ? 'Cancel Task'
+                : taskAction === 'reschedule'
+                  ? 'Reschedule Task'
+                  : 'Complete Task'
+              : 'Save Call Log'}
           </button>
         </div>
       </div>

@@ -30,7 +30,6 @@ import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
-import { TASK_TYPES as FALLBACK_TASK_TYPES } from '@/constants/taskConstants';
 import { useNavigate } from 'react-router-dom';
 
 import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
@@ -451,9 +450,8 @@ export const BottomTabBar: React.FC<{
 /**
  * Inline quick creation sheet: new task, add note, add reminder.
  *
- * Task types come from the live Control Panel (`tasks.type`, excluding the
- * `KIT*` entries) and fall back to `TASK_TYPES` from
- * `src/constants/taskConstants.ts` — the exact desktop contract.
+ * Task types come from the shared live Control Panel (`tasks.type`), with
+ * KIT-only entries excluded to match the Desktop task form.
  */
 export const QuickAddSheet: React.FC<{
   open: boolean;
@@ -502,13 +500,10 @@ export const QuickAddSheet: React.FC<{
   const { hasPermission } = usePermissions();
   const canCreateRecords = hasPermission('tasks.create');
 
-  const taskTypeOptions = useMemo(() => {
-    const controlPanel = getFieldOptions('tasks', 'type').filter(
-      (option) => !option.value.startsWith('KIT'),
-    );
-    if (controlPanel.length > 0) return controlPanel.map((option) => option.value);
-    return FALLBACK_TASK_TYPES;
-  }, [getFieldOptions]);
+  const taskTypeOptions = useMemo(
+    () => getFieldOptions('tasks', 'type').filter((option) => !option.value.startsWith('KIT')),
+    [getFieldOptions],
+  );
 
   /**
    * Everyone the sheet may attach a task, a note or a reminder to.
@@ -589,7 +584,10 @@ export const QuickAddSheet: React.FC<{
     setTitle('');
     setNoteContent('');
     setEntityQuery('');
-    setTaskType((current) => current || taskTypeOptionsRef.current[0] || '');
+    const configuredTaskType = taskTypeOptionsRef.current.find((option) => option.isDefault)?.value
+      ?? taskTypeOptionsRef.current[0]?.value
+      ?? '';
+    setTaskType(configuredTaskType);
     setDateStr(toLocalDateInputValue(freshDueAt));
     setTimeStr(toLocalTimeInputValue(freshDueAt));
     setIsRecurring(false);
@@ -1015,8 +1013,8 @@ export const QuickAddSheet: React.FC<{
                       className="w-full min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
                     >
                       {taskTypeOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
+                        <option key={option.value} value={option.value}>
+                          {option.label}
                         </option>
                       ))}
                     </select>

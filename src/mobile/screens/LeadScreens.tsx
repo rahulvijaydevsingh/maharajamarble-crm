@@ -56,6 +56,7 @@ import type { CustomerInsert } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useTasks } from '@/hooks/useTasks';
 import { useReminders } from '@/hooks/useReminders';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
 import { useActiveStaff, useActiveStaffOptions } from '@/hooks/useActiveStaff';
@@ -457,6 +458,7 @@ export const MobileLeadForm: React.FC<{
   const { addTask } = useTasks();
   const { addReminder } = useReminders();
   const { getFieldOptions } = useMobileControlPanel();
+  const { defaultRemindersEnabled } = useSystemSettings();
   const { options: staffOptions } = useActiveStaffOptions();
   const { staffMembers } = useActiveStaff();
   const { hasPermission } = usePermissions();
@@ -484,13 +486,13 @@ export const MobileLeadForm: React.FC<{
   const materialOptions = getFieldOptions('materials', 'materials');
 
   const defaultDesignation =
-    designationOptions.find((o) => o.isDefault)?.value ?? designationOptions[0]?.value ?? 'owner';
+    designationOptions.find((o) => o.isDefault)?.value ?? designationOptions[0]?.value ?? '';
   const defaultStage =
-    stageOptions.find((o) => o.isDefault)?.value ?? stageOptions[0]?.value ?? 'flooring_ready';
+    stageOptions.find((o) => o.isDefault)?.value ?? stageOptions[0]?.value ?? '';
   const defaultSource =
-    sourceOptions.find((o) => o.isDefault)?.value ?? sourceOptions[0]?.value ?? 'walk_in';
+    sourceOptions.find((o) => o.isDefault)?.value ?? sourceOptions[0]?.value ?? '';
   const defaultPriority =
-    priorityOptions.find((o) => o.isDefault)?.value ?? priorityOptions[0]?.value ?? '3';
+    priorityOptions.find((o) => o.isDefault)?.value ?? priorityOptions[0]?.value ?? '';
 
   /**
    * The default material list.
@@ -500,13 +502,13 @@ export const MobileLeadForm: React.FC<{
    * identity changes on every render and the defaults effect below re-runs on
    * every render.
    */
-  const materialOptionsSignature = materialOptions.map((option) => option.value).join('|');
-  const defaultMaterials = useMemo(() => {
-    const values = materialOptionsSignature.length > 0 ? materialOptionsSignature.split('|') : [];
-    if (values.includes('italian_marble')) return ['italian_marble'];
-    if (values[0]) return [values[0]];
-    return [];
-  }, [materialOptionsSignature]);
+  const defaultMaterial = materialOptions.find((option) => option.isDefault)?.value
+    ?? materialOptions[0]?.value
+    ?? '';
+  const defaultMaterials = useMemo(
+    () => defaultMaterial ? [defaultMaterial] : [],
+    [defaultMaterial],
+  );
 
   /* ------------------------------- lead data ----------------------------- */
 
@@ -575,10 +577,10 @@ export const MobileLeadForm: React.FC<{
   const [referrerSearchQuery, setReferrerSearchQuery] = useState('');
   const [referrerDropdownOpen, setReferrerDropdownOpen] = useState(false);
   const [notes, setNotes] = useState('');
-  const [priority, setPriority] = useState(3);
+  const [priority, setPriority] = useState(Number.NaN);
   const [dateStr, setDateStr] = useState(() => toLocalDateInputValue(defaultNextActionIso));
   const [timeStr, setTimeStr] = useState(() => toLocalTimeInputValue(defaultNextActionIso));
-  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderEnabled, setReminderEnabled] = useState(defaultRemindersEnabled);
   const [assignedStaffId, setAssignedStaffId] = useState('');
 
   const [additionalContacts, setAdditionalContacts] = useState<AdditionalContact[]>([]);
@@ -609,7 +611,8 @@ export const MobileLeadForm: React.FC<{
   /** D9: true while the user explicitly asked to save despite a duplicate. */
   const forceSaveRef = useRef(false);
   const hydratedLeadIdRef = useRef<string | null>(null);
-  const defaultsAppliedRef = useRef(false);
+  const materialDefaultsAppliedRef = useRef(false);
+  const priorityDefaultAppliedRef = useRef(false);
   /**
    * The `referred_by` value the lead was hydrated with.
    *
@@ -703,10 +706,10 @@ export const MobileLeadForm: React.FC<{
     setLeadSource('');
     setReferredBy('');
     setNotes('');
-    setPriority(3);
+    setPriority(Number.NaN);
     setDateStr(toLocalDateInputValue(defaultNextActionIso));
     setTimeStr(toLocalTimeInputValue(defaultNextActionIso));
-    setReminderEnabled(true);
+    setReminderEnabled(defaultRemindersEnabled);
     setAssignedStaffId('');
     setAdditionalContacts([]);
     setStagedAttachments([]);
@@ -722,7 +725,8 @@ export const MobileLeadForm: React.FC<{
     setEffectsFailure(null);
     forceSaveRef.current = false;
     hydratedLeadIdRef.current = null;
-    defaultsAppliedRef.current = false;
+    materialDefaultsAppliedRef.current = false;
+    priorityDefaultAppliedRef.current = false;
     autoMatchKeyRef.current = null;
     originalReferredByRef.current = null;
     assignedStaffTouchedRef.current = false;
@@ -779,7 +783,7 @@ export const MobileLeadForm: React.FC<{
     setReferredBy(parsedReferrer);
     originalReferredByRef.current = parsedReferrer;
     setNotes(editingLead.notes ?? '');
-    setPriority(typeof editingLead.priority === 'number' ? editingLead.priority : 3);
+    setPriority(typeof editingLead.priority === 'number' ? editingLead.priority : Number.NaN);
     setDateStr(toLocalDateInputValue(editingLead.next_follow_up ?? defaultNextActionIso));
     setTimeStr(toLocalTimeInputValue(editingLead.next_follow_up ?? defaultNextActionIso));
     setReminderEnabled(Boolean(editingLead.next_follow_up));
@@ -863,7 +867,6 @@ export const MobileLeadForm: React.FC<{
   // stale option behind.
   useEffect(() => {
     if (mode !== 'create') return;
-    if (designationOptions.length === 0) return;
     setDesignation((prev) =>
       designationOptions.some((o) => o.value === prev) ? prev : defaultDesignation,
     );
@@ -871,12 +874,15 @@ export const MobileLeadForm: React.FC<{
       stageOptions.some((o) => o.value === prev) ? prev : defaultStage,
     );
     setLeadSource((prev) => (sourceOptions.some((o) => o.value === prev) ? prev : defaultSource));
-    if (!defaultsAppliedRef.current) {
-      defaultsAppliedRef.current = true;
+
+    if (!materialDefaultsAppliedRef.current && materialOptions.length > 0) {
+      materialDefaultsAppliedRef.current = true;
       setMaterialInterests((prev) => (prev.length === 0 ? defaultMaterials : prev));
-      setPriority((prev) =>
-        priorityOptions.some((o) => Number(o.value) === prev) ? prev : Number(defaultPriority) || 3,
-      );
+    }
+    if (!priorityDefaultAppliedRef.current && priorityOptions.length > 0) {
+      priorityDefaultAppliedRef.current = true;
+      const configuredPriority = Number(defaultPriority);
+      setPriority(Number.isFinite(configuredPriority) ? configuredPriority : Number.NaN);
     }
   }, [
     mode,
@@ -1258,6 +1264,9 @@ export const MobileLeadForm: React.FC<{
       nextErrors.phone = 'Enter a valid 10-digit mobile number';
     }
     if (!formInput.designation) nextErrors.designation = 'Select a designation';
+    if (!Number.isFinite(formInput.priority) || !priorityOptions.some((option) => Number(option.value) === formInput.priority)) {
+      nextErrors.priority = 'Select a priority configured in Control Panel';
+    }
     if (!formInput.site_location) nextErrors.siteLocation = 'Site address is required';
     if (formInput.material_interests.length === 0) {
       nextErrors.materialInterests = 'Select at least one material interest';
@@ -2485,17 +2494,18 @@ export const MobileLeadForm: React.FC<{
             </label>
             <select
               id="lead-priority"
-              value={String(priority)}
-              onChange={(e) => setPriority(Number(e.target.value) || 3)}
+              value={Number.isFinite(priority) ? String(priority) : ''}
+              onChange={(e) => setPriority(e.target.value ? Number(e.target.value) : Number.NaN)}
               className="w-full min-h-[48px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-base text-[#191C1D]"
             >
-              {priorityOptions.length === 0 && <option value="3">Loading…</option>}
+              <option value="">{priorityOptions.length === 0 ? 'No priority options configured' : 'Select priority'}</option>
               {priorityOptions.map((opt) => (
                 <option key={opt.id} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
             </select>
+            {errors.priority ? <InlineError id="lead-priority-error" message={errors.priority} /> : null}
           </div>
 
           <div>

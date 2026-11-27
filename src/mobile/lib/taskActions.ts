@@ -231,3 +231,92 @@ export async function cancelTaskWithCleanup(
   const dismissedReminderIds = await dismissTaskReminders(task.id, deps);
   return { ok: true, createdNextInstance: false, dismissedReminderIds };
 }
+
+
+/**
+ * Mobile completion policy helpers. Kept in this existing pure task-actions
+ * module so both screens and unit tests share the same guard/validation rules.
+ */
+export interface LeadCompletionTaskLike {
+  id: string;
+  status?: string | null;
+  is_recurring?: boolean | null;
+  is_deleted?: boolean | null;
+  lead_id?: string | null;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
+}
+
+/** True only for the lead's sole active, non-recurring task. */
+export function isLeadOnlyOpenNonRecurringTask(
+  currentTask: LeadCompletionTaskLike,
+  allTasks: readonly LeadCompletionTaskLike[],
+  linkedLeadId: string | null | undefined,
+): boolean {
+  if (!linkedLeadId || currentTask.is_recurring) return false;
+
+  const hasAnotherOpenTask = allTasks.some((candidate) => {
+    if (candidate.id === currentTask.id || candidate.is_deleted) return false;
+    if (candidate.status === TASK_STATUS_COMPLETED || candidate.status === TASK_STATUS_CANCELLED) {
+      return false;
+    }
+
+    return (
+      candidate.lead_id === linkedLeadId ||
+      (candidate.related_entity_type === 'lead' && candidate.related_entity_id === linkedLeadId)
+    );
+  });
+
+  return !hasAnotherOpenTask;
+}
+
+/** A reschedule is valid only when both its reason and date are non-blank. */
+export function hasValidTaskReschedule(reason: string, dueDate: string): boolean {
+  return reason.trim().length > 0 && dueDate.trim().length > 0;
+}
+
+/** Default title follows the selected task type and person name. */
+export function getDefaultFollowUpTaskTitle(taskType: string, personName: string): string {
+  return `${taskType.trim()}: ${personName.trim()}`;
+}
+
+/** Reuse an inserted follow-up task id if a later completion step must retry. */
+export async function createFollowUpTaskOnce<T extends { id: string }>(
+  taskIdRef: { current: string | null },
+  createTask: () => Promise<T>,
+): Promise<string> {
+  if (taskIdRef.current) return taskIdRef.current;
+  const created = await createTask();
+  taskIdRef.current = created.id;
+  return created.id;
+}
+
+export interface FollowUpTaskDraft {
+  title: string;
+  type: string;
+  assignedTo: string;
+  createdBy: string;
+  dueDate: string;
+  dueTime: string;
+  reminder: boolean;
+  entityType: string;
+  entityId: string;
+}
+
+/** Build a follow-up insert without losing attribution or entity linkage. */
+export function buildFollowUpTaskPayload(draft: FollowUpTaskDraft) {
+  return {
+    title: draft.title.trim(),
+    type: draft.type,
+    status: 'Pending' as const,
+    assigned_to: draft.assignedTo,
+    created_by: draft.createdBy,
+    due_date: draft.dueDate,
+    due_time: draft.dueTime,
+    reminder: draft.reminder,
+    lead_id: draft.entityType === 'lead' ? draft.entityId : null,
+    related_entity_type: draft.entityType,
+    related_entity_id: draft.entityId,
+    is_recurring: false as const,
+  };
+}

@@ -110,7 +110,6 @@ import {
   isTaskActiveAndNotOrphan,
   sortTasksByUrgency,
 } from '@/mobile/lib/tasks';
-import { completeTaskWithRecurrence } from '@/mobile/lib/taskActions';
 
 import type {
   CrmTask,
@@ -163,31 +162,6 @@ interface FormErrors {
   address?: string;
   professionalType?: string;
 }
-
-/** Fallback option sets used when the Control Panel has not loaded yet. */
-const PROFESSIONAL_TYPE_FALLBACK: { value: string; label: string }[] = [
-  { value: 'contractor', label: 'Contractor' },
-  { value: 'architect', label: 'Architect' },
-  { value: 'supplier', label: 'Supplier' },
-  { value: 'consultant', label: 'Consultant' },
-  { value: 'partner', label: 'Partner' },
-  { value: 'vendor', label: 'Vendor' },
-  { value: 'engineer', label: 'Engineer' },
-  { value: 'interior_designer', label: 'Interior Designer' },
-];
-
-const MATERIAL_FALLBACK: { value: string; label: string }[] = [
-  { value: 'italian_marble', label: 'Italian Marble' },
-  { value: 'granite_south', label: 'Granite (South)' },
-  { value: 'granite_north', label: 'Granite (North)' },
-  { value: 'quartz', label: 'Quartz' },
-  { value: 'sandstone', label: 'Sandstone' },
-  { value: 'tiles', label: 'Tiles' },
-  { value: 'onyx', label: 'Onyx' },
-  { value: 'engineered_marble', label: 'Engineered Marble' },
-  { value: 'cladding_stone', label: 'Cladding Stone' },
-  { value: 'wooden_flooring', label: 'Wooden Flooring' },
-];
 
 /** `site_supervisor` → `Site Supervisor`. */
 function humanizeToken(value?: string | null): string {
@@ -596,6 +570,9 @@ export const EntityProfilePage: React.FC<{
   onBack: () => void;
   onNavigate: (route: MobileRoute) => void;
   onOpenCallOutcome: (target: CallOutcomeTargetPayload) => void;
+  onOpenCompletionSheet: (target: CallOutcomeTargetPayload) => void;
+  initialLeadAction?: 'convert' | 'lost' | null;
+  onLeadActionHandled?: () => void;
   /** Records the intent to call; the sheet opens on return from the dialer. */
   onBeginCall?: (target: CallOutcomeTargetPayload) => void;
   onOpenQuickTask: (entityType: EntityKind, entityId: string) => void;
@@ -606,13 +583,16 @@ export const EntityProfilePage: React.FC<{
   onBack,
   onNavigate,
   onOpenCallOutcome,
+  onOpenCompletionSheet,
+  initialLeadAction,
+  onLeadActionHandled,
   onBeginCall,
   onOpenQuickTask,
 }) => {
   const { leads, loading: leadsLoading } = useLeads();
   const { customers, loading: customersLoading } = useCustomers();
   const { professionals, loading: professionalsLoading } = useProfessionals();
-  const { tasks, updateTask, createNextRecurringInstance } = useTasks();
+  const { tasks } = useTasks();
   const { getOptionLabel } = useMobileControlPanel();
   const { canManage, isLoading: vaultPermissionLoading } = useCanManageCustomerAttachments();
   // The vault access state is derived by the shared, unit-tested helper so
@@ -665,7 +645,6 @@ export const EntityProfilePage: React.FC<{
    * entity, so the bell list is read unscoped. Only the rows that belong to
    * the task are ever dismissed.
    */
-  const { reminders: taskReminders, dismissReminder } = useReminders();
 
   /** Writing a task needs `tasks.edit` — a read-only role gets no CTAs. */
   const canEditTasks = hasPermission('tasks.edit');
@@ -740,6 +719,13 @@ export const EntityProfilePage: React.FC<{
 
   const entityName = entity?.full_name || 'Profile';
   const entityPhone = entity?.phone || '';
+
+  useEffect(() => {
+    if (entityType !== 'lead' || !lead || !initialLeadAction) return;
+    if (initialLeadAction === 'convert') setConvertOpen(true);
+    else setMarkLostOpen(true);
+    onLeadActionHandled?.();
+  }, [entityType, lead?.id, initialLeadAction, onLeadActionHandled]);
   const entityLocation = lead?.site_location || customer?.address || professional?.office_location || '';
   const entityPlusCode = lead?.plus_code || customer?.plus_code || professional?.plus_code || null;
   const roleLabel = lead
@@ -936,29 +922,15 @@ export const EntityProfilePage: React.FC<{
     }
   }, [noteText, createActivity, entityType, entityId]);
 
-  /**
-   * Completes a task through the shared helper, so a recurring task rolls
-   * forward into its next occurrence and the task's own alarm is dismissed —
-   * exactly like the desktop completion flow.
-   */
-  const handleCompleteTask = async (task: CrmTask) => {
-    const result = await completeTaskWithRecurrence(
-      { id: task.id, is_recurring: task.is_recurring },
-      {
-        updateTask,
-        createNextRecurringInstance,
-        dismissReminder,
-        reminders: taskReminders,
-        onError: (message: string) =>
-          toast({
-            title: 'Task not updated',
-            description: message,
-            variant: 'destructive',
-          }),
-      },
-    );
-    if (!result.ok) return;
-    toast({ title: 'Task completed', description: task.title });
+  /** Every Mark Complete tap now requires an explicit outcome in the shared sheet. */
+  const handleCompleteTask = (task: CrmTask) => {
+    onOpenCompletionSheet({
+      entityType,
+      entityId,
+      entityName,
+      phone: entityPhone,
+      taskId: task.id,
+    });
   };
 
   const handleOpenEntityFile = useCallback(
@@ -1586,24 +1558,7 @@ export const EntityProfilePage: React.FC<{
                     {task.status !== 'Completed' && task.status !== 'Cancelled' && canEditTasks ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!isOnline) {
-                            // The device is offline — the completion is parked
-                            // on the device and replayed by the outbox.
-                            enqueue({
-                              kind: 'task_action',
-                              label: `Complete task · ${task.title}`,
-                              payload: { taskId: task.id, updates: { status: 'Completed' } },
-                            });
-                            toast({
-                              title: 'Saved offline',
-                              description:
-                                'This update is stored on the device and will sync automatically.',
-                            });
-                            return;
-                          }
-                          void handleCompleteTask(task);
-                        }}
+                        onClick={() => handleCompleteTask(task)}
                         className="w-full min-h-[44px] rounded-[10px] bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-semibold"
                       >
                         Mark Complete
@@ -1937,10 +1892,10 @@ export const MobileCustomerEditForm: React.FC<{
     setMaterialInterests(Array.isArray(customer.materials_purchased) ? customer.materials_purchased : []);
   }, [customer]);
 
-  const materialOptions = useMemo(() => {
-    const options = getFieldOptions('materials', 'materials');
-    return options.length > 0 ? options : MATERIAL_FALLBACK;
-  }, [getFieldOptions]);
+  const materialOptions = useMemo(
+    () => getFieldOptions('materials', 'materials'),
+    [getFieldOptions],
+  );
 
   const staffCandidate = useMemo(() => {
     const match = staffOptions.find((option) => option.id === profile?.id);
@@ -2461,10 +2416,10 @@ export const MobileProfessionalEditForm: React.FC<{
     setNotes(professional.notes ?? '');
   }, [professional]);
 
-  const typeOptions = useMemo(() => {
-    const options = getFieldOptions('professionals', 'professional_type');
-    return options.length > 0 ? options : PROFESSIONAL_TYPE_FALLBACK;
-  }, [getFieldOptions]);
+  const typeOptions = useMemo(
+    () => getFieldOptions('professionals', 'professional_type'),
+    [getFieldOptions],
+  );
 
   const staffCandidate = useMemo(() => {
     const match = staffOptions.find((option) => option.id === profile?.id);

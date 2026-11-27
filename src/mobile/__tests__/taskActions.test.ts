@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import {
+  buildFollowUpTaskPayload,
   cancelTaskWithCleanup,
   completeTaskWithRecurrence,
+  createFollowUpTaskOnce,
+  getDefaultFollowUpTaskTitle,
+  hasValidTaskReschedule,
+  isLeadOnlyOpenNonRecurringTask,
   taskScopedReminderIds,
   type TaskActionDeps,
   type TaskActionUpdate,
@@ -175,5 +181,179 @@ describe('taskScopedReminderIds', () => {
   it('returns an empty list when there is no reminder list', () => {
     expect(taskScopedReminderIds('task-1')).toEqual([]);
     expect(taskScopedReminderIds('task-1', [])).toEqual([]);
+  });
+});
+
+
+describe('mobile task completion policy helpers', () => {
+  const task = (overrides: Partial<{
+    id: string;
+    status: string;
+    is_recurring: boolean;
+    is_deleted: boolean;
+    lead_id: string | null;
+    related_entity_type: string | null;
+    related_entity_id: string | null;
+  }> = {}) => ({
+    id: 'task-1',
+    status: 'Pending',
+    is_recurring: false,
+    is_deleted: false,
+    lead_id: 'lead-1',
+    ...overrides,
+  });
+
+  it('requires a next step only for the lead’s sole active non-recurring task', () => {
+    expect(isLeadOnlyOpenNonRecurringTask(task(), [task()], 'lead-1')).toBe(true);
+    expect(isLeadOnlyOpenNonRecurringTask(task({ is_recurring: true }), [task({ is_recurring: true })], 'lead-1')).toBe(false);
+    expect(isLeadOnlyOpenNonRecurringTask(task({ lead_id: null }), [task()], null)).toBe(false);
+
+    const current = task();
+    const another = task({ id: 'task-2', lead_id: null, related_entity_type: 'lead', related_entity_id: 'lead-1' });
+    expect(isLeadOnlyOpenNonRecurringTask(current, [current, another], 'lead-1')).toBe(false);
+  });
+
+  it('ignores completed, cancelled and soft-deleted rows when checking another open task', () => {
+    const current = task();
+    const closed = task({ id: 'task-2', status: 'Completed' });
+    const cancelled = task({ id: 'task-3', status: 'Cancelled' });
+    const deleted = task({ id: 'task-4', is_deleted: true });
+    expect(isLeadOnlyOpenNonRecurringTask(current, [current, closed, cancelled, deleted], 'lead-1')).toBe(true);
+  });
+
+  it('requires both a reschedule reason and a date', () => {
+    expect(hasValidTaskReschedule('', '2026-11-28')).toBe(false);
+    expect(hasValidTaskReschedule('   ', '2026-11-28')).toBe(false);
+    expect(hasValidTaskReschedule('Client requested a callback', '')).toBe(false);
+    expect(hasValidTaskReschedule(' Client requested a callback ', '2026-11-28')).toBe(true);
+  });
+
+  it('formats the suggested follow-up title from the task type label and person name', () => {
+    expect(getDefaultFollowUpTaskTitle('Follow-up Call', ' Aarambh ')).toBe('Follow-up Call: Aarambh');
+  });
+
+  it('reuses the first created follow-up task id on a retry', async () => {
+    const taskIdRef = { current: null as string | null };
+    const createTask = vi.fn(async () => ({ id: 'follow-up-1' }));
+    await expect(createFollowUpTaskOnce(taskIdRef, createTask)).resolves.toBe('follow-up-1');
+    await expect(createFollowUpTaskOnce(taskIdRef, createTask)).resolves.toBe('follow-up-1');
+    expect(createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds a linked follow-up payload with full staff names and the configured values', () => {
+    expect(buildFollowUpTaskPayload({
+      title: ' Site Visit: Client Name ',
+      type: 'Custom Task Type',
+      assignedTo: 'Assigned Staff Full Name',
+      createdBy: 'Signed-in Staff Full Name',
+      dueDate: '2026-11-28',
+      dueTime: '10:30',
+      reminder: true,
+      entityType: 'lead',
+      entityId: 'lead-123',
+    })).toEqual({
+      title: 'Site Visit: Client Name',
+      type: 'Custom Task Type',
+      status: 'Pending',
+      assigned_to: 'Assigned Staff Full Name',
+      created_by: 'Signed-in Staff Full Name',
+      due_date: '2026-11-28',
+      due_time: '10:30',
+      reminder: true,
+      lead_id: 'lead-123',
+      related_entity_type: 'lead',
+      related_entity_id: 'lead-123',
+      is_recurring: false,
+    });
+  });
+});
+
+describe('Desktop and Mobile completion parity', () => {
+  const desktopSource = readFileSync(
+    new URL('../../components/tasks/TaskCompletionDialog.tsx', import.meta.url),
+    'utf8',
+  );
+  const mobileSource = readFileSync(
+    new URL('../screens/DailyWorkScreens.tsx', import.meta.url),
+    'utf8',
+  );
+
+  it('uses the shared six-outcome fallback and reason suggestions on Desktop and Mobile', () => {
+    expect(desktopSource).toContain('OUTCOME_OPTIONS');
+    expect(desktopSource).toContain('getRescheduleReasonSuggestions');
+    expect(mobileSource).toContain('OUTCOME_OPTIONS');
+    expect(mobileSource).toContain('getRescheduleReasonSuggestions');
+    expect(mobileSource).toContain("getFieldOptions('tasks', 'completion_outcome')");
+    expect(mobileSource).toContain('configured.length === 0');
+    expect(mobileSource).toContain('control.outcomes.map');
+  });
+
+  it('requires a non-blank reason on both mobile reschedule entry points', () => {
+    expect(mobileSource).toContain('hasValidTaskReschedule(rescheduleReason, dateStr)');
+    expect(mobileSource).toContain('Reschedule Reason *');
+    expect(mobileSource).toContain('getRescheduleReasonSuggestions(outcome)');
+  });
+
+  it('keeps all managed mobile options live from Control Panel', () => {
+    const leadSource = readFileSync(new URL('../screens/LeadScreens.tsx', import.meta.url), 'utf8');
+    const peopleSource = readFileSync(new URL('../screens/PeopleScreens.tsx', import.meta.url), 'utf8');
+    const quickAddSource = readFileSync(new URL('../shell/MobileShell.tsx', import.meta.url), 'utf8');
+
+    for (const field of ['designation', 'construction_stage', 'source', 'priority', 'lost_reason']) {
+      expect(leadSource).toContain(`getFieldOptions('leads', '${field}')`);
+    }
+    expect(leadSource).toContain(`getFieldOptions('materials', 'materials')`);
+    expect(leadSource).toContain('materialOptions.find((option) => option.isDefault)');
+    expect(leadSource).toContain('priorityOptions.find((o) => o.isDefault)');
+    expect(peopleSource).toContain(`getFieldOptions('professionals', 'professional_type')`);
+    expect(peopleSource).toContain(`getFieldOptions('materials', 'materials')`);
+    expect(quickAddSource).toContain(`getFieldOptions('tasks', 'type')`);
+    expect(quickAddSource).toContain('find((option) => option.isDefault)');
+    expect(quickAddSource).not.toContain('FALLBACK_TASK_TYPES');
+    expect(mobileSource).toContain('control.taskTypes');
+    expect(mobileSource).toContain('taskTypeOptions.find((option) => option.isDefault)');
+  });
+
+  it('uses task INSERT and update reminder sync without duplicate reminder writes', () => {
+    const useTasksSource = readFileSync(new URL('../../hooks/useTasks.ts', import.meta.url), 'utf8');
+    expect(mobileSource).toContain('createFollowUpTaskOnce(followUpTaskIdRef');
+    expect(mobileSource).toContain('buildFollowUpTaskPayload');
+    expect(useTasksSource).toContain('.insert([taskData])');
+    expect(useTasksSource).toContain('void syncTaskReminder(data)');
+    expect(mobileSource).not.toContain("functions.invoke('run-automations'");
+    expect(mobileSource).not.toContain('addReminder(');
+    expect(mobileSource).not.toContain('deleteReminder(');
+    expect(mobileSource).toContain('useTasks.updateTask owns the canonical task-scoped reminder mirror');
+    expect(mobileSource).toContain('completion_status: completionStatus');
+    expect(mobileSource).toContain('attempt_count: attemptCount');
+    expect(mobileSource).toContain('updates.closed_at = nowIso');
+    expect(mobileSource).toContain("steps.add('followup_parent_activity')");
+  });
+
+  it('respects system reminder defaults for new work and the stored reminder for an existing task', () => {
+    const quickAddSource = readFileSync(new URL('../shell/MobileShell.tsx', import.meta.url), 'utf8');
+    const leadSource = readFileSync(new URL('../screens/LeadScreens.tsx', import.meta.url), 'utf8');
+    expect(mobileSource).toContain('setReminderOn(task.reminder_enabled)');
+    expect(mobileSource).toContain('targetTask.reminder ?? defaultRemindersEnabled');
+    expect(quickAddSource).toContain('useState(defaultRemindersEnabled)');
+    expect(quickAddSource).toContain('setReminderEnabled(defaultRemindersEnabled)');
+    expect(leadSource).toContain('useState(defaultRemindersEnabled)');
+    expect(leadSource).toContain('setReminderEnabled(defaultRemindersEnabled)');
+  });
+
+  it('does not invent a Lead priority default before the Control Panel loads', () => {
+    const leadSource = readFileSync(new URL('../screens/LeadScreens.tsx', import.meta.url), 'utf8');
+    expect(leadSource).toContain('useState(Number.NaN)');
+    expect(leadSource).toContain('Select a priority configured in Control Panel');
+    expect(leadSource).not.toContain('setPriority(3)');
+  });
+
+  it('keeps reason chips at 44px minimum and the Call Log search input at 16px', () => {
+    expect(mobileSource).not.toContain('min-h-[36px]');
+    expect(mobileSource).toContain('min-h-[44px]');
+    const appSource = readFileSync(new URL('../MobileApp.tsx', import.meta.url), 'utf8');
+    const searchStart = appSource.indexOf('type="search"');
+    expect(searchStart).toBeGreaterThanOrEqual(0);
+    expect(appSource.slice(searchStart, searchStart + 500)).toContain('text-base');
   });
 });
