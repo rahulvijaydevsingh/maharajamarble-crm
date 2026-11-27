@@ -6,8 +6,12 @@ import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useTasks } from '@/hooks/useTasks';
+import { useReminders } from '@/hooks/useReminders';
+import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { completeTaskWithRecurrence } from '@/mobile/lib/taskActions';
+import { requireSafeStaffName } from '@/mobile/lib/staffAttribution';
 import { supabase } from '@/integrations/supabase/client';
 
 import { WeakSignalOutboxProvider } from '@/mobile/outbox/WeakSignalOutboxContext';
@@ -54,7 +58,91 @@ import {
 } from '@/mobile/screens/PeopleScreens';
 import { FullCrmHandoffView, MessagesPage, MorePage } from '@/mobile/screens/CommsAndMoreScreens';
 
-import type { EntityKind, MainTab, MobileRoute } from '@/mobile/types/crmTypes';
+import type { EntityKind, MainTab, MobileRoute, PendingTaskCompletionHandoff } from '@/mobile/types/crmTypes';
+
+
+/**
+ * Completes the source task only after Convert / Mark Lost has saved.
+ * The task-scoped reminder hook supplies the exact reminders to dismiss.
+ */
+const PendingTaskCompletionRunner: React.FC<{
+  handoff: PendingTaskCompletionHandoff;
+  onFinished: () => void;
+}> = ({ handoff, onFinished }) => {
+  const { updateTask, createNextRecurringInstance } = useTasks();
+  const { reminders, dismissReminder, loading: remindersLoading } = useReminders('task', handoff.taskId);
+  const { logActivity } = useLogActivity();
+  const { profile, user } = useAuth();
+  const { toast } = useToast();
+  const startedTaskIdRef = React.useRef<string | null>(null);
+  const staffName = requireSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null);
+
+  useEffect(() => {
+    if (remindersLoading) return;
+    if (startedTaskIdRef.current === handoff.taskId) return;
+    startedTaskIdRef.current = handoff.taskId;
+    void (async () => {
+      try {
+        const result = await completeTaskWithRecurrence(
+          { id: handoff.taskId, is_recurring: handoff.isRecurring },
+          {
+            updateTask: (taskId, updates) => updateTask(taskId, {
+              ...updates,
+              ...(updates.status === 'Completed' ? {
+                closed_at: new Date().toISOString(),
+                closed_by: user?.id ?? null,
+                updated_by: staffName,
+              } : {}),
+            }),
+            createNextRecurringInstance,
+            dismissReminder,
+            reminders,
+          },
+        );
+        if (!result.ok) {
+          toast({
+            title: 'Lead action saved; task needs attention',
+            description: result.error ?? 'The related task could not be completed.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        try {
+          await logActivity({
+            activity_type: 'task_completed',
+            activity_category: 'task',
+            title: 'Task Completed',
+            description: `Task completed after lead ${handoff.lifecycleAction === 'convert' ? 'conversion' : 'loss request'}.`,
+            metadata: {
+              source: 'mobile_lead_lifecycle',
+              lead_id: handoff.leadId,
+              lifecycle_action: handoff.lifecycleAction,
+              task_id: handoff.taskId,
+            },
+            related_entity_type: 'task',
+            related_entity_id: handoff.taskId,
+          });
+        } catch (activityError) {
+          console.warn('[mobile lifecycle] Task completion activity could not be logged.', activityError);
+        }
+        toast({ title: 'Task completed', description: 'The required lead action was saved.' });
+      } catch (error) {
+        toast({
+          title: 'Lead action saved; task needs attention',
+          description: error instanceof Error ? error.message : 'The related task could not be completed.',
+          variant: 'destructive',
+        });
+      } finally {
+        onFinished();
+      }
+    })();
+  }, [
+    handoff.taskId, handoff.isRecurring, handoff.leadId, handoff.lifecycleAction,
+    remindersLoading, updateTask, createNextRecurringInstance, dismissReminder, reminders,
+    logActivity, user?.id, staffName, toast, onFinished,
+  ]);
+  return null;
+};
 
 const MobileWorkspaceController: React.FC = () => {
   const navigate = useNavigate();
@@ -80,6 +168,7 @@ const MobileWorkspaceController: React.FC = () => {
   const [callLogQuery, setCallLogQuery] = useState('');
   const [callOutcomeMode, setCallOutcomeMode] = useState<'call' | 'complete'>('call');
   const [pendingLeadLifecycle, setPendingLeadLifecycle] = useState<{ leadId: string; action: 'convert' | 'lost' } | null>(null);
+  const [pendingTaskCompletion, setPendingTaskCompletion] = useState<{ handoff: PendingTaskCompletionHandoff; ready: boolean } | null>(null);
 
   const { callOutcomeTarget, openCallOutcome, dismissCallOutcome } =
     useCallIntentWatcher();
@@ -248,14 +337,22 @@ const MobileWorkspaceController: React.FC = () => {
     recordCallIntent(target);
   }, []);
 
-  const handleLeadLifecycleAction = useCallback((action: 'convert' | 'lost', leadId: string) => {
+  const handleLeadLifecycleAction = useCallback((action: 'convert' | 'lost', leadId: string, handoff?: PendingTaskCompletionHandoff) => {
     setPendingLeadLifecycle({ leadId, action });
+    setPendingTaskCompletion(handoff ? { handoff, ready: false } : null);
     navigate(buildMobilePath({ name: 'entity_profile', entityType: 'lead', entityId: leadId, initialTab: 'overview' }));
   }, [navigate]);
 
   const handleLeadActionHandled = useCallback(() => {
     setPendingLeadLifecycle(null);
   }, []);
+
+  const handleLeadLifecycleSaved = useCallback(() => {
+    setPendingTaskCompletion((current) => current ? { ...current, ready: true } : null);
+  }, []);
+
+  const handleLeadLifecycleCancelled = useCallback(() => setPendingTaskCompletion(null), []);
+  const handlePendingTaskCompletionFinished = useCallback(() => setPendingTaskCompletion(null), []);
 
   return (
     <div className="min-h-[100dvh] bg-[#F8F9FA]">
@@ -354,6 +451,8 @@ const MobileWorkspaceController: React.FC = () => {
               onOpenCompletionSheet={handleOpenCompletionSheet}
               initialLeadAction={pendingLeadLifecycle?.leadId === route.entityId ? pendingLeadLifecycle.action : null}
               onLeadActionHandled={handleLeadActionHandled}
+              onLeadLifecycleSaved={handleLeadLifecycleSaved}
+              onLeadLifecycleCancelled={handleLeadLifecycleCancelled}
               onBeginCall={handleBeginCall}
               onOpenQuickTask={(entityType, entityId) =>
                 setQuickAddState({
@@ -514,6 +613,10 @@ const MobileWorkspaceController: React.FC = () => {
             onBeginCall={handleBeginCall}
           />
         )}
+
+        {pendingTaskCompletion?.ready ? (
+          <PendingTaskCompletionRunner handoff={pendingTaskCompletion.handoff} onFinished={handlePendingTaskCompletionFinished} />
+        ) : null}
 
         {callOutcomeTarget ? (
           <CallOutcomeSheet

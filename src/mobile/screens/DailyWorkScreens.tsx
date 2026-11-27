@@ -110,6 +110,7 @@ import type {
   CrmTask,
   EntityKind,
   MobileRoute,
+  PendingTaskCompletionHandoff,
   WorkFilter,
 } from '@/mobile/types/crmTypes';
 
@@ -1899,13 +1900,18 @@ export const CallOutcomeSheet: React.FC<{
   openedAfterCall: boolean;
   target: MobileCallTarget | null;
   onDismiss: () => void;
-  onLeadLifecycleAction?: (action: 'convert' | 'lost', leadId: string) => void;
+  onLeadLifecycleAction?: (
+    action: 'convert' | 'lost',
+    leadId: string,
+    handoff: PendingTaskCompletionHandoff,
+  ) => void;
 }> = ({ open, mode = 'call', openedAfterCall, target, onDismiss, onLeadLifecycleAction }) => {
   const { tasks, updateTask, createNextRecurringInstance, addTask } = useTasks();
   const { options: activeStaffOptions } = useActiveStaffOptions();
   const { logActivity } = useLogActivity();
   const { defaultRemindersEnabled } = useSystemSettings();
   const { profile, user } = useAuth();
+  const staffName = requireSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null);
   const { hasPermission } = usePermissions();
   const control = useControlPanelView();
 
@@ -2012,7 +2018,6 @@ export const CallOutcomeSheet: React.FC<{
   const scheduledIso = combineDateAndTime(dateStr, timeStr);
   const outcomeLabel =
     control.outcomes.find((option) => option.value === outcome)?.label ?? outcome;
-  const staffName = requireSafeStaffName(profile?.full_name ?? null, profile?.full_name ?? null);
   const liveTask = targetTask;
   const safeStaffOptions = activeStaffOptions.filter((option) => isSafeStaffName(option.name));
   const assigneeOptions = safeStaffOptions.some((option) => option.name === staffName)
@@ -2027,6 +2032,10 @@ export const CallOutcomeSheet: React.FC<{
   const shouldCreateFollowUp = canEditTasks && (target.taskId
     ? taskAction === 'complete' && nextStep === 'create'
     : createAdHocFollowUp);
+  const shouldHandoffTaskCompletion = Boolean(
+    target.taskId && canEditTasks && taskAction === 'complete' &&
+    (nextStep === 'convert' || nextStep === 'lost') && linkedLeadId,
+  );
 
   const taskActions: { value: CallOutcomeAction; label: string }[] = [
     ...(mode === 'call' ? [{ value: 'keep_open' as const, label: 'Keep Open' }] : []),
@@ -2075,6 +2084,10 @@ export const CallOutcomeSheet: React.FC<{
       setSaveError(!rescheduleReason.trim() ? 'Enter a reschedule reason before saving.' : 'Pick a date before saving the reschedule.');
       return;
     }
+    if (shouldHandoffTaskCompletion && !onLeadLifecycleAction) {
+      setSaveError('The lead action could not be opened. Please try again.');
+      return;
+    }
     setBusy(true);
     setSaveError(null);
     const steps = completedStepsRef.current;
@@ -2104,7 +2117,7 @@ export const CallOutcomeSheet: React.FC<{
           next_action_type: nextActionType,
           next_action_payload: nextActionPayload,
         };
-        if (taskAction === 'complete') {
+        if (taskAction === 'complete' && !shouldHandoffTaskCompletion) {
           updates.closed_at = nowIso;
           updates.closed_by = user?.id ?? null;
         }
@@ -2136,6 +2149,7 @@ export const CallOutcomeSheet: React.FC<{
         target.taskId &&
         canEditTasks &&
         (taskAction === 'complete' || taskAction === 'cancel') &&
+        !shouldHandoffTaskCompletion &&
         !steps.has('task_status')
       ) {
         const actionOutcome: { error: string | null } = { error: null };
@@ -2177,7 +2191,7 @@ export const CallOutcomeSheet: React.FC<{
         steps.add('outcome_activity');
       }
 
-      if (target.taskId && canEditTasks && taskAction === 'complete' && !steps.has('closed_activity')) {
+      if (target.taskId && canEditTasks && taskAction === 'complete' && !shouldHandoffTaskCompletion && !steps.has('closed_activity')) {
         await logTaskActivity(target.taskId, 'closed', {
           closed_by: user?.id ?? null,
           closed_at: nowIso,
@@ -2306,9 +2320,14 @@ export const CallOutcomeSheet: React.FC<{
         steps.add('log_activity');
       }
 
-      if (target.taskId && taskAction === 'complete' && (nextStep === 'convert' || nextStep === 'lost') && linkedLeadId) {
+      if (shouldHandoffTaskCompletion && target.taskId && linkedLeadId && (nextStep === 'convert' || nextStep === 'lost')) {
         onDismiss();
-        onLeadLifecycleAction?.(nextStep, linkedLeadId);
+        onLeadLifecycleAction?.(nextStep, linkedLeadId, {
+          taskId: target.taskId,
+          isRecurring: liveTask?.is_recurring ?? false,
+          leadId: linkedLeadId,
+          lifecycleAction: nextStep,
+        });
         return;
       }
       onDismiss();

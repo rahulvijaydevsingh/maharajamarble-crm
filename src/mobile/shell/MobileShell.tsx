@@ -563,7 +563,7 @@ export const QuickAddSheet: React.FC<{
   // The sheet must only reset when it *opens*. Background refetches of `leads`
   // / `taskTypeOptions` change those identities all the time, and resetting on
   // them wiped whatever the user had already typed.
-  const wasOpenRef = useRef(open);
+  const wasOpenRef = useRef(false);
   const entityChoicesRef = useRef(entityChoices);
   const taskTypeOptionsRef = useRef(taskTypeOptions);
   entityChoicesRef.current = entityChoices;

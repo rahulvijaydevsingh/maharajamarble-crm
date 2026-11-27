@@ -236,6 +236,17 @@ export type CallOutcomeValue = string;
 
 export type CallOutcomeAction = 'keep_open' | 'reschedule' | 'complete' | 'cancel';
 
+/**
+ * A lead conversion/loss requested as the required next step of a task.
+ * The task is completed only after the lead lifecycle save succeeds.
+ */
+export interface PendingTaskCompletionHandoff {
+  taskId: string;
+  isRecurring: boolean;
+  leadId: string;
+  lifecycleAction: 'convert' | 'lost';
+}
+
 export interface PendingCallState {
   entityType: EntityKind;
   entityId: string;

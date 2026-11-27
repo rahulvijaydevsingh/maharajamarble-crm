@@ -81,6 +81,7 @@ import { SecureAttachmentUploader } from '@/components/customers/SecureAttachmen
 import { supabase } from '@/integrations/supabase/client';
 import { normalizePhone10 } from '@/lib/phone';
 import { getLeadConversionAction, isLeadConverted } from '@/lib/leadConversionEligibility';
+import type { LeadConversionState } from '@/lib/leadConversionEligibility';
 import { getProfessionalLeadRoleBadges } from '@/lib/professionalLeadAssociations';
 import { resolveProfessionalForProfessionalLead } from '@/lib/professionalResolver';
 import { extractReferredBy } from '@/lib/referredBy';
@@ -573,6 +574,8 @@ export const EntityProfilePage: React.FC<{
   onOpenCompletionSheet: (target: CallOutcomeTargetPayload) => void;
   initialLeadAction?: 'convert' | 'lost' | null;
   onLeadActionHandled?: () => void;
+  onLeadLifecycleSaved?: () => void;
+  onLeadLifecycleCancelled?: () => void;
   /** Records the intent to call; the sheet opens on return from the dialer. */
   onBeginCall?: (target: CallOutcomeTargetPayload) => void;
   onOpenQuickTask: (entityType: EntityKind, entityId: string) => void;
@@ -586,6 +589,8 @@ export const EntityProfilePage: React.FC<{
   onOpenCompletionSheet,
   initialLeadAction,
   onLeadActionHandled,
+  onLeadLifecycleSaved,
+  onLeadLifecycleCancelled,
   onBeginCall,
   onOpenQuickTask,
 }) => {
@@ -1015,12 +1020,20 @@ export const EntityProfilePage: React.FC<{
     );
   }
 
+  const leadConversionState: LeadConversionState | null = lead
+    ? {
+        status: lead.status,
+        is_converted: lead.is_converted,
+        converted_to_customer_id: lead.converted_to_customer_id,
+      }
+    : null;
+
   const statusTag = lead
     ? lead.status === 'lost'
       ? { tone: 'overdue' as const, label: 'Lost' }
       : // The desktop writes `status: 'won'` for a converted lead — the
         // conversion lives in `is_converted` / `converted_to_customer_id`.
-        isLeadConverted(lead)
+        leadConversionState && isLeadConverted(leadConversionState)
         ? { tone: 'connected' as const, label: 'Converted' }
         : null
     : null;
@@ -1033,8 +1046,8 @@ export const EntityProfilePage: React.FC<{
    * pending a decision cannot be marked lost again, and a staff member without
    * the `leads.convert` permission never sees the conversion at all.
    */
-  const conversionAction = lead
-    ? getLeadConversionAction(lead, hasPermission('leads.convert'), true)
+  const conversionAction = leadConversionState
+    ? getLeadConversionAction(leadConversionState, hasPermission('leads.convert'), true)
     : 'hidden';
   const canMarkLost =
     Boolean(lead) &&
@@ -1812,14 +1825,26 @@ export const EntityProfilePage: React.FC<{
           <MarkLostSheet
             open={markLostOpen}
             lead={lead}
-            onClose={() => setMarkLostOpen(false)}
-            onSaved={() => setMarkLostOpen(false)}
+            onClose={() => {
+              setMarkLostOpen(false);
+              onLeadLifecycleCancelled?.();
+            }}
+            onSaved={() => {
+              setMarkLostOpen(false);
+              onLeadLifecycleSaved?.();
+            }}
           />
           <ConvertToCustomerSheet
             open={convertOpen}
             lead={lead}
-            onClose={() => setConvertOpen(false)}
-            onSaved={() => setConvertOpen(false)}
+            onClose={() => {
+              setConvertOpen(false);
+              onLeadLifecycleCancelled?.();
+            }}
+            onSaved={() => {
+              setConvertOpen(false);
+              onLeadLifecycleSaved?.();
+            }}
           />
         </>
       ) : null}

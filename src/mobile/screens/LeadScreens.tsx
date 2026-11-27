@@ -168,6 +168,15 @@ function leadReference(lead: { id: string }): string {
   return `#${lead.id.slice(0, 8)}`;
 }
 
+/** Local inline validation message; do not import this across screen modules. */
+const InlineError: React.FC<{ id?: string; message: string }> = ({ id, message }) => (
+  <p id={id} role="alert" className="mt-1.5 text-xs font-semibold text-[#DC2626] flex items-start gap-1">
+    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />
+    <span>{message}</span>
+  </p>
+);
+
+
 /**
  * The invalid fields in the order they appear on the screen.
  *
