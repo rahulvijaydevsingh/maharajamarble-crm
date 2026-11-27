@@ -19,6 +19,7 @@
  */
 
 import type { TaskInsert } from '@/hooks/useTasks';
+import { isLeadConverted, type LeadConversionState } from '@/lib/leadConversionEligibility';
 
 /** Status written by {@link completeTaskWithRecurrence}. */
 export const TASK_STATUS_COMPLETED = 'Completed';
@@ -232,6 +233,21 @@ export async function cancelTaskWithCleanup(
   return { ok: true, createdNextInstance: false, dismissedReminderIds };
 }
 
+
+/** Lifecycle actions available as the next step of completing a lead task. */
+export function getLeadCompletionLifecycleOptions(
+  lead: (LeadConversionState & { status?: string | null }) | null | undefined,
+  canConvertPermission: boolean,
+): { canConvertToCustomer: boolean; canMarkLost: boolean } {
+  if (!lead || lead.status === 'deleted') {
+    return { canConvertToCustomer: false, canMarkLost: false };
+  }
+  const converted = isLeadConverted(lead);
+  return {
+    canConvertToCustomer: canConvertPermission && !converted,
+    canMarkLost: !converted && lead.status !== 'lost' && lead.status !== 'pending_lost',
+  };
+}
 
 /**
  * Mobile completion policy helpers. Kept in this existing pure task-actions

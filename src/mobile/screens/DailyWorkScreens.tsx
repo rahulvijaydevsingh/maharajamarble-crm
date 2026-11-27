@@ -94,6 +94,7 @@ import {
   completeTaskWithRecurrence,
   createFollowUpTaskOnce,
   getDefaultFollowUpTaskTitle,
+  getLeadCompletionLifecycleOptions,
   hasValidTaskReschedule,
   isLeadOnlyOpenNonRecurringTask,
   type TaskActionDeps,
@@ -171,7 +172,7 @@ function isOpenTask(task: CrmTask): boolean {
  * The entry is informational: a failure is swallowed, because a task write
  * must never be blocked by the activity trail.
  */
-async function logTaskActivity(
+export async function logTaskActivity(
   taskId: string,
   eventType: string,
   metadata: Json,
@@ -236,17 +237,10 @@ function useControlPanelView(): ControlPanelView {
     }));
   }, [getFieldOptions, getOptionLabel]);
 
-  /** Prefer configured outcomes; use the shared desktop vocabulary while the panel is empty. */
-  const outcomes = useMemo(() => {
-    const configured = getFieldOptions('tasks', 'completion_outcome');
-    if (configured.length === 0) {
-      return OUTCOME_OPTIONS.map((value) => ({ value, label: value }));
-    }
-    return configured.map((option) => ({
-      value: option.value,
-      label: getOptionLabel('tasks', 'completion_outcome', option.value) || option.label,
-    }));
-  }, [getFieldOptions, getOptionLabel]);
+  const outcomes = useMemo(
+    () => OUTCOME_OPTIONS.map((value) => ({ value, label: value })),
+    [],
+  );
 
   const typeLabelMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -1229,12 +1223,15 @@ export const WorkPage: React.FC<{
   initialFilter?: WorkFilter;
   onNavigate: (route: MobileRoute) => void;
   onOpenCallOutcome: (target: MobileCallTarget) => void;
+  onOpenCompletionSheet: (target: MobileCallTarget) => void;
   /** Records the intent to call; the sheet opens on return from the dialer. */
   onBeginCall?: (target: MobileCallTarget) => void;
   attendanceBanner?: React.ReactNode;
-}> = ({ initialFilter = 'today', onNavigate, onOpenCallOutcome, onBeginCall, attendanceBanner }) => {
+}> = ({ initialFilter = 'today', onNavigate, onOpenCallOutcome, onOpenCompletionSheet, onBeginCall, attendanceBanner }) => {
   const { tasks } = useTasks();
   const { profile, role } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canEditTasks = hasPermission('tasks.edit');
   const control = useControlPanelView();
   const resolveEntity = useTaskEntityResolver(control.getOptionLabel);
 
@@ -1401,7 +1398,7 @@ export const WorkPage: React.FC<{
                   else onOpenCallOutcome(target);
                 }}
                 onFourthAction={() =>
-                  onOpenCallOutcome({
+                  onOpenCompletionSheet({
                     entityType: entity.entityType,
                     entityId: entity.entityId,
                     entityName: entity.name,
@@ -1409,7 +1406,12 @@ export const WorkPage: React.FC<{
                     taskId: task.id,
                   })
                 }
-                fourthLabel="Log"
+                fourthLabel="Done"
+                showFourthAction={
+                  canEditTasks &&
+                  task.status !== TASK_STATUS_COMPLETED &&
+                  task.status !== TASK_STATUS_CANCELLED
+                }
               />
             );
           })}
@@ -1900,12 +1902,14 @@ export const CallOutcomeSheet: React.FC<{
   openedAfterCall: boolean;
   target: MobileCallTarget | null;
   onDismiss: () => void;
+  onTaskClosed?: (taskId: string) => void;
   onLeadLifecycleAction?: (
     action: 'convert' | 'lost',
     leadId: string,
     handoff: PendingTaskCompletionHandoff,
   ) => void;
-}> = ({ open, mode = 'call', openedAfterCall, target, onDismiss, onLeadLifecycleAction }) => {
+}> = ({ open, mode = 'call', openedAfterCall, target, onDismiss, onTaskClosed, onLeadLifecycleAction }) => {
+  const { leads } = useLeads();
   const { tasks, updateTask, createNextRecurringInstance, addTask } = useTasks();
   const { options: activeStaffOptions } = useActiveStaffOptions();
   const { logActivity } = useLogActivity();
@@ -1945,6 +1949,9 @@ export const CallOutcomeSheet: React.FC<{
   const [followUpAssignee, setFollowUpAssignee] = useState('');
   const [followUpTitle, setFollowUpTitle] = useState('');
   const followUpTitleTouchedRef = useRef(false);
+  const taskTypeTouchedRef = useRef(false);
+  const assigneeTouchedRef = useRef(false);
+  const reminderTouchedRef = useRef(false);
   const followUpTaskIdRef = useRef<string | null>(null);
   // A call that is not attached to a task must never close the task by
   // accident — the default is "keep it open".
@@ -1962,6 +1969,9 @@ export const CallOutcomeSheet: React.FC<{
   const defaultFollowUpType = defaultFollowUpOption?.value ?? '';
   const defaultFollowUpLabel = defaultFollowUpOption?.label ?? '';
   const targetTask = target?.taskId ? tasks.find((item) => item.id === target.taskId) ?? null : null;
+  const targetTaskId = targetTask?.id;
+  const targetTaskReminder = targetTask?.reminder;
+  const hasTargetTask = Boolean(targetTaskId);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
 
@@ -1973,45 +1983,109 @@ export const CallOutcomeSheet: React.FC<{
    */
   const completedStepsRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!open) return;
-    const date = new Date();
-    date.setDate(date.getDate() + 1);
-    date.setHours(10, 0, 0, 0);
-    setDefaultTomorrow(date.toISOString());
-  }, [open]);
+  const openSessionKey =
+    open && target
+      ? `${mode}:${target.taskId ?? 'no-task'}:${target.entityType}:${target.entityId}`
+      : null;
+  const latestInitRef = useRef({
+    mode,
+    target,
+    targetTask,
+    canEditTasks,
+    defaultRemindersEnabled,
+    staffName,
+    defaultFollowUpType,
+    defaultFollowUpLabel,
+  });
+  latestInitRef.current = {
+    mode,
+    target,
+    targetTask,
+    canEditTasks,
+    defaultRemindersEnabled,
+    staffName,
+    defaultFollowUpType,
+    defaultFollowUpLabel,
+  };
 
   useEffect(() => {
-    if (!open) return;
+    if (!openSessionKey) return;
+    const init = latestInitRef.current;
+    const initTarget = init.target;
+    if (!initTarget) return;
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    const tomorrowIso = tomorrow.toISOString();
+    setDefaultTomorrow(tomorrowIso);
     setNote('');
-    // The outcome is never preselected — the user has to say what happened.
     setOutcome('');
-    setTaskAction(mode === 'complete' ? 'complete' : target?.taskId && canEditTasks ? 'reschedule' : 'keep_open');
+    setTaskAction(
+      init.mode === 'complete'
+        ? 'complete'
+        : initTarget.taskId && init.canEditTasks
+          ? 'reschedule'
+          : 'keep_open',
+    );
     setRescheduleReason('');
     setCreateAdHocFollowUp(false);
-    const initialLeadId = target?.entityType === 'lead'
-      ? target.entityId
-      : targetTask?.lead_id ?? (targetTask?.related_entity_type === 'lead' ? targetTask.related_entity_id : null);
+    const initialLeadId = initTarget.entityType === 'lead'
+      ? initTarget.entityId
+      : init.targetTask?.lead_id ??
+        (init.targetTask?.related_entity_type === 'lead' ? init.targetTask.related_entity_id : null);
     const requiresLeadNextStep = Boolean(
-      targetTask && initialLeadId && isLeadOnlyOpenNonRecurringTask(targetTask, tasksRef.current, initialLeadId),
+      init.targetTask &&
+      initialLeadId &&
+      isLeadOnlyOpenNonRecurringTask(init.targetTask, tasksRef.current, initialLeadId),
     );
     setNextStep(requiresLeadNextStep ? 'create' : 'none');
-    setFollowUpTaskType(defaultFollowUpType);
-    setFollowUpAssignee(staffName);
-    setFollowUpTitle(defaultFollowUpLabel ? getDefaultFollowUpTaskTitle(defaultFollowUpLabel, target?.entityName ?? '') : '');
+    setFollowUpTaskType(init.defaultFollowUpType);
+    setFollowUpAssignee(init.staffName);
+    setFollowUpTitle(
+      init.defaultFollowUpLabel
+        ? getDefaultFollowUpTaskTitle(init.defaultFollowUpLabel, initTarget.entityName)
+        : '',
+    );
     followUpTitleTouchedRef.current = false;
+    taskTypeTouchedRef.current = false;
+    assigneeTouchedRef.current = false;
+    reminderTouchedRef.current = false;
     followUpTaskIdRef.current = null;
     setSnoozePreset('tomorrow');
-    setDateStr(toLocalDateInputValue(defaultTomorrow));
-    setTimeStr(toLocalTimeInputValue(defaultTomorrow));
+    setDateStr(toLocalDateInputValue(tomorrowIso));
+    setTimeStr(toLocalTimeInputValue(tomorrowIso));
     setReminderAlarm(
-      mode === 'call' && targetTask
-        ? (targetTask.reminder ?? defaultRemindersEnabled)
-        : defaultRemindersEnabled,
+      init.mode === 'call' && init.targetTask
+        ? (init.targetTask.reminder ?? init.defaultRemindersEnabled)
+        : init.defaultRemindersEnabled,
     );
     setSaveError(null);
+    setBusy(false);
     completedStepsRef.current = new Set();
-  }, [open, defaultTomorrow, defaultRemindersEnabled, target?.taskId, target?.entityType, target?.entityId, canEditTasks, mode, defaultFollowUpType, defaultFollowUpLabel, targetTask?.id, targetTask?.is_recurring, targetTask?.lead_id, targetTask?.related_entity_type, targetTask?.related_entity_id, targetTask?.reminder, staffName, target?.entityName]);
+  }, [openSessionKey]);
+
+  // Late Control Panel and profile values seed untouched controls only.
+  useEffect(() => {
+    if (!open || followUpTaskType || !defaultFollowUpType || taskTypeTouchedRef.current) return;
+    setFollowUpTaskType(defaultFollowUpType);
+    if (!followUpTitleTouchedRef.current && defaultFollowUpLabel) {
+      setFollowUpTitle(getDefaultFollowUpTaskTitle(defaultFollowUpLabel, target?.entityName ?? ''));
+    }
+  }, [open, followUpTaskType, defaultFollowUpType, defaultFollowUpLabel, target?.entityName]);
+
+  useEffect(() => {
+    if (!open || assigneeTouchedRef.current || !staffName) return;
+    setFollowUpAssignee((current) => (current === staffName ? current : staffName));
+  }, [open, staffName]);
+
+  useEffect(() => {
+    if (!open || reminderTouchedRef.current) return;
+    const nextReminder = mode === 'call' && hasTargetTask
+      ? (targetTaskReminder ?? defaultRemindersEnabled)
+      : defaultRemindersEnabled;
+    setReminderAlarm((current) => (current === nextReminder ? current : nextReminder));
+  }, [open, mode, hasTargetTask, targetTaskId, targetTaskReminder, defaultRemindersEnabled]);
 
   if (!open || !target) return null;
 
@@ -2026,6 +2100,20 @@ export const CallOutcomeSheet: React.FC<{
   const linkedLeadId = target.entityType === 'lead'
     ? target.entityId
     : liveTask?.lead_id ?? (liveTask?.related_entity_type === 'lead' ? liveTask.related_entity_id : null);
+  const liveLead = linkedLeadId ? leads.find((lead) => lead.id === linkedLeadId) ?? null : null;
+  const lifecycleOptions = getLeadCompletionLifecycleOptions(
+    liveLead,
+    hasPermission('leads.convert'),
+  );
+  const leadNextStepOptions: Array<{ value: 'create' | 'convert' | 'lost'; label: string }> = [
+    { value: 'create', label: 'Create Next Task' },
+    ...(lifecycleOptions.canConvertToCustomer
+      ? [{ value: 'convert' as const, label: 'Convert to Customer' }]
+      : []),
+    ...(lifecycleOptions.canMarkLost
+      ? [{ value: 'lost' as const, label: 'Mark as Lost' }]
+      : []),
+  ];
   const leadOnlyOpenTask = Boolean(
     linkedLeadId && liveTask && isLeadOnlyOpenNonRecurringTask(liveTask, tasks, linkedLeadId),
   );
@@ -2086,6 +2174,38 @@ export const CallOutcomeSheet: React.FC<{
     }
     if (shouldHandoffTaskCompletion && !onLeadLifecycleAction) {
       setSaveError('The lead action could not be opened. Please try again.');
+      return;
+    }
+    if (
+      shouldHandoffTaskCompletion &&
+      target.taskId &&
+      linkedLeadId &&
+      (nextStep === 'convert' || nextStep === 'lost')
+    ) {
+      const eligible = nextStep === 'convert'
+        ? lifecycleOptions.canConvertToCustomer
+        : lifecycleOptions.canMarkLost;
+      if (!eligible) {
+        setSaveError('This lead action is no longer available. Refresh and try again.');
+        return;
+      }
+      const noteText = note.trim();
+      const completionStatus = outcome === OUTCOME_OPTIONS[0] ? 'success' : 'unsuccessful';
+      const attemptCount =
+        ((liveTask as unknown as { attempt_count?: number } | null)?.attempt_count ?? 0) + 1;
+      onDismiss();
+      onLeadLifecycleAction(nextStep, linkedLeadId, {
+        taskId: target.taskId,
+        taskTitle: liveTask?.title ?? target.entityName,
+        isRecurring: liveTask?.is_recurring ?? false,
+        leadId: linkedLeadId,
+        lifecycleAction: nextStep,
+        outcome,
+        outcomeLabel,
+        notes: noteText,
+        completionStatus,
+        attemptCount,
+      });
       return;
     }
     setBusy(true);
@@ -2320,15 +2440,12 @@ export const CallOutcomeSheet: React.FC<{
         steps.add('log_activity');
       }
 
-      if (shouldHandoffTaskCompletion && target.taskId && linkedLeadId && (nextStep === 'convert' || nextStep === 'lost')) {
-        onDismiss();
-        onLeadLifecycleAction?.(nextStep, linkedLeadId, {
-          taskId: target.taskId,
-          isRecurring: liveTask?.is_recurring ?? false,
-          leadId: linkedLeadId,
-          lifecycleAction: nextStep,
-        });
-        return;
+      if (
+        target.taskId &&
+        canEditTasks &&
+        (taskAction === 'complete' || taskAction === 'cancel')
+      ) {
+        onTaskClosed?.(target.taskId);
       }
       onDismiss();
     } catch (error) {
@@ -2486,11 +2603,7 @@ export const CallOutcomeSheet: React.FC<{
               <div className="text-xs font-bold text-[#1A1A2E]">Next Step</div>
               {leadOnlyOpenTask ? (
                 <div className="grid grid-cols-1 gap-1.5">
-                  {([
-                    { value: 'create', label: 'Create Next Task' },
-                    { value: 'convert', label: 'Convert to Customer' },
-                    { value: 'lost', label: 'Mark as Lost' },
-                  ] as const).map((option) => (
+                  {leadNextStepOptions.map((option) => (
                     <button key={option.value} type="button" onClick={() => setNextStep(option.value)} className={`min-h-[44px] rounded-[10px] border px-3 text-sm font-semibold ${nextStep === option.value ? 'border-[#1A1A2E] bg-[#1A1A2E] text-white' : 'border-[#E2E8F0] bg-white text-[#1A1A2E]'}`}>{option.label}</button>
                   ))}
                   <p className="text-xs text-[#B45309]">This lead has no other open task. Select a next step to continue.</p>
@@ -2522,13 +2635,13 @@ export const CallOutcomeSheet: React.FC<{
               <div className="text-xs font-bold text-[#1A1A2E]">{target.taskId ? 'Create Next Task' : 'Follow-up Task'}</div>
               <label className="block space-y-1">
                 <span className="text-xs font-semibold text-[#1A1A2E]">Task Type</span>
-                <select value={followUpTaskType} onChange={(event) => { setFollowUpTaskType(event.target.value); if (!followUpTitleTouchedRef.current) setFollowUpTitle(getDefaultFollowUpTaskTitle(taskTypeOptions.find((option) => option.value === event.target.value)?.label ?? event.target.value, target.entityName)); }} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base">
+                <select value={followUpTaskType} onChange={(event) => { taskTypeTouchedRef.current = true; setFollowUpTaskType(event.target.value); if (!followUpTitleTouchedRef.current) setFollowUpTitle(getDefaultFollowUpTaskTitle(taskTypeOptions.find((option) => option.value === event.target.value)?.label ?? event.target.value, target.entityName)); }} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base">
                   {taskTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
               <label className="block space-y-1">
                 <span className="text-xs font-semibold text-[#1A1A2E]">Assign To</span>
-                <select value={followUpAssignee} onChange={(event) => setFollowUpAssignee(event.target.value)} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base">
+                <select value={followUpAssignee} onChange={(event) => { assigneeTouchedRef.current = true; setFollowUpAssignee(event.target.value); }} className="min-h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-base">
                   {assigneeOptions.map((option) => <option key={option.id} value={option.name}>{option.label}</option>)}
                 </select>
               </label>
@@ -2630,7 +2743,7 @@ export const CallOutcomeSheet: React.FC<{
                 <input
                   type="checkbox"
                   checked={reminderAlarm}
-                  onChange={(event) => setReminderAlarm(event.target.checked)}
+                  onChange={(event) => { reminderTouchedRef.current = true; setReminderAlarm(event.target.checked); }}
                   className="w-5 h-5 accent-[#1A1A2E]"
                 />
               </label>

@@ -48,7 +48,13 @@ import {
   WeakSignalSyncStrip,
 } from '@/mobile/shell/MobileShell';
 
-import { CallOutcomeSheet, TaskDetailSheet, TodayPage, WorkPage } from '@/mobile/screens/DailyWorkScreens';
+import {
+  CallOutcomeSheet,
+  logTaskActivity,
+  TaskDetailSheet,
+  TodayPage,
+  WorkPage,
+} from '@/mobile/screens/DailyWorkScreens';
 import { MobileLeadForm } from '@/mobile/screens/LeadScreens';
 import {
   EntityProfilePage,
@@ -58,6 +64,8 @@ import {
 } from '@/mobile/screens/PeopleScreens';
 import { FullCrmHandoffView, MessagesPage, MorePage } from '@/mobile/screens/CommsAndMoreScreens';
 
+import type { ActivityType } from '@/constants/activityLogConstants';
+import type { Json } from '@/integrations/supabase/types';
 import type { EntityKind, MainTab, MobileRoute, PendingTaskCompletionHandoff } from '@/mobile/types/crmTypes';
 
 
@@ -83,16 +91,21 @@ const PendingTaskCompletionRunner: React.FC<{
     startedTaskIdRef.current = handoff.taskId;
     void (async () => {
       try {
+        const nowIso = new Date().toISOString();
         const result = await completeTaskWithRecurrence(
           { id: handoff.taskId, is_recurring: handoff.isRecurring },
           {
             updateTask: (taskId, updates) => updateTask(taskId, {
               ...updates,
-              ...(updates.status === 'Completed' ? {
-                closed_at: new Date().toISOString(),
-                closed_by: user?.id ?? null,
-                updated_by: staffName,
-              } : {}),
+              completion_outcome: handoff.outcome,
+              completion_notes: handoff.notes || null,
+              completion_status: handoff.completionStatus,
+              attempt_count: handoff.attemptCount,
+              last_attempt_at: nowIso,
+              next_action_type: handoff.lifecycleAction === 'convert' ? 'convert_to_deal' : null,
+              closed_at: nowIso,
+              closed_by: user?.id ?? null,
+              updated_by: staffName,
             }),
             createNextRecurringInstance,
             dismissReminder,
@@ -107,17 +120,47 @@ const PendingTaskCompletionRunner: React.FC<{
           });
           return;
         }
+        await logTaskActivity(
+          handoff.taskId,
+          'outcome_recorded',
+          {
+            outcome: handoff.outcome,
+            completion_status: handoff.completionStatus,
+            notes: handoff.notes,
+            attempt_count: handoff.attemptCount,
+          } as Json,
+          staffName,
+          user?.id ?? null,
+        );
+        await logTaskActivity(
+          handoff.taskId,
+          'closed',
+          {
+            closed_by: user?.id ?? null,
+            closed_at: nowIso,
+            outcome: handoff.outcome,
+          } as Json,
+          staffName,
+          user?.id ?? null,
+        );
         try {
           await logActivity({
-            activity_type: 'task_completed',
+            lead_id: handoff.leadId,
+            activity_type: 'task_outcome_recorded' as ActivityType,
             activity_category: 'task',
-            title: 'Task Completed',
-            description: `Task completed after lead ${handoff.lifecycleAction === 'convert' ? 'conversion' : 'loss request'}.`,
+            title: `Task Closed: ${handoff.taskTitle} — ${handoff.outcomeLabel}`,
+            description: handoff.notes || undefined,
+            is_manual: false,
             metadata: {
               source: 'mobile_lead_lifecycle',
               lead_id: handoff.leadId,
               lifecycle_action: handoff.lifecycleAction,
               task_id: handoff.taskId,
+              outcome: handoff.outcome,
+              outcome_label: handoff.outcomeLabel,
+              completion_status: handoff.completionStatus,
+              attempt_count: handoff.attemptCount,
+              notes: handoff.notes,
             },
             related_entity_type: 'task',
             related_entity_id: handoff.taskId,
@@ -137,7 +180,8 @@ const PendingTaskCompletionRunner: React.FC<{
       }
     })();
   }, [
-    handoff.taskId, handoff.isRecurring, handoff.leadId, handoff.lifecycleAction,
+    handoff.taskId, handoff.taskTitle, handoff.isRecurring, handoff.leadId, handoff.lifecycleAction,
+    handoff.outcome, handoff.outcomeLabel, handoff.notes, handoff.completionStatus, handoff.attemptCount,
     remindersLoading, updateTask, createNextRecurringInstance, dismissReminder, reminders,
     logActivity, user?.id, staffName, toast, onFinished,
   ]);
@@ -187,6 +231,22 @@ const MobileWorkspaceController: React.FC = () => {
     () => parsedRoute ?? ({ name: 'today' as const }),
     [parsedRoute],
   );
+
+  useEffect(() => {
+    if (
+      pendingLeadLifecycle &&
+      (route.name !== 'entity_profile' || route.entityType !== 'lead' || route.entityId !== pendingLeadLifecycle.leadId)
+    ) {
+      setPendingLeadLifecycle(null);
+    }
+    if (
+      pendingTaskCompletion &&
+      !pendingTaskCompletion.ready &&
+      (route.name !== 'entity_profile' || route.entityType !== 'lead' || route.entityId !== pendingTaskCompletion.handoff.leadId)
+    ) {
+      setPendingTaskCompletion(null);
+    }
+  }, [route, pendingLeadLifecycle, pendingTaskCompletion]);
 
   const onNavigate = useCallback(
     (next: MobileRoute) => {
@@ -326,6 +386,12 @@ const MobileWorkspaceController: React.FC = () => {
     [openCallOutcome],
   );
 
+  const handleTaskClosed = useCallback((closedTaskId: string) => {
+    if (route.name === 'work' && route.taskId === closedTaskId) {
+      navigate(buildMobilePath({ name: 'work' }));
+    }
+  }, [route, navigate]);
+
   /**
    * Handles a tap on a `tel:` link.
    *
@@ -394,6 +460,7 @@ const MobileWorkspaceController: React.FC = () => {
               initialFilter={route.initialFilter}
               onNavigate={onNavigate}
               onOpenCallOutcome={handleOpenCallOutcome}
+              onOpenCompletionSheet={handleOpenCompletionSheet}
               onBeginCall={handleBeginCall}
             />
           )}
@@ -445,6 +512,11 @@ const MobileWorkspaceController: React.FC = () => {
               entityType={route.entityType}
               entityId={route.entityId}
               initialTab={route.initialTab}
+              excludeTaskId={
+                route.entityType === 'lead' && pendingTaskCompletion?.handoff.leadId === route.entityId
+                  ? pendingTaskCompletion.handoff.taskId
+                  : null
+              }
               onBack={goBack}
               onNavigate={onNavigate}
               onOpenCallOutcome={handleOpenCallOutcome}
@@ -623,6 +695,7 @@ const MobileWorkspaceController: React.FC = () => {
             open={Boolean(callOutcomeTarget)}
             mode={callOutcomeMode}
             onLeadLifecycleAction={handleLeadLifecycleAction}
+            onTaskClosed={handleTaskClosed}
             openedAfterCall={Boolean(callOutcomeTarget?.openedAfterCall)}
             target={callOutcomeTarget}
             onDismiss={() => {

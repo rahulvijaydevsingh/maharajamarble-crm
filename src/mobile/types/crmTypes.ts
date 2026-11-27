@@ -242,9 +242,15 @@ export type CallOutcomeAction = 'keep_open' | 'reschedule' | 'complete' | 'cance
  */
 export interface PendingTaskCompletionHandoff {
   taskId: string;
+  taskTitle: string;
   isRecurring: boolean;
   leadId: string;
   lifecycleAction: 'convert' | 'lost';
+  outcome: string;
+  outcomeLabel: string;
+  notes: string;
+  completionStatus: 'success' | 'unsuccessful';
+  attemptCount: number;
 }
 
 export interface PendingCallState {

@@ -493,6 +493,8 @@ export const MobileLeadForm: React.FC<{
   const sourceOptions = getFieldOptions('leads', 'source');
   const priorityOptions = getFieldOptions('leads', 'priority');
   const materialOptions = getFieldOptions('materials', 'materials');
+  const hasMaterialOptions = materialOptions.length > 0;
+  const hasPriorityOptions = priorityOptions.length > 0;
 
   const defaultDesignation =
     designationOptions.find((o) => o.isDefault)?.value ?? designationOptions[0]?.value ?? '';
@@ -884,21 +886,28 @@ export const MobileLeadForm: React.FC<{
     );
     setLeadSource((prev) => (sourceOptions.some((o) => o.value === prev) ? prev : defaultSource));
 
-    if (!materialDefaultsAppliedRef.current && materialOptions.length > 0) {
+    if (!materialDefaultsAppliedRef.current && hasMaterialOptions) {
       materialDefaultsAppliedRef.current = true;
       setMaterialInterests((prev) => (prev.length === 0 ? defaultMaterials : prev));
     }
-    if (!priorityDefaultAppliedRef.current && priorityOptions.length > 0) {
+    if (!priorityDefaultAppliedRef.current && hasPriorityOptions) {
       priorityDefaultAppliedRef.current = true;
       const configuredPriority = Number(defaultPriority);
-      setPriority(Number.isFinite(configuredPriority) ? configuredPriority : Number.NaN);
+      setPriority((prev) =>
+        Number.isFinite(prev)
+          ? prev
+          : Number.isFinite(configuredPriority)
+            ? configuredPriority
+            : Number.NaN,
+      );
     }
   }, [
     mode,
     designationOptions,
     stageOptions,
     sourceOptions,
-    priorityOptions,
+    hasMaterialOptions,
+    hasPriorityOptions,
     defaultDesignation,
     defaultStage,
     defaultSource,
@@ -2835,9 +2844,10 @@ export const PostSaveQuickActions: React.FC<{
 export const MarkLostSheet: React.FC<{
   open: boolean;
   lead: Lead | null;
+  excludeTaskId?: string | null;
   onClose: () => void;
   onSaved: () => void;
-}> = ({ open, lead, onClose, onSaved }) => {
+}> = ({ open, lead, excludeTaskId, onClose, onSaved }) => {
   const { getFieldOptions, getOptionLabel, loading: panelLoading } = useMobileControlPanel();
   const { updateLead } = useLeads();
   const { tasks, updateTask } = useTasks();
@@ -2866,12 +2876,13 @@ export const MarkLostSheet: React.FC<{
     return tasks.filter(
       (task) =>
         !task.is_deleted &&
+        task.id !== excludeTaskId &&
         task.status !== 'Completed' &&
         task.status !== 'Cancelled' &&
         (task.lead_id === lead.id ||
           (task.related_entity_type === 'lead' && task.related_entity_id === lead.id)),
     );
-  }, [tasks, lead]);
+  }, [tasks, lead, excludeTaskId]);
 
   if (!open || !lead) return null;
 
@@ -3082,9 +3093,10 @@ export const MarkLostSheet: React.FC<{
 export const ConvertToCustomerSheet: React.FC<{
   open: boolean;
   lead: Lead | null;
+  excludeTaskId?: string | null;
   onClose: () => void;
   onSaved: () => void;
-}> = ({ open, lead, onClose, onSaved }) => {
+}> = ({ open, lead, excludeTaskId, onClose, onSaved }) => {
   const { customers, addCustomer } = useCustomers();
   const { updateLead } = useLeads();
   const { tasks, updateTask } = useTasks();
@@ -3160,12 +3172,13 @@ export const ConvertToCustomerSheet: React.FC<{
     return tasks.filter(
       (task) =>
         !task.is_deleted &&
+        task.id !== excludeTaskId &&
         task.status !== 'Completed' &&
         task.status !== 'Cancelled' &&
         (task.lead_id === lead.id ||
           (task.related_entity_type === 'lead' && task.related_entity_id === lead.id)),
     );
-  }, [tasks, lead]);
+  }, [tasks, lead, excludeTaskId]);
 
   /**
    * The customer that already owns this phone number.

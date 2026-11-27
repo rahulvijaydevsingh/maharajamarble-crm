@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
+import { OUTCOME_OPTIONS, getRescheduleReasonSuggestions } from '@/constants/taskConstants';
 import {
   buildFollowUpTaskPayload,
   cancelTaskWithCleanup,
   completeTaskWithRecurrence,
   createFollowUpTaskOnce,
   getDefaultFollowUpTaskTitle,
+  getLeadCompletionLifecycleOptions,
   hasValidTaskReschedule,
   isLeadOnlyOpenNonRecurringTask,
   taskScopedReminderIds,
@@ -268,6 +270,100 @@ describe('mobile task completion policy helpers', () => {
   });
 });
 
+
+describe('shared task completion options and lifecycle eligibility', () => {
+  it('uses the canonical six desktop/mobile outcome values', () => {
+    expect(OUTCOME_OPTIONS).toEqual([
+      'Successful',
+      'No Answer',
+      'Call Back Later',
+      'Not Interested',
+      'Wrong Number',
+      'Rescheduled by Client',
+    ]);
+  });
+
+  it('returns outcome-specific reschedule suggestions and a safe default', () => {
+    expect(getRescheduleReasonSuggestions('No Answer')).toEqual([
+      'No phone answer',
+      'Phone switched off',
+      'Busy tone',
+      'Went to voicemail',
+    ]);
+    expect(getRescheduleReasonSuggestions('Call Back Later')).toEqual([
+      'Client requested callback',
+      'Not available right now',
+      'In a meeting',
+      'Asked to call tomorrow',
+    ]);
+    expect(getRescheduleReasonSuggestions('Successful')).toEqual([
+      'Follow-up required',
+      'Client unavailable',
+      'Timing not right',
+    ]);
+  });
+
+  it('allows Convert and Mark Lost for an active, unconverted lead', () => {
+    expect(getLeadCompletionLifecycleOptions({ status: 'in-progress' }, true)).toEqual({
+      canConvertToCustomer: true,
+      canMarkLost: true,
+    });
+  });
+
+  it('does not infer conversion from manual won status alone', () => {
+    expect(getLeadCompletionLifecycleOptions({
+      status: 'won',
+      is_converted: false,
+      converted_to_customer_id: null,
+    }, true)).toEqual({
+      canConvertToCustomer: true,
+      canMarkLost: true,
+    });
+  });
+
+  it('hides Convert without leads.convert permission while preserving Mark Lost', () => {
+    expect(getLeadCompletionLifecycleOptions({ status: 'new' }, false)).toEqual({
+      canConvertToCustomer: false,
+      canMarkLost: true,
+    });
+  });
+
+  it('hides both lifecycle actions for an already-converted lead', () => {
+    expect(getLeadCompletionLifecycleOptions({
+      status: 'won',
+      is_converted: true,
+    }, true)).toEqual({
+      canConvertToCustomer: false,
+      canMarkLost: false,
+    });
+    expect(getLeadCompletionLifecycleOptions({
+      status: 'won',
+      converted_to_customer_id: 'customer-1',
+    }, true)).toEqual({
+      canConvertToCustomer: false,
+      canMarkLost: false,
+    });
+  });
+
+  it.each(['lost', 'pending_lost'])('does not offer Mark Lost for status %s', (status) => {
+    expect(getLeadCompletionLifecycleOptions({ status }, true)).toEqual({
+      canConvertToCustomer: true,
+      canMarkLost: false,
+    });
+  });
+
+  it('hides both lifecycle actions for a deleted or missing lead', () => {
+    expect(getLeadCompletionLifecycleOptions({ status: 'deleted' }, true)).toEqual({
+      canConvertToCustomer: false,
+      canMarkLost: false,
+    });
+    expect(getLeadCompletionLifecycleOptions(null, true)).toEqual({
+      canConvertToCustomer: false,
+      canMarkLost: false,
+    });
+  });
+});
+
 describe('Desktop and Mobile completion parity', () => {
   const desktopSource = readFileSync(
     new URL('../../components/tasks/TaskCompletionDialog.tsx', import.meta.url),
@@ -283,9 +379,7 @@ describe('Desktop and Mobile completion parity', () => {
     expect(desktopSource).toContain('getRescheduleReasonSuggestions');
     expect(mobileSource).toContain('OUTCOME_OPTIONS');
     expect(mobileSource).toContain('getRescheduleReasonSuggestions');
-    expect(mobileSource).toContain("getFieldOptions('tasks', 'completion_outcome')");
-    expect(mobileSource).toContain('configured.length === 0');
-    expect(mobileSource).toContain('control.outcomes.map');
+    expect(mobileSource).toContain('() => OUTCOME_OPTIONS.map((value) => ({ value, label: value }))');
   });
 
   it('requires a non-blank reason on both mobile reschedule entry points', () => {

@@ -573,6 +573,7 @@ export const EntityProfilePage: React.FC<{
   onOpenCallOutcome: (target: CallOutcomeTargetPayload) => void;
   onOpenCompletionSheet: (target: CallOutcomeTargetPayload) => void;
   initialLeadAction?: 'convert' | 'lost' | null;
+  excludeTaskId?: string | null;
   onLeadActionHandled?: () => void;
   onLeadLifecycleSaved?: () => void;
   onLeadLifecycleCancelled?: () => void;
@@ -588,6 +589,7 @@ export const EntityProfilePage: React.FC<{
   onOpenCallOutcome,
   onOpenCompletionSheet,
   initialLeadAction,
+  excludeTaskId,
   onLeadActionHandled,
   onLeadLifecycleSaved,
   onLeadLifecycleCancelled,
@@ -725,12 +727,13 @@ export const EntityProfilePage: React.FC<{
   const entityName = entity?.full_name || 'Profile';
   const entityPhone = entity?.phone || '';
 
+  const hasMatchingLead = entityType === 'lead' && Boolean(lead);
   useEffect(() => {
-    if (entityType !== 'lead' || !lead || !initialLeadAction) return;
+    if (!hasMatchingLead || !initialLeadAction) return;
     if (initialLeadAction === 'convert') setConvertOpen(true);
     else setMarkLostOpen(true);
     onLeadActionHandled?.();
-  }, [entityType, lead?.id, initialLeadAction, onLeadActionHandled]);
+  }, [hasMatchingLead, initialLeadAction, onLeadActionHandled]);
   const entityLocation = lead?.site_location || customer?.address || professional?.office_location || '';
   const entityPlusCode = lead?.plus_code || customer?.plus_code || professional?.plus_code || null;
   const roleLabel = lead
@@ -1825,6 +1828,7 @@ export const EntityProfilePage: React.FC<{
           <MarkLostSheet
             open={markLostOpen}
             lead={lead}
+            excludeTaskId={excludeTaskId}
             onClose={() => {
               setMarkLostOpen(false);
               onLeadLifecycleCancelled?.();
@@ -1837,6 +1841,7 @@ export const EntityProfilePage: React.FC<{
           <ConvertToCustomerSheet
             open={convertOpen}
             lead={lead}
+            excludeTaskId={excludeTaskId}
             onClose={() => {
               setConvertOpen(false);
               onLeadLifecycleCancelled?.();

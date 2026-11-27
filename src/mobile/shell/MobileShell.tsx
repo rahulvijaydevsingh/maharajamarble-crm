@@ -564,6 +564,7 @@ export const QuickAddSheet: React.FC<{
   // / `taskTypeOptions` change those identities all the time, and resetting on
   // them wiped whatever the user had already typed.
   const wasOpenRef = useRef(false);
+  const reminderTouchedRef = useRef(false);
   const entityChoicesRef = useRef(entityChoices);
   const taskTypeOptionsRef = useRef(taskTypeOptions);
   entityChoicesRef.current = entityChoices;
@@ -573,6 +574,7 @@ export const QuickAddSheet: React.FC<{
     const justOpened = open && !wasOpenRef.current;
     wasOpenRef.current = open;
     if (!justOpened) return;
+    reminderTouchedRef.current = false;
 
     // Every open starts from a clean sheet: the date, the time and the
     // recurring flag are never frozen at first mount and never leak from the
@@ -597,8 +599,18 @@ export const QuickAddSheet: React.FC<{
   }, [open, initialMode, preselectedEntity]);
 
   useEffect(() => {
-    if (open) setReminderEnabled(defaultRemindersEnabled);
+    if (!open || reminderTouchedRef.current) return;
+    setReminderEnabled(defaultRemindersEnabled);
   }, [open, defaultRemindersEnabled]);
+
+  useEffect(() => {
+    if (!open || taskType || taskTypeOptions.length === 0) return;
+    setTaskType(
+      taskTypeOptions.find((option) => option.isDefault)?.value ??
+        taskTypeOptions[0]?.value ??
+        '',
+    );
+  }, [open, taskType, taskTypeOptions]);
 
   // The weekly recurring toggle belongs to the task form only — it must never
   // leak into the reminder flow.
@@ -1061,7 +1073,10 @@ export const QuickAddSheet: React.FC<{
                       <input
                         type="checkbox"
                         checked={reminderEnabled}
-                        onChange={(event) => setReminderEnabled(event.target.checked)}
+                        onChange={(event) => {
+                          reminderTouchedRef.current = true;
+                          setReminderEnabled(event.target.checked);
+                        }}
                         className="w-5 h-5 accent-[#1A1A2E]"
                       />
                     </label>
