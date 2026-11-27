@@ -11,6 +11,7 @@ import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { completeTaskWithRecurrence } from '@/mobile/lib/taskActions';
+import { logTaskActivity } from '@/mobile/lib/taskActivity';
 import { requireSafeStaffName } from '@/mobile/lib/staffAttribution';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -50,7 +51,6 @@ import {
 
 import {
   CallOutcomeSheet,
-  logTaskActivity,
   TaskDetailSheet,
   TodayPage,
   WorkPage,

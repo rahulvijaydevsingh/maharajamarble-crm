@@ -428,7 +428,8 @@ describe('Desktop and Mobile completion parity', () => {
     const quickAddSource = readFileSync(new URL('../shell/MobileShell.tsx', import.meta.url), 'utf8');
     const leadSource = readFileSync(new URL('../screens/LeadScreens.tsx', import.meta.url), 'utf8');
     expect(mobileSource).toContain('setReminderOn(task.reminder_enabled)');
-    expect(mobileSource).toContain('targetTask.reminder ?? defaultRemindersEnabled');
+    expect(mobileSource).toContain('init.targetTask.reminder ?? init.defaultRemindersEnabled');
+    expect(mobileSource).toContain('targetTaskReminder ?? defaultRemindersEnabled');
     expect(quickAddSource).toContain('useState(defaultRemindersEnabled)');
     expect(quickAddSource).toContain('setReminderEnabled(defaultRemindersEnabled)');
     expect(leadSource).toContain('useState(defaultRemindersEnabled)');
