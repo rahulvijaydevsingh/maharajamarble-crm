@@ -26,10 +26,12 @@ import { buildMobilePath, parseMobilePath } from '@/mobile/routing/workspacePref
 import { MobileControlPanelProvider } from '@/mobile/lib/controlPanelContext';
 import { ClockInOutModal } from '@/components/hr/ClockInOutModal';
 import { AttendancePromptGuard } from '@/mobile/components/AttendancePromptGuard';
-import { formatPhoneDisplay, toLocalDateInputValue } from '@/mobile/lib/format';
+import { formatPhoneDisplay } from '@/mobile/lib/format';
 import {
-  resolveClockMode,
-  type ClockMode,
+  getAttendanceDateKey,
+  resolveAttendanceStatus,
+  type AttendanceTodayRecord,
+  type AttendanceUiState,
 } from '@/mobile/lib/clockMode';
 import {
   CALL_LOG_PICKER_MAX_MATCHES,
@@ -200,7 +202,7 @@ const MobileWorkspaceController: React.FC = () => {
   const { tasks, loading: tasksLoading } = useTasks();
 
   const [clockModalOpen, setClockModalOpen] = useState(false);
-  const [clockMode, setClockMode] = useState<ClockMode>('clock-in');
+  const [attendanceState, setAttendanceState] = useState<AttendanceUiState>({ status: 'loading', record: null });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [outboxOpen, setOutboxOpen] = useState(false);
   const [quickAddState, setQuickAddState] = useState<{
@@ -285,42 +287,77 @@ const MobileWorkspaceController: React.FC = () => {
   const workTaskId = route.name === 'work' ? route.taskId ?? null : null;
 
   /**
-   * Dynamic clock in / clock out.
-   *
-   * The desktop attendance screen (`src/pages/HRAttendance.tsx`) decides the
-   * mode from today's `attendance_records` row. The mobile workspace reads the
-   * same row so the Today / More buttons always offer the half of the pair the
-   * user still needs.
+   * Authoritative read of today's attendance row. The UTC date key must match
+   * the desktop screen and both clock Edge Functions.
    */
-  const refreshClockMode = useCallback(async () => {
+  const refreshAttendance = useCallback(async () => {
     if (!user?.id) {
-      setClockMode('clock-in');
+      setAttendanceState({ status: 'not_clocked_in', record: null });
       return;
     }
     try {
-      const today = toLocalDateInputValue(new Date().toISOString());
-      const { data } = await supabase
+      const today = getAttendanceDateKey();
+      const { data, error } = await supabase
         .from('attendance_records')
-        .select('clock_in, clock_out')
+        .select('clock_in, clock_out, total_hours')
         .eq('staff_id', user.id)
         .eq('date', today)
         .maybeSingle();
 
-      setClockMode(
-        resolveClockMode(
-          (data ?? null) as { clock_in?: string | null; clock_out?: string | null } | null,
-        ),
-      );
-    } catch {
-      // A failed lookup must never block the attendance action — fall back to
-      // the safe "clock in" mode.
-      setClockMode('clock-in');
+      if (error) {
+        console.warn('[mobile attendance]', error);
+        setAttendanceState((prev) => ({
+          status: 'error',
+          record: prev.record,
+          errorMessage: 'Could not verify attendance status',
+        }));
+        return;
+      }
+
+      const record = (data ?? null) as AttendanceTodayRecord | null;
+      setAttendanceState({
+        status: resolveAttendanceStatus(record),
+        record,
+        errorMessage: null,
+      });
+    } catch (error) {
+      console.warn('[mobile attendance]', error);
+      setAttendanceState((prev) => ({
+        status: 'error',
+        record: prev.record,
+        errorMessage: 'Could not verify attendance status',
+      }));
     }
   }, [user?.id]);
 
   useEffect(() => {
-    void refreshClockMode();
-  }, [refreshClockMode]);
+    void refreshAttendance();
+  }, [refreshAttendance]);
+
+  // Re-check when the app returns to the foreground or the user revisits
+  // either attendance surface.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshAttendance();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [refreshAttendance]);
+
+  useEffect(() => {
+    if (route.name === 'today' || route.name === 'more') {
+      void refreshAttendance();
+    }
+  }, [route.name, refreshAttendance]);
+
+  const handleOpenClockModal = useCallback(() => {
+    if (attendanceState.status === 'error') {
+      void refreshAttendance();
+      return;
+    }
+    if (attendanceState.status === 'loading' || attendanceState.status === 'clocked_out') return;
+    setClockModalOpen(true);
+  }, [attendanceState.status, refreshAttendance]);
 
   /**
    * A deep link to a task that no longer exists must not leave the user on an
@@ -454,12 +491,18 @@ const MobileWorkspaceController: React.FC = () => {
           {route.name === 'today' && (
             <TodayPage
               onNavigate={onNavigate}
-              onOpenClockModal={() => setClockModalOpen(true)}
-              clockMode={clockMode}
+              onOpenClockModal={handleOpenClockModal}
+              attendanceState={attendanceState}
+              onRetryAttendance={refreshAttendance}
               onOpenCallOutcome={handleOpenCallOutcome}
               onOpenCompletionSheet={handleOpenCompletionSheet}
               onBeginCall={handleBeginCall}
-              attendanceBanner={<AttendancePromptGuard />}
+              attendanceBanner={(
+                <AttendancePromptGuard
+                  attendanceStatus={attendanceState.status}
+                  onClockSuccess={refreshAttendance}
+                />
+              )}
             />
           )}
 
@@ -485,8 +528,9 @@ const MobileWorkspaceController: React.FC = () => {
           {route.name === 'more' && (
             <MorePage
               onNavigate={onNavigate}
-              onOpenClockModal={() => setClockModalOpen(true)}
-              clockMode={clockMode}
+              onOpenClockModal={handleOpenClockModal}
+              attendanceState={attendanceState}
+              onRetryAttendance={refreshAttendance}
               onOpenNotifications={() => setNotificationsOpen(true)}
               onOpenOutbox={() => setOutboxOpen(true)}
             />
@@ -718,10 +762,10 @@ const MobileWorkspaceController: React.FC = () => {
         <ClockInOutModal
           open={clockModalOpen}
           onOpenChange={setClockModalOpen}
-          mode={clockMode}
+          mode={attendanceState.status === 'clocked_in' ? 'clock-out' : 'clock-in'}
           onSuccess={() => {
             setClockModalOpen(false);
-            void refreshClockMode();
+            void refreshAttendance();
           }}
         />
       </div>

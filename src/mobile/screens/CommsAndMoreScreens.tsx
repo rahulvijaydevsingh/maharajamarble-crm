@@ -73,7 +73,11 @@ import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { clearOutboxStorageForUser } from '@/mobile/outbox/weakSignalOutbox';
 import { clearPendingCallForUser } from '@/mobile/hooks/useCallIntentWatcher';
 import { formatShortDateTime } from '@/mobile/lib/format';
-import { clockModeLabel, type ClockMode } from '@/mobile/lib/clockMode';
+import {
+  formatAttendanceHours,
+  formatAttendanceTime,
+  type AttendanceUiState,
+} from '@/mobile/lib/clockMode';
 import { openFullCrmRoute } from '@/mobile/routing/handoffHelper';
 import { buildHandoffRows } from '@/mobile/lib/roleGating';
 import { buildMobilePath, writeWorkspacePreference } from '@/mobile/routing/workspacePreference';
@@ -685,14 +689,15 @@ const HANDOFF_ICONS: Record<string, React.ComponentType<{ className?: string }>>
 export const MorePage: React.FC<{
   onNavigate: (route: MobileRoute) => void;
   onOpenClockModal: () => void;
-  /** Which half of the attendance pair the user still needs. */
-  clockMode?: ClockMode;
+  attendanceState: AttendanceUiState;
+  onRetryAttendance: () => void | Promise<void>;
   onOpenNotifications: () => void;
   onOpenOutbox: () => void;
 }> = ({
   onNavigate,
   onOpenClockModal,
-  clockMode = 'clock-in',
+  attendanceState,
+  onRetryAttendance,
   onOpenNotifications,
   onOpenOutbox,
 }) => {
@@ -809,18 +814,41 @@ export const MorePage: React.FC<{
         <div className="bg-white border border-[#E2E8F0] rounded-[12px] divide-y divide-[#F1F5F9]">
           <button
             type="button"
-            onClick={onOpenClockModal}
-            className="w-full min-h-[56px] px-4 py-3 flex items-center justify-between gap-2 text-left"
+            disabled={attendanceState.status === 'loading' || attendanceState.status === 'clocked_out'}
+            onClick={attendanceState.status === 'error' ? () => void onRetryAttendance() : onOpenClockModal}
+            className="w-full min-h-[64px] px-4 py-3 flex items-center justify-between gap-2 text-left disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <span className="flex items-center gap-3 text-sm font-semibold text-[#1A1A2E] whitespace-nowrap">
+            <span className="flex items-center gap-3 text-sm font-semibold text-[#1A1A2E] min-w-0">
               <Clock className="w-4 h-4 text-[#1A1A2E] shrink-0" />
-              <span>Attendance</span>
-            </span>
-            <span className="flex items-center gap-1.5 shrink-0">
-              <span className="px-2.5 py-0.5 rounded-full bg-[#EEF2F6] text-[#1A1A2E] font-utility text-[11px] font-bold whitespace-nowrap">
-                {clockModeLabel(clockMode)}
+              <span className="min-w-0">
+                <span className="block">
+                  {attendanceState.status === 'loading' ? 'Checking attendance…'
+                    : attendanceState.status === 'error' ? 'Attendance status unavailable'
+                      : attendanceState.status === 'clocked_in' ? 'Clock Out'
+                        : attendanceState.status === 'clocked_out' ? 'Today Complete' : 'Clock In'}
+                </span>
+                {attendanceState.status === 'clocked_in' && attendanceState.record?.clock_in && (
+                  <span className="block text-xs font-normal text-[#47464C]">In {formatAttendanceTime(attendanceState.record.clock_in)}</span>
+                )}
+                {attendanceState.status === 'clocked_out' && (
+                  <span className="block text-xs font-normal text-[#47464C]">
+                    {formatAttendanceTime(attendanceState.record?.clock_in)} – {formatAttendanceTime(attendanceState.record?.clock_out)}
+                    {formatAttendanceHours(attendanceState.record?.total_hours) ? ` · ${formatAttendanceHours(attendanceState.record?.total_hours)}` : ''}
+                  </span>
+                )}
               </span>
-              <ChevronRight className="w-4 h-4 text-[#47464C]" />
+            </span>
+            <span className={`px-2.5 py-1 rounded-full font-utility text-[11px] font-bold whitespace-nowrap shrink-0 ${
+              attendanceState.status === 'clocked_in' || attendanceState.status === 'clocked_out'
+                ? 'bg-[#ECFDF5] text-[#059669]'
+                : attendanceState.status === 'error'
+                  ? 'bg-rose-50 text-rose-700'
+                  : 'bg-[#EEF2F6] text-[#1A1A2E]'
+            }`}>
+              {attendanceState.status === 'loading' ? 'Loading'
+                : attendanceState.status === 'error' ? 'Tap to retry'
+                  : attendanceState.status === 'clocked_in' ? 'On shift'
+                    : attendanceState.status === 'clocked_out' ? 'Completed' : 'Not started'}
             </span>
           </button>
 
