@@ -4,6 +4,7 @@ import { Clock, X } from 'lucide-react';
 import { ClockInOutModal } from '@/components/hr/ClockInOutModal';
 import { useHRModule } from '@/contexts/HRModuleContext';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AttendanceShiftStatus } from '@/mobile/lib/clockMode';
 
 /**
  * Mobile counterpart of the desktop `FirstLoginClockInPrompt`.
@@ -25,7 +26,15 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export const ATTENDANCE_PROMPT_STORAGE_KEY = 'should_prompt_clock_in';
 
-export const AttendancePromptGuard: React.FC = () => {
+export interface AttendancePromptGuardProps {
+  attendanceStatus?: AttendanceShiftStatus;
+  onClockSuccess?: () => void | Promise<void>;
+}
+
+export const AttendancePromptGuard: React.FC<AttendancePromptGuardProps> = ({
+  attendanceStatus,
+  onClockSuccess,
+}) => {
   const { hrEnabled } = useHRModule();
   const { role } = useAuth();
   const [visible, setVisible] = useState(false);
@@ -42,6 +51,13 @@ export const AttendancePromptGuard: React.FC = () => {
     // appears once per login. Mirror that exactly.
     sessionStorage.removeItem(ATTENDANCE_PROMPT_STORAGE_KEY);
   }, [hrEnabled, role]);
+
+  useEffect(() => {
+    if (attendanceStatus === 'clocked_in' || attendanceStatus === 'clocked_out') {
+      setVisible(false);
+      setModalOpen(false);
+    }
+  }, [attendanceStatus]);
 
   if (!visible) return null;
 
@@ -82,7 +98,11 @@ export const AttendancePromptGuard: React.FC = () => {
         open={modalOpen}
         onOpenChange={setModalOpen}
         mode="clock-in"
-        onSuccess={() => setVisible(false)}
+        onSuccess={() => {
+          setVisible(false);
+          setModalOpen(false);
+          void onClockSuccess?.();
+        }}
       />
     </>
   );

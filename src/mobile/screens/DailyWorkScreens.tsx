@@ -77,7 +77,11 @@ import {
 } from '@/mobile/lib/format';
 import { toMobileTask } from '@/mobile/lib/mappers';
 import { isSafeStaffName, requireSafeStaffName } from '@/mobile/lib/staffAttribution';
-import { clockModeLabel, type ClockMode } from '@/mobile/lib/clockMode';
+import {
+  formatAttendanceHours,
+  formatAttendanceTime,
+  type AttendanceUiState,
+} from '@/mobile/lib/clockMode';
 import {
   canUseTaskScopeToggle,
   filterTasksByScope,
@@ -739,11 +743,8 @@ export const TodayPage: React.FC<{
    */
   onBeginCall?: (target: MobileCallTarget) => void;
   attendanceBanner?: React.ReactNode;
-  /**
-   * Which half of the attendance pair the clock button offers. The parent
-   * owns the attendance state — the page only renders the label.
-   */
-  clockMode?: ClockMode;
+  attendanceState: AttendanceUiState;
+  onRetryAttendance: () => void | Promise<void>;
 }> = ({
   onNavigate,
   onOpenClockModal,
@@ -751,7 +752,8 @@ export const TodayPage: React.FC<{
   onOpenCompletionSheet,
   onBeginCall,
   attendanceBanner,
-  clockMode = 'clock-in',
+  attendanceState,
+  onRetryAttendance,
 }) => {
   const { tasks } = useTasks();
   const { isOnline, enqueue } = useWeakSignalOutbox();
@@ -944,14 +946,42 @@ export const TodayPage: React.FC<{
 
       <button
         type="button"
-        onClick={onOpenClockModal}
-        className="w-full min-h-[44px] px-3 rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] text-sm font-semibold flex items-center justify-center gap-2"
+        disabled={attendanceState.status === 'loading' || attendanceState.status === 'clocked_out'}
+        onClick={attendanceState.status === 'error' ? () => void onRetryAttendance() : onOpenClockModal}
+        className={`w-full min-h-[56px] px-3 py-2 rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] text-sm font-semibold flex flex-col items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed ${attendanceState.status === 'clocked_in' || attendanceState.status === 'clocked_out' ? 'border-[#A7F3D0]' : ''}`}
       >
-        <Clock className="w-4 h-4 shrink-0 text-[#1A1A2E]" />
-        <span>{clockModeLabel(clockMode)}</span>
-        <span className="px-2 py-0.5 rounded-full bg-[#EEF2F6] text-[#1A1A2E] font-utility text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
-          {clockMode === 'clock-out' ? 'On shift' : 'Not started'}
+        <span className="flex items-center justify-center gap-2">
+          <Clock className="w-4 h-4 shrink-0 text-[#1A1A2E]" />
+          <span>
+            {attendanceState.status === 'loading' ? 'Checking attendance…'
+              : attendanceState.status === 'error' ? 'Attendance status unavailable'
+                : attendanceState.status === 'clocked_in' ? 'Clock Out'
+                  : attendanceState.status === 'clocked_out' ? 'Today Complete' : 'Clock In'}
+          </span>
+          <span className={`px-2 py-0.5 rounded-full font-utility text-[11px] font-bold uppercase tracking-wide whitespace-nowrap ${
+            attendanceState.status === 'clocked_in' || attendanceState.status === 'clocked_out'
+              ? 'bg-[#ECFDF5] text-[#059669]'
+              : attendanceState.status === 'error'
+                ? 'bg-rose-50 text-rose-700'
+                : 'bg-[#EEF2F6] text-[#1A1A2E]'
+          }`}>
+            {attendanceState.status === 'loading' ? 'Loading'
+              : attendanceState.status === 'error' ? 'Tap to retry'
+                : attendanceState.status === 'clocked_in' ? 'On shift'
+                  : attendanceState.status === 'clocked_out' ? 'Completed' : 'Not started'}
+          </span>
         </span>
+        {attendanceState.status === 'clocked_in' && attendanceState.record?.clock_in && (
+          <span className="text-xs font-normal text-[#47464C]">
+            In {formatAttendanceTime(attendanceState.record.clock_in)}
+          </span>
+        )}
+        {attendanceState.status === 'clocked_out' && (
+          <span className="text-xs font-normal text-[#47464C]">
+            {formatAttendanceTime(attendanceState.record?.clock_in)} – {formatAttendanceTime(attendanceState.record?.clock_out)}
+            {formatAttendanceHours(attendanceState.record?.total_hours) ? ` · ${formatAttendanceHours(attendanceState.record?.total_hours)}` : ''}
+          </span>
+        )}
       </button>
 
       {/* Overdue-first Follow-Up Cards */}

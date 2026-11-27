@@ -1,41 +1,69 @@
 /**
- * Clock in / clock out mode for the mobile workspace.
+ * Attendance state helpers for the mobile workspace.
  *
- * The desktop attendance screen (`src/pages/HRAttendance.tsx`) derives today's
- * attendance state from a single `attendance_records` row for the signed-in
- * staff member:
- *
- *  - no row for today            → `not_clocked_in` → the user can Clock In,
- *  - `clock_in` and no `clock_out` → `clocked_in`    → the user can Clock Out,
- *  - `clock_in` and `clock_out`   → `clocked_out`    → the day is complete.
- *
- * The mobile workspace needs the same decision so the Today / More buttons can
- * offer the *other* half of the attendance pair. The pure helper below is the
- * single source of truth for that mapping and is unit tested without a browser.
+ * The UI state mirrors the desktop attendance lifecycle while keeping
+ * ClockMode as the two-value modal contract used by ClockInOutModal.
  */
-
-/** Which half of the attendance pair the modal should offer. */
 export type ClockMode = 'clock-in' | 'clock-out';
 
-/** The minimal shape of today's attendance row the mode depends on. */
+export type AttendanceShiftStatus =
+  | 'loading'
+  | 'error'
+  | 'not_clocked_in'
+  | 'clocked_in'
+  | 'clocked_out';
+
 export interface AttendanceTodayRecord {
   clock_in?: string | null;
   clock_out?: string | null;
+  total_hours?: number | null;
+}
+
+export interface AttendanceUiState {
+  status: AttendanceShiftStatus;
+  record: AttendanceTodayRecord | null;
+  errorMessage?: string | null;
 }
 
 /**
- * Resolves the clock mode for the given attendance record.
- *
- * - `null` / `undefined` record → `clock-in` (nothing recorded today),
- * - `clock_in` without `clock_out` → `clock-out` (still on the clock),
- * - both present → `clock-in` (the day is already complete).
+ * Attendance records are keyed by UTC date in HRAttendance.tsx,
+ * hr-clock-in, and hr-clock-out. This MUST remain UTC to match all three.
  */
+export function getAttendanceDateKey(now: Date = new Date()): string {
+  return now.toISOString().split('T')[0];
+}
+
+export function resolveAttendanceStatus(
+  record?: AttendanceTodayRecord | null,
+): 'not_clocked_in' | 'clocked_in' | 'clocked_out' {
+  if (!record || !record.clock_in) return 'not_clocked_in';
+  if (!record.clock_out) return 'clocked_in';
+  return 'clocked_out';
+}
+
+/** Format a stored ISO timestamp as a clean 12-hour en-IN local time. */
+export function formatAttendanceTime(iso?: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date).replace(/\b(am|pm)\b/i, (part) => part.toUpperCase());
+}
+
+/** Format positive finite hours without unnecessary trailing zeroes. */
+export function formatAttendanceHours(hours?: number | null): string {
+  if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0) return '';
+  return `${Number(hours.toFixed(2))}h`;
+}
+
+/** Backwards-compatible modal mode helper for existing mobile callers. */
 export function resolveClockMode(
   record?: AttendanceTodayRecord | null,
 ): ClockMode {
-  if (!record) return 'clock-in';
-  if (record.clock_in && !record.clock_out) return 'clock-out';
-  return 'clock-in';
+  return resolveAttendanceStatus(record) === 'clocked_in' ? 'clock-out' : 'clock-in';
 }
 
 /** Human label for the clock action button. */
