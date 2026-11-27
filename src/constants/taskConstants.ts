@@ -146,3 +146,39 @@ export const WEEK_POSITIONS = [
   { value: "fourth", label: "Fourth" },
   { value: "last", label: "Last" },
 ];
+
+// Shared fallback vocabulary for call/task completion outcomes.
+// Desktop imports this as its canonical list; Mobile prefers the live
+// Control Panel field `tasks.completion_outcome` and uses this list while that
+// field has no active configured options.
+export const TASK_COMPLETION_OUTCOMES = [
+  "Successful",
+  "No Answer",
+  "Call Back Later",
+  "Not Interested",
+  "Wrong Number",
+  "Rescheduled by Client",
+] as const;
+
+/** Canonical outcome vocabulary imported by Desktop and Mobile. */
+export const OUTCOME_OPTIONS = TASK_COMPLETION_OUTCOMES;
+
+/**
+ * Suggested reasons for moving an outstanding task to a later date.
+ * Keep the vocabulary in one place so Desktop and Mobile cannot drift.
+ */
+export function getRescheduleReasonSuggestions(outcome?: string | null): string[] {
+  if (outcome === "No Answer") {
+    return ["No phone answer", "Phone switched off", "Busy tone", "Went to voicemail"];
+  }
+  if (outcome === "Call Back Later") {
+    return ["Client requested callback", "Not available right now", "In a meeting", "Asked to call tomorrow"];
+  }
+  if (outcome === "Not Interested") {
+    return ["Not interested at this time", "Already purchased elsewhere", "Budget constraints"];
+  }
+  if (outcome === "Rescheduled by Client") {
+    return ["Client rescheduled", "Site visit postponed", "Decision pending"];
+  }
+  return ["Follow-up required", "Client unavailable", "Timing not right"];
+}

@@ -1,8 +1,9 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { HRModuleProvider } from "@/contexts/HRModuleContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -10,6 +11,7 @@ import { TaskDetailModalProvider } from "@/contexts/TaskDetailModalContext";
 import { ZLayerProvider } from "@/contexts/ZLayerContext";
 import { RemindersProvider } from "@/contexts/RemindersContext";
 import { BackupJobsProvider } from "@/contexts/BackupJobsContext";
+import { MobileWorkspaceLauncher, DesktopToMobileAutoRouter } from "@/mobile/routing/WorkspaceGate";
 import { BackupJobNotifier } from "@/components/shared/BackupJobNotifier";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { TasksProvider } from "@/hooks/useTasks";
@@ -47,6 +49,21 @@ import HRLeaveApprovals from "./pages/HRLeaveApprovals";
 import HRPayroll from "./pages/HRPayroll";
 import PerformanceMatrix from "./pages/PerformanceMatrix";
 import NotFound from "./pages/NotFound";
+
+// The mobile workspace (/m) is loaded lazily so the desktop bundle is not
+// bloated by the mobile screens. This is the first code-split in the app.
+const MobileApp = lazy(() => import("@/mobile/MobileApp"));
+
+function MobileWorkspaceFallback() {
+  return (
+    <div className="min-h-[100dvh] bg-[#F8F9FA] flex items-center justify-center p-6">
+      <div className="text-center space-y-2">
+        <div className="text-base font-bold text-[#1A1A2E]">Loading mobile workspace…</div>
+        <div className="text-xs text-[#47464C]">Maharaja Marble CRM</div>
+      </div>
+    </div>
+  );
+}
 
 const queryClient = new QueryClient();
 
@@ -96,9 +113,14 @@ const App = () => (
                                       <Route path="/hr/payroll" element={<ProtectedRoute requiredRole="admin"><HRPayroll /></ProtectedRoute>} />
                                       <Route path="/hr" element={<ProtectedRoute><HRAttendance /></ProtectedRoute>} />
                                       <Route path="/performance" element={<ProtectedRoute requiredRole="admin"><PerformanceMatrix /></ProtectedRoute>} />
+                                      {/* Mobile workspace — lazy loaded, kept above the catch-all */}
+                                      <Route path="/m" element={<ProtectedRoute><Navigate to="/m/today" replace /></ProtectedRoute>} />
+                                      <Route path="/m/*" element={<ProtectedRoute><Suspense fallback={<MobileWorkspaceFallback />}><MobileApp /></Suspense></ProtectedRoute>} />
                                       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                                       <Route path="*" element={<NotFound />} />
                                     </Routes>
+                                    <DesktopToMobileAutoRouter />
+                                    <MobileWorkspaceLauncher />
                                   </TaskDetailModalProvider>
                                 </ZLayerProvider>
                               </BackupJobsProvider>
