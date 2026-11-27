@@ -24,9 +24,11 @@ import {
   Target, 
   Package,
   Clock,
-  Star
+  Star,
+  ExternalLink,
 } from 'lucide-react';
 import { Lead, useLeads } from '@/hooks/useLeads';
+import { useProfessionals } from '@/hooks/useProfessionals';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -35,6 +37,10 @@ import { PlusCodeLink } from '@/components/shared/PlusCodeLink';
 import { useControlPanelSettings } from '@/hooks/useControlPanelSettings';
 import { realtimeRegistry } from '@/lib/realtimeRegistry';
 import { isProfessionalDesignation } from '@/lib/professionalResolver';
+import {
+  ProfessionalLeadLink,
+  resolveLinkedProfessionalsForLead,
+} from '@/lib/professionalLeadAssociations';
 
 interface LeadProfileTabProps {
   lead: Lead;
@@ -64,6 +70,7 @@ const PRIORITY_LEVELS: Record<number, { label: string; color: string; bgColor: s
 export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }: LeadProfileTabProps) {
   const { getOptionLabel } = useControlPanelSettings();
   const { updateLead } = useLeads();
+  const { professionals } = useProfessionals();
   const { toast } = useToast();
   const { logActivity } = useLogActivity();
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -73,6 +80,39 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
     user_name: string;
     created_at: string;
   } | null>(null);
+  const [professionalLinks, setProfessionalLinks] = useState<ProfessionalLeadLink[]>([]);
+  const [professionalLinksLoading, setProfessionalLinksLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProfessionalLinksLoading(true);
+
+    supabase
+      .from('lead_professionals')
+      .select('lead_id, professional_id, is_primary_contact, contact_designation')
+      .eq('lead_id', lead.id)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.warn('[lead profile] failed to load professional links', error);
+          setProfessionalLinks([]);
+        } else {
+          setProfessionalLinks((data || []) as ProfessionalLeadLink[]);
+        }
+        setProfessionalLinksLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lead.id]);
+
+  const linkedProfessionals = resolveLinkedProfessionalsForLead(
+    lead,
+    professionalLinks,
+    professionals,
+    (professionalType) => getOptionLabel('professionals', 'professional_type', professionalType),
+  );
 
   useEffect(() => {
     setLatestActivity(null);
@@ -408,6 +448,43 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
                 </div>
               </div>
             )}
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Linked Professionals</div>
+              {professionalLinksLoading ? (
+                <div className="text-sm text-muted-foreground">Loading professionals…</div>
+              ) : linkedProfessionals.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No professionals linked</div>
+              ) : (
+                <div className="space-y-2">
+                  {linkedProfessionals.map((professional) => (
+                    <div key={professional.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-border/60 pb-2 last:border-b-0 last:pb-0 text-sm">
+                      <a
+                        href={`/professionals?view=${professional.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 font-medium text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        <span className="truncate">{professional.name}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      </a>
+                      {professional.phone ? (
+                        <a href={`tel:${professional.phone}`} className="text-primary hover:underline font-medium">
+                          {professional.phone}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                      <div className="col-span-2 text-xs text-muted-foreground">
+                        {professional.designationDisplay || 'Professional'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Follow-up Dates */}
             <Separator />

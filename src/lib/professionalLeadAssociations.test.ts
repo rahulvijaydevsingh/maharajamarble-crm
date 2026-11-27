@@ -5,6 +5,7 @@ import {
   buildReferralLinkInsert,
   getPreservedProfessionalIds,
   getProfessionalLeadRoleBadges,
+  resolveLinkedProfessionalsForLead,
 } from "./professionalLeadAssociations";
 
 describe("professional lead Group 3 associations", () => {
@@ -153,5 +154,71 @@ describe("professional lead Group 3 associations", () => {
     expect(Array.from(getPreservedProfessionalIds(["site-professional"], null))).toEqual([
       "site-professional",
     ]);
+  });
+
+  it("resolves a Group 3 referrer using only the professional primary phone", () => {
+    const linked = resolveLinkedProfessionalsForLead(
+      { id: "lead-1" },
+      [{ lead_id: "lead-1", professional_id: "professional-1", is_primary_contact: false, contact_designation: "referrer" }],
+      [{ id: "professional-1", name: "GAGAN", phone: "9876543210", alternate_phone: "9999999999", professional_type: "builder" }],
+    );
+
+    expect(linked).toEqual([{
+      id: "professional-1",
+      name: "GAGAN",
+      phone: "9876543210",
+      professionalTypeLabel: "Builder",
+      roleBadges: ["Referrer"],
+      designationDisplay: "Builder · Referrer",
+    }]);
+  });
+
+  it("keeps multiple linked professionals as distinct rows", () => {
+    const linked = resolveLinkedProfessionalsForLead(
+      { id: "lead-1" },
+      [
+        { lead_id: "lead-1", professional_id: "architect-1", is_primary_contact: true, contact_designation: "architect" },
+        { lead_id: "lead-1", professional_id: "kitchen-1", is_primary_contact: false, contact_designation: "referrer" },
+      ],
+      [
+        { id: "architect-1", name: "Asha", phone: "9000000001", professional_type: "architect" },
+        { id: "kitchen-1", name: "Kiran", phone: "9000000002", professional_type: "kitchen_maker" },
+      ],
+    );
+
+    expect(linked.map((professional) => professional.designationDisplay)).toEqual([
+      "Architect · Site Architect",
+      "Kitchen Maker · Referrer",
+    ]);
+  });
+
+  it("deduplicates a dual-role professional with combined roles", () => {
+    const linked = resolveLinkedProfessionalsForLead(
+      { id: "lead-1", referred_by: { id: "professional-1" } },
+      [
+        { lead_id: "lead-1", professional_id: "professional-1", is_primary_contact: true, contact_designation: "architect" },
+        { lead_id: "lead-1", professional_id: "professional-1", is_primary_contact: false, contact_designation: "referrer" },
+      ],
+      [{ id: "professional-1", name: "Asha", phone: "9000000001", professional_type: "architect" }],
+    );
+
+    expect(linked).toHaveLength(1);
+    expect(linked[0].designationDisplay).toBe("Architect · Site Architect, Referrer");
+  });
+
+  it("excludes free-text referrals and keeps a missing primary phone null", () => {
+    const noReferral = resolveLinkedProfessionalsForLead(
+      { id: "lead-1", referred_by: "Architect referral" },
+      [],
+      [{ id: "professional-1", name: "Asha", phone: "9000000001", professional_type: "architect" }],
+    );
+    const linkedWithoutPhone = resolveLinkedProfessionalsForLead(
+      { id: "lead-2" },
+      [{ lead_id: "lead-2", professional_id: "professional-2", is_primary_contact: false, contact_designation: "referrer" }],
+      [{ id: "professional-2", name: "Kiran", phone: null, alternate_phone: "9000000002", professional_type: "builder" }],
+    );
+
+    expect(noReferral).toEqual([]);
+    expect(linkedWithoutPhone[0].phone).toBeNull();
   });
 });

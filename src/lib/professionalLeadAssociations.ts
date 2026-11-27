@@ -17,6 +17,23 @@ export interface ProfessionalLeadRecord {
   additional_contacts?: unknown;
 }
 
+export interface LinkedProfessionalCandidate {
+  id: string;
+  name: string;
+  phone?: string | null;
+  alternate_phone?: string | null;
+  professional_type?: string | null;
+}
+
+export interface LinkedProfessional {
+  id: string;
+  name: string;
+  phone: string | null;
+  professionalTypeLabel: string;
+  roleBadges: string[];
+  designationDisplay: string;
+}
+
 export interface ReferralLeadProfessionalInsert {
   lead_id: string;
   professional_id: string;
@@ -28,6 +45,90 @@ function formatDesignation(value?: string | null, fallback = "Professional"): st
   return value
     ? value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase())
     : fallback;
+}
+
+function hasProfessionalAdditionalContactMatch(
+  professional: LinkedProfessionalCandidate,
+  lead: ProfessionalLeadRecord,
+): boolean {
+  if (!Array.isArray(lead.additional_contacts)) return false;
+
+  const professionalPhone = normalizePhone(professional.phone);
+  return lead.additional_contacts.some((contact) => {
+    if (!contact || typeof contact !== "object") return false;
+    const item = contact as Record<string, unknown>;
+    const professionalId = typeof item.professional_id === "string" ? item.professional_id : null;
+    if (professionalId === professional.id) return true;
+
+    const contactDesignation = typeof item.designation === "string" ? item.designation : null;
+    return (
+      !professionalId &&
+      isProfessionalDesignation(contactDesignation) &&
+      professionalPhone.length === 10 &&
+      normalizePhone(typeof item.phone === "string" ? item.phone : null) === professionalPhone
+    );
+  });
+}
+
+/**
+ * Builds the compact professional rows displayed on a lead profile. Every
+ * relationship source is considered, while each professional appears once.
+ */
+export function resolveLinkedProfessionalsForLead(
+  lead: ProfessionalLeadRecord,
+  linkRows: ProfessionalLeadLink[],
+  candidates: LinkedProfessionalCandidate[],
+  formatProfessionalType: (value: string) => string = (value) => formatDesignation(value, ""),
+): LinkedProfessional[] {
+  const linkedIds = new Set(
+    linkRows
+      .filter((link) => link.lead_id === lead.id)
+      .map((link) => link.professional_id),
+  );
+  const referredBy =
+    lead.referred_by && typeof lead.referred_by === "object" && !Array.isArray(lead.referred_by)
+      ? (lead.referred_by as Record<string, unknown>)
+      : null;
+  const referredById = typeof referredBy?.id === "string" && referredBy.id.trim()
+    ? referredBy.id
+    : null;
+  const primaryLeadPhone = normalizePhone(lead.phone);
+
+  return candidates.flatMap((professional) => {
+    const isPrimaryLeadProfessional =
+      isProfessionalDesignation(lead.designation) &&
+      primaryLeadPhone.length === 10 &&
+      normalizePhone(professional.phone) === primaryLeadPhone;
+    const isLinked =
+      linkedIds.has(professional.id) ||
+      referredById === professional.id ||
+      hasProfessionalAdditionalContactMatch(professional, lead) ||
+      isPrimaryLeadProfessional;
+    if (!isLinked) return [];
+
+    const roleBadges = getProfessionalLeadRoleBadges(
+      professional.id,
+      professional.phone,
+      lead,
+      linkRows,
+    ).sort((first, second) => {
+      if (first === "Referrer") return 1;
+      if (second === "Referrer") return -1;
+      return first.localeCompare(second);
+    });
+    const professionalTypeLabel = professional.professional_type
+      ? formatProfessionalType(professional.professional_type) || formatDesignation(professional.professional_type, "")
+      : "";
+
+    return [{
+      id: professional.id,
+      name: professional.name,
+      phone: professional.phone || null,
+      professionalTypeLabel,
+      roleBadges,
+      designationDisplay: [professionalTypeLabel, roleBadges.join(", ")].filter(Boolean).join(" · "),
+    }];
+  });
 }
 
 /**
