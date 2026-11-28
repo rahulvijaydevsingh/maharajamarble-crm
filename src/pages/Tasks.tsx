@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, CheckSquare, LayoutList, Kanban } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
+import { partitionDesktopTasks } from "@/lib/taskPartition";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProfessionalDetailView } from "@/components/professionals/ProfessionalDetailView";
@@ -81,42 +82,19 @@ const Tasks = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, searchParams]);
 
-  // NOTE: a task is an orphan ONLY if it was meant to link to a lead
-  // (lead_id is set) but that lead no longer resolves (t.lead comes back
-  // null/undefined). Checking t.lead alone is wrong — tasks linked to a
-  // Customer or Professional never had a lead_id and would otherwise be
-  // misclassified as orphans and dumped into Recycle Bin. is_deleted covers
-  // tasks a user explicitly deleted (individually or in bulk) — deleteTask
-  // now soft-deletes rather than hard-deleting, specifically so this Recycle
-  // Bin acts as a safety net: an admin can see what was deleted, by whom,
-  // and restore it if needed. Each branch below is mutually exclusive with
-  // the other two so a task can never be counted in more than one tab, or none.
-  const tabCounts = useMemo(() => {
-    let active = 0, lost = 0, recycle = 0;
-    for (const t of tasks) {
-      const leadStatus = t.lead?.status;
-      const isOrphanLeadTask = t.lead_id != null && t.lead == null;
-      if (t.is_deleted || isOrphanLeadTask || leadStatus === "deleted" || t.status === "Cancelled") recycle++;
-      else if (leadStatus === "lost" || leadStatus === "pending_lost") lost++;
-      else active++;
-    }
-    return { active, lost, recycle };
-  }, [tasks]);
+  // One shared partition drives counts and Kanban so all three tabs stay aligned.
+  const taskPartition = useMemo(() => partitionDesktopTasks(tasks), [tasks]);
+  const tabCounts = useMemo(() => ({
+    active: taskPartition.active.length,
+    lost: taskPartition.lostLead.length,
+    recycle: taskPartition.recycleBin.length,
+  }), [taskPartition]);
 
-  // Filter kanban tasks by tab
-  // Same rule as tabCounts above: is_deleted (user-deleted task) OR a set
-  // lead_id whose lead no longer resolves routes to Recycle Bin. Customer
-  // and Professional tasks (lead_id always null) bypass the orphan check
-  // entirely and stay in Active unless independently deleted.
   const kanbanTasks = useMemo(() => {
-    if (boardTab === "lost") {
-      return tasks.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
-    }
-    if (boardTab === "recycle") {
-      return tasks.filter(t => t.is_deleted || (t.lead_id != null && t.lead == null) || t.lead?.status === "deleted" || t.status === "Cancelled");
-    }
-    return tasks.filter(t => !t.is_deleted && !(t.lead_id != null && t.lead == null) && t.lead?.status !== "deleted" && t.status !== "Cancelled");
-  }, [tasks, boardTab]);
+    if (boardTab === "lost") return taskPartition.lostLead;
+    if (boardTab === "recycle") return taskPartition.recycleBin;
+    return taskPartition.active;
+  }, [taskPartition, boardTab]);
 
 
   const handleTaskCreate = (taskData: any) => {

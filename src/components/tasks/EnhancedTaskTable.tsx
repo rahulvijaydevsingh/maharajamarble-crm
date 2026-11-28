@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -86,6 +86,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useTasks, Task } from "@/hooks/useTasks";
 import { calculateTaskStatus } from "@/lib/taskStatusService";
+import { isActiveBoardTask, isLostLeadTask, isRecycleBinTask } from "@/lib/taskPartition";
 import { TASK_STATUSES } from "@/constants/taskConstants";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
@@ -398,6 +399,41 @@ export function EnhancedTaskTable({
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
+  const leadById = useMemo(
+    () => new Map<string, Lead>(leads.map((lead): [string, Lead] => [lead.id, lead])),
+    [leads],
+  );
+  const customerById = useMemo(
+    () => new Map<string, Customer>(customers.map((customer): [string, Customer] => [customer.id, customer])),
+    [customers],
+  );
+  const professionalById = useMemo(
+    () => new Map<string, Professional>(professionals.map((professional): [string, Professional] => [professional.id, professional])),
+    [professionals],
+  );
+
+  // Search/display uses already-loaded stores and adds no network requests.
+  const getRelatedEntityDisplay = useCallback((task: Task) => {
+    if (task.lead) {
+      return { name: task.lead?.name || "", phone: task.lead?.phone || null, type: "Lead", icon: <User className="h-3 w-3" /> };
+    }
+    const entityId = task.related_entity_id;
+    const entityType = task.related_entity_type?.toLowerCase();
+    if (!entityId || !entityType) return null;
+    if (entityType === "professional") {
+      const professional = professionalById.get(entityId);
+      return { name: professional?.name || "", phone: professional?.phone || null, type: "Professional", icon: <UserCheck className="h-3 w-3" /> };
+    }
+    if (entityType === "customer" || entityType === "customers") {
+      const customer = customerById.get(entityId);
+      return { name: customer?.name || "", phone: customer?.phone || null, type: "Customer", icon: <Building2 className="h-3 w-3" /> };
+    }
+    if (entityType === "lead") {
+      const lead = leadById.get(entityId);
+      return { name: lead?.name || "", phone: lead?.phone || null, type: "Lead", icon: <User className="h-3 w-3" /> };
+    }
+    return { name: entityId.substring(0, 8) + "...", phone: null, type: task.related_entity_type, icon: <User className="h-3 w-3" /> };
+  }, [customerById, leadById, professionalById]);
   const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("tasks");
   const { 
@@ -525,20 +561,9 @@ export function EnhancedTaskTable({
       ...task,
       computedStatus: task.calculatedStatus || calculateTaskStatus(task) || task.status
     }));
-    if (boardMode === "lost") {
-      return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
-    }
-    if (boardMode === "recycle") {
-      // t.is_deleted covers tasks a user explicitly deleted.
-      // t.lead == null (loose equality — catches both null and undefined,
-      // matching the Task type's `lead?:` optional-and-nullable typing):
-      // parent lead was hard-deleted before the 3-tab board existed
-      // (orphaned task). Must land here, not fall through every tab.
-      return mapped.filter(t => t.is_deleted || t.lead == null || t.lead?.status === "deleted" || t.status === "Cancelled");
-    }
-    // active (default) — explicitly excludes t.is_deleted and t.lead == null so it can never
-    // also match here, keeping the three boardMode branches mutually exhaustive.
-    return mapped.filter(t => !t.is_deleted && t.lead != null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    if (boardMode === "lost") return mapped.filter(isLostLeadTask);
+    if (boardMode === "recycle") return mapped.filter(isRecycleBinTask);
+    return mapped.filter(isActiveBoardTask);
   }, [tasks, boardMode]);
 
   // Get unique values for filters
@@ -610,13 +635,15 @@ export function EnhancedTaskTable({
   // Filter and sort tasks
   const filteredTasks = useMemo(() => {
     let result = transformedTasks.filter(task => {
-      // Search filter
-      const matchesSearch = !searchTerm || searchTerm.length < 2 || 
-        task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.lead?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.lead?.phone || "").includes(searchTerm) ||
-        (task.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.assigned_to || "").toLowerCase().includes(searchTerm.toLowerCase());
+      // Search the task plus its resolved Lead, Customer, or Professional.
+      const relatedEntity = getRelatedEntityDisplay(task);
+      const normalizedSearch = searchTerm.toLowerCase();
+      const matchesSearch = !searchTerm || searchTerm.length < 2 ||
+        task.title.toLowerCase().includes(normalizedSearch) ||
+        (relatedEntity?.name || "").toLowerCase().includes(normalizedSearch) ||
+        (relatedEntity?.phone || "").includes(searchTerm) ||
+        (task.description || "").toLowerCase().includes(normalizedSearch) ||
+        (task.assigned_to || "").toLowerCase().includes(normalizedSearch);
       
       // Multi-select filters
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(task.type);
@@ -632,7 +659,7 @@ export function EnhancedTaskTable({
       );
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(task.computedStatus);
       const matchesLeadStatus = selectedLeadStatuses.length === 0 ||
-        (task.lead?.status ? selectedLeadStatuses.includes(task.lead.status) : false);
+        (task.lead?.status ? selectedLeadStatuses.includes(task.lead?.status) : false);
       
       // Date range filters
       const dueDateMatch = !dueDateRange.from || !dueDateRange.to || 
@@ -678,7 +705,7 @@ export function EnhancedTaskTable({
     }
 
     return result;
-  }, [transformedTasks, searchTerm, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, selectedLeadStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules]);
+  }, [transformedTasks, searchTerm, getRelatedEntityDisplay, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, selectedLeadStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules]);
 
   // Saved filter counts - reuse existing filter config structure
   const getFilterCount = (filter: SavedFilter): number => {
@@ -771,27 +798,6 @@ export function EnhancedTaskTable({
     } catch (error) {
       console.error("Failed to snooze task:", error);
     }
-  };
-
-  // Get related entity display info
-  const getRelatedEntityDisplay = (task: Task & { computedStatus: string }) => {
-    if (task.lead) {
-      return {
-        name: task.lead.name,
-        phone: task.lead.phone,
-        type: 'Lead',
-        icon: <User className="h-3 w-3" />
-      };
-    }
-    if (task.related_entity_type && task.related_entity_id) {
-      return {
-        name: task.related_entity_id.substring(0, 8) + '...',
-        phone: null,
-        type: task.related_entity_type,
-        icon: task.related_entity_type === 'Professional' ? <Building2 className="h-3 w-3" /> : <UserCheck className="h-3 w-3" />
-      };
-    }
-    return null;
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -1217,8 +1223,8 @@ export function EnhancedTaskTable({
             onClick={() => {
               if (task.related_entity_type === 'lead') {
                 void openLeadDetailById(task.related_entity_id);
-              } else if (task.related_entity_type === 'customer') {
-                const customerData = customers.find(c => c.id === task.related_entity_id);
+              } else if (task.related_entity_type === 'customer' || task.related_entity_type === 'customers') {
+                const customerData = customerById.get(task.related_entity_id);
                 if (customerData) {
                   setSelectedCustomer(customerData);
                   setCustomerDetailOpen(true);
@@ -1235,7 +1241,7 @@ export function EnhancedTaskTable({
             title={`View ${task.related_entity_type} Details`}
           >
             <div className="flex items-center gap-1">
-              {task.related_entity_type === 'customer' ? (
+              {(task.related_entity_type === 'customer' || task.related_entity_type === 'customers') ? (
                 <Building2 className="h-3 w-3 text-emerald-600 shrink-0" />
               ) : task.related_entity_type === 'professional' ? (
                 <UserCheck className="h-3 w-3 text-purple-600 shrink-0" />
@@ -1245,10 +1251,10 @@ export function EnhancedTaskTable({
               <span className="text-sm font-medium text-primary group-hover:underline truncate">
                 {task.related_entity_type === 'lead' 
                   ? (task.lead?.name || leads.find(l => l.id === task.related_entity_id)?.name || 'View Details')
-                  : task.related_entity_type === 'customer'
-                  ? (customers.find(c => c.id === task.related_entity_id)?.name || 'View Details')
+                  : (task.related_entity_type === 'customer' || task.related_entity_type === 'customers')
+                  ? (customerById.get(task.related_entity_id)?.name || 'View Details')
                   : task.related_entity_type === 'professional'
-                  ? (professionals.find(p => p.id === task.related_entity_id)?.name || 'View Details')
+                  ? (professionalById.get(task.related_entity_id)?.name || 'View Details')
                   : 'View Details'}
               </span>
             </div>
@@ -1257,10 +1263,10 @@ export function EnhancedTaskTable({
                 let phone = null;
                 if (task.related_entity_type === 'lead') {
                   phone = task.lead?.phone || leads.find(l => l.id === task.related_entity_id)?.phone;
-                } else if (task.related_entity_type === 'customer') {
-                  phone = customers.find(c => c.id === task.related_entity_id)?.phone;
+                } else if (task.related_entity_type === 'customer' || task.related_entity_type === 'customers') {
+                  phone = customerById.get(task.related_entity_id)?.phone;
                 } else if (task.related_entity_type === 'professional') {
-                  phone = professionals.find(p => p.id === task.related_entity_id)?.phone;
+                  phone = professionalById.get(task.related_entity_id)?.phone;
                 }
                 return phone ? (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1270,7 +1276,7 @@ export function EnhancedTaskTable({
                 ) : null;
               })()}
             </div>
-            <Badge variant="outline" className="text-xs capitalize mt-0.5">{task.related_entity_type}</Badge>
+            <Badge variant="outline" className="text-xs capitalize mt-0.5">{task.related_entity_type === "customers" ? "customer" : task.related_entity_type}</Badge>
           </button>
         ) : (
           <span className="text-muted-foreground">-</span>
@@ -1279,8 +1285,8 @@ export function EnhancedTaskTable({
       case "sitePlusCode": {
         const plusCodeFromLead = task.lead?.site_plus_code || null;
         const plusCodeFromCustomer =
-          task.related_entity_type === "customer"
-            ? customers.find((c) => c.id === task.related_entity_id)?.site_plus_code || null
+          (task.related_entity_type === "customer" || task.related_entity_type === "customers")
+            ? customerById.get(task.related_entity_id)?.site_plus_code || null
             : null;
         const plusCodeFromProfessional =
           task.related_entity_type === "professional"
@@ -1293,7 +1299,7 @@ export function EnhancedTaskTable({
             plusCode={plusCode}
             log={{
               leadId: task.lead_id || undefined,
-              customerId: task.related_entity_type === "customer" ? task.related_entity_id || undefined : undefined,
+              customerId: (task.related_entity_type === "customer" || task.related_entity_type === "customers") ? task.related_entity_id || undefined : undefined,
               relatedEntityType: task.related_entity_type || undefined,
               relatedEntityId: task.related_entity_id || undefined,
             }}
@@ -1398,9 +1404,9 @@ export function EnhancedTaskTable({
                     priority: task.priority,
                     assignedTo: task.assigned_to,
                     relatedTo: task.lead ? {
-                      id: task.lead.id,
-                      name: task.lead.name,
-                      phone: task.lead.phone,
+                      id: task.lead?.id,
+                      name: task.lead?.name,
+                      phone: task.lead?.phone,
                       type: 'Lead' as const
                     } : null,
                     dueDate: task.due_date,
