@@ -242,7 +242,7 @@ const Tasks = () => {
                 initialRelatedToId={relatedToId}
                 initialRelatedToName={relatedToName}
                 onProfessionalClick={handleProfessionalClick}
-                boardMode={showAdminTabs && isAdmin ? boardTab : "active"}
+                boardMode={showAdminTabs ? (boardTab === "recycle" && !isAdmin ? "active" : boardTab) : "active"}
                 readOnly={showAdminTabs && isAdmin && boardTab === "recycle"}
               />
             ) : (
