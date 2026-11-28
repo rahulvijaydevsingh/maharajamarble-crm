@@ -412,78 +412,82 @@ export function LeadProfileTab({ lead, onEdit, onViewActivityLog, onMarkAsLost }
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {lead.construction_stage && (
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-amber-50 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-amber-600" />
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Construction Stage</div>
-                  <div className="font-medium capitalize">{lead.construction_stage.replace(/_/g, ' ')}</div>
-                </div>
-              </div>
-            )}
-
-            {lead.estimated_quantity && (
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-cyan-50 flex items-center justify-center">
-                  <Package className="h-4 w-4 text-cyan-600" />
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Estimated Quantity</div>
-                  <div className="font-medium">{lead.estimated_quantity.toLocaleString()} sq.ft.</div>
-                </div>
-              </div>
-            )}
-
-            {lead.material_interests && (lead.material_interests as string[]).length > 0 && (
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Material Interests</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(lead.material_interests as string[]).map((material, idx) => (
-                    <Badge key={idx} variant="outline" className="capitalize text-xs">
-                      {material.replace(/_/g, ' ')}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <Separator />
-
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Linked Professionals</div>
-              {professionalLinksLoading ? (
-                <div className="text-sm text-muted-foreground">Loading professionals…</div>
-              ) : linkedProfessionals.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No professionals linked</div>
-              ) : (
-                <div className="space-y-2">
-                  {linkedProfessionals.map((professional) => (
-                    <div key={professional.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-border/60 pb-2 last:border-b-0 last:pb-0 text-sm">
-                      <a
-                        href={`/professionals?view=${professional.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="min-w-0 font-medium text-primary hover:underline inline-flex items-center gap-1"
-                      >
-                        <span className="truncate">{professional.name}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      </a>
-                      {professional.phone ? (
-                        <a href={`tel:${professional.phone}`} className="text-primary hover:underline font-medium">
-                          {professional.phone}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                      <div className="col-span-2 text-xs text-muted-foreground">
-                        {professional.designationDisplay || 'Professional'}
-                      </div>
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                {lead.construction_stage && (
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-amber-50 flex items-center justify-center">
+                      <Building2 className="h-4 w-4 text-amber-600" />
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div>
+                      <div className="text-xs text-muted-foreground">Construction Stage</div>
+                      <div className="font-medium capitalize">{lead.construction_stage.replace(/_/g, ' ')}</div>
+                    </div>
+                  </div>
+                )}
+
+                {lead.estimated_quantity && (
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-cyan-50 flex items-center justify-center">
+                      <Package className="h-4 w-4 text-cyan-600" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Estimated Quantity</div>
+                      <div className="font-medium">{lead.estimated_quantity.toLocaleString()} sq.ft.</div>
+                    </div>
+                  </div>
+                )}
+
+                {lead.material_interests && (lead.material_interests as string[]).length > 0 && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-2">Material Interests</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(lead.material_interests as string[]).map((material, idx) => (
+                        <Badge key={idx} variant="outline" className="capitalize text-xs">
+                          {material.replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2 md:border-l md:pl-4">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Linked Professionals</div>
+                {professionalLinksLoading ? (
+                  <div className="text-sm text-muted-foreground">Loading professionals…</div>
+                ) : linkedProfessionals.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No professionals linked</div>
+                ) : (
+                  <div className="space-y-2.5 divide-y">
+                    {linkedProfessionals.map((professional) => (
+                      <div key={professional.id} className="space-y-1 pb-2.5 last:pb-0 text-sm">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                          <a
+                            href={`/professionals?view=${professional.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex min-w-0 items-center gap-1 truncate font-medium text-primary hover:underline"
+                          >
+                            <span className="truncate">{professional.name}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          </a>
+                          {professional.phone ? (
+                            <a href={`tel:${professional.phone}`} className="shrink-0 font-medium text-primary hover:underline">
+                              {professional.phone}
+                            </a>
+                          ) : (
+                            <span className="shrink-0 text-muted-foreground">—</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {professional.designationDisplay || 'Professional'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Follow-up Dates */}
