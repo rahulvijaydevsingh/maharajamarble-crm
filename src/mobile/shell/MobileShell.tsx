@@ -19,12 +19,15 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 
 import { useMobileControlPanel } from '@/mobile/lib/controlPanelContext';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
-import { useReminders } from '@/hooks/useReminders';
+import { useReminders, type Reminder } from '@/hooks/useReminders';
+import { REMINDER_SNOOZE_PRESETS, partitionRemindersForBell } from '@/lib/reminderBellState';
 import { useUnreadCounts } from '@/hooks/useChat';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +38,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWeakSignalOutbox } from '@/mobile/outbox/WeakSignalOutboxContext';
 import { useVersionCheck } from '@/mobile/hooks/useVersionCheck';
 import { buildMobileNotifications } from '@/mobile/lib/mobileNotifications';
+import { isAndroidDevice } from '@/mobile/lib/notificationAlerts';
 import { formatShortDateTime, toLocalDateInputValue, toLocalTimeInputValue } from '@/mobile/lib/format';
 import {
   filterEntityChoices,
@@ -194,14 +198,16 @@ export const SubHeader: React.FC<{
 export const PersistentTopBar: React.FC<{
   onOpenMessages: () => void;
   onOpenNotifications: () => void;
-}> = ({ onOpenMessages, onOpenNotifications }) => {
+  reminders: Reminder[];
+  clearedAt: string | null;
+  nowMs: number;
+}> = ({ onOpenMessages, onOpenNotifications, reminders, clearedAt, nowMs }) => {
   const { data: unreadCounts } = useUnreadCounts();
-  const { reminders } = useReminders();
 
   const unreadMessagesCount = unreadCounts?.messages ?? 0;
   const unreadNotificationsCount = useMemo(
-    () => reminders.filter((reminder) => !reminder.is_dismissed).length,
-    [reminders],
+    () => partitionRemindersForBell(reminders, clearedAt, nowMs).newDue.length,
+    [clearedAt, nowMs, reminders],
   );
 
   return (
@@ -1133,12 +1139,32 @@ export const NotificationsDrawer: React.FC<{
   open: boolean;
   onClose: () => void;
   onNavigate: (route: MobileRoute) => void;
-}> = ({ open, onClose, onNavigate }) => {
-  const { reminders, dismissReminder } = useReminders();
+  reminders: Reminder[];
+  clearedAt: string | null;
+  nowMs: number;
+  clearAllNotifications: () => Promise<void>;
+  isClearing: boolean;
+  muted: boolean;
+  onToggleSound: () => void;
+}> = ({
+  open,
+  onClose,
+  onNavigate,
+  reminders,
+  clearedAt,
+  nowMs,
+  clearAllNotifications,
+  isClearing,
+  muted,
+  onToggleSound,
+}) => {
+  const { dismissReminder, snoozeReminder } = useReminders();
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
-  const [confirmDismissAll, setConfirmDismissAll] = useState(false);
+  const { tasks } = useTasks();
+  const { isOnline, enqueue } = useWeakSignalOutbox();
+  const { toast } = useToast();
 
   const notifications = useMemo(
     () =>
@@ -1146,11 +1172,85 @@ export const NotificationsDrawer: React.FC<{
         leads: leads.map(toMobileLead),
         customers: customers.map(toMobileCustomer),
         professionals: professionals.map(toMobileProfessional),
-      }),
-    [reminders, leads, customers, professionals],
+        tasks,
+      }, nowMs),
+    [customers, leads, nowMs, professionals, reminders, tasks],
   );
+  const partition = useMemo(
+    () => partitionRemindersForBell(reminders, clearedAt, nowMs),
+    [clearedAt, nowMs, reminders],
+  );
+  const newItems = useMemo(() => {
+    const notificationByReminderId = new Map(
+      notifications.map((notification) => [notification.reminder_id, notification]),
+    );
+    return partition.newDue.flatMap((reminder) => {
+      const notification = notificationByReminderId.get(reminder.id);
+      return notification ? [notification] : [];
+    });
+  }, [notifications, partition.newDue]);
+  const activeItems = notifications;
+  const [activeTab, setActiveTab] = useState<'new' | 'active'>(() =>
+    newItems.length > 0 ? 'new' : 'active',
+  );
+  const visibleItems = activeTab === 'new' ? newItems : activeItems;
+
+  const previousNewCountRef = useRef(newItems.length);
+  useEffect(() => {
+    if (newItems.length === 0 && activeTab === 'new') setActiveTab('active');
+    if (newItems.length > 0 && previousNewCountRef.current === 0 && activeTab === 'active') {
+      setActiveTab('new');
+    }
+    previousNewCountRef.current = newItems.length;
+  }, [activeTab, newItems.length]);
+
+  const handleSnooze = (reminder: Reminder, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const snoozeUntil = REMINDER_SNOOZE_PRESETS[0].getSnoozeUntil();
+    if (!isOnline) {
+      enqueue({
+        kind: 'snooze_reminder',
+        label: `Snooze · ${reminder.title}`,
+        payload: { reminderId: reminder.id, snoozeUntil: snoozeUntil.toISOString() },
+      });
+      toast({
+        title: 'Saved offline',
+        description: 'This alarm is stored on the device and will sync automatically.',
+      });
+      return;
+    }
+    void snoozeReminder(reminder.id, snoozeUntil);
+  };
+
+  const handleDone = (reminder: Reminder, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!isOnline) {
+      enqueue({
+        kind: 'done_reminder',
+        label: `Done · ${reminder.title}`,
+        payload: { reminderId: reminder.id },
+      });
+      toast({
+        title: 'Saved offline',
+        description: 'This alarm is stored on the device and will sync automatically.',
+      });
+      return;
+    }
+    void dismissReminder(reminder.id);
+  };
 
   if (!open) return null;
+
+  const androidPermissionLabel =
+    !isAndroidDevice()
+      ? null
+      : typeof Notification === 'undefined'
+        ? 'Android notifications unavailable'
+        : Notification.permission === 'granted'
+          ? 'Android alerts enabled'
+          : Notification.permission === 'denied'
+            ? 'Android alerts blocked'
+            : 'Tap sound to allow Android alerts';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
@@ -1160,12 +1260,24 @@ export const NotificationsDrawer: React.FC<{
         aria-label="Notifications"
         className="w-full bg-white rounded-t-[20px] max-h-[85dvh] flex flex-col pb-[env(safe-area-inset-bottom)]"
       >
-        <div className="p-4 border-b border-[#E2E8F0] flex items-center justify-between">
-          <div>
+        <div className="p-4 border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+          <div className="min-w-0">
             <h2 className="text-lg font-bold text-[#1A1A2E]">Notifications</h2>
             <p className="text-xs text-[#47464C]">Reminders & follow-ups</p>
+            <p className="text-[11px] text-[#64748B] mt-0.5">
+              {androidPermissionLabel ?? (muted ? 'Sound muted' : 'Sound on')}
+            </p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={onToggleSound}
+              aria-label={muted ? 'Unmute sound alerts' : 'Mute sound alerts'}
+              title={muted ? 'Unmute sound alerts' : 'Mute sound alerts'}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[10px] text-[#47464C] hover:bg-[#F8F9FA]"
+            >
+              {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            </button>
             <button
               type="button"
               onClick={onClose}
@@ -1177,92 +1289,116 @@ export const NotificationsDrawer: React.FC<{
           </div>
         </div>
 
+        <div role="tablist" aria-label="Reminder notifications" className="grid grid-cols-2 gap-2 p-3 border-b border-[#E2E8F0]">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'new'}
+            onClick={() => setActiveTab('new')}
+            className={`min-h-[44px] rounded-[10px] text-sm font-semibold ${activeTab === 'new' ? 'bg-[#1A1A2E] text-white' : 'bg-[#F8F9FA] text-[#47464C]'}`}
+          >
+            New ({newItems.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'active'}
+            onClick={() => setActiveTab('active')}
+            className={`min-h-[44px] rounded-[10px] text-sm font-semibold ${activeTab === 'active' ? 'bg-[#1A1A2E] text-white' : 'bg-[#F8F9FA] text-[#47464C]'}`}
+          >
+            Active Reminders ({activeItems.length})
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto divide-y divide-[#F1F5F9]">
-          {notifications.length === 0 ? (
-            <div className="p-8 text-center text-sm text-[#47464C]">No notifications yet.</div>
+          {visibleItems.length === 0 ? (
+            <div className="p-8 text-center text-sm text-[#47464C]">
+              {activeTab === 'new' ? 'No new reminders. Your bell is clear.' : 'No active reminders.'}
+            </div>
           ) : (
-            notifications.map((notification) => (
-              <button
+            visibleItems.map((notification) => (
+              <div
                 key={notification.id}
-                type="button"
-                onClick={() => {
-                  if (notification.target_route) {
-                    onClose();
-                    onNavigate(notification.target_route);
-                  }
-                }}
-                className={`w-full text-left p-4 flex items-start gap-3 transition-colors ${
-                  notification.read ? 'bg-white' : 'bg-[#FFFBEB]/60'
-                }`}
+                className={`p-3.5 transition-colors ${notification.is_due && !notification.read ? 'bg-[#FFFBEB]/60' : 'bg-white'}`}
               >
-                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 bg-[#FFFBEB] text-[#D97706]">
-                  <Bell className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-[#1A1A2E]">
-                      {notification.title}
-                    </span>
-                    <span className="font-utility text-[11px] text-[#47464C] whitespace-nowrap shrink-0">
-                      {notification.time_label}
-                    </span>
+                <button
+                  type="button"
+                  disabled={!notification.target_route}
+                  onClick={() => {
+                    if (notification.target_route) {
+                      onClose();
+                      onNavigate(notification.target_route);
+                    }
+                  }}
+                  className="w-full text-left flex items-start gap-3 rounded-[10px] hover:bg-[#F8F9FA] disabled:cursor-default"
+                >
+                  <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 bg-[#FFFBEB] text-[#D97706]">
+                    <Bell className="w-4 h-4" />
                   </div>
-                  <p className="text-xs text-[#47464C] mt-0.5 leading-relaxed">
-                    {notification.body}
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-semibold text-[#1A1A2E]">
+                        {notification.title}
+                      </span>
+                      <span className="font-utility text-[11px] text-[#47464C] whitespace-nowrap shrink-0">
+                        {notification.time_label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#47464C] mt-0.5 leading-relaxed">
+                      {notification.entity_name}
+                      {notification.entity_role && notification.entity_role !== 'Customer'
+                        ? ` · ${notification.entity_role}`
+                        : ''}
+                    </p>
+                    {notification.reminder.description ? (
+                      <p className="text-xs text-[#64748B] mt-0.5 leading-relaxed">
+                        {notification.reminder.description}
+                      </p>
+                    ) : null}
+                  </div>
+                </button>
+                <div className="flex items-center justify-end gap-2 mt-2 pl-12">
+                  <button
+                    type="button"
+                    onClick={(event) => handleSnooze(notification.reminder, event)}
+                    className="min-h-[44px] px-3 rounded-[10px] border border-[#E2E8F0] bg-[#F8F9FA] text-xs font-semibold text-[#1A1A2E] flex items-center justify-center gap-1.5"
+                  >
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    Snooze +1 hr
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => handleDone(notification.reminder, event)}
+                    className="min-h-[44px] px-3 rounded-[10px] bg-[#ECFDF5] border border-[#A7F3D0] text-xs font-semibold text-[#059669] flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    Done
+                  </button>
                 </div>
-              </button>
+              </div>
             ))
           )}
         </div>
 
         <div className="p-4 border-t border-[#E2E8F0]">
-          {confirmDismissAll ? (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-[#47464C]">
-                Dismiss all {notifications.length} alarm
-                {notifications.length === 1 ? '' : 's'}? This permanently clears them.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDismissAll(false)}
-                  className="flex-1 min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-base"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    notifications.forEach((notification) => {
-                      const reminderId = notification.id.replace('reminder-', '');
-                      void dismissReminder(reminderId);
-                    });
-                    setConfirmDismissAll(false);
-                  }}
-                  className="flex-1 min-h-[48px] rounded-[12px] bg-[#DC2626] text-white font-semibold text-base"
-                >
-                  Dismiss all
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmDismissAll(true)}
-              className="w-full min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-base"
-            >
-              {/* "Mark all read" was misleading: this permanently dismissed
-                  every alarm instead of clearing a read flag. */}
-              Dismiss all alarms
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={newItems.length === 0 || isClearing}
+            onClick={() => void clearAllNotifications()}
+            className="w-full min-h-[48px] rounded-[12px] border border-[#E2E8F0] bg-white text-[#1A1A2E] font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isClearing ? 'Clearing…' : 'Clear all notifications'}
+          </button>
+          {newItems.length === 0 ? (
+            <p className="text-[11px] text-center text-[#64748B] mt-2">
+              Bell cleared — active reminders remain in Today & Active Reminders.
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
   );
 };
-
 /* -------------------------------------------------------------------------- */
 /* Pending outbox drawer                                                      */
 /* -------------------------------------------------------------------------- */

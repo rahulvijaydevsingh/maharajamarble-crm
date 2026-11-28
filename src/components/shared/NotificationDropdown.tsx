@@ -13,6 +13,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { format, parseISO, isPast, isToday, formatDistanceToNow } from "date-fns";
 import { useReminders } from "@/hooks/useReminders";
+import { useNotificationClearSync } from "@/hooks/useNotificationClearSync";
+import { countDueUnclearedReminders } from "@/lib/reminderBellState";
+import { useMobileReminderFeed } from "@/mobile/hooks/useMobileReminderFeed";
 import { 
   useNotifications, 
   useUnreadNotificationCount, 
@@ -41,11 +44,15 @@ export function NotificationDropdown() {
   // The bell is always personal. Do not issue an unfiltered request while the
   // profile is loading, otherwise admins temporarily receive every reminder.
   const reminderAssignee = profile?.full_name || "__profile_pending__";
-  const { reminders, dismissReminder, snoozeReminder } = useReminders(undefined, undefined, reminderAssignee);
+  const { dismissReminder, snoozeReminder } = useReminders(undefined, undefined, reminderAssignee);
+  const { reminders: reminderFeed } = useMobileReminderFeed();
+  const { clearedAt } = useNotificationClearSync();
   const now = new Date();
   const activeReminders = authLoading || !profile?.full_name
     ? []
-    : reminders.filter(r => r.assigned_to === profile.full_name && !r.is_dismissed && new Date(r.reminder_datetime) <= now && (!r.is_snoozed || !r.snooze_until || new Date(r.snooze_until) <= now));
+    : reminderFeed.filter((reminder) =>
+        reminder.assigned_to === profile.full_name && !reminder.is_dismissed
+      );
   
   // Notifications - query by email since automation engine stores email as user_id
   const userEmail = user?.email || "";
@@ -63,7 +70,8 @@ export function NotificationDropdown() {
   // Get conversations with unread messages
   const conversationsWithUnread = conversations.filter(c => c.unread_count && c.unread_count > 0);
 
-  const totalUnread = unreadCount + unreadMessagesCount + activeReminders.filter(r => isPast(parseISO(r.reminder_datetime))).length;
+  const reminderUnreadCount = countDueUnclearedReminders(activeReminders, clearedAt, now.getTime());
+  const totalUnread = unreadCount + unreadMessagesCount + reminderUnreadCount;
 
   const getTimeLabel = (datetime: string) => {
     const date = parseISO(datetime);
@@ -293,23 +301,29 @@ export function NotificationDropdown() {
                 </div>
               ) : (
                 <div className="divide-y">
-                  {activeReminders.map((reminder) => (
+                  {activeReminders.map((reminder) => {
+                    const triggerAt =
+                      reminder.is_snoozed && reminder.snooze_until
+                        ? reminder.snooze_until
+                        : reminder.reminder_datetime;
+                    const isOverdue = isPast(parseISO(triggerAt));
+                    return (
                     <div
                       key={reminder.id}
                       onClick={() => handleReminderClick(reminder)}
                       className={cn(
                         "p-3 hover:bg-muted/50 transition-colors cursor-pointer",
-                        isPast(parseISO(reminder.reminder_datetime)) && "bg-destructive/5"
+                        isOverdue && "bg-destructive/5"
                       )}
                     >
                       <div className="flex items-start gap-3">
                         <div className={cn(
                           "mt-0.5 p-1.5 rounded-full",
-                          isPast(parseISO(reminder.reminder_datetime)) 
+                          isOverdue 
                             ? "bg-destructive/10 text-destructive" 
                             : "bg-primary/10 text-primary"
                         )}>
-                          {isPast(parseISO(reminder.reminder_datetime)) ? (
+                          {isOverdue ? (
                             <AlertCircle className="h-4 w-4" />
                           ) : (
                             <Clock className="h-4 w-4" />
@@ -322,38 +336,43 @@ export function NotificationDropdown() {
                               {reminder.description}
                             </p>
                           )}
-                          <p className={cn(
-                            "text-xs mt-1",
-                            isPast(parseISO(reminder.reminder_datetime)) 
-                              ? "text-destructive" 
-                              : "text-muted-foreground"
-                          )}>
-                            {getTimeLabel(reminder.reminder_datetime)}
-                          </p>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={(e) => handleSnoozeReminder(reminder.id, e)}
-                            title="Snooze 1 hour"
-                          >
-                            <Clock className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={(e) => handleDismissReminder(reminder.id, e)}
-                            title="Dismiss"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <p className={cn(
+                              "text-xs",
+                              isOverdue
+                                ? "text-destructive"
+                                : "text-muted-foreground"
+                            )}>
+                              {getTimeLabel(triggerAt)}
+                            </p>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2.5 text-xs"
+                                onClick={(e) => handleSnoozeReminder(reminder.id, e)}
+                                title="Snooze 1 hour"
+                              >
+                                <Clock className="h-3.5 w-3.5 mr-1" />
+                                Snooze
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-8 px-2.5 text-xs"
+                                onClick={(e) => handleDismissReminder(reminder.id, e)}
+                                title="Done"
+                              >
+                                <Check className="h-3.5 w-3.5 mr-1" />
+                                Done
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </ScrollArea>

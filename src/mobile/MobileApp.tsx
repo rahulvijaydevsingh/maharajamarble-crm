@@ -6,7 +6,8 @@ import { useLeads } from '@/hooks/useLeads';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useTasks } from '@/hooks/useTasks';
-import { useReminders } from '@/hooks/useReminders';
+import { useReminders, type Reminder } from '@/hooks/useReminders';
+import { useNotificationClearSync } from '@/hooks/useNotificationClearSync';
 import { useLogActivity } from '@/hooks/useActivityLog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +24,15 @@ import {
   type CallIntentTarget,
 } from '@/mobile/hooks/useCallIntentWatcher';
 import { buildMobilePath, parseMobilePath } from '@/mobile/routing/workspacePreference';
+import { useMobileReminderFeed } from '@/mobile/hooks/useMobileReminderFeed';
+import { buildMobileNotifications } from '@/mobile/lib/mobileNotifications';
+import {
+  isAndroidDevice,
+  requestAndroidNotificationPermission,
+  unlockNotificationAudio,
+  useReminderAlertWatcher,
+} from '@/mobile/lib/notificationAlerts';
+import { toMobileCustomer, toMobileLead, toMobileProfessional } from '@/mobile/lib/mappers';
 import { MobileControlPanelProvider } from '@/mobile/lib/controlPanelContext';
 import { ClockInOutModal } from '@/components/hr/ClockInOutModal';
 import { AttendancePromptGuard } from '@/mobile/components/AttendancePromptGuard';
@@ -200,6 +210,85 @@ const MobileWorkspaceController: React.FC = () => {
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
   const { tasks, loading: tasksLoading } = useTasks();
+  const { reminders: mobileReminders, loading: mobileRemindersLoading } = useMobileReminderFeed();
+  const { clearedAt, clearAllNotifications, isClearing } = useNotificationClearSync();
+
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    if (!user?.id) {
+      setMuted(false);
+      return;
+    }
+    try {
+      setMuted(window.localStorage.getItem(`mm_notification_muted_v1:${user.id}`) === 'true');
+    } catch {
+      setMuted(false);
+    }
+  }, [user?.id]);
+
+  const mobileReminderLookups = useMemo(
+    () => ({
+      leads: leads.map(toMobileLead),
+      customers: customers.map(toMobileCustomer),
+      professionals: professionals.map(toMobileProfessional),
+      tasks,
+    }),
+    [customers, leads, professionals, tasks],
+  );
+  const resolveReminderNotification = useCallback(
+    (reminder: Reminder) => buildMobileNotifications([reminder], mobileReminderLookups)[0],
+    [mobileReminderLookups],
+  );
+  const resolveReminderBody = useCallback(
+    (reminder: Reminder) => resolveReminderNotification(reminder)?.body ?? reminder.description ?? '',
+    [resolveReminderNotification],
+  );
+  const resolveReminderUrl = useCallback(
+    (reminder: Reminder) => {
+      const targetRoute = resolveReminderNotification(reminder)?.target_route;
+      return targetRoute ? buildMobilePath(targetRoute) : buildMobilePath({ name: 'today' });
+    },
+    [resolveReminderNotification],
+  );
+  const mobileAlertNowMs = useReminderAlertWatcher({
+    reminders: mobileReminders,
+    clearedAt,
+    userId: user?.id,
+    muted,
+    loading: mobileRemindersLoading,
+    resolveBody: resolveReminderBody,
+    resolveUrl: resolveReminderUrl,
+  });
+
+  const handleToggleReminderSound = useCallback(() => {
+    unlockNotificationAudio();
+    if (
+      isAndroidDevice() &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'default'
+    ) {
+      void requestAndroidNotificationPermission().then((permission) => {
+        if (permission === 'denied') {
+          toast({
+            title: 'Android notifications blocked',
+            description: 'Allow notifications for this site in Android or Chrome settings.',
+          });
+        }
+      });
+    }
+
+    setMuted((previous) => {
+      const next = !previous;
+      if (user?.id) {
+        try {
+          window.localStorage.setItem(`mm_notification_muted_v1:${user.id}`, String(next));
+        } catch {
+          // The in-memory mute state still applies when local storage is unavailable.
+        }
+      }
+      return next;
+    });
+  }, [toast, user?.id]);
 
   const [clockModalOpen, setClockModalOpen] = useState(false);
   const [attendanceState, setAttendanceState] = useState<AttendanceUiState>({ status: 'loading', record: null });
@@ -477,6 +566,9 @@ const MobileWorkspaceController: React.FC = () => {
             <PersistentTopBar
               onOpenMessages={() => onNavigate({ name: 'messages' })}
               onOpenNotifications={() => setNotificationsOpen(true)}
+              reminders={mobileReminders}
+              clearedAt={clearedAt}
+              nowMs={mobileAlertNowMs}
             />
             <VersionCheckBanner />
             <WeakSignalSyncStrip onOpenOutbox={() => setOutboxOpen(true)} />
@@ -630,6 +722,13 @@ const MobileWorkspaceController: React.FC = () => {
             open={notificationsOpen}
             onClose={() => setNotificationsOpen(false)}
             onNavigate={onNavigate}
+            reminders={mobileReminders}
+            clearedAt={clearedAt}
+            nowMs={mobileAlertNowMs}
+            clearAllNotifications={clearAllNotifications}
+            isClearing={isClearing}
+            muted={muted}
+            onToggleSound={handleToggleReminderSound}
           />
         ) : null}
 

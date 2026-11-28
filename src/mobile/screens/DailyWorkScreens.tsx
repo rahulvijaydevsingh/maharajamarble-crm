@@ -50,6 +50,8 @@ import { useLeads } from '@/hooks/useLeads';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useReminders } from '@/hooks/useReminders';
+import { REMINDER_SNOOZE_PRESETS } from '@/lib/reminderBellState';
+import { resolveReminderTarget } from '@/mobile/lib/mobileNotifications';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { useTasks } from '@/hooks/useTasks';
 import { useActiveStaffOptions } from '@/hooks/useActiveStaff';
@@ -75,7 +77,12 @@ import {
   toLocalDateInputValue,
   toLocalTimeInputValue,
 } from '@/mobile/lib/format';
-import { toMobileTask } from '@/mobile/lib/mappers';
+import {
+  toMobileCustomer,
+  toMobileLead,
+  toMobileProfessional,
+  toMobileTask,
+} from '@/mobile/lib/mappers';
 import { isSafeStaffName, requireSafeStaffName } from '@/mobile/lib/staffAttribution';
 import {
   formatAttendanceHours,
@@ -808,74 +815,16 @@ export const TodayPage: React.FC<{
     [reminders],
   );
 
-  // The lookups are Maps: the reminder list is rendered row by row and an
-  // array `.find()` per row made the screen O(reminders × rows).
-  const leadById = useMemo(() => {
-    const map = new Map<string, LiveLead>();
-    leads.forEach((lead) => map.set(lead.id, lead));
-    return map;
-  }, [leads]);
-
-  const customerById = useMemo(() => {
-    const map = new Map<string, LiveCustomer>();
-    customers.forEach((customer) => map.set(customer.id, customer));
-    return map;
-  }, [customers]);
-
-  const professionalById = useMemo(() => {
-    const map = new Map<string, LiveProfessional>();
-    professionals.forEach((professional) => map.set(professional.id, professional));
-    return map;
-  }, [professionals]);
-
-  const professionalCandidates = useMemo<ProfessionalLeadCandidate[]>(
-    () =>
-      professionals.map((professional) => ({
-        id: professional.id,
-        phone: professional.phone,
-        alternate_phone: professional.alternate_phone,
-        status: professional.status,
-      })),
-    [professionals],
+  const reminderLookups = useMemo(
+    () => ({
+      leads: leads.map(toMobileLead),
+      customers: customers.map(toMobileCustomer),
+      professionals: professionals.map(toMobileProfessional),
+      tasks,
+      getOptionLabel: control.getOptionLabel,
+    }),
+    [control.getOptionLabel, customers, leads, professionals, tasks],
   );
-
-  const reminderEntity = (
-    entityType: string,
-    entityId: string,
-  ): { name: string; role: string; kind: EntityKind | null } => {
-    if (entityType === 'lead') {
-      const lead = leadById.get(entityId);
-      if (!lead) return { name: 'Lead', role: 'Homeowner', kind: 'lead' };
-      const professional = resolveLeadProfessional(
-        lead.designation,
-        lead.phone,
-        professionalCandidates,
-        professionalById,
-      );
-      return {
-        name: lead.name,
-        role: roleForLead(lead.designation, professional, control.getOptionLabel),
-        kind: 'lead',
-      };
-    }
-    if (entityType === 'customer') {
-      const customer = customerById.get(entityId);
-      return {
-        name: customer?.name ?? 'Customer',
-        role: customer?.profession?.trim() || customer?.customer_type?.trim() || 'Customer',
-        kind: 'customer',
-      };
-    }
-    if (entityType === 'professional') {
-      const professional = professionals.find((item) => item.id === entityId);
-      return {
-        name: professional?.name ?? 'Professional',
-        role: professional?.professional_type || 'Professional',
-        kind: 'professional',
-      };
-    }
-    return { name: 'Task', role: 'Follow-up', kind: null };
-  };
 
   /** Every Done tap enters the completion sheet, never a silent status update. */
   const handleCompleteTask = (task: CrmTask) => {
@@ -1066,37 +1015,50 @@ export const TodayPage: React.FC<{
         ) : (
           <div className="space-y-2.5">
             {activeReminders.map((reminder) => {
-              const info = reminderEntity(reminder.entity_type, reminder.entity_id);
+              const target = resolveReminderTarget(reminder, reminderLookups);
+              const reminderTriggerAt =
+                reminder.is_snoozed && reminder.snooze_until
+                  ? reminder.snooze_until
+                  : reminder.reminder_datetime;
               return (
                 <div
                   key={reminder.id}
                   className="bg-white border border-[#E2E8F0] rounded-[12px] p-3.5 shadow-[0_1px_3px_rgba(26,26,46,0.05)] space-y-2.5"
                 >
-                  <div className="space-y-1">
+                  <button
+                    type="button"
+                    disabled={!target.route}
+                    onClick={() => {
+                      if (target.route) onNavigate(target.route);
+                    }}
+                    aria-label={`Open ${target.entityName} from reminder ${reminder.title}`}
+                    className="w-full text-left space-y-1 rounded-[10px] cursor-pointer hover:bg-[#F8F9FA] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C9A84C] disabled:cursor-default"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-utility text-xs font-semibold text-[#D97706] flex items-center gap-1 whitespace-nowrap">
                         <Bell className="w-3.5 h-3.5 shrink-0" />
-                        <span>{formatShortDateTime(reminder.reminder_datetime)}</span>
+                        <span>{formatShortDateTime(reminderTriggerAt)}</span>
                       </span>
-                      {info.kind ? (
-                        <EntityBadge kind={info.kind} subLabel={info.role} />
+                      {target.entityKind ? (
+                        <EntityBadge kind={target.entityKind} subLabel={target.entityRole} />
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#EEF2F6] text-[#1A1A2E] font-utility text-[11px] font-bold uppercase tracking-wide whitespace-nowrap shrink-0">
-                          <span>{info.role}</span>
+                          <span>{target.entityRole}</span>
                         </span>
                       )}
                     </div>
                     <div className="text-sm font-semibold text-[#1A1A2E] leading-snug">
                       {reminder.title}
                     </div>
-                    <div className="text-xs font-medium text-[#47464C]">{info.name}</div>
-                  </div>
+                    <div className="text-xs font-medium text-[#47464C]">{target.entityName}</div>
+                  </button>
 
                   <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#F1F5F9]">
                     <button
                       type="button"
-                      onClick={() => {
-                        const snoozeUntil = new Date(Date.now() + 60 * 60 * 1000);
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        const snoozeUntil = REMINDER_SNOOZE_PRESETS[0].getSnoozeUntil();
                         if (!isOnline) {
                           enqueue({
                             kind: 'snooze_reminder',
@@ -1122,7 +1084,8 @@ export const TodayPage: React.FC<{
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.stopPropagation();
                         if (!isOnline) {
                           enqueue({
                             kind: 'done_reminder',
