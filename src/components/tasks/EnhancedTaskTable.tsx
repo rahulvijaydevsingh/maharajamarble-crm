@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -86,6 +86,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useTasks, Task } from "@/hooks/useTasks";
 import { calculateTaskStatus } from "@/lib/taskStatusService";
+import { isActiveBoardTask, isLostLeadTask, isRecycleBinTask } from "@/lib/taskPartition";
 import { TASK_STATUSES } from "@/constants/taskConstants";
 import { useLeads, Lead } from "@/hooks/useLeads";
 import { useCustomers, Customer } from "@/hooks/useCustomers";
@@ -144,7 +145,7 @@ interface ColumnVisibility {
 }
 
 interface TaskTableProps {
-  onEditTask?: (task: any) => void;
+  onEditTask?: (task: Task) => void;
   initialRelatedToType?: string | null;
   initialRelatedToId?: string | null;
   initialRelatedToName?: string | null;
@@ -398,6 +399,44 @@ export function EnhancedTaskTable({
   const { leads } = useLeads();
   const { customers } = useCustomers();
   const { professionals } = useProfessionals();
+  const leadById = useMemo(
+    () => new Map<string, Lead>(leads.map((lead): [string, Lead] => [lead.id, lead])),
+    [leads],
+  );
+  const customerById = useMemo(
+    () => new Map<string, Customer>(customers.map((customer): [string, Customer] => [customer.id, customer])),
+    [customers],
+  );
+  const professionalById = useMemo(
+    () => new Map<string, Professional>(professionals.map((professional): [string, Professional] => [professional.id, professional])),
+    [professionals],
+  );
+
+  // Search/export use already-loaded stores and add no network requests.
+  const getRelatedEntityInfo = useCallback((task: Task): { name: string; phone: string | null } | null => {
+    if (task.lead) {
+      return { name: task.lead?.name || "", phone: task.lead?.phone || null };
+    }
+
+    const entityId = task.related_entity_id;
+    const entityType = task.related_entity_type?.toLowerCase();
+    if (!entityId || !entityType) return null;
+
+    if (entityType === "professional") {
+      const professional = entityId ? professionalById.get(entityId) : undefined;
+      return { name: professional?.name || "", phone: professional?.phone || null };
+    }
+    if (entityType === "customer" || entityType === "customers") {
+      const customer = entityId ? customerById.get(entityId) : undefined;
+      return { name: customer?.name || "", phone: customer?.phone || null };
+    }
+    if (entityType === "lead") {
+      const lead = entityId ? leadById.get(entityId) : undefined;
+      return { name: lead?.name || "", phone: lead?.phone || null };
+    }
+
+    return { name: entityId.substring(0, 8) + "...", phone: null };
+  }, [customerById, leadById, professionalById]);
   const { staffMembers } = useActiveStaff();
   const { filters: savedFilters, addFilter, updateFilter, deleteFilter: removeSavedFilter } = useSavedFilters("tasks");
   const { 
@@ -525,20 +564,9 @@ export function EnhancedTaskTable({
       ...task,
       computedStatus: task.calculatedStatus || calculateTaskStatus(task) || task.status
     }));
-    if (boardMode === "lost") {
-      return mapped.filter(t => t.lead?.status === "lost" || t.lead?.status === "pending_lost");
-    }
-    if (boardMode === "recycle") {
-      // t.is_deleted covers tasks a user explicitly deleted.
-      // t.lead == null (loose equality — catches both null and undefined,
-      // matching the Task type's `lead?:` optional-and-nullable typing):
-      // parent lead was hard-deleted before the 3-tab board existed
-      // (orphaned task). Must land here, not fall through every tab.
-      return mapped.filter(t => t.is_deleted || t.lead == null || t.lead?.status === "deleted" || t.status === "Cancelled");
-    }
-    // active (default) — explicitly excludes t.is_deleted and t.lead == null so it can never
-    // also match here, keeping the three boardMode branches mutually exhaustive.
-    return mapped.filter(t => !t.is_deleted && t.lead != null && t.lead?.status !== "deleted" && t.status !== "Cancelled");
+    if (boardMode === "lost") return mapped.filter(isLostLeadTask);
+    if (boardMode === "recycle") return mapped.filter(isRecycleBinTask);
+    return mapped.filter(isActiveBoardTask);
   }, [tasks, boardMode]);
 
   // Get unique values for filters
@@ -610,13 +638,17 @@ export function EnhancedTaskTable({
   // Filter and sort tasks
   const filteredTasks = useMemo(() => {
     let result = transformedTasks.filter(task => {
-      // Search filter
-      const matchesSearch = !searchTerm || searchTerm.length < 2 || 
-        task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.lead?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.lead?.phone || "").includes(searchTerm) ||
-        (task.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (task.assigned_to || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const normalizedSearch = searchTerm.toLowerCase();
+      let matchesSearch = true;
+      if (searchTerm.length >= 2) {
+        const relatedEntity = getRelatedEntityInfo(task);
+        matchesSearch =
+          task.title.toLowerCase().includes(normalizedSearch) ||
+          (relatedEntity?.name || "").toLowerCase().includes(normalizedSearch) ||
+          (relatedEntity?.phone || "").includes(searchTerm) ||
+          (task.description || "").toLowerCase().includes(normalizedSearch) ||
+          (task.assigned_to || "").toLowerCase().includes(normalizedSearch);
+      }
       
       // Multi-select filters
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(task.type);
@@ -632,7 +664,7 @@ export function EnhancedTaskTable({
       );
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(task.computedStatus);
       const matchesLeadStatus = selectedLeadStatuses.length === 0 ||
-        (task.lead?.status ? selectedLeadStatuses.includes(task.lead.status) : false);
+        (task.lead?.status ? selectedLeadStatuses.includes(task.lead?.status) : false);
       
       // Date range filters
       const dueDateMatch = !dueDateRange.from || !dueDateRange.to || 
@@ -678,7 +710,7 @@ export function EnhancedTaskTable({
     }
 
     return result;
-  }, [transformedTasks, searchTerm, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, selectedLeadStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules]);
+  }, [transformedTasks, searchTerm, getRelatedEntityInfo, selectedTypes, selectedPriorities, selectedAssignees, selectedStatuses, selectedLeadStatuses, dueDateRange, createdDateRange, sortField, sortDirection, relatedToFilter, activeAdvancedRules, staffMembers]);
 
   // Saved filter counts - reuse existing filter config structure
   const getFilterCount = (filter: SavedFilter): number => {
@@ -771,27 +803,6 @@ export function EnhancedTaskTable({
     } catch (error) {
       console.error("Failed to snooze task:", error);
     }
-  };
-
-  // Get related entity display info
-  const getRelatedEntityDisplay = (task: Task & { computedStatus: string }) => {
-    if (task.lead) {
-      return {
-        name: task.lead.name,
-        phone: task.lead.phone,
-        type: 'Lead',
-        icon: <User className="h-3 w-3" />
-      };
-    }
-    if (task.related_entity_type && task.related_entity_id) {
-      return {
-        name: task.related_entity_id.substring(0, 8) + '...',
-        phone: null,
-        type: task.related_entity_type,
-        icon: task.related_entity_type === 'Professional' ? <Building2 className="h-3 w-3" /> : <UserCheck className="h-3 w-3" />
-      };
-    }
-    return null;
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -956,20 +967,23 @@ export function EnhancedTaskTable({
       ? filteredTasks.filter(t => selectedTasks.includes(t.id))
       : filteredTasks;
 
-    const exportData = tasksToExport.map(task => ({
-      'Title': task.title,
-      'Type': task.type,
-      'Priority': task.priority,
-      'Assigned To': task.assigned_to,
-      'Related To': task.lead?.name || '-',
-      'Phone': task.lead?.phone || '-',
-      'Due Date': task.due_date,
-      'Due Time': task.due_time || '-',
-      'Status': task.computedStatus,
-      'Description': task.description || '',
-      'Created At': format(new Date(task.created_at), 'yyyy-MM-dd'),
-      'Created By': task.created_by,
-    }));
+    const exportData = tasksToExport.map(task => {
+      const relatedEntity = getRelatedEntityInfo(task);
+      return {
+        'Title': task.title,
+        'Type': task.type,
+        'Priority': task.priority,
+        'Assigned To': task.assigned_to,
+        'Related To': relatedEntity?.name || '-',
+        'Phone': relatedEntity?.phone || '-',
+        'Due Date': task.due_date,
+        'Due Time': task.due_time || '-',
+        'Status': task.computedStatus,
+        'Description': task.description || '',
+        'Created At': format(new Date(task.created_at), 'yyyy-MM-dd'),
+        'Created By': task.created_by,
+      };
+    });
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -1162,16 +1176,20 @@ export function EnhancedTaskTable({
           </div>
         );
       case "relatedTo": {
+        const entityType = task.related_entity_type?.toLowerCase();
+        const entityId = task.related_entity_id;
+        const leadId = task.lead_id;
+        const leadData = leadId ? task.lead || leadById.get(leadId) : undefined;
         const linkedProfessionalId =
-          task.related_entity_type === 'professional' ? task.related_entity_id : null;
+          entityType === "professional" ? entityId : null;
 
-        return task.lead_id ? (
+        return leadId ? (
           <div className="space-y-1.5">
             <button
               type="button"
               onClick={() => {
-                if (task.lead_id) {
-                  void openLeadDetailById(task.lead_id);
+                if (leadId) {
+                  void openLeadDetailById(leadId);
                 }
               }}
               className="text-left p-1 -m-1 rounded transition-colors cursor-pointer group"
@@ -1180,7 +1198,7 @@ export function EnhancedTaskTable({
               <div className="flex items-center gap-2">
                 <User className="h-3 w-3 text-primary shrink-0" />
                 <span className="text-sm font-medium text-primary group-hover:underline truncate">
-                  {task.lead?.name || leads.find(l => l.id === task.lead_id)?.name || 'View Lead'}
+                  {leadData?.name || "View Lead"}
                 </span>
               </div>
             </button>
@@ -1189,7 +1207,7 @@ export function EnhancedTaskTable({
               <Phone className="h-3 w-3 shrink-0" />
               <span className="-ml-1">
                 <PhoneLink
-                  phone={task.lead?.phone || leads.find(l => l.id === task.lead_id)?.phone}
+                  phone={leadData?.phone}
                   className="inline-flex items-center rounded px-1 py-0.5 hover:bg-muted/50"
                 />
               </span>
@@ -1201,8 +1219,10 @@ export function EnhancedTaskTable({
                 <button
                   type="button"
                   onClick={() => {
-                    if (onProfessionalClick) onProfessionalClick(linkedProfessionalId);
-                    else navigate(`/professionals?view=${linkedProfessionalId}`);
+                    if (linkedProfessionalId) {
+                      if (onProfessionalClick) onProfessionalClick(linkedProfessionalId);
+                      else navigate(`/professionals?view=${linkedProfessionalId}`);
+                    }
                   }}
                   title="View Professional Details"
                   className="text-muted-foreground hover:text-purple-600 cursor-pointer"
@@ -1212,22 +1232,22 @@ export function EnhancedTaskTable({
               )}
             </div>
           </div>
-        ) : task.related_entity_type && task.related_entity_id ? (
-          <button 
+        ) : entityType && entityId ? (
+          <button
             onClick={() => {
-              if (task.related_entity_type === 'lead') {
-                void openLeadDetailById(task.related_entity_id);
-              } else if (task.related_entity_type === 'customer') {
-                const customerData = customers.find(c => c.id === task.related_entity_id);
+              if (entityType === "lead" && entityId) {
+                void openLeadDetailById(entityId);
+              } else if ((entityType === "customer" || entityType === "customers") && entityId) {
+                const customerData = entityId ? customerById.get(entityId) : undefined;
                 if (customerData) {
                   setSelectedCustomer(customerData);
                   setCustomerDetailOpen(true);
                 }
-              } else if (task.related_entity_type === 'professional' && task.related_entity_id) {
+              } else if (entityType === "professional" && entityId) {
                 if (onProfessionalClick) {
-                  onProfessionalClick(task.related_entity_id);
+                  onProfessionalClick(entityId);
                 } else {
-                  navigate(`/professionals?view=${task.related_entity_id}`);
+                  navigate(`/professionals?view=${entityId}`);
                 }
               }
             }}
@@ -1235,32 +1255,32 @@ export function EnhancedTaskTable({
             title={`View ${task.related_entity_type} Details`}
           >
             <div className="flex items-center gap-1">
-              {task.related_entity_type === 'customer' ? (
+              {(entityType === "customer" || entityType === "customers") ? (
                 <Building2 className="h-3 w-3 text-emerald-600 shrink-0" />
-              ) : task.related_entity_type === 'professional' ? (
+              ) : entityType === "professional" ? (
                 <UserCheck className="h-3 w-3 text-purple-600 shrink-0" />
               ) : (
                 <User className="h-3 w-3 text-primary shrink-0" />
               )}
               <span className="text-sm font-medium text-primary group-hover:underline truncate">
-                {task.related_entity_type === 'lead' 
-                  ? (task.lead?.name || leads.find(l => l.id === task.related_entity_id)?.name || 'View Details')
-                  : task.related_entity_type === 'customer'
-                  ? (customers.find(c => c.id === task.related_entity_id)?.name || 'View Details')
-                  : task.related_entity_type === 'professional'
-                  ? (professionals.find(p => p.id === task.related_entity_id)?.name || 'View Details')
-                  : 'View Details'}
+                {entityType === "lead"
+                  ? (task.lead?.name || (entityId ? leadById.get(entityId)?.name : undefined) || "View Details")
+                  : (entityType === "customer" || entityType === "customers")
+                    ? ((entityId ? customerById.get(entityId)?.name : undefined) || "View Details")
+                    : entityType === "professional"
+                      ? ((entityId ? professionalById.get(entityId)?.name : undefined) || "View Details")
+                      : "View Details"}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               {(() => {
-                let phone = null;
-                if (task.related_entity_type === 'lead') {
-                  phone = task.lead?.phone || leads.find(l => l.id === task.related_entity_id)?.phone;
-                } else if (task.related_entity_type === 'customer') {
-                  phone = customers.find(c => c.id === task.related_entity_id)?.phone;
-                } else if (task.related_entity_type === 'professional') {
-                  phone = professionals.find(p => p.id === task.related_entity_id)?.phone;
+                let phone: string | null | undefined;
+                if (entityType === "lead") {
+                  phone = task.lead?.phone || (entityId ? leadById.get(entityId)?.phone : undefined);
+                } else if (entityType === "customer" || entityType === "customers") {
+                  phone = entityId ? customerById.get(entityId)?.phone : undefined;
+                } else if (entityType === "professional") {
+                  phone = entityId ? professionalById.get(entityId)?.phone : undefined;
                 }
                 return phone ? (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1270,21 +1290,25 @@ export function EnhancedTaskTable({
                 ) : null;
               })()}
             </div>
-            <Badge variant="outline" className="text-xs capitalize mt-0.5">{task.related_entity_type}</Badge>
+            <Badge variant="outline" className="text-xs capitalize mt-0.5">
+              {entityType === "customers" ? "customer" : task.related_entity_type}
+            </Badge>
           </button>
         ) : (
           <span className="text-muted-foreground">-</span>
         );
       }
       case "sitePlusCode": {
+        const entityType = task.related_entity_type?.toLowerCase();
+        const entityId = task.related_entity_id;
         const plusCodeFromLead = task.lead?.site_plus_code || null;
         const plusCodeFromCustomer =
-          task.related_entity_type === "customer"
-            ? customers.find((c) => c.id === task.related_entity_id)?.site_plus_code || null
+          entityType === "customer" || entityType === "customers"
+            ? (entityId ? customerById.get(entityId)?.site_plus_code || null : null)
             : null;
         const plusCodeFromProfessional =
-          task.related_entity_type === "professional"
-            ? professionals.find((p) => p.id === task.related_entity_id)?.site_plus_code || null
+          entityType === "professional"
+            ? (entityId ? professionalById.get(entityId)?.site_plus_code || null : null)
             : null;
 
         const plusCode = plusCodeFromLead || plusCodeFromCustomer || plusCodeFromProfessional;
@@ -1293,9 +1317,9 @@ export function EnhancedTaskTable({
             plusCode={plusCode}
             log={{
               leadId: task.lead_id || undefined,
-              customerId: task.related_entity_type === "customer" ? task.related_entity_id || undefined : undefined,
+              customerId: (entityType === "customer" || entityType === "customers") ? entityId || undefined : undefined,
               relatedEntityType: task.related_entity_type || undefined,
-              relatedEntityId: task.related_entity_id || undefined,
+              relatedEntityId: entityId || undefined,
             }}
           />
         );
@@ -1391,26 +1415,7 @@ export function EnhancedTaskTable({
                     <Star className={cn("mr-2 h-4 w-4", task.is_starred && "fill-yellow-400 text-yellow-400")} />
                     {task.is_starred ? "Unstar" : "Star"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onEditTask?.({
-                    id: task.id,
-                    title: task.title,
-                    type: task.type,
-                    priority: task.priority,
-                    assignedTo: task.assigned_to,
-                    relatedTo: task.lead ? {
-                      id: task.lead.id,
-                      name: task.lead.name,
-                      phone: task.lead.phone,
-                      type: 'Lead' as const
-                    } : null,
-                    dueDate: task.due_date,
-                    dueTime: task.due_time,
-                    status: task.status,
-                    description: task.description,
-                    reminder: task.reminder,
-                    is_recurring: task.is_recurring,
-                    recurrence_frequency: task.recurrence_frequency,
-                  })}>
+                  <DropdownMenuItem onClick={() => onEditTask?.(task)}>
                     <Edit className="mr-2 h-4 w-4" />
                     Edit Task
                   </DropdownMenuItem>
